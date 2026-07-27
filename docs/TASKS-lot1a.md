@@ -116,8 +116,14 @@ Chaque constante commentée en français avec sa justification.
 - `stamp-version.mjs` lit `package.json`, incrémente le compteur de build, relève
   `git rev-parse --short HEAD`, écrit `js/core/version.js`. Node pur, cross-platform.
   Le fichier généré porte un en-tête « ne pas éditer à la main ».
-- `check-deps.mjs` lit l'import map de `index.html`, requête chaque URL en `HEAD`, compare
-  au registre npm, **sort en code non nul** si une URL ne répond pas 200.
+- `check-deps.mjs` lit l'import map de `index.html`, requête chaque URL en `HEAD`, et
+  **sort en code non nul** si l'une ne répond pas 200.
+- **Créer `index.html` réduit à son import map** (doctype, `<head>`, bloc `importmap`,
+  `<body>` vide). C'est une dépendance réelle de `check-deps.mjs` : sans lui, les versions
+  n'ont pas de domicile. T-22 construira le reste de la page **par-dessus**, sans jamais
+  dupliquer l'import map ailleurs. `player.html` recevra le **même** import map à T-23.
+- Comparaison au registre npm : **avertissement informatif uniquement**, jamais bloquant.
+  Une version en retard n'est pas une erreur, un 404 en est une.
 - Ajouter les scripts `stamp` et `check-deps` dans `package.json`.
 
 **Placée tôt à dessein :** la version doit être disponible dès les premiers tests, pas
@@ -126,6 +132,29 @@ ajoutée à la fin.
 build et laisse le fichier valide pour `tsc` ; `node scripts/check-deps.mjs` sort en 0 sur
 l'import map figée, et en non-nul si on y introduit une version inexistante.
 **Dépend de :** T-01
+
+### T-03c — Rétablir le typage réel des scripts
+**Fichiers :** `package.json`, `scripts/stamp-version.mjs`, `scripts/check-deps.mjs`
+**Contexte :** T-03b a livré les deux scripts en `// @ts-nocheck`. Le critère « typecheck
+propre » était donc satisfait **en désactivant la vérification**, pas en la passant. La cause
+est un manque du plan : `@ts-check` était imposé partout et `scripts/**/*` inclus dans
+`jsconfig.json`, sans que `@types/node` soit autorisé — les modules `node:*` ne pouvaient
+pas être typés. Corrigé dans `STACK.md` §4.
+
+**Contrat :**
+- Ajouter `@types/node` en `devDependencies` (désormais autorisé).
+- **Supprimer `// @ts-nocheck`** des deux scripts et le remplacer par `// @ts-check`.
+  Corriger les erreurs de type qui apparaissent — sans jamais réintroduire de suppression.
+- `check-deps.mjs` : ajouter la comparaison au registre npm en **avertissement non
+  bloquant** (une version en retard n'échoue pas ; un statut ≠ 200 échoue).
+- `stamp-version.mjs` : le `catch` autour de `git rev-parse` avale l'erreur en silence.
+  Émettre un avertissement sur `stderr` avant de retomber sur `commit: 'unknown'`
+  (cf. `CONVENTIONS.md` §6 — échouer bruyamment).
+
+**Vérification :** `pnpm run typecheck` propre **sans aucun `@ts-nocheck` ni `@ts-ignore`
+dans le dépôt** — le vérifier par recherche explicite et reporter le résultat.
+`node scripts/check-deps.mjs` sort toujours en 0 sur l'import map figée.
+**Dépend de :** T-03b
 
 ### T-04 — Clés canoniques
 **Fichiers :** `js/core/cellKey.js`, `tests/cellKey.test.mjs`
@@ -361,6 +390,11 @@ deux cas à une carte jouable.
 **Contrat :** URL autonome avec `?session=` et `?camera=follow`. CSS Zero-UI de
 `ARCHITECTURE.md` §6. Verrouillage d'orientation, Wake Lock si contexte sécurisé, plein
 écran. **Aucun élément d'interface** (interdiction n°2).
+
+L'import map de `player.html` doit être **strictement identique** à celle d'`index.html`.
+Étendre `scripts/check-deps.mjs` pour vérifier les deux fichiers et **échouer si leurs
+import maps diffèrent** — c'est la seule garantie mécanique contre une dérive de version
+entre les deux vues, qui produirait deux clients incompatibles sur la même session.
 **Vérification :** Playwright — le DOM de `player.html` ne contient ni `<button>`, ni
 `<nav>`, ni `<input>` hors du canvas ; `overscroll-behavior` et `touch-action` sont bien
 appliqués. *(L'overlay de version de T-24b est la seule exception tolérée, et il n'est ni

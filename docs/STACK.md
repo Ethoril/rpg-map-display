@@ -204,6 +204,16 @@ importés par référence :
 export function moveTokenToCell(token, cell) { … }
 ```
 
+**`@ts-nocheck` et `@ts-ignore` sont interdits.** Ils font passer la vérification en la
+désactivant, ce qui vide toute la stratégie de typage de son sens. Un type qui résiste est
+un signal : soit le type est faux, soit il manque une déclaration — dans les deux cas on
+corrige, on ne muselle pas.
+
+> `@types/node` est **autorisé** en dépendance de développement, et nécessaire : les
+> scripts de `scripts/` importent `node:fs`, `node:path` et `node:child_process`, qui sans
+> lui ne peuvent pas être typés. C'est un paquet de types uniquement, sans code à
+> l'exécution.
+
 Vérification (aucun fichier émis) :
 
 ```
@@ -221,7 +231,7 @@ npx tsc --noEmit -p jsconfig.json
 |---|---|---|
 | Runtime des scripts | **Node.js 20 LTS ou plus** | ESM (`.mjs` ou `"type": "module"`) |
 | Gestionnaire de paquets | **pnpm** | Cohérent avec l'existant |
-| Vérification de types | `tsc --noEmit` | Dépendance de dev uniquement |
+| Vérification de types | `tsc --noEmit` + `@types/node` | Dépendances de dev uniquement |
 | Tests | **Playwright (Chromium)** | Cohérent avec l'existant |
 | Serveur local de dev | `npx serve` ou équivalent statique | Jamais de serveur applicatif : l'app doit fonctionner en statique pur |
 

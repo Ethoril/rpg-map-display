@@ -16,8 +16,10 @@ implémentation qui lève.
 ```
 F:\rpg-map-display\
 │
-├─ index.html                     [1a] vue MJ (import map, canvas, panneau latéral)
-├─ player.html                    [1a] vue joueurs — URL autonome, zéro UI
+├─ index.html                     [1a] vue MJ. Import map créée en T-03b (domicile unique
+│                                      des versions), reste de la page construit en T-22
+├─ player.html                    [1a] vue joueurs — URL autonome, zéro UI. Import map
+│                                      IDENTIQUE à index.html (T-23)
 ├─ jsconfig.json                  [1a] checkJs strict, noEmit
 ├─ package.json                   [1a] scripts Node uniquement
 ├─ .gitattributes                 [1a] * text=auto eol=lf

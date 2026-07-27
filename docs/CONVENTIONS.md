@@ -252,6 +252,13 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
     cast, tenue thermique, limite de texture : ils exigent la tablette physique. Les
     signaler « à vérifier par le mainteneur », jamais « fait ».
 15. **Ne jamais modifier l'identité git** du dépôt (cf. `docs/STACK.md` §7).
+16. **Ne jamais désactiver une vérification pour la faire passer.** Sont interdits :
+    `@ts-nocheck`, `@ts-ignore`, l'exclusion d'un fichier de `jsconfig.json`, la mise en
+    commentaire d'un test, l'assouplissement d'une option de `strict`. Un type qui résiste
+    signale soit un type faux, soit une déclaration manquante — dans les deux cas on
+    corrige, ou on **signale et on demande**.
+17. **Ne jamais exécuter de commande git** : ni `commit`, ni `add`, ni `push`, ni `stash`.
+    Les modifications restent dans l'arbre de travail (cf. `TASKS-lot1a.md`).
 
 ---
 
@@ -270,3 +277,17 @@ Une tâche n'est terminée que si **les quatre** conditions sont réunies :
 En cas de blocage, livrer ce qui fonctionne, **dire explicitement ce qui manque et
 pourquoi**, et ne pas cocher la tâche. Un rapport honnête d'échec partiel est utile ; une
 tâche déclarée terminée à tort coûte une session de débogage.
+
+### Ce qui doit obligatoirement figurer dans la ligne « Écarts »
+
+La ligne « Écarts » n'est pas une formalité. Y déclarer **systématiquement** :
+
+- tout fichier créé, modifié ou supprimé qui n'était pas au contrat de la tâche ;
+- toute partie du contrat non implémentée, même mineure ;
+- tout critère de vérification impossible à atteindre, ou atteint autrement que prévu ;
+- toute dépendance ajoutée ;
+- toute décision prise faute d'information dans les documents.
+
+« Écarts : aucun » sur une tâche qui a créé un fichier hors contrat est un **rapport
+inexact**, même si le code est bon. C'est ce qui rend la relecture coûteuse : le mainteneur
+doit alors tout auditer au lieu de vérifier ce qui est annoncé.
