@@ -522,7 +522,8 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
     order: 0,
     imageUrl: 'maps/manoir-rdc.webp',   // relatif au dépôt Pages
     videoUrl: null,                     // optionnel : fond animé (WebM/VP9 ou MP4/H.264)
-    animatedOverlays: [],               // [{ url, x, y, w, h, fps }] — préféré à videoUrl
+    animatedOverlays: [],               // [{ url, at: CellPoint, widthCells, heightCells, fps }]
+                                        // préféré à videoUrl (§9)
     pxPerCell: 140,                     // après rééchantillonnage
     widthCells: 40, heightCells: 30,
     grid:    { type: 'square'|'hex',    // défaut 'square' à l'import UVTT, surchargeable

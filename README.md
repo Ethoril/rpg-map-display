@@ -25,6 +25,8 @@ ni fiches de personnage, ni jets de dés, ni tchat.
 
 1. **Une tâche à la fois**, dans l'ordre de `TASKS-lot1a.md`, avec un rapport de trois
    lignes à chaque fois. **S'arrêter à chaque point de contrôle** (⛔) et attendre.
+   **Ne jamais commiter** : les modifications restent dans l'arbre de travail, le
+   mainteneur commite après relecture.
 2. **Ne jamais créer un fichier absent du manifeste**, ni ajouter une dépendance absente de
    la stack. Proposer, ne pas décider.
 3. **Ne jamais ajouter de drag & drop de pion à la vue joueurs.** Le déplacement se fait en

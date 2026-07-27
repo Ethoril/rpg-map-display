@@ -24,6 +24,20 @@ Vérification : <résultat exact de la commande ou du test>
 **S'arrêter à chaque point de contrôle** (⛔) et attendre la relecture. Ne jamais enchaîner
 au-delà.
 
+### Ne jamais commiter
+
+**Laisser les modifications dans l'arbre de travail.** Ne pas exécuter `git commit`, ni
+`git add`, ni `git push`, ni `git stash`, ni aucune commande qui modifie l'historique ou
+l'index.
+
+La raison est pratique : un commit intervient **après** relecture. Une tâche rejetée dont le
+code est déjà dans l'historique demande un revert ou un fixup, là qu'une simple correction
+de l'arbre de travail suffirait. Le mainteneur commite lui-même les tâches validées.
+
+Corollaire : laisser l'arbre **propre de tout artefact** en fin de tâche. Les fichiers de
+test jetables sont supprimés, et `git status` ne doit montrer que les fichiers du contrat de
+la tâche.
+
 Rappels permanents :
 - `pnpm run typecheck` doit être propre à chaque tâche (cf. `CONVENTIONS.md` §9 pour
   l'unique exception, à la T-01).

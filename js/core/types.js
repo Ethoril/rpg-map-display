@@ -30,12 +30,13 @@
  */
 
 /**
+ * Surcouche animée en boucle (eau, feu, brume, torches). Positionnée en unités de case
+ * comme tout le reste du modèle — jamais en pixels.
  * @typedef {Object} AnimatedOverlay
  * @property {string} url
- * @property {number} x
- * @property {number} y
- * @property {number} w
- * @property {number} h
+ * @property {CellPoint} at coin haut-gauche
+ * @property {number} widthCells
+ * @property {number} heightCells
  * @property {number} fps
  */
 
