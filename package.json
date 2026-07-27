@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "typecheck": "tsc --noEmit -p jsconfig.json"
+    "typecheck": "tsc --noEmit -p jsconfig.json",
+    "stamp": "node scripts/stamp-version.mjs",
+    "check-deps": "node scripts/check-deps.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
+    "@types/node": "^26.1.1",
     "typescript": "^5.7.0"
-  }
+  },
+  "build": 4
 }
