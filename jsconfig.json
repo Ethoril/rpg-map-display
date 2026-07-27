@@ -6,7 +6,11 @@
     "checkJs": true,
     "strict": true,
     "noEmit": true,
-    "allowJs": true
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "pixi.js": ["./js/core/types.js"]
+    }
   },
   "include": [
     "js/**/*",

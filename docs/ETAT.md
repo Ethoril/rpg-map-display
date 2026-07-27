@@ -1,6 +1,6 @@
 # ÉTAT D'AVANCEMENT & REPRISE
 
-> Dernière mise à jour : **27 juillet 2026**, après T-03c.
+> Dernière mise à jour : **27 juillet 2026**, fin de séance — T-11 refacto complétée.
 > Document vivant : à réactualiser à chaque fin de séance de travail.
 
 ---
@@ -48,27 +48,38 @@ d'abord.
 
 ### Fait
 
-| Tâche | Objet | Commit |
-|---|---|---|
-| T-01 | Squelette : `package.json`, `jsconfig.json`, `.gitignore`, `.gitattributes` | `4cea42a` |
-| T-02 | `js/core/types.js` — schéma du CdC §6 en JSDoc | `bb4198e` |
-| T-02b | `CellPoint`, `ScreenPoint`, `Presence` ; `offsetX/Y` obligatoires | `2131870` |
-| T-03 | `js/core/constants.js` — 5 constantes commentées | `cfdb211` |
-| T-03b | `stamp-version.mjs`, `check-deps.mjs`, `index.html` (import map seule) | `6f36b97` |
-| T-03c | `@types/node`, typage réel des scripts, registre npm non bloquant | `6f36b97` |
+**Fondations (T-01 à T-09, PC1 validé)** :
+| Tâche | Objet |
+|---|---|
+| T-04 | Clés canoniques (`cellKey`, `parseCellKey`, `edgeKey` commutatif) |
+| T-05 | Interfaces abstraites (`GridAdapter`, `Transport` — JSDoc pur) |
+| T-06 | Schéma + validation (`createCampaign`, `createLevel`, `createToken`) |
+| T-07 | Grille carrée : 8 voisines, distance octile, occupation n×n |
+| T-08 | Masque d'arêtes (stub lot 1a) |
+| T-09 | Cases atteignables : Dijkstra + **anti-corner-cutting** (4 arêtes bloquées) |
 
-État courant : **build 4**, versions figées `pixi.js@8.19.0` et `firebase@12.16.0`,
-typecheck propre, aucun `@ts-nocheck` dans le dépôt.
+**Import & Calibration (T-10, T-12, T-11 refacto)** :
+| Tâche | Objet |
+|---|---|
+| T-10 | Parsing UVTT pur (unités de case, détection baked_lighting, refus hex) |
+| T-12 | Calibration image simple (`calibrateFromRect`, `calibrateImage`) |
+| T-11 refacto | Rééchantillonnage avec Jimp + CLI d'import (maps/*.webp) |
+
+**Rendu (T-15 — hors ordre, intégration en attente)** :
+| Tâche | Objet |
+|---|---|
+| T-15 | Application Pixi v8 async, caméra MapPoint↔ScreenPoint, boucle rAF à la demande |
+
+**État courant** : **build 5**, 14/27 tâches lot 1a complètes.
+Typecheck clean, check-deps 5/5 URLs OK, 33 tests passés (cellKey, schema, squareGrid, uvtt, render, reachable).
 
 ### Prochaine étape
 
-**T-04 — clés canoniques** (`js/core/cellKey.js` + tests).
+**T-13 — Store** (gestion d'état : source de vérité unique, mutations, subscriptions).
 
-Piège du contrat à surveiller : `edgeKey` doit être **commutatif**
-(`edgeKey(A,B) === edgeKey(B,A)`) et sans collision entre `{a:1,b:23}` et `{a:12,b:3}`.
+Puis **T-14** (Transport Firebase), **T-16+** (couches rendu : fond, grille, pions, fog).
 
-Puis **T-05** (interfaces), **T-06** (schéma & validation), et le **point de contrôle 1**
-qui clôt les fondations. Reste 21 tâches sur 27 pour le lot 1a.
+Pas d'autre point de contrôle avant fin lot 1a.
 
 ---
 

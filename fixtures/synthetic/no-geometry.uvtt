@@ -1,0 +1,23 @@
+{
+  "format": 0.3,
+  "resolution": {
+    "map_origin": {
+      "x": 0,
+      "y": 0
+    },
+    "map_size": {
+      "x": 10,
+      "y": 8
+    },
+    "pixels_per_grid": 64
+  },
+  "line_of_sight": [],
+  "objects_line_of_sight": [],
+  "portals": [],
+  "environment": {
+    "baked_lighting": false,
+    "ambient_light": "ffffffff"
+  },
+  "lights": [],
+  "image": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+}

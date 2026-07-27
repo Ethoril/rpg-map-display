@@ -233,6 +233,7 @@ npx tsc --noEmit -p jsconfig.json
 | Gestionnaire de paquets | **pnpm** | Cohérent avec l'existant |
 | Vérification de types | `tsc --noEmit` + `@types/node` | Dépendances de dev uniquement |
 | Tests | **Playwright (Chromium)** | Cohérent avec l'existant |
+| Traitement d'images (scripts) | **Jimp** (pure JS) | Dépendance de dev uniquement — rééchantillonnage UVTT en Node |
 | Serveur local de dev | `npx serve` ou équivalent statique | Jamais de serveur applicatif : l'app doit fonctionner en statique pur |
 
 ### Règles cross-platform (développement Windows, jeu sur Mac)

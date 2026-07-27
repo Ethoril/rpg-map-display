@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-minimal",
+  "name": "Carte UVTT",
+  "levels": [
+    {
+      "id": "uvtt-level",
+      "name": "Carte UVTT",
+      "order": 0,
+      "imageUrl": "maps/minimal.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "pxPerCell": 140,
+      "widthCells": 10,
+      "heightCells": 8,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "terrainCost": null,
+      "walls": [
+        [
+          {
+            "cellX": 2,
+            "cellY": 2
+          },
+          {
+            "cellX": 8,
+            "cellY": 2
+          },
+          {
+            "cellX": 8,
+            "cellY": 6
+          },
+          {
+            "cellX": 2,
+            "cellY": 6
+          },
+          {
+            "cellX": 2,
+            "cellY": 2
+          }
+        ]
+      ],
+      "portals": [
+        {
+          "id": "portal-1",
+          "a": {
+            "cellX": 4.5,
+            "cellY": 2
+          },
+          "b": {
+            "cellX": 5.5,
+            "cellY": 2
+          },
+          "closed": true,
+          "freestanding": false
+        }
+      ],
+      "lights": [
+        {
+          "id": "light-1",
+          "at": {
+            "cellX": 5,
+            "cellY": 4
+          },
+          "range": 3,
+          "intensity": 1,
+          "color": "ffffffff",
+          "shadows": true
+        }
+      ],
+      "ambient": {
+        "color": "#ffffff",
+        "level": 1,
+        "baked": false
+      }
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "templates": [],
+  "settings": {
+    "ambientLevel": 1
+  }
+}
