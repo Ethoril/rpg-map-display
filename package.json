@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit -p jsconfig.json"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
