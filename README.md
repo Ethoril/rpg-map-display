@@ -20,6 +20,7 @@ ni fiches de personnage, ni jets de dés, ni tchat.
 | 4 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Manifeste de fichiers **fermé**, règles d'import, interfaces. **Normatif.** |
 | 5 | [docs/TASKS-lot1a.md](docs/TASKS-lot1a.md) | Le travail à faire, tâche par tâche. |
 | 6 | [docs/FIXTURES.md](docs/FIXTURES.md) | Jeux de données de test. |
+| 7 | [docs/ETAT.md](docs/ETAT.md) | Où en est le projet, quelle tâche suit, et pourquoi certaines règles existent. |
 
 ### Les cinq règles qui comptent le plus
 
@@ -47,14 +48,32 @@ la tâche**. Un rapport honnête d'échec partiel est utile.
 
 ## État
 
-Lot 1a « Le plateau » — non démarré. Aucun code applicatif écrit à ce jour.
+**Lot 1a « Le plateau » — 6 tâches sur 27.** Fondations en cours : types, constantes et
+outillage de version en place. Prochaine tâche : **T-04** (clés canoniques).
+
+👉 **[docs/ETAT.md](docs/ETAT.md)** — état détaillé, procédure de reprise, points de
+vigilance et décisions en attente. **À lire en premier après une interruption ou un
+changement de machine.**
 
 ## Développement
 
+### ⚠️ Après un clone, avant tout commit
+
+La configuration d'identité git est **locale au dépôt** et ne survit pas à un clone :
+
+```
+git config user.name 'ethoril'
+git config user.email 'ethoril@gmail.com'
+```
+
+### Commandes
+
 ```
 pnpm install
-node scripts/make-fixture.mjs        # génère les fixtures de test
-npx tsc --noEmit -p jsconfig.json    # vérification de types (doit être propre)
+pnpm run typecheck                   # doit être propre, code de sortie 0
+pnpm run check-deps                  # vérifie les URLs de l'import map
+pnpm stamp                           # incrémente le build, régénère js/core/version.js
+node scripts/make-fixture.mjs        # génère les fixtures de test (dès T-10)
 pnpm test                            # Playwright + tests unitaires
 ```
 

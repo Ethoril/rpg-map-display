@@ -119,7 +119,8 @@ F:\rpg-map-display\
     ├─ CONVENTIONS.md             conventions & interdictions
     ├─ ARCHITECTURE.md            ce document
     ├─ TASKS-lot1a.md             découpage en tâches
-    └─ FIXTURES.md                jeux de données de test
+    ├─ FIXTURES.md                jeux de données de test
+    └─ ETAT.md                    avancement, reprise, corrections du plan
 ```
 
 ---
