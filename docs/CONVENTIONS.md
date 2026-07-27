@@ -233,7 +233,10 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
 
 Une tâche n'est terminée que si **les quatre** conditions sont réunies :
 
-1. `npx tsc --noEmit -p jsconfig.json` ne rapporte aucune erreur.
+1. `pnpm run typecheck` ne rapporte aucune erreur, code de sortie 0.
+   *Unique exception : `TS18003` (« No inputs were found ») à la tâche T-01, avant
+   l'existence du premier fichier source. Partout ailleurs, une sortie non nulle = non
+   terminé.*
 2. La vérification d'acceptation propre à la tâche passe (cf. `docs/TASKS-lot1a.md`).
 3. Aucune interdiction de la §8 n'est violée.
 4. Aucun fichier hors manifeste n'a été créé.

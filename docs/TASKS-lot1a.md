@@ -25,7 +25,11 @@ Vérification : <résultat exact de la commande ou du test>
 au-delà.
 
 Rappels permanents :
-- `npx tsc --noEmit -p jsconfig.json` doit être propre à chaque tâche.
+- `pnpm run typecheck` doit être propre à chaque tâche (cf. `CONVENTIONS.md` §9 pour
+  l'unique exception, à la T-01).
+- **Un critère de vérification qui ne peut pas être atteint est un défaut du plan, pas de
+  l'implémentation.** Le signaler dans la ligne « Écarts » et demander l'arbitrage. Ne
+  jamais le contourner ni le déclarer satisfait.
 - Aucun fichier hors du manifeste de `ARCHITECTURE.md`.
 - Les 15 interdictions de `CONVENTIONS.md` §8 s'appliquent en continu.
 - **Ne jamais cocher un critère de performance** — ils exigent la tablette physique.
@@ -39,8 +43,16 @@ Rappels permanents :
 **Contrat :** pnpm, scripts Node uniquement. `jsconfig.json` en `checkJs: true`,
 `strict: true`, `noEmit: true`, `allowJs: true`, cible `ES2022`, `moduleResolution: bundler`.
 Dépendances de dev seulement : `typescript`, `@playwright/test`.
-**Vérification :** `npx tsc --noEmit -p jsconfig.json` s'exécute sans erreur (0 fichier).
+Scripts `package.json` : `test`, et **`typecheck`** valant
+`tsc --noEmit -p jsconfig.json` — pour que la vérification de chaque tâche soit une
+commande unique, non retapable de travers.
+**Vérification :** `pnpm run typecheck` produit **TS18003 et rien d'autre** (« No inputs
+were found »), avec un code de sortie 2. C'est le résultat **attendu** à ce stade : aucun
+fichier source n'existe encore. Toute autre erreur est un défaut.
 **Dépend de :** —
+
+> ⚠️ **TS18003 est toléré à la T-01 uniquement.** Dès la T-02, un fichier source existe et
+> `pnpm run typecheck` doit être totalement propre, code de sortie 0.
 
 ### T-02 — Types partagés
 **Fichiers :** `js/core/types.js`
