@@ -529,18 +529,18 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
                hexOrientation: 'flat'|'pointy',
                offsetX: 0, offsetY: 0,
                color: '#000000', opacity: 0.25, visible: true },
-    terrainCost: null,                  // optionnel : Map cellKey → coût (défaut 1)
-    walls:   [ [{x,y}, {x,y}, …], … ],  // polylignes, EN UNITÉS DE CASE
-    portals: [{ id, a:{x,y}, b:{x,y}, closed: true, freestanding: false }],
-    lights:  [{ id, x, y, range, intensity, color, shadows: true }],
+    terrainCost: null,                  // optionnel : Record<cellKey, coût> (défaut 1)
+    walls:   [ [CellPoint, CellPoint, …], … ],   // polylignes
+    portals: [{ id, a: CellPoint, b: CellPoint, closed: true, freestanding: false }],
+    lights:  [{ id, at: CellPoint, range, intensity, color, shadows: true }],
     ambient: { color: '#ffffff', level: 1.0, baked: false }
   }],
 
   links: [{
     id, kind: 'stairs'|'elevator'|'ladder'|'hatch'|'passage',
     label: 'Escalier nord',
-    a: { levelId: 'rdc', x: 12, y: 7 },
-    b: { levelId: 'et1', x: 3,  y: 19 },
+    a: { levelId: 'rdc', at: { cellX: 12, cellY: 7 } },
+    b: { levelId: 'et1', at: { cellX: 3,  cellY: 19 } },
     bidirectional: true, gmOnly: false
   }],
 
@@ -586,6 +586,17 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 (`walls`, `portals`, `lights`, `tokens`, `links`) sont en **unités de case**, jamais en
 pixels. La conversion en pixels se fait au dernier moment, au rendu, via `pxPerCell`.
 C'est aussi la convention de l'UVTT, ce qui évite une double conversion.
+
+Deux formes distinctes, **non interchangeables par construction** (cf. `CONVENTIONS.md` §1) :
+
+- `Cell` = `{a, b}` — index de case **entier**. Position d'un pion, origine d'un gabarit.
+- `CellPoint` = `{cellX, cellY}` — unité de case **fractionnaire**. Géométrie importée :
+  murs, portails, lumières, extrémités de liaison. Un portail se pose en
+  `{cellX: 4.5, cellY: 2}`, ce n'est pas un index de case.
+
+Les noms de propriétés diffèrent délibérément de ceux de `MapPoint` (`{x, y}`, pixels) :
+le typage étant structurel, c'est la seule façon de rendre le mélange **impossible à
+compiler** plutôt que simplement déconseillé.
 
 ### Canal temps réel (RTDB)
 

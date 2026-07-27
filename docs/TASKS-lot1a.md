@@ -63,6 +63,31 @@ un `export {}`. `Token.cell` est un `Cell`, jamais `x`/`y`.
 champ obligatoire produit bien une erreur `tsc`.
 **Dépend de :** T-01
 
+### T-02b — Amendement des types : `CellPoint` et `ScreenPoint`
+**Fichiers :** `js/core/types.js`
+**Contexte :** T-02 a transcrit fidèlement le CdC, mais celui-ci typait la géométrie en
+unités de case avec la même forme `{x, y}` que les pixels. Le typage étant structurel, les
+deux étaient interchangeables — le **piège n°1 du projet était invisible au typechecker**.
+Défaut du plan, corrigé dans `CONVENTIONS.md` §1.
+
+**Contrat :**
+- Ajouter `/** @typedef {{cellX:number,cellY:number}} CellPoint */` et
+  `/** @typedef {{screenX:number,screenY:number}} ScreenPoint */`.
+- Remplacer par `CellPoint` **toutes** les coordonnées en unités de case :
+  `Level.walls` → `CellPoint[][]` ; `Portal.a` / `Portal.b` → `CellPoint` ;
+  `Light` → remplacer `x`/`y` par `at: CellPoint` ; `LinkEndpoint` → remplacer `x`/`y` par
+  `at: CellPoint`.
+- `MapPoint` reste `{x, y}` et désigne **exclusivement** des pixels.
+- Ajouter `Presence` : `{ role: 'gm'|'players', at: number, build: number, label: string }`.
+- Rendre `GridConfig.offsetX` et `offsetY` **obligatoires** — un offset absent fait
+  silencieusement échouer l'alignement `map_origin`, alors qu'un `0` explicite est vérifiable.
+
+**Vérification :** `pnpm run typecheck` propre. Puis un test d'incompatibilité jetable :
+affecter un `MapPoint` à un `CellPoint` doit produire une erreur `tsc`. **Supprimer le
+fichier de test après vérification** — il n'est pas au manifeste ; en reporter la sortie
+dans le rapport.
+**Dépend de :** T-02
+
 ### T-03 — Constantes
 **Fichiers :** `js/core/constants.js`
 **Contrat :** `FOG_PX_PER_CELL = 8`, `MAX_TEXTURE_FALLBACK = 4096`,

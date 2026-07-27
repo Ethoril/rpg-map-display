@@ -13,27 +13,44 @@
 C'est la source d'erreur numéro un du projet. Trois espaces distincts coexistent et
 **ne doivent jamais être mélangés**.
 
-| Espace | Unité | Origine | Préfixe imposé |
+| Espace | Type | Unité | Forme |
 |---|---|---|---|
-| **Cellule** | index de case (entier pour un pion) | case `{a:0,b:0}` en haut à gauche | `cell…` |
-| **Carte** | pixel de l'image de fond | coin haut-gauche de l'image | `map…` |
-| **Écran** | pixel du canvas | coin haut-gauche du canvas | `screen…` |
+| **Cellule discrète** | `Cell` | index de case, **entier** | `{a, b}` |
+| **Cellule continue** | `CellPoint` | unité de case, **fractionnaire** | `{cellX, cellY}` |
+| **Carte** | `MapPoint` | pixel de l'image de fond | `{x, y}` |
+| **Écran** | `ScreenPoint` | pixel du canvas | `{screenX, screenY}` |
+
+**Les quatre formes ont des noms de propriétés distincts, et c'est délibéré.** Le typage
+JavaScript est structurel : deux types `{x, y}` sont interchangeables même si l'un est en
+pixels et l'autre en cases. Des noms différents rendent le mélange **impossible à
+compiler** — c'est le même mécanisme que `{a, b}` pour la topologie de grille.
+
+`CellPoint` est indispensable et distinct de `Cell` : la géométrie importée d'un UVTT
+(murs, portails, lumières, extrémités de liaison) est en unités de case mais
+**fractionnaire** — un portail se pose en `{cellX: 4.5, cellY: 2}`. Ce ne sont pas des
+index de case.
 
 ```js
-const cellA = 4, cellB = 7           // ✅ coordonnées de case
-const mapX = 560, mapY = 980         // ✅ pixels carte
-const screenX = 312, screenY = 145   // ✅ pixels canvas
+/** @type {Cell} */      const cell = { a: 4, b: 7 }                  // ✅ index de case
+/** @type {CellPoint} */ const wallVertex = { cellX: 4.5, cellY: 2 }  // ✅ case fractionnaire
+/** @type {MapPoint} */  const p = { x: 560, y: 980 }                 // ✅ pixels carte
 
-const x = 4, y = 7                   // ❌ espace indéterminé : interdit
-const px = cellA * 140               // ❌ conversion hors de GridAdapter
+const q = { x: 4, y: 7 }             // ❌ espace indéterminé : interdit
+const px = cell.a * 140              // ❌ conversion hors de GridAdapter
+grid.cellFromPoint(wallVertex)       // ❌ ne compile pas — et c'est le but
 ```
 
-**Deux conversions, deux seuls endroits autorisés :**
+**Trois conversions, trois seuls endroits autorisés :**
 
 ```
-cellule  ⇄  carte   →  GridAdapter uniquement   (js/grid/*)
-carte    ⇄  écran   →  Camera uniquement        (js/render/camera.js)
+CellPoint ⇄ MapPoint      →  GridAdapter uniquement   (js/grid/*)
+Cell      ⇄ MapPoint      →  GridAdapter uniquement   (js/grid/*)
+MapPoint  ⇄ ScreenPoint   →  Camera uniquement        (js/render/camera.js)
 ```
+
+> `CellPoint` → `MapPoint` est une simple multiplication par `pxPerCell` **plus l'offset issu
+> de `map_origin`**. Oublier l'offset est le second piège UVTT. Il n'a lieu qu'à un seul
+> endroit, donc il ne peut être oublié qu'une fois.
 
 Additionner une valeur de deux espaces différents est un bug, jamais une optimisation.
 Une fonction ne renvoie jamais des coordonnées sans que son nom ou son JSDoc dise dans
@@ -46,6 +63,15 @@ dans un payload d'événement. Le pixel n'existe qu'au rendu.
 
 Exception unique et explicite : `pxPerCell` dans le document d'étage, et les dimensions
 du masque de fog. Rien d'autre.
+
+### `terrainCost` : `Record` persisté, `Map` en mémoire
+
+Le document de campagne stocke `terrainCost` en `Record<cellKey, number>` — un `Map` n'est
+pas sérialisable en JSON, donc inutilisable dans Firestore. À l'exécution, `cellsInRange`
+attend un `Map<string, number>` pour des raisons de performance.
+
+**La conversion a lieu dans `js/core/schema.js`, au chargement, et nulle part ailleurs.**
+Ne pas propager le `Record` jusqu'au Dijkstra, ne pas persister le `Map`.
 
 ---
 

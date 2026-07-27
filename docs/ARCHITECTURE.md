@@ -166,9 +166,14 @@ Aucun code exécutable, uniquement des `@typedef`. Reprend le schéma du cahier 
 ```js
 // @ts-check
 
-/** Couple opaque. Carré : (colonne, ligne). Hexagone : axial (q, r). @typedef {{a:number,b:number}} Cell */
+/** Couple opaque, ENTIER. Carré : (colonne, ligne). Hexagone : axial (q, r). @typedef {{a:number,b:number}} Cell */
+/** Unité de case, FRACTIONNAIRE. Géométrie UVTT. @typedef {{cellX:number,cellY:number}} CellPoint */
+/** Pixels de l'image de fond. @typedef {{x:number,y:number}} MapPoint */
+/** Pixels du canvas. @typedef {{screenX:number,screenY:number}} ScreenPoint */
 /** @typedef {'square'|'hex'} GridType */
-/** @typedef {{x:number,y:number}} MapPoint  pixels de l'image de fond */
+
+// Noms de propriétés distincts à dessein : le typage étant structurel, c'est la seule
+// façon de rendre un mélange d'unités impossible à compiler. Cf. CONVENTIONS.md §1.
 
 /**
  * @typedef {Object} Token
@@ -218,6 +223,13 @@ Interface pure. Aucune implémentation dans ce fichier.
  *
  * @property {(cell: Cell) => MapPoint} pointFromCell
  *   Cellule → CENTRE de la case, en pixels carte.
+ *
+ * @property {(cp: CellPoint) => MapPoint} mapFromCellPoint
+ *   Unité de case fractionnaire → pixels carte. Applique `pxPerCell` ET l'offset issu de
+ *   `map_origin`. Sert au rendu des murs, portails et lumières importés.
+ *
+ * @property {(p: MapPoint) => CellPoint} cellPointFromMap
+ *   Réciproque. Sert à l'éditeur de murs du lot 2.
  *
  * @property {(cell: Cell) => Cell[]} neighbors
  *   Voisines adjacentes. 8 en carré (diagonales incluses), 6 en hexagone.
@@ -270,7 +282,10 @@ dégrader**. Ils sont écrits au lot 1a et ne doivent jamais être désactivés.
 
 `tests/architecture.test.mjs` :
 
-1. **`pxPerCell` confiné** — aucune occurrence hors de `js/grid/`.
+1. **`pxPerCell` confiné** — aucune occurrence hors de `js/grid/`, à **deux exceptions
+   près** : sa *déclaration* de champ dans `js/core/types.js` et sa lecture dans
+   `js/core/schema.js`. Le test cible l'**arithmétique**, pas la mention du nom. Ne jamais
+   renommer le champ pour faire passer le test.
 2. **Firebase confiné** — aucun `import … 'firebase/…'` hors de
    `js/transport/FirebaseTransport.js`.
 3. **Pas de coordonnées nommées** — aucune occurrence de `.col`, `.row`, `.q`, `.r` sur un
