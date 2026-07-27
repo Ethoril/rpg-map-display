@@ -5,6 +5,10 @@
  * @typedef {{ a: number, b: number }} Cell
  */
 
+/** @typedef {{ cellX: number, cellY: number }} CellPoint */
+
+/** @typedef {{ screenX: number, screenY: number }} ScreenPoint */
+
 /** @typedef {'square'|'hex'} GridType */
 
 /** @typedef {'flat'|'pointy'} HexOrientation */
@@ -18,8 +22,8 @@
  * @typedef {Object} GridConfig
  * @property {GridType} type
  * @property {HexOrientation} [hexOrientation]
- * @property {number} [offsetX]
- * @property {number} [offsetY]
+ * @property {number} offsetX
+ * @property {number} offsetY
  * @property {string} [color]
  * @property {number} [opacity]
  * @property {boolean} [visible]
@@ -38,8 +42,8 @@
 /**
  * @typedef {Object} Portal
  * @property {string} id
- * @property {{ x: number, y: number }} a
- * @property {{ x: number, y: number }} b
+ * @property {CellPoint} a
+ * @property {CellPoint} b
  * @property {boolean} closed
  * @property {boolean} freestanding
  */
@@ -47,8 +51,7 @@
 /**
  * @typedef {Object} Light
  * @property {string} id
- * @property {number} x
- * @property {number} y
+ * @property {CellPoint} at
  * @property {number} range
  * @property {number} intensity
  * @property {string} color
@@ -75,7 +78,7 @@
  * @property {number} heightCells
  * @property {GridConfig} grid
  * @property {Record<string, number>|null} terrainCost
- * @property {{ x: number, y: number }[][]} walls
+ * @property {CellPoint[][]} walls
  * @property {Portal[]} portals
  * @property {Light[]} lights
  * @property {AmbientLight} ambient
@@ -86,8 +89,7 @@
 /**
  * @typedef {Object} LinkEndpoint
  * @property {string} levelId
- * @property {number} x
- * @property {number} y
+ * @property {CellPoint} at
  */
 
 /**
@@ -183,6 +185,15 @@
  * @property {string} id
  * @property {string} name
  * @property {string} imageUrl
+ */
+
+/**
+ * Présence d'un client connecté.
+ * @typedef {Object} Presence
+ * @property {'gm'|'players'} role
+ * @property {number} at
+ * @property {number} build
+ * @property {string} label
  */
 
 /**
