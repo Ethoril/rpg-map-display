@@ -26,15 +26,27 @@ Aucun `import` ne cite d'URL complète ni de numéro de version.
 <script type="importmap">
 {
   "imports": {
-    "pixi.js":         "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs",
-    "firebase/app":    "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js",
-    "firebase/auth":   "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js",
-    "firebase/database": "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"
+    "pixi.js":            "https://cdn.jsdelivr.net/npm/pixi.js@8.19.0/dist/pixi.min.mjs",
+    "firebase/app":       "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js",
+    "firebase/auth":      "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js",
+    "firebase/database":  "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js"
   }
 }
 </script>
 ```
+
+**Versions figées le 27/07/2026**, relevées sur le registre npm et dont les cinq URLs ont
+été vérifiées en HTTP 200 :
+
+| Paquet | Version figée |
+|---|---|
+| `pixi.js` | **8.19.0** |
+| `firebase` | **12.16.0** |
+
+> ⚠️ `firebase` est en **12.x**. Beaucoup d'exemples en circulation ciblent la 9, 10 ou 11 —
+> les ignorer et s'en tenir aux idiomes de la §3. Le CDN `gstatic` reflète les versions du
+> paquet npm `firebase`, d'où le numéro identique dans les deux colonnes.
 
 Dans le code, **toujours** la forme nue :
 
@@ -46,10 +58,43 @@ import * as PIXI from 'https://cdn.../pixi.min.mjs'            // ❌ URL en dur
 import { getDatabase } from 'firebase/database?v=11'           // ❌ version dans l'import
 ```
 
-> ⚠️ **Les numéros ci-dessus sont à confirmer au premier commit.** Vérifier la dernière
-> version stable de chaque paquet, l'inscrire dans l'import map, puis **ne plus y toucher
-> sans demander**. Une montée de version majeure de PixiJS ou du SDK Firebase casse les
-> idiomes de la §3.
+### Comment « figer » une version — procédure
+
+Figer ne veut pas dire écrire un numéro dans un fichier et espérer. C'est trois gestes :
+**relever**, **vérifier**, **verrouiller**.
+
+**1. Relever la version stable courante** (fonctionne sous Windows sans dépendance) :
+
+```
+npm view pixi.js version
+npm view firebase version
+```
+
+Ne jamais utiliser une plage (`@8`, `@latest`, `^8.19.0`) dans une URL de CDN : la version
+résolue changerait sans prévenir, et un import map n'a pas de fichier de verrouillage.
+**Toujours la version complète et exacte.**
+
+**2. Vérifier que les URLs existent réellement.** Une URL `gstatic` inexistante peut
+renvoyer une page d'erreur au lieu d'un 404 franc, et l'échec se manifeste alors par un
+module vide plutôt que par une erreur claire.
+
+```
+node scripts/check-deps.mjs
+```
+
+Ce script lit l'import map de `index.html`, requête chaque URL en `HEAD`, et compare la
+version figée à celle du registre npm. Il sort en code non nul si une URL ne répond pas 200.
+
+**3. Verrouiller.** La version n'existe qu'à un seul endroit : l'import map de `index.html`
+et `player.html`, qui doivent rester **identiques**. Le test d'architecture n°7 vérifie
+qu'aucun numéro de version ni URL de CDN n'apparaît dans un fichier `.js`.
+
+### Quand mettre à jour
+
+**Jamais en cours de lot.** Une montée de version se traite comme une tâche à part :
+relever, vérifier, lancer la suite de tests, et relire les idiomes de la §3 — une majeure
+de PixiJS ou du SDK Firebase les casse. Une mise à jour opportuniste au milieu d'une tâche
+fonctionnelle rend le diagnostic impossible.
 
 ### Interdit
 
@@ -190,6 +235,89 @@ Le développement se fait sous Windows. Tout script qui suppose un shell POSIX e
 - Jamais de `rm`, `cp`, `mkdir -p`, `NUL`, `/dev/null` dans un script.
 - Scripts `package.json` : uniquement `node scripts/x.mjs`, sans enchaînement shell.
 - Fins de ligne : `.gitattributes` avec `* text=auto eol=lf`.
+
+---
+
+## 5bis. Version de l'application — obligatoire
+
+Trois surfaces à vérifier (Mac MJ, tablette joueurs, TV castée) et **aucune étape de build
+pour invalider les caches** : sans indicateur de version, on perd du temps de test à se
+demander si le code exécuté est le bon. Le versioning n'est donc pas du confort.
+
+### Le fichier généré
+
+`js/core/version.js` est **généré, commité, et jamais édité à la main** :
+
+```js
+// @ts-check
+// FICHIER GÉNÉRÉ par scripts/stamp-version.mjs — toute édition manuelle sera écrasée.
+export const VERSION = {
+  version: '0.1.0',                    // semver, depuis package.json
+  build: 42,                           // entier monotone, incrémenté à chaque estampille
+  builtAt: '2026-07-27T14:32:11Z',
+  commit: 'a1b2c3d',                   // HEAD au moment de l'estampille
+  label: '0.1.0+42',
+}
+```
+
+**Le `build` est le comparateur qui compte.** C'est un entier : « 41 contre 42 » se lit d'un
+coup d'œil entre deux écrans, là où deux SHA courts demandent un effort.
+
+> Limite à connaître : `commit` est le HEAD **au moment de l'estampille**, donc le commit
+> *précédent* celui qui embarque le fichier. C'est assumé — le `build` et `builtAt` sont les
+> repères fiables. Ne pas tenter de corriger ça par un hook `post-commit` avec `--amend`.
+
+`scripts/stamp-version.mjs` : lit `package.json`, incrémente le compteur de build, relève
+`git rev-parse --short HEAD`, écrit le fichier. Node pur, cross-platform, idempotent hors
+compteur. À exécuter **avant chaque commit destiné à être testé** :
+
+```
+node scripts/stamp-version.mjs
+```
+
+### Affichage
+
+| Surface | Affichage |
+|---|---|
+| **Vue MJ** | Permanent et discret en pied de panneau : `0.1.0+42 · a1b2c3d · 27/07 14:32`. |
+| **Vue joueurs** | Overlay **transitoire** au chargement : 4 s en bas à droite, puis disparition complète. `pointer-events: none`. Rappelable par un **tap à trois doigts** (ne collisionne ni avec le pan à un doigt ni avec le pinch à deux). |
+| **TV castée** | Aucun code spécifique : la tablette étant miroir, l'overlay de chargement s'y affiche aussi. Les trois écrans se vérifient donc en une seule fois, au chargement. |
+
+Cet overlay est une **exception explicite** à l'interdiction n°2 de `CONVENTIONS.md`
+(aucun élément d'interface en vue joueurs). Elle est bornée : rien de persistant, rien de
+tapable, rien qui ressemble à un menu.
+
+### Détection de désynchronisation — la partie utile
+
+Afficher un numéro laisse le travail de comparaison à l'humain. **L'outil doit le faire.**
+
+Chaque client publie sa version dans son enregistrement de présence :
+
+```
+/session/{sid}/presence/{clientId} → { role, at, build, label }
+```
+
+- La **vue MJ** compare le `build` de chaque client connecté au sien. En cas d'écart, une
+  bannière persistante et voyante : *« La tablette exécute la build 41, ce poste la 42.
+  Recharge la tablette. »*
+- La **vue joueurs** en cas d'écart : l'overlay transitoire devient **persistant et rouge**.
+  C'est un état cassé, pas de l'habillage — la persistance est justifiée ici.
+
+C'est ce mécanisme qui répond réellement au besoin : tu ne te demandes plus si tu as la
+bonne version, l'outil te le dit.
+
+### Invalidation de cache — position assumée
+
+Le zéro build interdit le hachage des noms de fichiers. Un `?v=` sur le point d'entrée ne
+sert à rien : les imports relatifs des sous-modules se résolvent et se cachent
+indépendamment. GitHub Pages envoie un `max-age` court, donc l'obsolescence se résorbe
+d'elle-même en quelques minutes — ce qui reste pénible en test actif.
+
+**Décision : on ne construit pas de Service Worker maintenant.** La détection de
+désynchronisation apporte l'essentiel de la valeur pour une fraction du coût : en test, on
+recharge la tablette de force (`Ctrl+Maj+R`, ou « Update on reload » dans les devtools
+Chrome). Si cela devient une gêne réelle et mesurée, un Service Worker dont le nom de cache
+dérive du `build` est la solution — **à demander, pas à ajouter d'initiative.**
 
 ---
 

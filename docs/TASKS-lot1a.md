@@ -59,6 +59,23 @@ Chaque constante commentée en français avec sa justification.
 **Vérification :** `tsc` propre.
 **Dépend de :** T-01
 
+### T-03b — Version estampillée & vérification des dépendances
+**Fichiers :** `scripts/stamp-version.mjs`, `scripts/check-deps.mjs`, `js/core/version.js`
+**Contrat :** cf. `STACK.md` §5bis.
+- `stamp-version.mjs` lit `package.json`, incrémente le compteur de build, relève
+  `git rev-parse --short HEAD`, écrit `js/core/version.js`. Node pur, cross-platform.
+  Le fichier généré porte un en-tête « ne pas éditer à la main ».
+- `check-deps.mjs` lit l'import map de `index.html`, requête chaque URL en `HEAD`, compare
+  au registre npm, **sort en code non nul** si une URL ne répond pas 200.
+- Ajouter les scripts `stamp` et `check-deps` dans `package.json`.
+
+**Placée tôt à dessein :** la version doit être disponible dès les premiers tests, pas
+ajoutée à la fin.
+**Vérification :** `node scripts/stamp-version.mjs` deux fois de suite incrémente bien le
+build et laisse le fichier valide pour `tsc` ; `node scripts/check-deps.mjs` sort en 0 sur
+l'import map figée, et en non-nul si on y introduit une version inexistante.
+**Dépend de :** T-01
+
 ### T-04 — Clés canoniques
 **Fichiers :** `js/core/cellKey.js`, `tests/cellKey.test.mjs`
 **Contrat :** `cellKey`, `parseCellKey`, `edgeKey` conformes à `CONVENTIONS.md` §2.
@@ -295,7 +312,8 @@ deux cas à une carte jouable.
 écran. **Aucun élément d'interface** (interdiction n°2).
 **Vérification :** Playwright — le DOM de `player.html` ne contient ni `<button>`, ni
 `<nav>`, ni `<input>` hors du canvas ; `overscroll-behavior` et `touch-action` sont bien
-appliqués.
+appliqués. *(L'overlay de version de T-24b est la seule exception tolérée, et il n'est ni
+interactif ni persistant.)*
 **Dépend de :** T-20
 
 ### T-24 — Persistance & reconnexion
@@ -306,6 +324,25 @@ l'état intégral.
 **Vérification :** Playwright — recharger la vue joueurs pendant une séance restaure
 positions, sélection d'étage et caméra en moins de 3 s.
 **Dépend de :** T-23
+
+### T-24b — Badge de version & détection de désynchronisation
+**Fichiers :** `js/ui/versionBadge.js`, `js/state/presence.js`, compléments de
+`js/transport/FirebaseTransport.js`
+**Contrat :** cf. `STACK.md` §5bis.
+- Chaque client publie `{role, at, build, label}` dans son enregistrement de présence.
+- **Vue MJ :** badge permanent discret en pied de panneau. En cas d'écart de `build` avec un
+  client connecté, **bannière persistante et voyante** nommant les deux builds et l'action à
+  faire.
+- **Vue joueurs :** overlay 4 s au chargement puis disparition totale,
+  `pointer-events: none`, rappelable par **tap à trois doigts**. En cas d'écart, l'overlay
+  devient persistant et rouge.
+- Ce sont les **deux seules dérogations** à l'interdiction n°2. Ne rien ajouter d'autre.
+
+**Vérification :** Playwright deux onglets — forcer un `build` différent sur l'un fait
+apparaître la bannière MJ **et** l'overlay rouge côté joueurs ; sans écart, l'overlay joueurs
+a bien disparu du DOM (ou est en `opacity: 0` et non interactif) après 5 s ; le tap à trois
+doigts le rappelle.
+**Dépend de :** T-24, T-03b
 
 ### T-25 — Tests de conformité architecturale
 **Fichiers :** `tests/architecture.test.mjs`

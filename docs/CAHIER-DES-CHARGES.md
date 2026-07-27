@@ -444,6 +444,13 @@ sources portées par les pions (`emitsLight`).
 > **Écarté explicitement :** snapshot nommé et restauration de positions. Jugé sans usage
 > réel à table.
 
+**Version visible & détection de désynchronisation.** Trois surfaces à vérifier et aucune
+étape de build pour invalider les caches : sans indicateur, on perd du temps de test à se
+demander si le code exécuté est le bon. Chaque client publie son numéro de build dans sa
+présence ; la vue MJ signale tout écart par une bannière nommant les deux builds. Spécifié
+en détail dans `STACK.md` §5bis — c'est le seul élément d'interface toléré en vue joueurs,
+sous forme d'overlay transitoire non interactif.
+
 ### 5.6 Vue MJ
 
 Panneau latéral : import (§5.1), sélecteur d'étages, créateur de pions, outils fog,
@@ -589,7 +596,7 @@ C'est aussi la convention de l'UVTT, ce qui évite une double conversion.
 /session/{sid}/vision             → { levelId, polygon: [...], rev }
 /session/{sid}/fog/{levelId}      → { png: 'base64…', rev }
 /session/{sid}/pings/{pushId}     → { x, y, levelId, at }
-/session/{sid}/presence/{cid}     → { role, at }
+/session/{sid}/presence/{cid}     → { role, at, build, label }
 ```
 
 Séparation volontaire : `/tokens` et `/view` sont écrits en haute fréquence, `/fog` et

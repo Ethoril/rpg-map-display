@@ -183,6 +183,15 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
 2. **Ne jamais ajouter d'élément d'interface à la vue joueurs** : ni barre d'outils, ni
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, les pions, le fog, le
    sélecteur d'étage et les gabarits s'affichent.
+
+   > **Deux dérogations, et deux seulement** (cf. `STACK.md` §5bis) :
+   > - **Overlay de version au chargement** — 4 s puis disparition totale,
+   >   `pointer-events: none`, rappelable par tap à trois doigts. Rien de persistant, rien
+   >   de tapable.
+   > - **Bandeau de désynchronisation de version** — persistant *tant que l'écart existe*,
+   >   car c'est un état cassé et non de l'habillage.
+   >
+   > Toute autre exception se demande. Elle ne se décide pas.
 3. **Ne jamais afficher un pion dans une zone explorée mais hors vision courante.** Cela
    permettrait de suivre les PNJ à travers les murs.
 

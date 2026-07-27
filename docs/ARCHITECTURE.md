@@ -32,6 +32,7 @@ F:\rpg-map-display\
 │   │   ├─ types.js               [1a] tous les @typedef partagés — AUCUN code exécutable
 │   │   ├─ constants.js           [1a] FOG_PX_PER_CELL, seuils, limites
 │   │   ├─ cellKey.js             [1a] cellKey, parseCellKey, edgeKey
+│   │   ├─ version.js             [1a] ⚙ GÉNÉRÉ par scripts/stamp-version.mjs
 │   │   └─ schema.js              [1a] fabriques + validation du document de campagne
 │   │
 │   ├─ grid/
@@ -47,7 +48,8 @@ F:\rpg-map-display\
 │   │
 │   ├─ state/
 │   │   ├─ store.js               [1a] source de vérité + signal de changement
-│   │   └─ selection.js           [1a] pion sélectionné, cases atteignables courantes
+│   │   ├─ selection.js           [1a] pion sélectionné, cases atteignables courantes
+│   │   └─ presence.js            [1a] clients connectés + détection d'écart de build
 │   │
 │   ├─ import/
 │   │   ├─ uvtt.js                [1a] parsing UVTT pur (aucune I/O, aucun DOM)
@@ -79,6 +81,7 @@ F:\rpg-map-display\
 │   │   └─ gestures.js            [1a] pan, pinch, tap, appui long
 │   │
 │   ├─ ui/
+│   │   ├─ versionBadge.js        [1a] affichage partagé MJ (permanent) / joueurs (transitoire)
 │   │   ├─ gm/
 │   │   │   ├─ panel.js           [1a] panneau latéral (conteneur)
 │   │   │   ├─ importPanel.js     [1a] import UVTT + image, calibration
@@ -101,7 +104,9 @@ F:\rpg-map-display\
 ├─ scripts/
 │   ├─ import-uvtt.mjs            [1a] CLI Node : .uvtt → maps/ + document de scène
 │   ├─ resample.mjs               [1a] rééchantillonnage d'image (Node)
-│   └─ make-fixture.mjs           [1a] génère les fixtures de test
+│   ├─ make-fixture.mjs           [1a] génère les fixtures de test
+│   ├─ stamp-version.mjs          [1a] écrit js/core/version.js
+│   └─ check-deps.mjs             [1a] vérifie les URLs de l'import map (HEAD 200 + registre)
 │
 ├─ fixtures/                      [1a] cf. docs/FIXTURES.md
 ├─ maps/                          [1a] images traitées, commitées
