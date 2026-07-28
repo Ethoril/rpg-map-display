@@ -1,9 +1,13 @@
 # ÉTAT D'AVANCEMENT & REPRISE
 
-> Dernière mise à jour : **28 juillet 2026** — T-15b (vrai PixiJS, deux exécuteurs de tests),
-> T-13 (store) et T-14 (transport Firebase), les deux dernières corrigées en relecture.
-> **Point de contrôle 4 atteint.**
+> Dernière mise à jour : **28 juillet 2026**, fin de séance — T-15b (vrai PixiJS, deux
+> exécuteurs de tests), T-13 (store) et T-14 (transport Firebase), les deux dernières corrigées
+> en relecture. **Point de contrôle 4 atteint.**
 > Document vivant : à réactualiser à chaque fin de séance de travail.
+
+> **Reprise en cours sur une autre machine.** Arbre propre au commit `1bdc1c9`, tout est poussé.
+> **T-16 n'est pas commencée** — aucune ligne écrite, `SquareGrid.renderGrid` lève toujours
+> « non implémenté ». Lire §1 puis la « Prochaine étape » du §2 avant de coder.
 
 ---
 
@@ -70,6 +74,11 @@ En local, `pnpm run serve` sert la même chose sur `http://127.0.0.1:4173`.
 ### Étape 3 : ce qui ne voyage pas avec le dépôt
 
 - `node_modules/` — reconstruit par `pnpm install`.
+- **La configuration Firebase** — elle ne vit dans aucun fichier du dépôt, par construction
+  (cf. §7). Sur une machine neuve, `test:e2e` s'exécute donc avec **2 tests ignorés** sur 7, et
+  c'est le comportement normal : la raison est affichée. Pour les rendre verts, il faut le
+  fichier hors dépôt et `RPG_FIREBASE_CONFIG` (cf. étape 2). **Ne pas prendre ces 2 ignorés
+  pour une régression, et ne surtout pas les « réparer » en inventant une configuration.**
 - `fixtures/real/` — **ignoré par git**. Les exports UVTT réels sont à redéposer à la main
   (cf. `FIXTURES.md` §1). `tests/realUvtt.test.mjs` parse tout ce qui s'y trouve et
   **s'auto-ignore avec sa raison** quand le dossier est vide : tant qu'il s'ignore, le parsing
@@ -133,13 +142,35 @@ latence Firebase à table. `antialias: false` et le plafond de résolution sont 
 
 ### Prochaine étape
 
-**T-16 — Couches fond & grille**, puis T-17, T-18 et le **point de contrôle 5**.
+**T-16 — Couches fond & grille** (`js/render/layers/background.js`,
+`js/render/layers/gridLayer.js`, et `SquareGrid.renderGrid`), puis T-17, T-18 et le
+**point de contrôle 5**.
 
 Le transport et le store existent mais **ne sont pas encore reliés** : c'est `app/*` qui les
 reliera (T-22, T-23). `state/*` n'importe pas `transport/*` et n'a jamais à le faire — c'est ce
 qui rend le mode LAN possible sans refactor.
 
-À trancher avant d'écrire T-16 : la décision n°10 ci-dessous (coût de lecture du store).
+**Ce qui a été préparé pour T-16, et qu'il ne faut pas redécouvrir :**
+
+- `SquareGrid.renderGrid(g, viewport)` lève encore « non implémenté », et son test
+  d'`squareGrid.test.mjs` (« Méthodes non implémentées lèvent… ») **doit disparaître** avec
+  l'implémentation, pas être adapté.
+- L'adaptateur devra lire la **couleur et l'opacité** dans `level.grid` : c'est le seul endroit
+  autorisé à connaître la géométrie des cases, donc le seul à tracer. `gridLayer` ne fait que
+  déléguer et **ne touche jamais à `pxPerCell`** — sinon le test d'architecture n°1 tombe.
+- La vérification du contrat (« la grille s'aligne sur l'image ») est **le** test qui attrape le
+  piège n°1 du projet. Le moyen le plus sûr trouvé jusqu'ici : rendre la grille à `zoom = 1`,
+  extraire une ligne de pixels du canevas (`renderer.extract`), relever les colonnes sombres, et
+  vérifier qu'elles tombent sur `offset + k × pxPerCell` — **en testant aussi avec un offset non
+  nul**, sinon le piège d'alignement de `map_origin` reste invisible. Une capture « ça a l'air
+  bien » ne vaut rien ici.
+- `maps/minimal.webp` et `maps/minimal.json` sont commités et conviennent : image synthétique de
+  1400 × 1120 px, 10 × 8 cases à 140 px, offset nul.
+- La décision **n°13** (`pxPerCell` fractionnaire) se manifestera ici : c'est le bon moment pour
+  la trancher.
+- La décision **n°12** ne bloque pas : faire recevoir aux couches ce dont elles ont besoin en
+  **argument**, et non lire le store elles-mêmes. `app/*` câblera. Cela évite `getState()` dans
+  la boucle de rendu quel que soit le résultat de la mesure sur tablette.
 
 ---
 
@@ -307,6 +338,13 @@ page figure dans **Firebase → Authentication → Settings → Authorized domai
 Ce n'est ni la vue MJ ni la vue joueurs : les interdictions d'interface de la vue joueurs ne
 s'y appliquent pas.
 
+**État au 28/07/2026 :** la page est **en ligne** sur
+`https://ethoril.github.io/rpg-map-display/diag.html` et les quatre premières mesures ont été
+essayées avec succès **sur PC**. Les relevés sur la **Tab S9 FE** restent à faire — ce sont eux
+qui trancheront les décisions **n°1** (limite de texture), **n°2** (latence Firebase) et **n°12**
+(coût de lecture du store). Les chiffres de PC ne valent que comme point de comparaison : le
+GPU y est logiciel sous Chromium headless, et le processeur sans commune mesure.
+
 ---
 
 ## 6. Décisions à trancher, en attente
@@ -352,12 +390,23 @@ Reprises de `CAHIER-DES-CHARGES.md` §12, plus celles apparues depuis :
     aucune dérive cumulée), mais les lignes du quadrillage ne tomberont pas sur des pixels
     entiers. À trancher quand T-16 tracera la grille, là où le symptôme se verra : plafonner à
     un `pxPerCell` entier (48 × 85 = 4080 px) coûte 16 px de large et rend l'alignement net.
-14. **Publication des cartes sur un dépôt public.** `maps/` est commité par le manifeste, et
-    GitHub Pages sert désormais la racine : **tout ce qui entre dans `maps/` est publié.**
-    L'import de l'export réel y a écrit un WebP de 4,6 Mo — supprimé sans être commité, car la
-    carte source peut être sous licence tierce. À trancher : ne commiter que des cartes dont on
-    détient les droits, ou sortir `maps/` du dépôt. En attendant, **ne rien commiter dans
-    `maps/` sans vérifier la licence**.
+14. ~~**Publication des cartes sur un dépôt public.**~~ **TRANCHÉE le 28/07/2026 : `maps/` peut
+    être commité.** Les CGU du logiciel de cartographie utilisé considèrent les images 2D et les
+    `.json` exportés comme du **contenu créé par le mainteneur**, et autorisent nommément leur
+    affichage sur un hébergeur tel que GitHub Pages ; l'usage commercial lui-même est permis
+    sous 100 000 USD de chiffre d'affaires annuel. Les trois restrictions ne nous concernent
+    pas : pas de redistribution d'**assets bruts** (modèles 3D, textures — nous n'en extrayons
+    aucun), pas de logiciel concurrent de cartographie, pas de retrait de filigrane.
+
+    > À savoir tout de même, car la prémisse initiale était fausse : **un site GitHub Pages est
+    > public**, y compris depuis un dépôt privé. Ce qui est restreint au compte du mainteneur,
+    > c'est la base Firebase — les données de partie — jamais le site statique. Vérifié en
+    > téléchargeant la page sans aucune authentification.
+
+    Reste une considération pratique, non juridique : l'import de l'export réel produit un WebP
+    de **4,6 Mo**. Commiter plusieurs cartes de cette taille alourdit le dépôt pour toujours, et
+    la tablette les chargera par wifi. `scripts/resample.mjs` mériterait un réglage de qualité
+    avant de commiter une bibliothèque de cartes.
 
 ---
 
