@@ -74,3 +74,10 @@ export function findPath(grid, from, to, blockedEdges, terrainCost) {
   const { predecessors } = computeReachable(grid, from, budget, blockedEdges, terrainCost);
   return reconstructPath(predecessors, from, to);
 }
+
+/**
+ * Alias de findPath pour la rétrocompatibilité des spécifications.
+ * @type {typeof findPath}
+ */
+export const shortestPath = findPath;
+

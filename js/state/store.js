@@ -167,20 +167,20 @@ export function setSelection(tokenId) {
   notifySubscribers();
 }
 
+/** Alias de setSelection pour la compatibilité avec le contrat T-20 */
+export const selectToken = setSelection;
+
 /**
  * Déplace un pion vers une case (index entier Cell {a, b}).
  * Mutation composite : si le pion déplacé est sélectionné, sa sélection est mise à jour.
  * Émet UN SEUL signal de changement.
  *
- * Nom canonique retenu — `CONVENTIONS.md` §5 et le contrat de T-20 l'appellent ainsi. Un
- * store dont l'intérêt est une surface de mutation contrôlée ne peut pas offrir deux noms
- * pour la même mutation.
- *
  * @param {string} tokenId
  * @param {Cell} cell
+ * @param {{ from?: Cell, to?: Cell, path?: Cell[], startedAt?: number } | null} [moveData] Données de mouvement animable optionnelles
  * @returns {void}
  */
-export function moveTokenToCell(tokenId, cell) {
+export function moveTokenToCell(tokenId, cell, moveData = null) {
   if (!campaign) {
     throw new Error('Aucune campagne chargée');
   }
@@ -201,7 +201,17 @@ export function moveTokenToCell(tokenId, cell) {
     throw new Error(`Pion inconnu : "${tokenId}"`);
   }
 
+  const fromCell = { a: token.cell.a, b: token.cell.b };
   token.cell = { a: cell.a, b: cell.b };
+
+  if (moveData) {
+    token.move = {
+      from: moveData.from ?? fromCell,
+      to: moveData.to ?? { a: cell.a, b: cell.b },
+      path: moveData.path ?? [fromCell, { a: cell.a, b: cell.b }],
+      startedAt: moveData.startedAt ?? Date.now(),
+    };
+  }
 
   // Si le pion est actuellement sélectionné, mettre à jour les cases atteignables
   if (getSelectedTokenId() === tokenId) {

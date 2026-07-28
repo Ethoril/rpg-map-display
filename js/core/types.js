@@ -105,6 +105,14 @@
  */
 
 /**
+ * @typedef {Object} TokenMove
+ * @property {Cell} from
+ * @property {Cell} to
+ * @property {Cell[]} path
+ * @property {number} startedAt
+ */
+
+/**
  * @typedef {Object} Token
  * @property {string} id
  * @property {string} levelId
@@ -123,6 +131,7 @@
  * @property {boolean} locked
  * @property {number} elevation
  * @property {string[]} markers
+ * @property {TokenMove} [move]
  */
 
 /** @typedef {'circle'|'cone'|'line'} TemplateShape */
