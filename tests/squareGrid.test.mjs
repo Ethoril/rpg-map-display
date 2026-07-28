@@ -13,8 +13,14 @@ test('gridFor(level) instaure SquareGrid ou lève sur hex/inconnu', () => {
   const hexLevel = createLevel({ grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
   assert.throws(() => gridFor(hexLevel), /Grille hexagonale non supportée/);
 
-  // @ts-ignore
-  const unknownLevel = createLevel({ grid: { type: 'triangle', offsetX: 0, offsetY: 0 } });
+  // Type de grille volontairement invalide : un document de campagne peut arriver de
+  // Firestore ou du LocalStorage avec n'importe quoi dedans, et le refus doit se produire
+  // À L'EXÉCUTION. D'où un transtypage ciblé et non un `@ts-ignore` (interdit, §8 n°16) :
+  // le reste de la ligne continue d'être vérifié.
+  const grilleInvalide =
+    /** @type {import('../js/core/types.js').GridConfig} */
+    (/** @type {unknown} */ ({ type: 'triangle', offsetX: 0, offsetY: 0 }));
+  const unknownLevel = createLevel({ grid: grilleInvalide });
   assert.throws(() => gridFor(unknownLevel), /Type de grille inconnu/);
 });
 
@@ -110,5 +116,10 @@ test('Méthodes non implémentées lèvent "non implémenté"', () => {
   const grid = gridFor(level);
 
   assert.ok(grid.cellsInRange({ a: 0, b: 0 }, 5, new Set()) instanceof Map);
-  assert.throws(() => grid.renderGrid({}, {}), /non implémenté/);
+
+  // `renderGrid` attend un vrai `Graphics` PixiJS, indisponible sous Node. Ce test ne
+  // dessine rien : il vérifie seulement que la méthode refuse de mentir jusqu'à T-16.
+  // D'où le transtypage explicite — la vérification reste active partout ailleurs.
+  const graphicsFactice = /** @type {import('pixi.js').Graphics} */ (/** @type {unknown} */ ({}));
+  assert.throws(() => grid.renderGrid(graphicsFactice, {}), /non implémenté/);
 });

@@ -82,6 +82,37 @@ for (const url of urls) {
   }
 }
 
+// Cohérence import map ⇄ devDependencies. Un paquet peut être installé en devDependency
+// pour ses seuls types (pixi.js) alors que le navigateur le charge depuis le CDN. Si les
+// deux versions divergent, `tsc` vérifie le code contre une API qui n'est pas celle
+// exécutée à table : la vérification devient un mensonge silencieux. C'est bloquant.
+const pkgJsonPath = path.join(rootDir, 'package.json');
+/** @type {{ devDependencies?: Record<string, string> }} */
+const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+const devDeps = pkgJson.devDependencies ?? {};
+
+let versionMismatch = false;
+
+for (const [pkgName, importMapVersion] of pkgVersions.entries()) {
+  const declared = devDeps[pkgName];
+  if (!declared) continue;
+
+  if (declared !== importMapVersion) {
+    console.error(
+      `[FAIL] ${pkgName} : import map en ${importMapVersion}, devDependency en ${declared}. ` +
+        `Les types vérifiés ne sont pas ceux chargés à l'exécution.`
+    );
+    versionMismatch = true;
+  } else {
+    console.log(`[TYPES OK] ${pkgName}: devDependency ${declared} = import map.`);
+  }
+}
+
+if (versionMismatch) {
+  console.error('Dependency check failed: version figée incohérente entre import map et package.json.');
+  process.exit(1);
+}
+
 for (const [pkgName, currentVersion] of pkgVersions.entries()) {
   try {
     const npmRes = await fetch(`https://registry.npmjs.org/${pkgName}/latest`);

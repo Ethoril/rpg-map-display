@@ -16,7 +16,7 @@ ni fiches de personnage, ni jets de dés, ni tchat.
 |---|---|---|
 | 1 | [docs/CAHIER-DES-CHARGES.md](docs/CAHIER-DES-CHARGES.md) | Le **quoi** et le **pourquoi**. Décisions arbitrées, schéma de données, protocole. |
 | 2 | [docs/STACK.md](docs/STACK.md) | Versions épinglées et idiomes autorisés. **Normatif.** |
-| 3 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Conventions et **15 interdictions**. **Normatif.** |
+| 3 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Conventions et **17 interdictions**. **Normatif.** |
 | 4 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Manifeste de fichiers **fermé**, règles d'import, interfaces. **Normatif.** |
 | 5 | [docs/TASKS-lot1a.md](docs/TASKS-lot1a.md) | Le travail à faire, tâche par tâche. |
 | 6 | [docs/FIXTURES.md](docs/FIXTURES.md) | Jeux de données de test. |
@@ -29,7 +29,9 @@ ni fiches de personnage, ni jets de dés, ni tchat.
    **Ne jamais commiter** : les modifications restent dans l'arbre de travail, le
    mainteneur commite après relecture.
 2. **Ne jamais créer un fichier absent du manifeste**, ni ajouter une dépendance absente de
-   la stack. Proposer, ne pas décider.
+   la stack. Proposer, ne pas décider. Et **ne jamais remplacer une dépendance réelle par un
+   faux** pour qu'un test passe : une vérification satisfaite contre une imitation coûte plus
+   cher qu'une vérification absente, parce qu'elle ferme la question.
 3. **Ne jamais ajouter de drag & drop de pion à la vue joueurs.** Le déplacement se fait en
    tap pion → tap case de destination. Le drag tactile a été testé puis abandonné ; le
    remettre est une régression, pas une amélioration.
@@ -48,8 +50,8 @@ la tâche**. Un rapport honnête d'échec partiel est utile.
 
 ## État
 
-**Lot 1a « Le plateau » — 6 tâches sur 27.** Fondations en cours : types, constantes et
-outillage de version en place. Prochaine tâche : **T-04** (clés canoniques).
+**Lot 1a « Le plateau » — 15 tâches sur 28.** Fondations, grille, déplacement et import
+terminés ; scène Pixi en place, intégration en attente. Prochaine tâche : **T-13** (store).
 
 👉 **[docs/ETAT.md](docs/ETAT.md)** — état détaillé, procédure de reprise, points de
 vigilance et décisions en attente. **À lire en premier après une interruption ou un
@@ -70,12 +72,23 @@ git config user.email 'ethoril@gmail.com'
 
 ```
 pnpm install
+pnpm exec playwright install chromium   # une fois par machine
 pnpm run typecheck                   # doit être propre, code de sortie 0
-pnpm run check-deps                  # vérifie les URLs de l'import map
+pnpm run check-deps                  # URLs de l'import map + versions devDependencies
 pnpm stamp                           # incrémente le build, régénère js/core/version.js
 node scripts/make-fixture.mjs        # génère les fixtures de test (dès T-10)
-pnpm test                            # Playwright + tests unitaires
+pnpm run test:unit                   # node:test — logique pure, aucun navigateur
+pnpm run test:e2e                    # Playwright — navigateur, vrai Pixi (réseau requis)
+pnpm test                            # les deux, dans cet ordre
+pnpm run serve                       # serveur statique local (http://127.0.0.1:4173)
 ```
+
+**Deux familles de tests, deux exécuteurs** (`docs/STACK.md` §5) : `tests/*.test.mjs` sous
+`node:test` pour la logique pure, `tests/*.spec.mjs` sous Playwright pour tout ce qui touche au
+navigateur. Un module qui importe `pixi.js` se teste en `*.spec.mjs` — le tester sous Node
+exigerait un faux Pixi, ce qui est interdit.
+
+Si `pnpm` manque au PATH, `corepack pnpm …` fonctionne sans rien installer.
 
 Développement sous **Windows**, table de jeu sur **Mac** : tout script d'outillage est en
 Node et reste cross-platform. Aucun `.sh`, aucun `.bat`, aucun chemin construit à la main.

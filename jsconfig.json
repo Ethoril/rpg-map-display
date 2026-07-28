@@ -6,15 +6,12 @@
     "checkJs": true,
     "strict": true,
     "noEmit": true,
-    "allowJs": true,
-    "baseUrl": ".",
-    "paths": {
-      "pixi.js": ["./js/core/types.js"]
-    }
+    "allowJs": true
   },
   "include": [
     "js/**/*",
     "scripts/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "playwright.config.mjs"
   ]
 }

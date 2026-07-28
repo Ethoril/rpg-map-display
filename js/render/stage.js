@@ -1,60 +1,48 @@
 // @ts-check
+import { Application, Container } from 'pixi.js';
 import { RENDER_RESOLUTION_CAP } from '../core/constants.js';
 
 /**
  * @typedef {Object} StageLayers
- * @property {any} background Image de fond ou vidéo
- * @property {any} gridLayer Quadrillage
- * @property {any} moveZone Cases atteignables (non interactif)
- * @property {any} templates Gabarits de zone d'effet
- * @property {any} tokens Pions et badges
- * @property {any} fogLayer Masque de fog (au-dessus des pions)
+ * @property {Container} background Image de fond ou vidéo
+ * @property {Container} gridLayer Quadrillage
+ * @property {Container} moveZone Cases atteignables (non interactif)
+ * @property {Container} templates Gabarits de zone d'effet
+ * @property {Container} tokens Pions et badges
+ * @property {Container} fogLayer Masque de fog (au-dessus des pions)
  */
 
 /**
- * Initialise l'application PixiJS v8 et crée la hiérarchie des couches dans l'ordre exact.
+ * Initialise l'application PixiJS v8 et crée la hiérarchie des couches dans l'ordre exact
+ * de `ARCHITECTURE.md` §5.
  *
- * @param {HTMLCanvasElement} [canvasElement] Canvas HTML optionnel à attacher
- * @returns {Promise<{ app: any, layers: StageLayers }>}
+ * Module **strictement navigateur** : `pixi.js` est résolu par l'import map d'`index.html`.
+ * Aucun repli n'est prévu si le chargement échoue — une scène factice qui s'initialise sans
+ * rien dessiner est plus coûteuse à diagnostiquer qu'une erreur nette (`CONVENTIONS.md` §6).
+ * Sous Node, l'import échoue donc bruyamment : ce module se teste au navigateur
+ * (`tests/stage.spec.mjs`), pas en test unitaire.
+ *
+ * @param {HTMLCanvasElement} [canvasElement] Canvas HTML à attacher. Si omis, Pixi en crée un.
+ * @returns {Promise<{ app: Application, layers: StageLayers }>}
  */
 export async function initStage(canvasElement) {
-  /** @type {any} */
-  let PIXI;
-  try {
-    PIXI = await import('pixi.js');
-  } catch (_err) {
-    // Fallback environnement Node / tests unitaires sans CDN pixi.js
-    PIXI = await import('../core/types.js');
-  }
-
-  const Application = PIXI.Application;
-  const Container = PIXI.Container;
-
   const app = new Application();
 
-  const options = {
+  // Initialisation asynchrone : idiome obligatoire en v8 (STACK.md §3).
+  await app.init({
     canvas: canvasElement,
-    resolution: Math.min(
-      typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
-      RENDER_RESOLUTION_CAP
-    ),
+    // Plafond de résolution : au-delà, le coût GPU sur Mali-G68 ne se voit pas à table.
+    resolution: Math.min(window.devicePixelRatio || 1, RENDER_RESOLUTION_CAP),
     autoDensity: true,
     antialias: false,
     powerPreference: 'high-performance',
-  };
+  });
 
-  // Initialisation asynchrone Pixi v8
-  if (typeof app.init === 'function') {
-    await app.init(options);
-  }
+  // Boucle à la demande : le ticker ne tourne jamais de lui-même, c'est `render/frame.js`
+  // qui décide quand une frame est nécessaire.
+  app.ticker.autoStart = false;
+  app.ticker.stop();
 
-  // Ticker à la demande : autoStart = false
-  if (app.ticker) {
-    app.ticker.autoStart = false;
-    app.ticker.stop();
-  }
-
-  // Création des couches dans l'ordre de ARCHITECTURE.md §5
   const layers = {
     background: new Container(),
     gridLayer: new Container(),
@@ -64,6 +52,7 @@ export async function initStage(canvasElement) {
     fogLayer: new Container(),
   };
 
+  // Ordre figé — `fogLayer` au-dessus de `tokens` garantit mécaniquement l'interdiction n°3.
   app.stage.addChild(layers.background);
   app.stage.addChild(layers.gridLayer);
   app.stage.addChild(layers.moveZone);

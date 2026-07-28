@@ -214,6 +214,20 @@ corrige, on ne muselle pas.
 > lui ne peuvent pas être typés. C'est un paquet de types uniquement, sans code à
 > l'exécution.
 
+> `pixi.js` est **autorisé en dépendance de développement, pour ses seuls types**, à la
+> version **exactement identique** à celle de l'import map. À l'exécution, le navigateur
+> charge Pixi depuis le CDN : la copie de `node_modules/` n'est jamais servie, jamais
+> déployée. Elle existe pour que `tsc` vérifie le code de rendu contre l'API réelle.
+>
+> `scripts/check-deps.mjs` **échoue** si les deux versions divergent, et c'est bloquant : des
+> types qui ne décrivent pas le code exécuté sont pires qu'une absence de types, parce qu'ils
+> rendent la vérification verte.
+>
+> Contre-exemple à ne jamais reproduire : à T-15, `pixi.js` avait été aliasé dans
+> `jsconfig.json` vers `js/core/types.js`, qui exportait deux fausses classes Pixi. Le
+> typecheck passait, la suite passait, et **toute l'API v8 était devenue `any`** — les pièges
+> v7→v8 de la §3 étaient redevenus indétectables. Cf. `ETAT.md` §4.
+
 Vérification (aucun fichier émis) :
 
 ```
@@ -231,10 +245,26 @@ npx tsc --noEmit -p jsconfig.json
 |---|---|---|
 | Runtime des scripts | **Node.js 20 LTS ou plus** | ESM (`.mjs` ou `"type": "module"`) |
 | Gestionnaire de paquets | **pnpm** | Cohérent avec l'existant |
-| Vérification de types | `tsc --noEmit` + `@types/node` | Dépendances de dev uniquement |
-| Tests | **Playwright (Chromium)** | Cohérent avec l'existant |
+| Vérification de types | `tsc --noEmit` + `@types/node` + `pixi.js` | Dépendances de dev uniquement |
+| Tests navigateur | **Playwright (Chromium)** | `tests/*.spec.mjs` — vrai Pixi, vrai DOM |
+| Tests de logique pure | **`node:test`** | `tests/*.test.mjs` — aucun navigateur, aucun faux |
 | Traitement d'images (scripts) | **Jimp** (pure JS) | Dépendance de dev uniquement — rééchantillonnage UVTT en Node |
-| Serveur local de dev | `npx serve` ou équivalent statique | Jamais de serveur applicatif : l'app doit fonctionner en statique pur |
+| Serveur local de dev | `scripts/serve.mjs` | Statique pur, sans dépendance. Jamais de serveur applicatif |
+
+### Les deux familles de tests
+
+La séparation est **normative**, parce que sa confusion a déjà coûté une vérification :
+
+| Suffixe | Exécuteur | Commande | Pour quoi |
+|---|---|---|---|
+| `*.test.mjs` | `node:test` | `pnpm run test:unit` | Logique pure : grille, Dijkstra, schéma, parsing |
+| `*.spec.mjs` | Playwright | `pnpm run test:e2e` | Rendu, gestes, deux onglets, persistance |
+
+`pnpm test` enchaîne les deux. **Un module qui importe `pixi.js` ou touche au DOM se teste en
+`*.spec.mjs`, jamais en `*.test.mjs`.** Le rendre testable sous Node exigerait un faux Pixi —
+c'est-à-dire remplacer la dépendance vérifiée par une imitation qui ne prouve rien
+(interdiction n°16). Playwright a besoin d'un `chromium` installé une fois par machine :
+`pnpm exec playwright install chromium`.
 
 ### Règles cross-platform (développement Windows, jeu sur Mac)
 

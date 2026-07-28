@@ -3,10 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseUvtt } from '../js/import/uvtt.js';
-import { calibrateImage, calibrateFromRect } from '../js/import/imageCalibrate.js';
-import { computeBlockedEdges } from '../js/import/blockedEdges.js';
-import { createLevel } from '../js/core/schema.js';
-import { SquareGrid } from '../js/grid/SquareGrid.js';
 
 test('parseUvtt sur minimal.uvtt (unités de case et absence d’effet de pixels)', () => {
   const minimalPath = path.resolve('fixtures/synthetic/minimal.uvtt');
@@ -78,37 +74,4 @@ test('parseUvtt refuse le type hex', () => {
     resolution: { pixels_per_grid: 64, map_size: { x: 10, y: 8 } },
   };
   assert.throws(() => parseUvtt(hexUvtt), /Grille hexagonale non supportée/);
-});
-
-test('calibrateImage et calibrateFromRect', () => {
-  // Rect: w=700, cellsWide=5 -> pxPerCell=140, offsetX=30, imageSize 1400x1120 -> 10x8 cases
-  const cal1 = calibrateFromRect({
-    rectPx: { x: 30, y: 15, w: 700, h: 700 },
-    cellsWide: 5,
-    imageSize: { w: 1400, h: 1120 },
-  });
-
-  assert.equal(cal1.pxPerCell, 140);
-  assert.equal(cal1.offsetX, 30);
-  assert.equal(cal1.offsetY, 15);
-  assert.equal(cal1.widthCells, 10);
-  assert.equal(cal1.heightCells, 8);
-
-  // Calibration par clics
-  const p1 = { x: 100, y: 50 };
-  const p2 = { x: 300, y: 50 };
-  const cal2 = calibrateImage(p1, p2, 2, 1000, 800);
-
-  assert.equal(cal2.pxPerCell, 100);
-  assert.equal(cal2.widthCells, 10);
-  assert.equal(cal2.heightCells, 8);
-});
-
-test('computeBlockedEdges (stub lot 1a) retourne un Set vide', () => {
-  const level = createLevel();
-  const grid = new SquareGrid(level);
-  const edges = computeBlockedEdges(level, grid);
-
-  assert.ok(edges instanceof Set);
-  assert.equal(edges.size, 0);
 });

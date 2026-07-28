@@ -257,6 +257,14 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
     commentaire d'un test, l'assouplissement d'une option de `strict`. Un type qui résiste
     signale soit un type faux, soit une déclaration manquante — dans les deux cas on
     corrige, ou on **signale et on demande**.
+
+    **Y compris en la contournant plutôt qu'en la coupant.** Sont interdits au même titre :
+    remplacer une dépendance réelle par un faux pour qu'un test passe, rediriger un paquet
+    vers un fichier local dans `jsconfig.json`, ou vérifier par test unitaire un critère que
+    la tâche exige en navigateur. Une vérification satisfaite contre une imitation est un
+    **faux vert** : elle coûte plus cher qu'une vérification absente, parce qu'elle ferme la
+    question. Si le vrai composant est indisponible dans l'environnement de test, c'est
+    l'environnement qu'on change — pas le composant.
 17. **Ne jamais exécuter de commande git** : ni `commit`, ni `add`, ni `push`, ni `stash`.
     Les modifications restent dans l'arbre de travail (cf. `TASKS-lot1a.md`).
 

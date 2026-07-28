@@ -5,6 +5,7 @@ import { gridFor } from '../js/grid/index.js';
 import { cellKey, edgeKey } from '../js/core/cellKey.js';
 import { computeReachable, reachableCells } from '../js/movement/reachable.js';
 import { reconstructPath, findPath } from '../js/movement/path.js';
+import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 
 test('cellsInRange sur grille 10x10 sans obstacle', () => {
   const level = createLevel({ widthCells: 10, heightCells: 10 });
@@ -125,4 +126,15 @@ test('path.js reconstruit correctement les chemins depuis la chaîne de prédéc
   const unreachedTo = { a: 9, b: 9 };
   const emptyPreds = new Map();
   assert.deepEqual(reconstructPath(emptyPreds, from, unreachedTo), []);
+});
+
+// Le stub de T-08 est vérifié ici, avec le consommateur de sa signature : c'est
+// `cellsInRange` qui l'utilise. Ce test vivait dans uvtt.test.mjs, sans rapport.
+test('computeBlockedEdges (stub lot 1a) retourne un Set vide', () => {
+  const level = createLevel();
+  const grid = gridFor(level);
+  const edges = computeBlockedEdges(level, grid);
+
+  assert.ok(edges instanceof Set);
+  assert.equal(edges.size, 0);
 });

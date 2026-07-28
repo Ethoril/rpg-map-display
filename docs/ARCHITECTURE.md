@@ -22,6 +22,7 @@ F:\rpg-map-display\
 │                                      IDENTIQUE à index.html (T-23)
 ├─ jsconfig.json                  [1a] checkJs strict, noEmit
 ├─ package.json                   [1a] scripts Node uniquement
+├─ playwright.config.mjs          [1a] tests navigateur : testMatch *.spec.mjs, webServer
 ├─ .gitattributes                 [1a] * text=auto eol=lf
 ├─ .gitignore                     [1a]
 │
@@ -108,11 +109,16 @@ F:\rpg-map-display\
 │   ├─ resample.mjs               [1a] rééchantillonnage d'image (Node)
 │   ├─ make-fixture.mjs           [1a] génère les fixtures de test
 │   ├─ stamp-version.mjs          [1a] écrit js/core/version.js
-│   └─ check-deps.mjs             [1a] vérifie les URLs de l'import map (HEAD 200 + registre)
+│   ├─ serve.mjs                  [1a] serveur statique sans dépendance (tests + dev local)
+│   └─ check-deps.mjs             [1a] vérifie les URLs de l'import map (HEAD 200 + registre
+│                                      + cohérence avec les devDependencies)
 │
 ├─ fixtures/                      [1a] cf. docs/FIXTURES.md
 ├─ maps/                          [1a] images traitées, commitées
-├─ tests/                         [1a] Playwright + tests unitaires
+├─ tests/                         [1a] deux familles, deux exécuteurs :
+│                                      *.test.mjs → node:test (logique pure)
+│                                      *.spec.mjs → Playwright (navigateur, vrai Pixi)
+│                                      mountStage.mjs → sonde chargée dans la page, typée
 └─ docs/
     ├─ CAHIER-DES-CHARGES.md      spécification fonctionnelle (source de vérité du « quoi »)
     ├─ STACK.md                   versions & idiomes
@@ -281,14 +287,29 @@ export {}
 ## 4. Tests de conformité architecturale
 
 Ces tests ne vérifient pas des fonctionnalités, ils **empêchent l'architecture de se
-dégrader**. Ils sont écrits au lot 1a et ne doivent jamais être désactivés.
+dégrader**. Ils sont écrits au lot 1a et ne doivent jamais être désactivés. Ce sont des tests
+`node:test` (`tests/architecture.test.mjs`) : ils lisent des fichiers, aucun navigateur.
 
 `tests/architecture.test.mjs` :
 
-1. **`pxPerCell` confiné** — aucune occurrence hors de `js/grid/`, à **deux exceptions
-   près** : sa *déclaration* de champ dans `js/core/types.js` et sa lecture dans
-   `js/core/schema.js`. Le test cible l'**arithmétique**, pas la mention du nom. Ne jamais
-   renommer le champ pour faire passer le test.
+1. **Application case ⇄ pixel confinée** — hors de `js/grid/`, aucun fichier ne convertit
+   une case en position pixel ni l'inverse. Occurrences de `pxPerCell` attendues et
+   autorisées :
+   - sa *déclaration* de champ dans `js/core/types.js` et sa valeur par défaut dans
+     `js/core/schema.js` ;
+   - la **définition du repère** dans `js/import/imageCalibrate.js` et `js/import/uvtt.js` :
+     calibrer, c'est diviser une distance en pixels par un nombre de cases, puis convertir
+     `map_origin` (unités de case) en `offsetX`/`offsetY` (pixels). C'est le seul endroit où
+     une quantité en cases devient légitimement une quantité en pixels, parce qu'elle
+     *constitue* le repère que `GridAdapter` appliquera ensuite ;
+   - l'**application** dans `js/grid/*` — positionner quoi que ce soit passe par là.
+
+   Le test cible l'application à des positions, pas la mention du nom. Ne jamais renommer le
+   champ pour faire passer le test.
+
+   > Formulation corrigée après coup : la version initiale n'autorisait que deux exceptions,
+   > ce qui rendait le test infaisable sur les livrables de T-10 et T-12 — tous deux au
+   > contrat. Défaut du plan, cf. `ETAT.md` §4.
 2. **Firebase confiné** — aucun `import … 'firebase/…'` hors de
    `js/transport/FirebaseTransport.js`.
 3. **Pas de coordonnées nommées** — aucune occurrence de `.col`, `.row`, `.q`, `.r` sur un
@@ -297,6 +318,11 @@ dégrader**. Ils sont écrits au lot 1a et ne doivent jamais être désactivés.
 5. **Manifeste respecté** — tout fichier de `js/` figure dans ce document.
 6. **Règles d'importation** — le tableau §2 est vérifié fichier par fichier.
 7. **Versions centralisées** — aucun numéro de version ni URL de CDN dans un `.js`.
+8. **`js/core/types.js` sans code exécutable** — aucune `class`, aucune `function`, aucun
+   `export` autre que `export {}`. Ajouté après coup : rien ne surveillait mécaniquement
+   cette règle, et elle a sauté une fois (faux Pixi introduit à T-15, cf. `ETAT.md` §4).
+   Un faux exporté depuis le fichier de types est doublement nuisible — il rend la
+   vérification verte et le typage aveugle.
 
 Un échec de l'un de ces tests **bloque la tâche**, même si la fonctionnalité marche.
 

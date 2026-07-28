@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Camera } from '../js/render/camera.js';
 import { FrameLoop } from '../js/render/frame.js';
-import { initStage } from '../js/render/stage.js';
+
+// `stage.js` importe `pixi.js` et n'existe qu'au navigateur : il se vérifie dans
+// tests/stage.spec.mjs (Playwright), sur la vraie application Pixi. Le tester ici
+// exigerait un faux Pixi — c'est précisément ce qui a été retiré.
 
 test('Camera: conversion carte <-> écran et roundtrip', () => {
   const camera = new Camera(800, 600);
@@ -86,25 +89,4 @@ test('FrameLoop: coalescence des requêtes et arrêt automatique en cas d inacti
   // Inactivité pendant 100ms : le compteur de frame ne doit pas augmenter
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(renderCallCount, 1, 'Inactivité : aucune frame supplémentaire ne doit être rendue');
-});
-
-test('Stage: initialisation et ordre des couches', async () => {
-  const { app, layers } = await initStage();
-
-  assert.ok(app);
-  assert.ok(layers.background);
-  assert.ok(layers.gridLayer);
-  assert.ok(layers.moveZone);
-  assert.ok(layers.templates);
-  assert.ok(layers.tokens);
-  assert.ok(layers.fogLayer);
-
-  // Vérification de l'ordre des enfants dans app.stage (ARCHITECTURE.md §5)
-  const children = app.stage.children;
-  assert.equal(children[0], layers.background);
-  assert.equal(children[1], layers.gridLayer);
-  assert.equal(children[2], layers.moveZone);
-  assert.equal(children[3], layers.templates);
-  assert.equal(children[4], layers.tokens);
-  assert.equal(children[5], layers.fogLayer);
 });

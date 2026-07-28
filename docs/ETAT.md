@@ -1,6 +1,8 @@
 # ÉTAT D'AVANCEMENT & REPRISE
 
-> Dernière mise à jour : **27 juillet 2026**, fin de séance — T-11 refacto complétée.
+> Dernière mise à jour : **28 juillet 2026** — remise en état T-15b (vrai PixiJS, séparation
+> des deux exécuteurs de tests). Non commitée : dans l'arbre de travail, en attente de
+> relecture.
 > Document vivant : à réactualiser à chaque fin de séance de travail.
 
 ---
@@ -25,14 +27,23 @@ git config user.name && git config user.email     # vérifier avant de continuer
 
 ```
 pnpm install
+pnpm exec playwright install chromium   # une fois par machine, ~115 Mo
 pnpm run typecheck      # doit sortir en 0, sans aucune erreur
-pnpm run check-deps     # doit sortir en 0, 5 URLs en 200
+pnpm run check-deps     # 5 URLs en 200 + versions devDependencies alignées
+pnpm run test:unit      # node:test — logique pure
+pnpm run test:e2e       # Playwright — navigateur, vrai Pixi (réseau requis : CDN)
 pnpm stamp              # incrémente le build et régénère js/core/version.js
 ```
+
+Si `pnpm` n'est pas dans le PATH, `corepack pnpm …` fonctionne sans installation (corepack est
+livré avec Node). C'était le cas de la machine de développement Windows.
 
 Si `typecheck` ou `check-deps` échoue sur un dépôt fraîchement cloné, **ne pas commencer
 une tâche** : quelque chose a changé côté CDN ou côté outillage, et c'est à diagnostiquer
 d'abord.
+
+`test:e2e` charge Pixi depuis le CDN, comme la vraie application : sans réseau, il échoue — et
+c'est voulu. Un test de rendu qui passe hors ligne ne teste pas le chargement réel.
 
 ### Étape 3 : ce qui ne voyage pas avec le dépôt
 
@@ -65,13 +76,25 @@ d'abord.
 | T-12 | Calibration image simple (`calibrateFromRect`, `calibrateImage`) |
 | T-11 refacto | Rééchantillonnage avec Jimp + CLI d'import (maps/*.webp) |
 
-**Rendu (T-15 — hors ordre, intégration en attente)** :
+**Rendu (T-15 puis T-15b — hors ordre, intégration en attente)** :
 | Tâche | Objet |
 |---|---|
 | T-15 | Application Pixi v8 async, caméra MapPoint↔ScreenPoint, boucle rAF à la demande |
+| T-15b | Vrai PixiJS rétabli (types + runtime), deux exécuteurs de tests séparés |
 
-**État courant** : **build 5**, 14/27 tâches lot 1a complètes.
-Typecheck clean, check-deps 5/5 URLs OK, 33 tests passés (cellKey, schema, squareGrid, uvtt, render, reachable).
+**État courant** : **build 7**, 15/28 tâches lot 1a complètes.
+
+| Vérification | Résultat |
+|---|---|
+| `pnpm run typecheck` | propre, code 0 — **contre les vrais types Pixi 8.19.0** |
+| `pnpm run test:unit` | **33 tests**, 33 passés (node:test) |
+| `pnpm run test:e2e` | **3 tests**, 3 passés (Playwright, Chromium, Pixi depuis le CDN) |
+| `pnpm run check-deps` | 5 URLs en 200, `pixi.js` devDependency alignée sur l'import map |
+
+**À vérifier par le mainteneur** (interdiction n°14, aucun test ne peut les cocher) : tenue à
+30 fps sous cast, comportement thermique sur 45 min, `MAX_TEXTURE_SIZE` réel de la Tab S9 FE,
+latence Firebase à table. `antialias: false` et le plafond de résolution sont posés dans
+`stage.js` et le plafond est vérifié par `test:e2e` ; leur **effet** à table ne l'est pas.
 
 ### Prochaine étape
 
@@ -90,10 +113,10 @@ Message d'ouverture à donner tel quel :
 > Lis `README.md`, puis dans l'ordre `docs/CAHIER-DES-CHARGES.md`, `docs/STACK.md`,
 > `docs/CONVENTIONS.md`, `docs/ARCHITECTURE.md`, `docs/TASKS-lot1a.md`, `docs/FIXTURES.md`
 > et `docs/ETAT.md`. Ne code rien avant d'avoir tout lu.
-> Puis réalise **uniquement la tâche T-04**, et arrête-toi. Rapport de trois lignes,
+> Puis réalise **uniquement la tâche T-13**, et arrête-toi. Rapport de trois lignes,
 > terminé par la ligne « Écarts » même si elle est vide.
 
-**Le « uniquement T-04 » est la partie qui compte.** Un modèle à qui l'on donne la liste
+**Le « uniquement T-13 » est la partie qui compte.** Un modèle à qui l'on donne la liste
 entière en enchaîne plusieurs et le contrôle point à point est perdu.
 
 Après chaque correction apportée aux documents, **lui faire relire `CONVENTIONS.md`**. Les
@@ -126,10 +149,34 @@ modules `node:*` étaient intypables. Le contournement par `@ts-nocheck` était 
 laissée par le plan. D'où l'autorisation de `@types/node` et l'**interdiction 16** : ne
 jamais désactiver une vérification pour la faire passer. Commits `6f36b97`, `0ccdab6`.
 
+**Dépendance réelle remplacée par un faux (T-15 → T-15b).** La plus instructive des quatre,
+parce qu'elle était **verte**. Pour rendre `stage.js` testable sous Node, trois gestes ont été
+posés : deux classes Pixi factices ajoutées à `js/core/types.js`, un alias
+`"pixi.js": ["./js/core/types.js"]` dans `jsconfig.json`, et un `try/catch` muet dans
+`stage.js` basculant sur le faux. Résultat : typecheck propre, 33 tests verts — et **toute
+l'API PixiJS v8 devenue `any`**, donc les pièges v7→v8 de `STACK.md` §3 redevenus
+indétectables par machine. Le critère du contrat disait « test Playwright » ; il a été coché
+par un test unitaire contre l'imitation.
+
+Ni `@ts-nocheck` ni test commenté : l'interdiction 16 ne couvrait que les *coupures* de
+vérification, pas les *contournements*. Elle couvre les deux depuis. D'où aussi le 8ᵉ test
+d'architecture (`types.js` sans code exécutable — rien ne surveillait cette règle), la
+séparation normative `*.test.mjs` / `*.spec.mjs`, et l'échec bloquant de `check-deps.mjs` sur
+un désalignement de version entre l'import map et les devDependencies. Cf. T-15b.
+
+**Test d'architecture n°1 infaisable tel qu'écrit (constaté avant T-25).** Le test confinait
+toute occurrence de `pxPerCell` à `js/grid/` avec deux exceptions, alors que `js/import/uvtt.js`
+et `js/import/imageCalibrate.js` en produisent par contrat (T-10, T-12) et convertissent
+`map_origin` en offset pixel. Reformulé en « application case ⇄ pixel confinée », l'import
+définissant le repère et `grid/` seul l'appliquant. Corrigé dans `ARCHITECTURE.md` §4 avant
+d'écrire le test, pas en le contournant après.
+
 **Enseignement transposable :** un plan précis ne garantit pas un plan correct — il rend ses
-propres défauts détectables vite. Les deux tâches où une ambiguïté coûtera le plus cher sont
-**T-09** (Dijkstra, anti-corner-cutting) et **T-10** (parsing UVTT, unités de case) : ce sont
-celles reposant sur les spécifications les plus denses, à relire lentement.
+propres défauts détectables vite. Et le défaut le plus coûteux n'est pas une vérification
+absente, c'est une vérification **satisfaite contre une imitation** : elle ferme la question.
+Les deux tâches où une ambiguïté coûtera le plus cher sont **T-09** (Dijkstra,
+anti-corner-cutting) et **T-10** (parsing UVTT, unités de case) : ce sont celles reposant sur
+les spécifications les plus denses, à relire lentement.
 
 ---
 
@@ -141,6 +188,7 @@ celles reposant sur les spécifications les plus denses, à relire lentement.
 | T-07 | Renommer `{a, b}` en `{col, row}` « pour la lisibilité » tue la compatibilité hexagonale de tout le projet. Violation la plus probable, et bien intentionnée. |
 | T-09 | Transposer le `reachableCells` existant de `shadowrunbank` plutôt que réinventer le Dijkstra. Anti-corner-cutting : une diagonale exige les deux arêtes orthogonales libres. |
 | T-10 | Coordonnées UVTT en **unités de case**, jamais en pixels. Aucun champ d'offset : l'alignement vient de `map_origin`. `baked_lighting` à détecter. |
+| T-16 | `SquareGrid.renderGrid` reçoit un **vrai** `Graphics` Pixi : la couche se vérifie en `tests/*.spec.mjs`, jamais en test unitaire. Le test « lève non implémenté » de `squareGrid.test.mjs` doit disparaître, pas être adapté. |
 | T-19 | Le drag tactile en vue joueurs est **interdit** (interdiction n°1) — le drag à un doigt est le pan de la carte. |
 | T-22 | `index.html` existe déjà avec son import map : construire **par-dessus**, ne jamais dupliquer l'import map. |
 | T-23 | L'import map de `player.html` doit être identique à celle d'`index.html`, et `check-deps.mjs` doit le vérifier. |

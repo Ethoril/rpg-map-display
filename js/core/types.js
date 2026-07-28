@@ -206,33 +206,9 @@
  * @property {'gm'|'players'} by
  */
 
-/** @typedef {any} Graphics */
-/** @typedef {any} Sprite */
-/** @typedef {any} Assets */
+// Ce fichier ne contient AUCUN code exécutable : uniquement des @typedef et l'export vide
+// ci-dessous (ARCHITECTURE.md §1 et §3). Les types PixiJS se réfèrent directement au
+// paquet — `import('pixi.js').Graphics` — jamais à un alias déclaré ici.
 
-export class Container {
-  constructor() {
-    /** @type {any[]} */
-    this.children = [];
-    this.scale = { x: 1, y: 1, set: (/** @type {number} */ s) => { this.scale.x = s; this.scale.y = s; } };
-    this.position = { x: 0, y: 0 };
-  }
-  /** @param {any} child */
-  addChild(child) {
-    this.children.push(child);
-  }
-}
-
-export class Application {
-  constructor() {
-    this.stage = new Container();
-    this.ticker = { autoStart: true, stop: () => {} };
-    this.canvas = null;
-  }
-  /** @param {any} [options] */
-  async init(options) {
-    if (options?.canvas) this.canvas = options.canvas;
-  }
-  render() {}
-}
+export {}
 

@@ -41,11 +41,16 @@ la tâche.
 Rappels permanents :
 - `pnpm run typecheck` doit être propre à chaque tâche (cf. `CONVENTIONS.md` §9 pour
   l'unique exception, à la T-01).
+- **Le bon exécuteur pour le bon test** (cf. `STACK.md` §5) : logique pure en
+  `tests/*.test.mjs` (`node:test`), navigateur en `tests/*.spec.mjs` (Playwright). Un critère
+  énoncé « test Playwright » ne se satisfait pas en test unitaire, et un module qui importe
+  `pixi.js` ne se teste pas sous Node — le rendre testable exigerait un faux, ce qui est
+  interdit (interdiction n°16).
 - **Un critère de vérification qui ne peut pas être atteint est un défaut du plan, pas de
   l'implémentation.** Le signaler dans la ligne « Écarts » et demander l'arbitrage. Ne
   jamais le contourner ni le déclarer satisfait.
 - Aucun fichier hors du manifeste de `ARCHITECTURE.md`.
-- Les 15 interdictions de `CONVENTIONS.md` §8 s'appliquent en continu.
+- Les 17 interdictions de `CONVENTIONS.md` §8 s'appliquent en continu.
 - **Ne jamais cocher un critère de performance** — ils exigent la tablette physique.
 
 ---
@@ -309,6 +314,43 @@ n'augmente plus. *(La tenue à 30 fps sous cast n'est pas vérifiable ici : à s
 « à vérifier par le mainteneur ».)*
 **Dépend de :** T-13
 
+### T-15b — Rétablir le vrai PixiJS et séparer les deux exécuteurs de tests
+**Fichiers :** `package.json`, `jsconfig.json`, `playwright.config.mjs`, `scripts/serve.mjs`,
+`scripts/check-deps.mjs`, `js/core/types.js`, `js/render/stage.js`, `tests/mountStage.mjs`,
+`tests/stage.spec.mjs`, `tests/render.test.mjs`, `tests/squareGrid.test.mjs`,
+`tests/imageCalibrate.test.mjs`, `tests/uvtt.test.mjs`, `tests/reachable.test.mjs`
+
+**Contexte :** T-15 a été livrée avec un **faux Pixi**. Trois gestes se tenaient l'un l'autre :
+deux classes exécutables (`Application`, `Container`) ajoutées à `js/core/types.js` — qui doit
+n'en contenir aucune ; un alias `"pixi.js": ["./js/core/types.js"]` dans `jsconfig.json` — qui
+rendait toute l'API v8 `any` ; et un `try/catch` silencieux dans `stage.js` basculant sur ce
+faux dès que l'import échouait. Le critère Playwright du contrat avait alors été satisfait par
+un test `node:test` contre l'imitation. Par ailleurs `pnpm test` valait `playwright test` sans
+qu'aucun `*.spec` n'existe : la commande sortait en **1** tout en affichant des tests verts,
+exécutés par simple effet de bord de la collecte. Défaut du plan sur un point (rien n'imposait
+d'exécuteur par famille de test), écart d'implémentation sur les autres.
+
+**Contrat :**
+- `pixi.js` en devDependency **exacte**, version identique à l'import map (cf. `STACK.md` §4).
+  Le runtime continue de charger Pixi depuis le CDN ; `node_modules` ne sert qu'à `tsc`.
+- Supprimer l'alias de `jsconfig.json` et **restaurer `export {}`** dans `js/core/types.js`.
+- `stage.js` : import nu `from 'pixi.js'`, **aucun repli**. Sous Node l'import doit échouer
+  bruyamment (`CONVENTIONS.md` §6) : ce module ne se teste qu'au navigateur.
+- Séparer les exécuteurs : `*.test.mjs` → `node:test`, `*.spec.mjs` → Playwright.
+  `playwright.config.mjs` avec `testMatch` explicite et un `webServer` servi par
+  `scripts/serve.mjs` (statique, sans dépendance). Scripts `test:unit`, `test:e2e`, `serve` ;
+  `test` enchaîne les deux.
+- `check-deps.mjs` : **échouer** si la version d'un paquet en devDependency diffère de celle
+  de l'import map. C'est la garantie mécanique que les types décrivent le code exécuté.
+- Replacer les tests égarés : la calibration dans `tests/imageCalibrate.test.mjs` (prévu au
+  contrat de T-12, jamais créé), le stub de T-08 auprès de son consommateur.
+
+**Vérification :** `pnpm run typecheck` propre **avec les vrais types Pixi** ;
+`pnpm run test:unit` vert et `pnpm run test:e2e` vert, chacun en code 0 ;
+`node scripts/check-deps.mjs` sort en 0 aligné et en **non-nul** si l'on désaligne une version
+(à vérifier en désalignant réellement, puis en rétablissant).
+**Dépend de :** T-15
+
 ### T-16 — Couches fond & grille
 **Fichiers :** `js/render/layers/background.js`, `js/render/layers/gridLayer.js`, et
 `SquareGrid.renderGrid`
@@ -431,11 +473,11 @@ doigts le rappelle.
 
 ### T-25 — Tests de conformité architecturale
 **Fichiers :** `tests/architecture.test.mjs`
-**Contrat :** les 7 tests de `ARCHITECTURE.md` §4.
+**Contrat :** les 8 tests de `ARCHITECTURE.md` §4.
 > À écrire **en dernier mais à faire passer sur tout l'existant**. Un échec révèle une
 > dérive introduite en chemin : il se corrige, il ne se contourne pas.
 
-**Vérification :** les 7 tests passent sur l'intégralité de `js/`.
+**Vérification :** les 8 tests passent sur l'intégralité de `js/`.
 **Dépend de :** T-24
 
 ### ⛔ POINT DE CONTRÔLE 6 — fin de lot
