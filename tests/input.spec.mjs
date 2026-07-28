@@ -1,0 +1,166 @@
+// @ts-check
+import { test, expect } from '@playwright/test';
+
+/**
+ * Helper pour monter la scène index.html avec le Probe d'input.
+ * @param {import('@playwright/test').Page} page
+ * @param {'players'|'gm'} [role='players']
+ */
+async function mountInputStage(page, role = 'players') {
+  /** @type {string[]} */
+  const erreurs = [];
+  page.on('pageerror', (err) => erreurs.push(err.message));
+
+  await page.goto('/index.html');
+  await page.addScriptTag({ type: 'module', url: '/tests/mountStage.mjs' });
+  await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__stageProbe));
+
+  expect(erreurs).toEqual([]);
+
+  await page.evaluate((r) => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    probe.setupInput(r);
+  }, role);
+}
+
+test('Vue joueurs — Interdiction #1 : drag 1 doigt déplace la caméra (panBy) et ne génère aucun dragToken', async ({ page }) => {
+  await mountInputStage(page, 'players');
+
+  const initialCam = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return { x: probe.camera.x, y: probe.camera.y };
+  });
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  const startX = canvasBox.x + 100;
+  const startY = canvasBox.y + 100;
+  const endX = canvasBox.x + 150;
+  const endY = canvasBox.y + 100;
+
+  // Simulation d'un drag 1 doigt : pointerdown -> pointermove -> pointerup
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(endX, endY, { steps: 5 });
+  await page.mouse.up();
+
+  // Attendre la fin des frames rAF éventuelles
+  await page.waitForTimeout(50);
+
+  const finalCam = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return { x: probe.camera.x, y: probe.camera.y };
+  });
+
+  const intentions = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  // Vérifier qu'une intention panBy a été émise avec deltaX = 50 (150 - 100)
+  const panIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'panBy');
+  expect(panIntentions.length).toBeGreaterThan(0);
+
+  const totalDeltaX = panIntentions.reduce(/** @param {number} sum @param {any} i */ (sum, i) => sum + i.deltaX, 0);
+  expect(totalDeltaX).toBe(50);
+
+  // La caméra a panné de l'effet inverse (-50, 0)
+  expect(finalCam.x).toBeCloseTo(initialCam.x - 50, 1);
+  expect(finalCam.y).toBeCloseTo(initialCam.y, 1);
+
+  // AUCUNE intention dragToken en vue joueurs ! (Strict prohibition #1)
+  const dragTokenIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'dragToken');
+  expect(dragTokenIntentions).toHaveLength(0);
+});
+
+test('Vue MJ — Drag d un doigt au-delà du seuil émet une intention dragToken avec screenPos et mapPos', async ({ page }) => {
+  await mountInputStage(page, 'gm');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  const startX = canvasBox.x + 200;
+  const startY = canvasBox.y + 200;
+  const endX = canvasBox.x + 280;
+  const endY = canvasBox.y + 200;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.waitForTimeout(200); // Maintien > DRAG_HOLD_MS (150ms)
+  await page.mouse.move(endX, endY, { steps: 5 });
+  await page.mouse.up();
+
+  await page.waitForTimeout(50);
+
+  const intentions = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  const dragTokenIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'dragToken');
+  expect(dragTokenIntentions.length).toBeGreaterThan(0);
+
+  const lastDrag = dragTokenIntentions[dragTokenIntentions.length - 1];
+  expect(lastDrag.screenPos).toBeDefined();
+  expect(lastDrag.screenPos.screenX).toBeDefined();
+  expect(lastDrag.screenPos.screenY).toBeDefined();
+
+  expect(lastDrag.mapPos).toBeDefined();
+  expect(lastDrag.mapPos.x).toBeDefined();
+  expect(lastDrag.mapPos.y).toBeDefined();
+});
+
+test('Pinch zoom / molette — Émission d une intention pinchZoom', async ({ page }) => {
+  await mountInputStage(page, 'players');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  // Zoom via molette de souris
+  await page.mouse.move(canvasBox.x + 300, canvasBox.y + 300);
+  await page.mouse.wheel(0, -100);
+
+  await page.waitForTimeout(50);
+
+  const intentions = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  const zoomIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'pinchZoom');
+  expect(zoomIntentions.length).toBeGreaterThan(0);
+  expect(zoomIntentions[0].scaleFactor).toBeGreaterThan(1.0);
+  expect(zoomIntentions[0].center).toBeDefined();
+});
+
+test('Appui long — Émission d une intention longPress si immobile pendant longPressMs', async ({ page }) => {
+  await mountInputStage(page, 'players');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  const clickX = canvasBox.x + 400;
+  const clickY = canvasBox.y + 400;
+
+  await page.mouse.move(clickX, clickY);
+  await page.mouse.down();
+  await page.waitForTimeout(600); // Maintien immobile > 500ms
+  await page.mouse.up();
+
+  await page.waitForTimeout(50);
+
+  const intentions = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  const longPressIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'longPress');
+  expect(longPressIntentions.length).toBe(1);
+  expect(longPressIntentions[0].screenPos).toEqual({ screenX: 400, screenY: 400 });
+  expect(longPressIntentions[0].mapPos).toBeDefined();
+});

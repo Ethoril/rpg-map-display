@@ -43,7 +43,16 @@ const gridLayer = new GridLayer(layers.gridLayer);
 const tokensLayer = new TokensLayer(layers.tokens);
 const moveZoneLayer = new MoveZoneLayer(layers.moveZone);
 
-/** @type {StageProbe} */
+import { Camera } from '../js/render/camera.js';
+import { PointerInput } from '../js/input/pointer.js';
+
+const camera = new Camera(canvas.width, canvas.height);
+/** @type {import('../js/input/gestures.js').InputIntention[]} */
+const emittedIntentions = [];
+/** @type {PointerInput | null} */
+let currentInput = null;
+
+/** @type {StageProbe & { camera: Camera, getIntentions: () => any[], clearIntentions: () => void, setupInput: (role?: 'players'|'gm') => void, applyPanToIntention: (intention: any) => void }} */
 const probe = {
   layerOrder,
   resolution: app.renderer.resolution,
@@ -52,6 +61,40 @@ const probe = {
   loopRunning: () => loop.running,
   requestFrames: (n) => {
     for (let i = 0; i < n; i++) loop.requestFrame();
+  },
+  camera,
+  getIntentions: () => [...emittedIntentions],
+  clearIntentions: () => {
+    emittedIntentions.length = 0;
+  },
+  setupInput: (role = 'players') => {
+    if (currentInput) {
+      currentInput.detach();
+    }
+    emittedIntentions.length = 0;
+    currentInput = new PointerInput(canvas, camera, {
+      role,
+      onIntention: (intention) => {
+        emittedIntentions.push(intention);
+        if (intention.type === 'panBy') {
+          // Application du pan sur la caméra : effet inverse du mouvement du doigt / zoom
+          camera.setPan(
+            camera.x - intention.deltaX / camera.zoom,
+            camera.y - intention.deltaY / camera.zoom
+          );
+        } else if (intention.type === 'pinchZoom') {
+          camera.setZoom(camera.zoom * intention.scaleFactor);
+        }
+      },
+    });
+  },
+  applyPanToIntention: (intention) => {
+    if (intention.type === 'panBy') {
+      camera.setPan(
+        camera.x - intention.deltaX / camera.zoom,
+        camera.y - intention.deltaY / camera.zoom
+      );
+    }
   },
   testGridRowScan: async (levelOverrides, scanY) => {
     const level = createLevel(levelOverrides);
