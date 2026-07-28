@@ -1,7 +1,8 @@
 # ÉTAT D'AVANCEMENT & REPRISE
 
-> Dernière mise à jour : **28 juillet 2026** — T-15b (vrai PixiJS, séparation des deux
-> exécuteurs de tests) puis T-13 (store), cette dernière corrigée en relecture.
+> Dernière mise à jour : **28 juillet 2026** — T-15b (vrai PixiJS, deux exécuteurs de tests),
+> T-13 (store) et T-14 (transport Firebase), les deux dernières corrigées en relecture.
+> **Point de contrôle 4 atteint.**
 > Document vivant : à réactualiser à chaque fin de séance de travail.
 
 ---
@@ -33,6 +34,19 @@ pnpm run test:unit      # node:test — logique pure
 pnpm run test:e2e       # Playwright — navigateur, vrai Pixi (réseau requis : CDN)
 pnpm stamp              # incrémente le build et régénère js/core/version.js
 ```
+
+Les deux tests Firebase de `test:e2e` s'**auto-ignorent** sans configuration. Pour les exécuter,
+exporter la configuration du projet **avant** de lancer la suite — jamais dans un fichier du
+dépôt (cf. §7) :
+
+```
+$env:RPG_FIREBASE_CONFIG = (Get-Content <chemin hors dépôt> -Raw).Trim()   # PowerShell
+pnpm run test:e2e
+```
+
+Le JSON doit contenir `apiKey`, `authDomain`, `databaseURL`, `projectId`, `appId`, plus
+`testEmail` et `testPassword` (compte technique). Sans les deux derniers, les tests s'ignorent
+avec la raison affichée.
 
 Si `pnpm` n'est pas dans le PATH, `corepack pnpm …` fonctionne sans installation (corepack est
 livré avec Node). C'était le cas de la machine de développement Windows.
@@ -81,18 +95,19 @@ c'est voulu. Un test de rendu qui passe hors ligne ne teste pas le chargement r�
 | T-15 | Application Pixi v8 async, caméra MapPoint↔ScreenPoint, boucle rAF à la demande |
 | T-15b | Vrai PixiJS rétabli (types + runtime), deux exécuteurs de tests séparés |
 
-**État & transport (T-13)** :
+**État & transport (T-13, T-14 — point de contrôle 4 franchi)** :
 | Tâche | Objet |
 |---|---|
 | T-13 | Store : état privé par fermeture, mutations nommées, signal unique, `selection.js` |
+| T-14 | Transport Firebase : authentification explicite, tampon avant `snapshot()`, écoute bornée |
 
-**État courant** : **build 8**, 16/28 tâches lot 1a complètes.
+**État courant** : **build 9**, 17/28 tâches lot 1a complètes.
 
 | Vérification | Résultat |
 |---|---|
 | `pnpm run typecheck` | propre, code 0 — **contre les vrais types Pixi 8.19.0** |
-| `pnpm run test:unit` | **42 tests**, 42 passés (node:test) |
-| `pnpm run test:e2e` | **3 tests**, 3 passés (Playwright, Chromium, Pixi depuis le CDN) |
+| `pnpm run test:unit` | **45 tests**, 45 passés (node:test) |
+| `pnpm run test:e2e` | **5 tests**, 5 passés — dont 2 contre le **vrai projet Firebase**, en deux contextes de navigateur isolés |
 | `pnpm run check-deps` | 5 URLs en 200, `pixi.js` devDependency alignée sur l'import map |
 
 **À vérifier par le mainteneur** (interdiction n°14, aucun test ne peut les cocher) : tenue à
@@ -102,13 +117,13 @@ latence Firebase à table. `antialias: false` et le plafond de résolution sont 
 
 ### Prochaine étape
 
-**T-14 — Transport Firebase**, suivie du **point de contrôle 4** (confinement de Firebase).
+**T-16 — Couches fond & grille**, puis T-17, T-18 et le **point de contrôle 5**.
 
-Puis **T-16+** (couches rendu : fond, grille, pions, zone de déplacement).
+Le transport et le store existent mais **ne sont pas encore reliés** : c'est `app/*` qui les
+reliera (T-22, T-23). `state/*` n'importe pas `transport/*` et n'a jamais à le faire — c'est ce
+qui rend le mode LAN possible sans refactor.
 
-C'est T-14 qui branche le transport **autour** du store, jamais l'inverse : `state/*` n'a pas
-le droit d'importer `transport/*` (table d'`ARCHITECTURE.md` §2), et c'est ce qui rend le mode
-LAN possible sans refactor.
+À trancher avant d'écrire T-16 : la décision n°10 ci-dessous (coût de lecture du store).
 
 ---
 
@@ -119,7 +134,7 @@ Message d'ouverture à donner tel quel :
 > Lis `README.md`, puis dans l'ordre `docs/CAHIER-DES-CHARGES.md`, `docs/STACK.md`,
 > `docs/CONVENTIONS.md`, `docs/ARCHITECTURE.md`, `docs/TASKS-lot1a.md`, `docs/FIXTURES.md`
 > et `docs/ETAT.md`. Ne code rien avant d'avoir tout lu.
-> Puis réalise **uniquement la tâche T-14**, et arrête-toi. Rapport de trois lignes,
+> Puis réalise **uniquement la tâche T-16**, et arrête-toi. Rapport de trois lignes,
 > terminé par la ligne « Écarts » même si elle est vide.
 
 **Le « uniquement T-13 » est la partie qui compte.** Un modèle à qui l'on donne la liste
@@ -200,6 +215,36 @@ lieu d'être écouté.** C'est la première chose à vérifier en relecture, ava
 fonctionnalité — `pnpm run typecheck` en code 0 ne prouve rien tant qu'on n'a pas cherché ce
 qui a été fait taire.
 
+**Échec bruyant, deuxième leçon (T-14).** Le transport livré appelait `signInAnonymously` et
+**avalait l'échec dans un `console.warn`** avant de continuer. Une fois le fournisseur anonyme
+désactivé, la séquence réelle observée fut : `auth/admin-restricted-operation` (message parfait,
+ignoré) → `permission_denied` sur l'écriture (message trompeur, qui ne parle pas
+d'authentification) → test rouge sans cause lisible. Le diagnostic exact était disponible à la
+première ligne et avait été jeté.
+
+Pire : `publish()` n'attendait pas le résultat de `push()`. L'erreur n'est ressortie que parce
+que Playwright signale les rejets non gérés — **dans le navigateur, à table, un pion déplacé
+n'aurait tout simplement pas bougé sur les autres écrans, sans le moindre message.** D'où
+`onError()` sur le transport, et la relance hors pile en l'absence d'abonné : une écriture
+refusée doit toujours finir par se voir.
+
+**Rejeu d'historique à la reconnexion (T-14).** `onChildAdded` sur une référence nue rejoue
+**tous** les enfants déjà présents. Le canal d'événements étant en ajout pur, un client
+reconnecté se voyait resservir la séance entière. Corrigé en relevant la dernière clé puis en
+n'écoutant qu'au-delà (`orderByKey()` + `startAfter`). Deux pièges rencontrés en le faisant :
+la sentinelle `startAfter('')` ne livre **plus rien** — RTDB exige une clé valide, il faut donc
+brancher explicitement sur le cas « canal vide » ; et les règles n'autorisant que
+`session/$id/events`, toute écriture au niveau `session/$id` est refusée, y compris une
+suppression de branche.
+
+**Deux clients qui n'en font qu'un (T-14).** Le test livré instanciait deux transports dans le
+même processus Node. Or `getApps().length === 0 ? initializeApp() : getApp()` fait réutiliser
+l'application par le second : une seule session, une seule connexion, aucun navigateur. Il ne
+prouvait rien. Deux clients, ici, ce sont **deux contextes de navigateur**. Et son assertion ne
+vérifiait que l'arrivée de l'événement, jamais qu'aucun n'avait été livré *avant* `snapshot()` —
+le tampon pouvait être absent, le test restait vert. La règle qui en sort : **un test dont
+l'intitulé énonce un ordre doit asserter l'ordre**, c'est-à-dire vérifier aussi le silence.
+
 **Enseignement transposable :** un plan précis ne garantit pas un plan correct — il rend ses
 propres défauts détectables vite. Et le défaut le plus coûteux n'est pas une vérification
 absente, c'est une vérification **satisfaite contre une imitation** : elle ferme la question.
@@ -244,7 +289,15 @@ Reprises de `CAHIER-DES-CHARGES.md` §12, plus celles apparues depuis :
 7. Jeu de marqueurs d'état — à arbitrer **après** une séance réelle, pas avant.
 8. Gabarits manipulables par les joueurs ?
 9. Ancrage des `animatedOverlays` : coin haut-gauche (actuel) ou centre ?
-10. **Coût de lecture du store, à trancher avant T-16.** `getState()` clone puis gèle
+10. **Purge du canal d'événements.** Le canal `session/$id/events` est en ajout pur.
+    `purgeEvents()` existe et les tests s'en servent, mais **rien ne l'appelle en séance** :
+    quand purger — à la fermeture de session par le MJ, au bout de N événements, jamais ?
+    À trancher quand une vraie séance aura montré le volume réel.
+11. **Identifiants de session non devinables.** Les règles n'autorisent que deux identités, mais
+    à l'intérieur de ces identités, tout `sessionId` est accessible. Le jour où l'application
+    sera publique, la protection reposera sur l'imprévisibilité de l'identifiant : prévoir des
+    identifiants aléatoires longs, pas `partie1`. À câbler à T-22/T-23.
+12. **Coût de lecture du store, à trancher avant T-16.** `getState()` clone puis gèle
     profondément toute la campagne à chaque appel, et `getActiveLevel()` clone les `walls`
     d'un étage entier. Sans conséquence aujourd'hui, mais T-16 et T-18 liront l'état à chaque
     redraw : sur la Tab S9 FE, avec les murs d'un UVTT réel, c'est un candidat sérieux à la
@@ -259,6 +312,16 @@ Reprises de `CAHIER-DES-CHARGES.md` §12, plus celles apparues depuis :
 Deux éléments de contexte vivent hors du code et sont à rappeler à un assistant qui
 reprendrait le projet sans historique de conversation :
 
+- **La configuration Firebase et les deux comptes.** Le projet Firebase existe, avec Realtime
+  Database, Firestore, et **deux fournisseurs seulement** : Google (restreint à
+  `ethoril@gmail.com` par les règles) et e-mail/mot de passe pour **un** compte technique de
+  test. **Le fournisseur anonyme est désactivé, et doit le rester.** Les règles n'ouvrent que
+  `session/$id/events` (Realtime Database) et `campaigns/$id` (Firestore), et exigent
+  `email_verified` pour le compte Google — mais **pas** pour le compte de test, où il vaut faux
+  et le restera. La configuration ne vit **nulle part dans le dépôt** : elle est injectée au
+  constructeur de `FirebaseTransport` par `app/*`, et fournie aux tests par
+  `RPG_FIREBASE_CONFIG` (cf. §1). Une configuration Firebase web n'est pas un secret — elle
+  part dans le navigateur — mais un dépôt public n'a aucune raison de la publier.
 - **L'identité git** doit être `ethoril <ethoril@gmail.com>`, jamais le nom réel du
   mainteneur, sur ce dépôt comme sur `shadowrunbank`.
 - **L'abandon du drag & drop** est une décision prise après test réel, qui a supprimé trois

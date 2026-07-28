@@ -294,8 +294,20 @@ signal se déclenche une seule fois par mutation.
 Realtime Database pour les événements, Firestore pour le document de campagne.
 `snapshot()` retourne l'état complet et est **toujours** appelé avant le premier delta.
 `LocalSocketTransport` est un stub qui lève.
-**Vérification :** test d'intégration — deux clients, l'un publie `token.move`, l'autre le
-reçoit ; une reconnexion appelle bien `snapshot()` en premier.
+
+Amendements arbitrés pendant la tâche (cf. `ARCHITECTURE.md` §3 et `STACK.md` §3) :
+- La configuration arrive **au constructeur**, jamais d'un fichier du dépôt. Champ manquant → lève.
+- **Authentification explicite** avant `connect()`, qui lève sans identité établie. Google avec
+  fenêtre pour les humains, e-mail/mot de passe pour les tests. `signInAnonymously` interdit.
+- **Écoute bornée** : relever la dernière clé du canal, puis n'écouter qu'au-delà. Une écoute
+  non bornée rejoue toute la séance à chaque reconnexion.
+- `publish()` ne rend rien, mais **ne peut pas échouer en silence** : `onError()`, et relance
+  hors pile en l'absence d'abonné.
+
+**Vérification :** test d'intégration en **deux contextes de navigateur** — l'un publie
+`token.move`, l'autre ne reçoit **rien avant** que `snapshot()` ne soit résolu, puis le reçoit ;
+un client arrivant après coup ne se voit **pas** rejouer l'historique, ni après reconnexion.
+S'auto-ignore avec sa raison si `RPG_FIREBASE_CONFIG` est absente.
 **Dépend de :** T-13
 
 ### ⛔ POINT DE CONTRÔLE 4

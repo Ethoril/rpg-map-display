@@ -161,7 +161,7 @@ function requestFrame() { /* coalescer sur requestAnimationFrame, puis app.rende
 
 Ne **jamais** laisser le ticker tourner en continu si rien n'est animé.
 
-### Firebase 11 — SDK modulaire
+### Firebase 12 — SDK modulaire
 
 ```js
 // ✅ modulaire : fonctions libres, l'instance passe en premier argument
@@ -177,6 +177,36 @@ Séparation imposée par le cahier des charges §4 :
 - **Realtime Database** → canal temps réel (positions, portes, caméra, pings, présence).
 - **Firestore** → documents durables (scènes, liaisons, bibliothèques, masques de fog).
 - Ne jamais écrire de position de pion dans Firestore pendant une séance.
+
+**Authentification — décidée à T-14, ne pas la rouvrir :**
+
+```js
+// ✅ écoute bornée : uniquement les événements postérieurs à la connexion
+const derniere = /* dernière clé lue via limitToLast(1) */
+onChildAdded(query(eventsRef, orderByKey(), startAfter(derniere)), cb)
+
+// ❌ non borné : rejoue TOUT l'historique du canal à chaque attachement,
+//    donc toute la séance à chaque reconnexion
+onChildAdded(eventsRef, cb)
+
+// ❌ sentinelle : RTDB exige une clé valide, et ne livre alors plus rien du tout
+onChildAdded(query(eventsRef, orderByKey(), startAfter('')), cb)
+```
+
+- **`signInAnonymously` est interdit** : le fournisseur anonyme est désactivé côté projet, et
+  une configuration Firebase web est publique par nature — l'anonyme rendrait la base
+  accessible à quiconque a vu passer l'application.
+- Humains : `signInWithPopup` + `GoogleAuthProvider`. **Jamais `signInWithRedirect`** : il
+  s'appuie sur un domaine auxiliaire distinct de GitHub Pages et casse de façon fuyante avec
+  les restrictions de cookies tiers de Chrome et de Safari.
+- Tests automatisés : `signInWithEmailAndPassword` avec le compte technique. La connexion
+  Google n'est pas scriptable, Google la refuse depuis un navigateur piloté.
+- **Toujours attendre `onAuthStateChanged`** avant de conclure qu'aucun utilisateur n'est
+  connecté : le SDK restaure la session persistée de façon asynchrone, et lire
+  `auth.currentUser` immédiatement redemanderait une connexion à chaque rechargement.
+- Un échec d'authentification **lève**. Ne jamais le réduire à un avertissement pour continuer
+  sans identité : l'erreur ressortirait plus tard en `permission_denied`, qui ne parle pas
+  d'authentification et coûte une demi-heure à diagnostiquer.
 
 ---
 
@@ -218,6 +248,11 @@ corrige, on ne muselle pas.
 > version **exactement identique** à celle de l'import map. À l'exécution, le navigateur
 > charge Pixi depuis le CDN : la copie de `node_modules/` n'est jamais servie, jamais
 > déployée. Elle existe pour que `tsc` vérifie le code de rendu contre l'API réelle.
+>
+> `firebase` est **autorisé en dépendance de développement, pour ses seuls types**, à la
+> version **exactement identique** à celle de l'import map. À l'exécution, le navigateur
+> charge Firebase depuis le CDN : la copie de `node_modules/` n'est jamais servie, jamais
+> déployée. Elle existe pour que `tsc` vérifie le code de transport contre l'API réelle.
 >
 > `scripts/check-deps.mjs` **échoue** si les deux versions divergent, et c'est bloquant : des
 > types qui ne décrivent pas le code exécuté sont pires qu'une absence de types, parce qu'ils

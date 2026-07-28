@@ -210,12 +210,17 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, les pions, le fog, le
    sélecteur d'étage et les gabarits s'affichent.
 
-   > **Deux dérogations, et deux seulement** (cf. `STACK.md` §5bis) :
+   > **Trois dérogations, et trois seulement** (cf. `STACK.md` §5bis) :
    > - **Overlay de version au chargement** — 4 s puis disparition totale,
    >   `pointer-events: none`, rappelable par tap à trois doigts. Rien de persistant, rien
    >   de tapable.
    > - **Bandeau de désynchronisation de version** — persistant *tant que l'écart existe*,
    >   car c'est un état cassé et non de l'habillage.
+   > - **Fenêtre de connexion Google** (ajoutée à T-14) — l'accès anonyme est fermé par les
+   >   règles de sécurité, la tablette doit donc prouver une identité. Geste **unique** : la
+   >   session est persistée, et plus rien n'apparaît aux rechargements suivants. Elle ne
+   >   s'affiche que si aucune session valide n'existe, et rien d'autre ne doit l'accompagner —
+   >   ni message d'accueil, ni bouton de déconnexion, ni indicateur de compte.
    >
    > Toute autre exception se demande. Elle ne se décide pas.
 3. **Ne jamais afficher un pion dans une zone explorée mais hors vision courante.** Cela

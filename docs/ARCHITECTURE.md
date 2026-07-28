@@ -23,6 +23,7 @@ F:\rpg-map-display\
 ├─ jsconfig.json                  [1a] checkJs strict, noEmit
 ├─ package.json                   [1a] scripts Node uniquement
 ├─ playwright.config.mjs          [1a] tests navigateur : testMatch *.spec.mjs, webServer
+├─ pnpm-workspace.yaml            [1a] allowBuilds deterministes pour pnpm
 ├─ .gitattributes                 [1a] * text=auto eol=lf
 ├─ .gitignore                     [1a]
 │
@@ -118,7 +119,8 @@ F:\rpg-map-display\
 ├─ tests/                         [1a] deux familles, deux exécuteurs :
 │                                      *.test.mjs → node:test (logique pure)
 │                                      *.spec.mjs → Playwright (navigateur, vrai Pixi)
-│                                      mountStage.mjs → sonde chargée dans la page, typée
+│                                      mountStage.mjs, mountTransport.mjs → sondes chargées
+│                                      dans la page, typées comme le reste du dépôt
 └─ docs/
     ├─ CAHIER-DES-CHARGES.md      spécification fonctionnelle (source de vérité du « quoi »)
     ├─ STACK.md                   versions & idiomes
@@ -289,6 +291,22 @@ export {}
  */
 export {}
 ```
+
+> **Amendements de T-14.** Trois membres s'ajoutent à l'implémentation Firebase, hors du
+> contrat minimal ci-dessus :
+> - `saveSnapshot(campaignData)` — persistance du document de campagne. T-24 en dépend.
+> - `onError(handler)` — abonnement aux échecs **asynchrones**. `publish` ne rend rien par
+>   contrat (l'appelant n'attend pas le réseau, l'animation est déterministe côté client) ;
+>   sans ce canal, une écriture refusée serait invisible et l'écran ne suivrait pas, sans le
+>   moindre indice. En l'absence d'abonné, l'erreur est relancée hors pile pour rester visible.
+> - `purgeEvents()` — le canal d'événements est en **ajout pur** : il grossit tant qu'on ne le
+>   purge pas. Geste de fin de séance.
+>
+> **L'authentification n'est PAS dans l'interface**, à dessein : elle est propre à Firebase
+> (un transport LAN n'a pas de compte Google). `FirebaseTransport` expose `signInWithGoogle()`,
+> `signInWithPassword()` et `currentUser()` ; c'est `app/*` qui décide *quand* demander une
+> identité. `connect()` **lève** si aucune n'est établie — l'accès anonyme est fermé par les
+> règles de sécurité. Cf. `ETAT.md` §7.
 
 ---
 
