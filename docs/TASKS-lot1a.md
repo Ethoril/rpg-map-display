@@ -277,11 +277,13 @@ L'import produit-il des données conformes ? C'est ici que se joue le piège des
 ## Étape 4 — État & transport
 
 ### T-13 — Store
-**Fichiers :** `js/state/store.js`, `js/state/selection.js`
+**Fichiers :** `js/state/store.js`, `js/state/selection.js`, `tests/store.test.mjs`
 **Contrat :** source de vérité unique + signal de changement. Mutations par fonctions
-nommées uniquement (`moveToken`, `setSelection`, `loadCampaign`…). Aucune affectation
-directe depuis l'extérieur. `selection.js` conserve le pion sélectionné et le résultat
-courant de `cellsInRange`.
+nommées uniquement (`moveTokenToCell`, `setSelection`, `loadCampaign`…) — **un seul nom par
+mutation**, celui de `CONVENTIONS.md` §5. Aucune affectation directe depuis l'extérieur.
+`selection.js` conserve le pion sélectionné et le résultat courant de `cellsInRange`, et
+obtient son masque d'arêtes par `computeBlockedEdges(level, grid)` — **jamais** par un
+`new Set()` recréé sur place, sinon l'implémentation du lot 2 restera sans effet (cf. T-08).
 **Vérification :** test unitaire — muter hors des fonctions exposées est impossible ; le
 signal se déclenche une seule fois par mutation.
 **Dépend de :** T-06

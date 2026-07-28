@@ -141,7 +141,7 @@ mécaniquement (§4).
 | `core/*` | rien (sauf `core/*`) | tout le reste |
 | `grid/*` | `core/*` | `render/*`, `state/*`, `transport/*`, `ui/*` |
 | `transport/*` | `core/*` | `render/*`, `grid/*`, `ui/*` |
-| `state/*` | `core/*`, `grid/*` | `render/*`, `ui/*`, `transport/*` |
+| `state/*` | `core/*`, `grid/*`, `import/*` | `render/*`, `ui/*`, `transport/*` |
 | `import/*` | `core/*`, `grid/*` | `render/*`, `ui/*`, `transport/*`, `state/*` |
 | `movement/*` | `core/*`, `grid/*` | tout le reste |
 | `vision/*` | `core/*` | `grid/*`, `render/*`, `ui/*`, `state/*` |
@@ -149,6 +149,14 @@ mécaniquement (§4).
 | `input/*` | `core/*` | `render/*`, `state/*` |
 | `ui/*` | tout sauf `transport/*` en direct | `firebase/*` |
 | `app/*` | tout | — |
+
+> `state/* → import/*` a été **ajouté à T-13**. La table interdisait au consommateur désigné
+> d'atteindre `computeBlockedEdges`, dont T-08 gèle pourtant la signature « pour que
+> `cellsInRange` la consomme dès le départ » : contrat infaisable, donc défaut du plan.
+> `import/*` est de la logique pure (aucune I/O, aucun DOM, par contrat de T-10), et au lot 2
+> les arêtes bloquées deviendront un **état vivant** — une porte qui s'ouvre les change en
+> cours de partie. Elles appartiennent donc au store, avec un cache par étage, et non à une
+> couche d'import appelée une fois. Aucune des trois règles portantes n'est touchée.
 
 **Trois règles portantes, à ne jamais assouplir :**
 

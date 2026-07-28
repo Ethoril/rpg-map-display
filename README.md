@@ -50,8 +50,9 @@ la tâche**. Un rapport honnête d'échec partiel est utile.
 
 ## État
 
-**Lot 1a « Le plateau » — 15 tâches sur 28.** Fondations, grille, déplacement et import
-terminés ; scène Pixi en place, intégration en attente. Prochaine tâche : **T-13** (store).
+**Lot 1a « Le plateau » — 16 tâches sur 28.** Fondations, grille, déplacement, import et
+store terminés ; scène Pixi en place, intégration en attente. Prochaine tâche : **T-14**
+(transport Firebase).
 
 👉 **[docs/ETAT.md](docs/ETAT.md)** — état détaillé, procédure de reprise, points de
 vigilance et décisions en attente. **À lire en premier après une interruption ou un

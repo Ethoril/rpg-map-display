@@ -20,5 +20,5 @@
     "pixi.js": "8.19.0",
     "typescript": "^5.7.0"
   },
-  "build": 7
+  "build": 8
 }
