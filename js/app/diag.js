@@ -72,21 +72,45 @@ function diagnosticEnvironnement() {
 // --- 2. Coût de lecture du store ---------------------------------------------
 
 function diagnosticStore() {
-  // Étage volontairement lourd : un UVTT réel produit couramment plusieurs centaines de
-  // segments de murs. On mesure ce que coûtera une lecture d'état par image en T-16/T-18.
+  // Profil relevé sur un export Dungeondraft réel (« Boiling Bolt Atrium ») : 48 × 45 cases,
+  // 124 polylignes de murs de 2 points, 37 portails, aucune lumière. Mesurer sur des chiffres
+  // inventés donnerait une conclusion inventée.
+  const LARGEUR = 48;
+  const HAUTEUR = 45;
+
   /** @type {import('../core/types.js').CellPoint[][]} */
   const murs = [];
-  for (let i = 0; i < 1000; i++) {
+  for (let i = 0; i < 124; i++) {
     murs.push([
-      { cellX: i % 40, cellY: Math.floor(i / 40) },
-      { cellX: (i % 40) + 1, cellY: Math.floor(i / 40) + 1 },
+      { cellX: i % LARGEUR, cellY: Math.floor(i / LARGEUR) },
+      { cellX: (i % LARGEUR) + 1, cellY: Math.floor(i / LARGEUR) + 1 },
     ]);
   }
 
-  const level = createLevel({ id: 'rdc', walls: murs, widthCells: 40, heightCells: 30 });
+  /** @type {import('../core/types.js').Portal[]} */
+  const portails = [];
+  for (let i = 0; i < 37; i++) {
+    portails.push({
+      id: `porte-${i}`,
+      a: { cellX: i % LARGEUR, cellY: i % HAUTEUR },
+      b: { cellX: (i % LARGEUR) + 1, cellY: i % HAUTEUR },
+      closed: true,
+      freestanding: false,
+    });
+  }
+
+  const level = createLevel({
+    id: 'rdc',
+    walls: murs,
+    portals: portails,
+    widthCells: LARGEUR,
+    heightCells: HAUTEUR,
+  });
   const tokens = [];
   for (let i = 0; i < 30; i++) {
-    tokens.push(createToken({ id: `pion-${i}`, levelId: 'rdc', cell: { a: i % 40, b: i % 30 } }));
+    tokens.push(
+      createToken({ id: `pion-${i}`, levelId: 'rdc', cell: { a: i % LARGEUR, b: i % HAUTEUR } })
+    );
   }
 
   resetStore();
@@ -105,7 +129,8 @@ function diagnosticStore() {
 
   ecrire(
     [
-      `Étage de contrôle : 1000 segments de murs, 30 pions`,
+      `Étage de contrôle : profil d'un UVTT réel — 48 × 45 cases,`,
+      `124 polylignes de murs, 37 portails, 30 pions`,
       '',
       `getState()       ${arrondi(parGetState, 3)} ms par appel`,
       `getActiveLevel() ${arrondi(parGetLevel, 3)} ms par appel`,
@@ -128,13 +153,13 @@ async function preparerScene() {
   const PIXI = await import('pixi.js');
 
   const fond = new PIXI.Graphics();
-  fond.rect(0, 0, 5600, 4200).fill({ color: 0x1b2430 });
+  fond.rect(0, 0, 6720, 6300).fill({ color: 0x1b2430 });
   layers.background.addChild(fond);
 
-  // Quadrillage 40 × 30 cases à 140 px : la charge de tracé d'une vraie carte.
+  // Quadrillage 48 × 45 cases à 140 px : les dimensions d'un export Dungeondraft réel.
   const grille = new PIXI.Graphics();
-  for (let c = 0; c <= 40; c++) grille.moveTo(c * 140, 0).lineTo(c * 140, 4200);
-  for (let r = 0; r <= 30; r++) grille.moveTo(0, r * 140).lineTo(5600, r * 140);
+  for (let c = 0; c <= 48; c++) grille.moveTo(c * 140, 0).lineTo(c * 140, 6300);
+  for (let r = 0; r <= 45; r++) grille.moveTo(0, r * 140).lineTo(6720, r * 140);
   grille.stroke({ width: 2, color: 0x000000, alpha: 0.25 });
   layers.gridLayer.addChild(grille);
 

@@ -29,6 +29,8 @@ F:\rpg-map-display\
 ├─ pnpm-workspace.yaml            [1a] allowBuilds deterministes pour pnpm
 ├─ .gitattributes                 [1a] * text=auto eol=lf
 ├─ .gitignore                     [1a]
+├─ .nojekyll                      [1a] désactive Jekyll sur GitHub Pages : le site est du
+│                                      statique pur, rien n'est à transformer
 │
 ├─ css/
 │   ├─ gm.css                     [1a] vue MJ

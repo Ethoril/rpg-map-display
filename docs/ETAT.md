@@ -71,8 +71,15 @@ En local, `pnpm run serve` sert la même chose sur `http://127.0.0.1:4173`.
 
 - `node_modules/` — reconstruit par `pnpm install`.
 - `fixtures/real/` — **ignoré par git**. Les exports UVTT réels sont à redéposer à la main
-  (cf. `FIXTURES.md` §1). Tant que ce dossier est vide, le parsing UVTT n'est validé qu'en
-  théorie.
+  (cf. `FIXTURES.md` §1). `tests/realUvtt.test.mjs` parse tout ce qui s'y trouve et
+  **s'auto-ignore avec sa raison** quand le dossier est vide : tant qu'il s'ignore, le parsing
+  UVTT n'est validé qu'en théorie.
+
+  Un export réel a été déposé et **parsé avec succès le 28/07/2026** : 48 × 45 cases à
+  140 px/case, 124 polylignes de murs (toutes à coordonnées entières, aucune dégénérée),
+  37 portails tous fermés, **aucune lumière**, `grid_type` **absent** (d'où le carré par
+  défaut), `map_origin` nul, image PNG de 4,6 Mo en base64 pour 6720 × 6300 px. Ces chiffres
+  servent de profil de référence à `diag.html`.
 - Aucune clé ni configuration Firebase n'existe encore dans le dépôt. Elle arrivera à T-14.
 
 ---
@@ -326,11 +333,31 @@ Reprises de `CAHIER-DES-CHARGES.md` §12, plus celles apparues depuis :
     identifiants aléatoires longs, pas `partie1`. À câbler à T-22/T-23.
 12. **Coût de lecture du store, à trancher avant T-16.** `getState()` clone puis gèle
     profondément toute la campagne à chaque appel, et `getActiveLevel()` clone les `walls`
-    d'un étage entier. Sans conséquence aujourd'hui, mais T-16 et T-18 liront l'état à chaque
-    redraw : sur la Tab S9 FE, avec les murs d'un UVTT réel, c'est un candidat sérieux à la
-    perte des 30 fps. Trois issues possibles : réserver `getState()` au débogage et faire lire
-    les couches par sélecteurs étroits ; geler l'état une fois au chargement et muter par
-    copie sur écriture ; ou mesurer et ne rien changer. **À mesurer avant de choisir.**
+    d'un étage entier. T-16 et T-18 liront l'état à chaque redraw.
+
+    **Mesuré** (bouton 2 de `diag.html`) sur le profil de l'export réel — 48 × 45 cases,
+    124 polylignes de murs, 37 portails, 30 pions. Sur la machine de développement :
+    `getState()` **0,75 ms**, `getActiveLevel()` **0,32 ms**, soit **3,2 %** du budget d'une
+    image à 30 fps. Reste à mesurer sur la Tab S9 FE : un facteur 3 à 5 y est plausible, ce
+    qui donnerait 10 à 15 % — supportable, mais plus du bruit.
+
+    > Première mesure faite avec 1000 polylignes inventées : elle annonçait 21 % et concluait
+    > « trop coûteux ». Le profil réel est huit fois plus léger. **Mesurer sur des chiffres
+    > inventés produit une conclusion inventée** — c'est ce qui a justifié de déposer un export
+    > réel avant de décider.
+
+13. **`pxPerCell` fractionnaire après rééchantillonnage.** L'import réel a produit
+    `pxPerCell = 85,333…` (4096 px ÷ 48 cases), parce que le rééchantillonnage vise la limite
+    de texture et non un multiple du nombre de cases. Le total reste exact (48 × 85,333 = 4096,
+    aucune dérive cumulée), mais les lignes du quadrillage ne tomberont pas sur des pixels
+    entiers. À trancher quand T-16 tracera la grille, là où le symptôme se verra : plafonner à
+    un `pxPerCell` entier (48 × 85 = 4080 px) coûte 16 px de large et rend l'alignement net.
+14. **Publication des cartes sur un dépôt public.** `maps/` est commité par le manifeste, et
+    GitHub Pages sert désormais la racine : **tout ce qui entre dans `maps/` est publié.**
+    L'import de l'export réel y a écrit un WebP de 4,6 Mo — supprimé sans être commité, car la
+    carte source peut être sous licence tierce. À trancher : ne commiter que des cartes dont on
+    détient les droits, ou sortir `maps/` du dépôt. En attendant, **ne rien commiter dans
+    `maps/` sans vérifier la licence**.
 
 ---
 

@@ -16,10 +16,27 @@ irrégularités qu'aucune fixture synthétique ne reproduit : polylignes de murs
 dégénérées, portails à cheval sur deux cloisons, `map_origin` non entier, cloisons
 manquantes, listes de lumières vides, variantes de casse dans les clés.
 
-**Action requise du mainteneur :** déposer au moins un export réel dans
-`fixtures/real/` — idéalement une carte de donjon avec des portes et plusieurs pièces — et
-ajouter un test qui le parse sans erreur. Tant que ce fichier n'existe pas, le parsing UVTT
-est **validé en théorie seulement**, et cela doit être dit dans le rapport de la tâche T-10.
+**Action requise du mainteneur : faite le 28/07/2026.** Un export réel a été déposé dans
+`fixtures/real/`, et `tests/realUvtt.test.mjs` le parse à chaque exécution de `test:unit`. Le
+test **s'auto-ignore avec sa raison** si le dossier est vide — c'est le cas sur un dépôt
+fraîchement cloné, puisque le dossier est ignoré par git. Tant qu'il s'ignore, le parsing UVTT
+n'est validé qu'en théorie, et cela doit être dit.
+
+Ce qu'il vérifie, au-delà du simple « ça ne lève pas » : les coordonnées de murs restent dans
+les bornes de `map_size` (une conversion accidentelle en pixels donnerait des valeurs cent fois
+plus grandes), chaque portail conserve ses deux extrémités et son état, et l'ensemble constitue
+une campagne acceptée par `validateCampaign`.
+
+**Profil de l'export de référence**, relevé pour dimensionner les mesures de `diag.html` :
+
+| Grandeur | Valeur |
+|---|---|
+| Dimensions | 48 × 45 cases, 140 px/case (6720 × 6300 px) |
+| Murs | 124 polylignes de 2 points, toutes à coordonnées entières |
+| Portails | 37, tous `closed` |
+| Lumières | **0** — la liste vide annoncée ci-dessus |
+| `grid_type` | **absent** — d'où le carré par défaut de T-10 |
+| `environment` | `baked_lighting: false`, `ambient_light: "00000000"` (RGBA 8 chiffres, non exploité au lot 1a) |
 
 `fixtures/real/` est dans `.gitignore` si les cartes sont sous licence ; sinon commité.
 
