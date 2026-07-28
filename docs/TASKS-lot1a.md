@@ -448,9 +448,11 @@ deux cas à une carte jouable.
 écran. **Aucun élément d'interface** (interdiction n°2).
 
 L'import map de `player.html` doit être **strictement identique** à celle d'`index.html`.
-Étendre `scripts/check-deps.mjs` pour vérifier les deux fichiers et **échouer si leurs
-import maps diffèrent** — c'est la seule garantie mécanique contre une dérive de version
-entre les deux vues, qui produirait deux clients incompatibles sur la même session.
+**Déjà en place :** `scripts/check-deps.mjs` compare les import maps de **toutes** les pages
+HTML de la racine et échoue si l'une diffère (étendu lors de l'ajout de `diag.html`). Il n'y a
+donc rien à écrire ici, seulement à vérifier que `player.html` passe — c'est la garantie
+mécanique contre une dérive de version entre les deux vues, qui produirait deux clients
+incompatibles sur la même session.
 **Vérification :** Playwright — le DOM de `player.html` ne contient ni `<button>`, ni
 `<nav>`, ni `<input>` hors du canvas ; `overscroll-behavior` et `touch-action` sont bien
 appliqués. *(L'overlay de version de T-24b est la seule exception tolérée, et il n'est ni

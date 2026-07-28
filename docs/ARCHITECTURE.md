@@ -22,6 +22,9 @@ F:\rpg-map-display\
 │                                      IDENTIQUE à index.html (T-23)
 ├─ jsconfig.json                  [1a] checkJs strict, noEmit
 ├─ package.json                   [1a] scripts Node uniquement
+├─ diag.html                      [1a] diagnostic matériel — limites GPU, fps, thermique,
+│                                      coût du store, latence Firebase. Hors application :
+│                                      ni vue MJ, ni vue joueurs. Import map IDENTIQUE
 ├─ playwright.config.mjs          [1a] tests navigateur : testMatch *.spec.mjs, webServer
 ├─ pnpm-workspace.yaml            [1a] allowBuilds deterministes pour pnpm
 ├─ .gitattributes                 [1a] * text=auto eol=lf
@@ -103,7 +106,8 @@ F:\rpg-map-display\
 │   │
 │   └─ app/
 │       ├─ gm.js                  [1a] point d'entrée vue MJ
-│       └─ player.js              [1a] point d'entrée vue joueurs
+│       ├─ player.js              [1a] point d'entrée vue joueurs
+│       └─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
 │
 ├─ scripts/
 │   ├─ import-uvtt.mjs            [1a] CLI Node : .uvtt → maps/ + document de scène
@@ -112,7 +116,8 @@ F:\rpg-map-display\
 │   ├─ stamp-version.mjs          [1a] écrit js/core/version.js
 │   ├─ serve.mjs                  [1a] serveur statique sans dépendance (tests + dev local)
 │   └─ check-deps.mjs             [1a] vérifie les URLs de l'import map (HEAD 200 + registre
-│                                      + cohérence avec les devDependencies)
+│                                      + cohérence avec les devDependencies + import maps
+│                                      IDENTIQUES entre toutes les pages de la racine)
 │
 ├─ fixtures/                      [1a] cf. docs/FIXTURES.md
 ├─ maps/                          [1a] images traitées, commitées

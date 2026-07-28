@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Diagnostic matériel — rpg-map-display</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.19.0/dist/pixi.min.mjs",
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js"
+    }
+  }
+  </script>
+  <style>
+    :root { color-scheme: dark light; }
+    body { margin: 0; padding: 1rem; font: 15px/1.5 system-ui, sans-serif; }
+    h1 { font-size: 1.1rem; margin: 0 0 .5rem; }
+    p.aide { margin: 0 0 1rem; opacity: .7; }
+    button { font: inherit; padding: .7rem 1rem; margin: 0 .5rem .5rem 0; min-height: 44px; }
+    pre { white-space: pre-wrap; word-break: break-word; border: 1px solid currentColor;
+          padding: .75rem; border-radius: 4px; min-height: 6rem; }
+    canvas { width: 100%; max-width: 640px; height: auto; display: block;
+             border: 1px solid currentColor; margin-top: 1rem; }
+    input { font: inherit; width: 100%; box-sizing: border-box; margin-bottom: .5rem; }
+  </style>
+</head>
+<body>
+  <h1>Diagnostic matériel</h1>
+  <p class="aide">
+    Page d'outillage : elle répond aux décisions en attente qui exigent l'appareil réel
+    (cf. <code>docs/ETAT.md</code> §6). Elle ne fait pas partie de l'application.
+  </p>
+
+  <button id="btn-env">1. Environnement &amp; limites GPU</button>
+  <button id="btn-store">2. Coût de lecture du store</button>
+  <button id="btn-fps">3. Images par seconde (20 s)</button>
+  <button id="btn-thermique">4. Tenue thermique (5 min)</button>
+
+  <pre id="sortie">Appuyer sur un bouton. Commencer par le 1.</pre>
+
+  <details>
+    <summary>5. Latence Firebase (nécessite une connexion Google)</summary>
+    <p class="aide">
+      Coller la configuration Firebase (JSON) une seule fois — elle reste sur cet appareil,
+      dans le stockage local. Aucun mot de passe n'est demandé : la connexion passe par Google.
+    </p>
+    <input id="config" type="text" placeholder='{"apiKey":"…","authDomain":"…","databaseURL":"…","projectId":"…","appId":"…"}'>
+    <button id="btn-firebase">Mesurer la latence (30 aller-retours)</button>
+  </details>
+
+  <canvas id="board" width="640" height="480"></canvas>
+
+  <script type="module" src="./js/app/diag.js"></script>
+</body>
+</html>

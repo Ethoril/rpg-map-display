@@ -7,32 +7,56 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-const indexPath = path.join(rootDir, 'index.html');
-
-if (!fs.existsSync(indexPath)) {
-  console.error('Error: index.html not found.');
-  process.exit(1);
+/**
+ * Extrait l'import map d'une page HTML de la racine.
+ *
+ * @param {string} fichier nom du fichier, relatif à la racine
+ * @returns {Record<string, string>}
+ */
+function lireImportMap(fichier) {
+  const chemin = path.join(rootDir, fichier);
+  if (!fs.existsSync(chemin)) {
+    console.error(`Error: ${fichier} not found.`);
+    process.exit(1);
+  }
+  const html = fs.readFileSync(chemin, 'utf8');
+  const bloc = html.match(/<script\s+type="importmap">\s*([\s\S]*?)\s*<\/script>/i);
+  if (!bloc) {
+    console.error(`Error: importmap script block not found in ${fichier}.`);
+    process.exit(1);
+  }
+  try {
+    /** @type {{ imports?: Record<string, string> }} */
+    const parsed = JSON.parse(bloc[1]);
+    return parsed.imports || {};
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Error parsing importmap JSON in ${fichier}:`, msg);
+    process.exit(1);
+  }
 }
 
-const htmlContent = fs.readFileSync(indexPath, 'utf8');
-const importMapMatch = htmlContent.match(/<script\s+type="importmap">\s*([\s\S]*?)\s*<\/script>/i);
+/** Empreinte stable, insensible à l'ordre de déclaration des clés. */
+const empreinte = (/** @type {Record<string, string>} */ map) =>
+  JSON.stringify(map, Object.keys(map).sort());
 
-if (!importMapMatch) {
-  console.error('Error: importmap script block not found in index.html.');
-  process.exit(1);
+const imports = lireImportMap('index.html');
+
+// TOUTES les pages de la racine doivent porter la MÊME import map. C'est la seule garantie
+// mécanique contre une dérive de version entre deux vues, qui produirait deux clients
+// incompatibles sur la même session (exigence de T-23, appliquée dès maintenant à toute page).
+const autresPages = fs
+  .readdirSync(rootDir)
+  .filter((f) => f.toLowerCase().endsWith('.html') && f !== 'index.html');
+
+for (const page of autresPages) {
+  if (empreinte(lireImportMap(page)) !== empreinte(imports)) {
+    console.error(`[FAIL] L'import map de ${page} diffère de celle d'index.html.`);
+    console.error('Les versions n\'ont qu\'un seul domicile : toutes les pages la partagent.');
+    process.exit(1);
+  }
+  console.log(`[MAP OK] ${page} : import map identique à index.html.`);
 }
-
-/** @type {{ imports?: Record<string, string> }} */
-let importMap;
-try {
-  importMap = JSON.parse(importMapMatch[1]);
-} catch (err) {
-  const msg = err instanceof Error ? err.message : String(err);
-  console.error('Error parsing importmap JSON:', msg);
-  process.exit(1);
-}
-
-const imports = importMap.imports || {};
 /** @type {string[]} */
 const urls = Object.values(imports);
 

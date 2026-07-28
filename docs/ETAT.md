@@ -58,6 +58,15 @@ d'abord.
 `test:e2e` charge Pixi depuis le CDN, comme la vraie application : sans réseau, il échoue — et
 c'est voulu. Un test de rendu qui passe hors ligne ne teste pas le chargement réel.
 
+### Servir l'application
+
+Zéro build : GitHub Pages sert la racine de `main` telle quelle, aucun workflow d'Actions
+n'est nécessaire. Réglage unique, côté GitHub : *Settings → Pages → Source : Deploy from a
+branch → `main` / `/ (root)`*. Les pages sont alors à
+`https://ethoril.github.io/rpg-map-display/` — et `…/diag.html` pour les mesures matérielles.
+
+En local, `pnpm run serve` sert la même chose sur `http://127.0.0.1:4173`.
+
 ### Étape 3 : ce qui ne voyage pas avec le dépôt
 
 - `node_modules/` — reconstruit par `pnpm install`.
@@ -272,6 +281,24 @@ les spécifications les plus denses, à relire lentement.
 **Jamais délégable :** les critères de performance (30 fps sous cast, arrêt de la boucle
 rAF, tenue thermique sur 45 min, `MAX_TEXTURE_SIZE` réel de la Tab S9 FE, latence Firebase à
 table). Ils exigent le matériel physique. Aucun modèle ne peut les cocher.
+
+**Mais ils sont mesurables, et l'outil existe :** `diag.html` (point d'entrée
+`js/app/diag.js`). Cinq mesures, à lancer **depuis la tablette elle-même** :
+
+| Bouton | Ce qu'il tranche |
+|---|---|
+| 1. Environnement & limites GPU | `MAX_TEXTURE_SIZE` réel, `devicePixelRatio`, WebGL/WebGPU, GPU → **décision n°1** |
+| 2. Coût de lecture du store | `getState()` et `getActiveLevel()` en ms/appel sur 1000 segments de murs, comparés au budget d'une image à 30 fps → **décision n°12** |
+| 3. Images par seconde (20 s) | fps moyen et minimum sur une scène de charge réaliste |
+| 4. Tenue thermique (5 min) | dérive des fps par tranche de 30 s — révèle un bridage |
+| 5. Latence Firebase | p50/p95 de l'aller-retour Realtime Database, seuil 250 ms → **décision n°2** |
+
+La mesure 5 demande une connexion Google et la configuration collée une fois (conservée dans
+le stockage local de l'appareil, jamais dans le dépôt). Elle exige que le domaine servant la
+page figure dans **Firebase → Authentication → Settings → Authorized domains**.
+
+Ce n'est ni la vue MJ ni la vue joueurs : les interdictions d'interface de la vue joueurs ne
+s'y appliquent pas.
 
 ---
 
