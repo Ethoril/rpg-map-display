@@ -111,15 +111,3 @@ test('cellsOccupied génère les blocs n×n appropriés', () => {
   assert.equal(occ3.length, 9);
 });
 
-test('Méthodes non implémentées lèvent "non implémenté"', () => {
-  const level = createLevel();
-  const grid = gridFor(level);
-
-  assert.ok(grid.cellsInRange({ a: 0, b: 0 }, 5, new Set()) instanceof Map);
-
-  // `renderGrid` attend un vrai `Graphics` PixiJS, indisponible sous Node. Ce test ne
-  // dessine rien : il vérifie seulement que la méthode refuse de mentir jusqu'à T-16.
-  // D'où le transtypage explicite — la vérification reste active partout ailleurs.
-  const graphicsFactice = /** @type {import('pixi.js').Graphics} */ (/** @type {unknown} */ ({}));
-  assert.throws(() => grid.renderGrid(graphicsFactice, {}), /non implémenté/);
-});

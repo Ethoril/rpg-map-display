@@ -1,0 +1,99 @@
+// @ts-check
+import { test, expect } from '@playwright/test';
+import { SquareGrid } from '../js/grid/SquareGrid.js';
+import { createLevel } from '../js/core/schema.js';
+
+/**
+ * Helper pour charger index.html et monter le stage avec la sonde.
+ * @param {import('@playwright/test').Page} page
+ */
+async function mountStage(page) {
+  /** @type {string[]} */
+  const erreurs = [];
+  page.on('pageerror', (err) => erreurs.push(err.message));
+
+  await page.goto('/index.html');
+  await page.addScriptTag({ type: 'module', url: '/tests/mountStage.mjs' });
+  await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__stageProbe));
+
+  expect(erreurs).toEqual([]);
+}
+
+test('MoveZoneLayer : surlignage exact des cases atteignables et non-interactivité', async ({ page }) => {
+  await mountStage(page);
+
+  /** @type {import('../js/core/types.js').GridType} */
+  const gridType = 'square';
+  const levelData = {
+    pxPerCell: 140,
+    widthCells: 10,
+    heightCells: 8,
+    grid: { type: gridType, offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.0, visible: false },
+  };
+
+  const level = createLevel(levelData);
+  const grid = new SquareGrid(level);
+  const startCell = { a: 2, b: 2 };
+  const speedCells = 3;
+
+  // Calcul Dijkstra de référence des cases atteignables
+  const reachableMap = grid.cellsInRange(startCell, speedCells, new Set());
+  const reachableKeys = Array.from(reachableMap.keys());
+
+  const tokenPJ = {
+    id: 'token-pj',
+    levelId: 'rdc',
+    cell: startCell,
+    sizeCells: 1,
+    kind: 'pc',
+    borderColor: '#ff0000',
+    speedCells: speedCells,
+  };
+
+  // 1. Rendu avec pion sélectionné
+  const resSelected = await page.evaluate(
+    ({ level, token, keys }) =>
+      /** @type {any} */ (window).__stageProbe.testMoveZoneRender({
+        levelOverrides: level,
+        token: token,
+        cellsReachableKeys: keys,
+      }),
+    { level: levelData, token: tokenPJ, keys: reachableKeys }
+  );
+
+  // Vérification de la non-interactivité
+  expect(resSelected.eventMode).toBe('none');
+
+  // Vérification case par case : chaque case atteignable est surlignée, et AUCUNE case hors Dijkstra
+  for (let a = 0; a < level.widthCells; a++) {
+    for (let b = 0; b < level.heightCells; b++) {
+      const key = `${a},${b}`;
+      const isReachable = reachableMap.has(key);
+      const alpha = resSelected.cellAlphaMap[key];
+
+      if (isReachable) {
+        expect(alpha).toBeGreaterThan(0);
+      } else {
+        expect(alpha).toBe(0);
+      }
+    }
+  }
+
+  // 2. Rendu si aucun pion sélectionné (token: null) -> 0 case surlignée
+  const resUnselected = await page.evaluate(
+    ({ level, keys }) =>
+      /** @type {any} */ (window).__stageProbe.testMoveZoneRender({
+        levelOverrides: level,
+        token: null,
+        cellsReachableKeys: keys,
+      }),
+    { level: levelData, keys: reachableKeys }
+  );
+
+  for (let a = 0; a < level.widthCells; a++) {
+    for (let b = 0; b < level.heightCells; b++) {
+      const key = `${a},${b}`;
+      expect(resUnselected.cellAlphaMap[key]).toBe(0);
+    }
+  }
+});

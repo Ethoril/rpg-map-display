@@ -24,6 +24,9 @@ export class SquareGrid {
     this.heightCells = level.heightCells;
     this.offsetX = level.grid?.offsetX ?? 0;
     this.offsetY = level.grid?.offsetY ?? 0;
+    this.color = level.grid?.color ?? '#000000';
+    this.opacity = level.grid?.opacity ?? 0.25;
+    this.visible = level.grid?.visible ?? true;
   }
 
   /**
@@ -158,11 +161,33 @@ export class SquareGrid {
   }
 
   /**
-   * @param {import('pixi.js').Graphics} _g
-   * @param {object} _viewport
+   * Trace le quadrillage sur l'instance Graphics fournie.
+   *
+   * @param {import('pixi.js').Graphics} g
+   * @param {object} [_viewport]
    * @returns {void}
    */
-  renderGrid(_g, _viewport) {
-    throw new Error('non implémenté');
+  renderGrid(g, _viewport) {
+    g.clear();
+    if (this.visible === false || this.opacity <= 0) return;
+
+    const startX = this.offsetX;
+    const endX = this.offsetX + this.widthCells * this.pxPerCell;
+    const startY = this.offsetY;
+    const endY = this.offsetY + this.heightCells * this.pxPerCell;
+
+    for (let col = 0; col <= this.widthCells; col++) {
+      const x = this.offsetX + col * this.pxPerCell;
+      g.moveTo(x, startY);
+      g.lineTo(x, endY);
+    }
+
+    for (let row = 0; row <= this.heightCells; row++) {
+      const y = this.offsetY + row * this.pxPerCell;
+      g.moveTo(startX, y);
+      g.lineTo(endX, y);
+    }
+
+    g.stroke({ color: this.color, alpha: this.opacity, width: 1 });
   }
 }
