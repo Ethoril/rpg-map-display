@@ -114,6 +114,11 @@ export async function bootstrapGMApp(options = {}) {
       console.log('[DEBUG] Restauration snapshot...', { sessionId, hasTransport: !!transport });
       const snapshotData = /** @type {any} */ (await transport.snapshot());
       console.log('[DEBUG] Snapshot reçu :', snapshotData);
+      console.log('[DEBUG] snapshot() retourne :', {
+        hasCampaign: !!(snapshotData && snapshotData.campaign),
+        campaignLevels: snapshotData?.campaign?.levels?.length ?? snapshotData?.levels?.length,
+        keys: snapshotData ? Object.keys(snapshotData) : [],
+      });
       if (snapshotData && (snapshotData.levels || snapshotData.campaign)) {
         store.restoreFromSnapshot(snapshotData, { sessionId });
       } else {
