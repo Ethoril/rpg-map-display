@@ -24,6 +24,8 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  * @property {number} [dragHoldMs=DRAG_HOLD_MS] Seuil temporel de drag (ms)
  * @property {number} [dragDistanceThreshold=5] Seuil spatial de drag (pixels)
  * @property {number} [longPressMs=500] Seuil pour l'appui long (ms)
+ * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartTokenDrag]
+ *   Hit-test injecté par la vue MJ. L'input ne connaît jamais le store.
  */
 
 /**
@@ -44,6 +46,7 @@ export class PointerInput {
     this.dragHoldMs = options.dragHoldMs ?? DRAG_HOLD_MS;
     this.dragDistanceThreshold = options.dragDistanceThreshold ?? 5;
     this.longPressMs = options.longPressMs ?? 500;
+    this.canStartTokenDrag = options.canStartTokenDrag ?? (() => null);
 
     /** @type {Map<number, { screenPos: ScreenPoint, timeStamp: number }>} */
     this.activePointers = new Map();
@@ -60,12 +63,10 @@ export class PointerInput {
     /** @type {boolean} */
     this.longPressTriggered = false;
 
-    /** @type {boolean} */
-    this.isDraggingToken = false;
-    /** @type {boolean} */
-    this.isPanning = false;
-    /** @type {boolean} */
-    this.isPinching = false;
+    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'longPress'} */
+    this.mode = 'idle';
+    /** @type {string|null} */
+    this.dragTokenId = null;
 
     /** @type {number} */
     this.initialPinchDistance = 0;
@@ -85,6 +86,7 @@ export class PointerInput {
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
+    this.handleWindowBlur = this.handleWindowBlur.bind(this);
     this.handleWheel = this.handleWheel.bind(this);
     this.flushCoalescedPan = this.flushCoalescedPan.bind(this);
 
@@ -108,6 +110,7 @@ export class PointerInput {
     this.element.addEventListener('pointerup', this.handlePointerUp);
     this.element.addEventListener('pointercancel', this.handlePointerCancel);
     this.element.addEventListener('wheel', this.handleWheel, { passive: false });
+    window.addEventListener('blur', this.handleWindowBlur);
   }
 
   /**
@@ -119,12 +122,31 @@ export class PointerInput {
     this.element.removeEventListener('pointerup', this.handlePointerUp);
     this.element.removeEventListener('pointercancel', this.handlePointerCancel);
     this.element.removeEventListener('wheel', this.handleWheel);
+    window.removeEventListener('blur', this.handleWindowBlur);
 
+    this.resetInteraction();
+  }
+
+  /**
+   * Remet l'automate d'entrée dans un état neutre après annulation, perte de focus ou
+   * destruction.
+   */
+  resetInteraction() {
     this.clearLongPressTimer();
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    this.pendingPanX = 0;
+    this.pendingPanY = 0;
+    this.activePointers.clear();
+    this.startScreenPos = null;
+    this.lastScreenPos = null;
+    this.lastPinchCenter = null;
+    this.initialPinchDistance = 0;
+    this.dragTokenId = null;
+    this.longPressTriggered = false;
+    this.mode = 'idle';
   }
 
   /**
@@ -201,9 +223,11 @@ export class PointerInput {
       this.startScreenPos = screenPos;
       this.lastScreenPos = screenPos;
       this.startTime = timeStamp;
-      this.isDraggingToken = false;
-      this.isPanning = false;
-      this.isPinching = false;
+      this.mode = 'tapCandidate';
+      this.dragTokenId =
+        this.role === 'gm'
+          ? this.canStartTokenDrag(screenPos, this.camera.screenToMap(screenPos))
+          : null;
       this.longPressTriggered = false;
 
       // Planification du timer d'appui long
@@ -211,6 +235,7 @@ export class PointerInput {
       this.longPressTimer = setTimeout(() => {
         if (this.activePointers.size === 1 && this.startScreenPos) {
           this.longPressTriggered = true;
+          this.mode = 'longPress';
           const mapPos = this.camera.screenToMap(this.startScreenPos);
           this.emit({
             type: 'longPress',
@@ -222,7 +247,8 @@ export class PointerInput {
     } else if (this.activePointers.size === 2) {
       // Annulation d'appui long et bascule en mode pinch/pan à 2 doigts
       this.clearLongPressTimer();
-      this.isPinching = true;
+      this.mode = 'pinching';
+      this.dragTokenId = null;
 
       const pointers = Array.from(this.activePointers.values());
       const p1 = pointers[0].screenPos;
@@ -252,18 +278,13 @@ export class PointerInput {
         this.clearLongPressTimer();
       }
 
-      if (this.longPressTriggered) return;
+      if (this.mode === 'longPress') return;
 
       const dx = screenPos.screenX - this.lastScreenPos.screenX;
       const dy = screenPos.screenY - this.lastScreenPos.screenY;
       this.lastScreenPos = screenPos;
 
-      // Pan de la carte en tous les cas (joueurs ou MJ)
-      this.isPanning = true;
-      this.queuePan(dx, dy);
-
-      if (this.role !== 'players') {
-        // Vue MJ — aussi : drag pion autorisé au-delà du seuil DRAG_HOLD_MS / distance
+      if (this.role === 'gm' && this.dragTokenId) {
         const isExceeded = isDragThresholdExceeded(
           this.startScreenPos,
           screenPos,
@@ -273,18 +294,31 @@ export class PointerInput {
           this.dragDistanceThreshold
         );
 
-        if (isExceeded || this.isDraggingToken) {
-          const isFirstDrag = !this.isDraggingToken;
-          this.isDraggingToken = true;
+        if (isExceeded || this.mode === 'gmTokenDrag') {
+          const isFirstDrag = this.mode !== 'gmTokenDrag';
+          this.mode = 'gmTokenDrag';
 
           const mapPos = this.camera.screenToMap(screenPos);
           this.emit({
             type: 'dragToken',
+            tokenId: this.dragTokenId,
             screenPos,
             mapPos,
             phase: isFirstDrag ? 'start' : 'move',
           });
+          return;
         }
+      }
+
+      // Un micro-mouvement reste un candidat au tap. Le pan ne commence qu'une fois le
+      // seuil spatial franchi, et il est exclusif avec le drag de pion MJ.
+      if (
+        this.mode === 'panning' ||
+        distFromStart >= this.dragDistanceThreshold
+      ) {
+        this.mode = 'panning';
+        this.dragTokenId = null;
+        this.queuePan(dx, dy);
       }
     } else if (this.activePointers.size === 2 && this.lastPinchCenter) {
       this.clearLongPressTimer();
@@ -331,7 +365,7 @@ export class PointerInput {
 
     if (this.activePointers.size === 1 && this.startScreenPos) {
       // Vider tout pan coalescé en attente
-      if (this.rafId !== null) {
+      if (this.mode === 'panning' && this.rafId !== null) {
         cancelAnimationFrame(this.rafId);
         this.flushCoalescedPan();
       }
@@ -339,19 +373,27 @@ export class PointerInput {
       const dist = distanceBetween(this.startScreenPos, screenPos);
       const duration = timeStamp - this.startTime;
 
-      if (this.role === 'gm' && this.isDraggingToken) {
+      if (this.mode === 'gmTokenDrag' && this.dragTokenId) {
         const mapPos = this.camera.screenToMap(screenPos);
         this.emit({
           type: 'dragToken',
+          tokenId: this.dragTokenId,
           screenPos,
           mapPos,
           phase: 'end',
         });
-      } else if (!this.longPressTriggered && !this.isPanning && duration < this.dragHoldMs && dist < this.dragDistanceThreshold) {
+      } else if (
+        this.mode === 'tapCandidate' &&
+        !this.longPressTriggered &&
+        duration < this.dragHoldMs &&
+        dist < this.dragDistanceThreshold
+      ) {
         // C'est un TAP !
-        const mapPos = this.camera.screenToMap(this.startScreenPos);
-        this.emit({ type: 'tapCell', at: mapPos });
-        this.emit({ type: 'tapToken', at: this.startScreenPos });
+        this.emit({
+          type: 'tap',
+          screenPos: this.startScreenPos,
+          mapPos: this.camera.screenToMap(this.startScreenPos),
+        });
       }
     }
 
@@ -360,9 +402,8 @@ export class PointerInput {
     if (this.activePointers.size === 0) {
       this.startScreenPos = null;
       this.lastScreenPos = null;
-      this.isDraggingToken = false;
-      this.isPanning = false;
-      this.isPinching = false;
+      this.mode = 'idle';
+      this.dragTokenId = null;
       this.lastPinchCenter = null;
     }
   }
@@ -378,11 +419,18 @@ export class PointerInput {
     if (this.activePointers.size === 0) {
       this.startScreenPos = null;
       this.lastScreenPos = null;
-      this.isDraggingToken = false;
-      this.isPanning = false;
-      this.isPinching = false;
+      this.mode = 'idle';
+      this.dragTokenId = null;
       this.lastPinchCenter = null;
     }
+  }
+
+  /**
+   * Une perte de focus ne produit pas toujours `pointercancel` selon le navigateur.
+   * @returns {void}
+   */
+  handleWindowBlur() {
+    this.resetInteraction();
   }
 
   /**

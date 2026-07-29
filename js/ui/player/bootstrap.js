@@ -36,7 +36,7 @@ export function bootstrapPlayerView(options) {
    * @param {InputIntention} intention
    */
   function handleIntention(intention) {
-    if (intention.type !== 'tapToken' && intention.type !== 'tapCell') {
+    if (intention.type !== 'tap') {
       return;
     }
 
@@ -48,115 +48,95 @@ export function bootstrapPlayerView(options) {
     }
 
     const grid = gridFor(activeLevel);
-
-    if (intention.type === 'tapToken') {
-      const mapPos = camera.screenToMap(intention.at);
-      const targetCell = grid.cellFromPoint(mapPos);
-      if (!targetCell) {
-        store.selectToken(null);
-        return;
-      }
-
-      const tappedToken = campaign.tokens.find((t) => {
-        if (t.levelId !== activeLevel.id || t.hidden) return false;
-        const size = t.sizeCells || 1;
-        return (
-          targetCell.a >= t.cell.a &&
-          targetCell.a < t.cell.a + size &&
-          targetCell.b >= t.cell.b &&
-          targetCell.b < t.cell.b + size
-        );
-      });
-
-      if (tappedToken) {
-        store.selectToken(tappedToken.id);
-      } else if (!selectedToken) {
-        store.selectToken(null);
-      }
+    const targetCell = grid.cellFromPoint(intention.mapPos);
+    if (!targetCell) {
+      store.selectToken(null);
       return;
     }
 
-    if (intention.type === 'tapCell') {
-      const mapPos = intention.at;
-      const targetCell = grid.cellFromPoint(mapPos);
+    const tappedToken = campaign.tokens.find((t) => {
+      if (t.levelId !== activeLevel.id || t.hidden) return false;
+      const size = t.sizeCells || 1;
+      return (
+        targetCell.a >= t.cell.a &&
+        targetCell.a < t.cell.a + size &&
+        targetCell.b >= t.cell.b &&
+        targetCell.b < t.cell.b + size
+      );
+    });
 
-      if (!targetCell) {
-        store.selectToken(null);
-        return;
-      }
+    // Les PNJ sont toujours réservés au MJ, même si une donnée incohérente les marque
+    // playerMovable. Les trois conditions sont défensives et cumulatives.
+    const tappedMovablePc =
+      tappedToken &&
+      tappedToken.kind === 'pc' &&
+      tappedToken.playerMovable !== false &&
+      !tappedToken.locked
+        ? tappedToken
+        : null;
 
-      if (!selectedToken) {
-        // Aucun pion sélectionné : vérifier si un pion visible est présent sur la case
-        const tappedToken = campaign.tokens.find((t) => {
-          if (t.levelId !== activeLevel.id || t.hidden) return false;
-          const size = t.sizeCells || 1;
-          return (
-            targetCell.a >= t.cell.a &&
-            targetCell.a < t.cell.a + size &&
-            targetCell.b >= t.cell.b &&
-            targetCell.b < t.cell.b + size
-          );
-        });
+    if (!selectedToken) {
+      store.selectToken(tappedMovablePc ? tappedMovablePc.id : null);
+      return;
+    }
 
-        if (tappedToken) {
-          store.selectToken(tappedToken.id);
-        } else {
-          store.selectToken(null);
-        }
-        return;
-      }
+    if (tappedMovablePc && tappedMovablePc.id !== selectedToken.id) {
+      store.selectToken(tappedMovablePc.id);
+      return;
+    }
 
-      // Un pion est déjà sélectionné
-      if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
-        // Tap sur la case même du pion sélectionné -> conserver sélection
-        return;
-      }
+    if (tappedToken && tappedToken.id !== selectedToken.id) {
+      // Un PNJ ou un pion interdit n'est jamais une destination de mouvement implicite.
+      store.selectToken(null);
+      return;
+    }
 
-      // Vérification des flags de sécurité
-      if (selectedToken.locked || selectedToken.playerMovable === false) {
-        // Déplacement refusé par les flags de sécurité (pion reste sur place)
-        return;
-      }
+    if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
+      return;
+    }
 
-      // Vérification de la portée (cases atteignables)
-      const targetKey = cellKey(targetCell);
-      if (!reachableCells.has(targetKey)) {
-        // Case hors portée -> désélection (pion reste sur place)
-        store.selectToken(null);
-        return;
-      }
+    if (
+      selectedToken.kind !== 'pc' ||
+      selectedToken.locked ||
+      selectedToken.playerMovable === false
+    ) {
+      store.selectToken(null);
+      return;
+    }
 
-      // Case atteignable et autorisée : calcul du chemin Dijkstra et horodatage
-      const blockedEdges = computeBlockedEdges(activeLevel, grid);
-      const terrainCostMap = terrainCostRecordToMap(activeLevel.terrainCost);
-      const path = findPath(grid, selectedToken.cell, targetCell, blockedEdges, terrainCostMap);
-      const startedAt = Date.now();
+    const targetKey = cellKey(targetCell);
+    if (!reachableCells.has(targetKey)) {
+      store.selectToken(null);
+      return;
+    }
 
-      const moveData = {
-        from: { a: selectedToken.cell.a, b: selectedToken.cell.b },
-        to: { a: targetCell.a, b: targetCell.b },
-        path,
-        startedAt,
-      };
+    const blockedEdges = computeBlockedEdges(activeLevel, grid);
+    const terrainCostMap = terrainCostRecordToMap(activeLevel.terrainCost);
+    const path = findPath(grid, selectedToken.cell, targetCell, blockedEdges, terrainCostMap);
+    const startedAt = Date.now();
 
-      // Mutation unique du store local
-      store.moveTokenToCell(selectedToken.id, targetCell, moveData);
+    const moveData = {
+      from: { a: selectedToken.cell.a, b: selectedToken.cell.b },
+      to: { a: targetCell.a, b: targetCell.b },
+      path,
+      startedAt,
+    };
 
-      // Publication réseau unique (aucune position intermédiaire)
-      if (transport) {
-        transport.publish({
-          type: 'token.move',
-          payload: {
-            tokenId: selectedToken.id,
-            from: moveData.from,
-            to: moveData.to,
-            path: moveData.path,
-            startedAt: moveData.startedAt,
-          },
-          at: startedAt,
-          by: 'players',
-        });
-      }
+    store.moveTokenToCell(selectedToken.id, targetCell, moveData);
+
+    if (transport) {
+      transport.publish({
+        type: 'token.move',
+        payload: {
+          tokenId: selectedToken.id,
+          from: moveData.from,
+          to: moveData.to,
+          path: moveData.path,
+          startedAt: moveData.startedAt,
+        },
+        at: startedAt,
+        by: 'players',
+      });
     }
   }
 
@@ -165,32 +145,9 @@ export function bootstrapPlayerView(options) {
     onIntention: handleIntention,
   });
 
-  /** @type {(() => void) | null} */
-  let unsubscribeTransport = null;
-
-  if (transport) {
-    unsubscribeTransport = transport.subscribe((event) => {
-      if (event.type === 'token.move' && event.payload) {
-        const payload = /** @type {any} */ (event.payload);
-        const { tokenId, from, to, path, startedAt } = payload;
-        if (tokenId && to && typeof to.a === 'number' && typeof to.b === 'number') {
-          store.moveTokenToCell(tokenId, to, {
-            from,
-            to,
-            path,
-            startedAt: startedAt ?? event.at,
-          });
-        }
-      }
-    });
-  }
-
   return {
     detach: () => {
       pointerInput.detach();
-      if (unsubscribeTransport) {
-        unsubscribeTransport();
-      }
     },
     pointerInput,
   };

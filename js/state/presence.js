@@ -11,6 +11,7 @@
 
 /** @type {Map<string, ClientPresence>} */
 const presenceMap = new Map();
+export const PRESENCE_STALE_AFTER_MS = 90_000;
 
 /** @type {Set<() => void>} */
 const subscribers = new Set();
@@ -22,8 +23,9 @@ const subscribers = new Set();
  * @param {Omit<ClientPresence, 'clientId'>} data
  */
 export function updatePresence(clientId, data) {
-  if (!clientId || !data) return;
-  presenceMap.set(clientId, { clientId, ...data });
+  const normalized = normalizePresence(clientId, data);
+  if (!normalized) return;
+  presenceMap.set(clientId, normalized);
   notifySubscribers();
 }
 
@@ -36,15 +38,8 @@ export function setPresenceMap(presences) {
   presenceMap.clear();
   if (presences && typeof presences === 'object') {
     for (const [clientId, data] of Object.entries(presences)) {
-      if (data && typeof data === 'object') {
-        presenceMap.set(clientId, {
-          clientId,
-          role: data.role || 'players',
-          at: data.at || Date.now(),
-          build: data.build || 0,
-          label: data.label || '',
-        });
-      }
+      const normalized = normalizePresence(clientId, data);
+      if (normalized) presenceMap.set(clientId, normalized);
     }
   }
   notifySubscribers();
@@ -56,8 +51,7 @@ export function setPresenceMap(presences) {
  * @param {string} clientId
  */
 export function removePresence(clientId) {
-  presenceMap.delete(clientId);
-  notifySubscribers();
+  if (presenceMap.delete(clientId)) notifySubscribers();
 }
 
 /**
@@ -74,7 +68,10 @@ export function clearPresence() {
  * @returns {ClientPresence[]}
  */
 export function getPresenceList() {
-  return Array.from(presenceMap.values());
+  const now = Date.now();
+  return Array.from(presenceMap.values())
+    .filter((client) => now - client.at <= PRESENCE_STALE_AFTER_MS)
+    .map((client) => ({ ...client }));
 }
 
 /**
@@ -85,7 +82,7 @@ export function getPresenceList() {
  * @returns {{ hasMismatch: boolean, localBuild: number, remoteBuild: number|null, remoteRole: string|null, remoteLabel: string|null }}
  */
 export function checkBuildMismatch(localBuild, selfClientId = '') {
-  for (const client of presenceMap.values()) {
+  for (const client of getPresenceList()) {
     if (selfClientId && client.clientId === selfClientId) {
       continue;
     }
@@ -115,9 +112,33 @@ export function checkBuildMismatch(localBuild, selfClientId = '') {
  * @returns {() => void}
  */
 export function subscribePresence(listener) {
+  if (typeof listener !== 'function') {
+    throw new Error('L’abonné de présence doit être une fonction');
+  }
   subscribers.add(listener);
   return () => {
     subscribers.delete(listener);
+  };
+}
+
+/**
+ * @param {string} clientId
+ * @param {unknown} data
+ * @returns {ClientPresence|null}
+ */
+function normalizePresence(clientId, data) {
+  if (!clientId || !data || typeof data !== 'object') return null;
+  const raw = /** @type {Record<string, unknown>} */ (data);
+  if (raw.role !== 'gm' && raw.role !== 'players') return null;
+  if (!Number.isFinite(raw.at) || Number(raw.at) <= 0) return null;
+  if (!Number.isSafeInteger(raw.build) || Number(raw.build) < 0) return null;
+  if (typeof raw.label !== 'string') return null;
+  return {
+    clientId,
+    role: raw.role,
+    at: Number(raw.at),
+    build: Number(raw.build),
+    label: raw.label,
   };
 }
 

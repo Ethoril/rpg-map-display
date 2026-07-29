@@ -1,113 +1,186 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
-/**
- * Helper pour charger index.html et monter le stage avec la sonde.
- * @param {import('@playwright/test').Page} page
- */
+/** @param {import('@playwright/test').Page} page */
 async function mountStage(page) {
   /** @type {string[]} */
-  const erreurs = [];
-  page.on('pageerror', (err) => erreurs.push(err.message));
-
+  const errors = [];
+  page.on('pageerror', (/** @type {Error} */ error) => errors.push(error.message));
   await page.goto('/index.html');
   await page.addScriptTag({ type: 'module', url: '/tests/mountStage.mjs' });
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__stageProbe));
-
-  expect(erreurs).toEqual([]);
+  expect(errors).toEqual([]);
 }
 
-test('TokensLayer : géométrie, sizeCells, transparence PNJ, anneau de sélection et badge d elevation', async ({ page }) => {
+const level = {
+  id: 'rdc',
+  pxPerCell: 100,
+  widthCells: 10,
+  heightCells: 8,
+  grid: {
+    type: 'square',
+    offsetX: 0,
+    offsetY: 0,
+    color: '#000000',
+    opacity: 0,
+    visible: false,
+  },
+};
+
+test('pions : niveau actif, taille 2×2 et visibilité par rôle', async ({ page }) => {
   await mountStage(page);
+  const tokens = [
+    {
+      id: 'pc', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 1, kind: 'pc',
+      imageUrl: '', label: 'PJ', borderColor: '#ff0000', hidden: false,
+      elevation: 0, markers: [],
+    },
+    {
+      id: 'npc', levelId: 'rdc', cell: { a: 5, b: 3 }, sizeCells: 2, kind: 'npc',
+      imageUrl: '', label: 'PNJ', borderColor: '#0000ff', hidden: true,
+      elevation: 1, markers: [],
+    },
+    {
+      id: 'other-level', levelId: 'cave', cell: { a: 0, b: 0 }, sizeCells: 1, kind: 'pc',
+      imageUrl: '', label: 'Hors étage', borderColor: '#00ff00', hidden: false,
+      elevation: 0, markers: [],
+    },
+  ];
 
-  // Fixture minimal.json avec 2 pions :
-  // - 1 pion PJ à case (2, 2), sizeCells: 1, borderColor: '#ff0000', elevation: 0
-  // - 1 pion PNJ hidden: true à case (5, 3), sizeCells: 2, borderColor: '#0000ff', elevation: 1
-  const levelData = {
-    pxPerCell: 140,
-    widthCells: 10,
-    heightCells: 8,
-    grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.0, visible: false },
-  };
-
-  const tokenPJ = {
-    id: 'token-pj',
-    levelId: 'rdc',
-    cell: { a: 2, b: 2 },
-    sizeCells: 1,
-    kind: 'pc',
-    borderColor: '#ff0000',
-    hidden: false,
-    elevation: 0,
-  };
-
-  const tokenPNJ = {
-    id: 'token-pnj',
-    levelId: 'rdc',
-    cell: { a: 5, b: 3 },
-    sizeCells: 2,
-    kind: 'npc',
-    borderColor: '#0000ff',
-    hidden: true,
-    elevation: 1,
-  };
-
-  const tokensList = [tokenPJ, tokenPNJ];
-
-  // --- Test 1 : Rendu Vue MJ (role: 'gm') ---
-  const resGM = await page.evaluate(
-    ({ level, tokens }) =>
+  const gm = await page.evaluate(
+    ({ levelData, tokenData }) =>
       /** @type {any} */ (window).__stageProbe.testTokensRender({
-        levelOverrides: level,
-        tokensList: tokens,
-        selectionData: { tokenId: 'token-pj' },
-        options: { role: 'gm' },
+        levelOverrides: levelData,
+        tokensList: tokenData,
+        selectionData: { tokenId: 'pc' },
+        options: { role: 'gm', activeLevelId: 'rdc' },
       }),
-    { level: levelData, tokens: tokensList }
+    { levelData: level, tokenData: tokens }
   );
+  expect(gm.renderedTokenIds).toEqual(['pc', 'npc']);
+  expect(gm.cellAlphaMap['2,2']).toBeGreaterThan(0);
+  expect(gm.cellAlphaMap['5,3']).toBeLessThan(gm.cellAlphaMap['2,2']);
+  expect(gm.cellAlphaMap['1,2']).toBe(0);
+  for (const key of ['5,3', '6,3', '5,4', '6,4']) expect(gm.cellAlphaMap[key]).toBeGreaterThan(0);
+  for (const key of ['4,3', '7,3', '5,2', '5,5']) expect(gm.cellAlphaMap[key]).toBe(0);
+  expect(gm.cellAlphaMap['0,0']).toBe(0);
 
-  // En vue MJ, les 2 pions doivent être présents
-  expect(resGM.renderedTokensCount).toBe(2);
-
-  // Pion PJ (sizeCells: 1) à case (2,2) : exactement case (2,2) couverte
-  expect(resGM.cellAlphaMap['2,2']).toBeGreaterThan(0);
-  expect(resGM.cellAlphaMap['1,2']).toBe(0);
-  expect(resGM.cellAlphaMap['3,2']).toBe(0);
-  expect(resGM.cellAlphaMap['2,1']).toBe(0);
-  expect(resGM.cellAlphaMap['2,3']).toBe(0);
-
-  // Pion PNJ (sizeCells: 2) à case (5,3) : couvre exactement le bloc 2x2 [(5,3), (6,3), (5,4), (6,4)]
-  expect(resGM.cellAlphaMap['5,3']).toBeGreaterThan(0);
-  expect(resGM.cellAlphaMap['6,3']).toBeGreaterThan(0);
-  expect(resGM.cellAlphaMap['5,4']).toBeGreaterThan(0);
-  expect(resGM.cellAlphaMap['6,4']).toBeGreaterThan(0);
-
-  // Cases environnantes hors du 2x2 ne doivent pas être couvertes
-  expect(resGM.cellAlphaMap['4,3']).toBe(0);
-  expect(resGM.cellAlphaMap['7,3']).toBe(0);
-  expect(resGM.cellAlphaMap['5,2']).toBe(0);
-  expect(resGM.cellAlphaMap['5,5']).toBe(0);
-
-  // Badge d'élévation présent pour tokenPNJ (elevation = 1)
-  expect(resGM.hasElevationBadge).toBe(true);
-
-  // --- Test 2 : Rendu Vue Joueurs (role: 'players') ---
-  const resPlayers = await page.evaluate(
-    ({ level, tokens }) =>
+  const players = await page.evaluate(
+    ({ levelData, tokenData }) =>
       /** @type {any} */ (window).__stageProbe.testTokensRender({
-        levelOverrides: level,
-        tokensList: tokens,
-        selectionData: null,
-        options: { role: 'players' },
+        levelOverrides: levelData,
+        tokensList: tokenData,
+        options: { role: 'players', activeLevelId: 'rdc' },
       }),
-    { level: levelData, tokens: tokensList }
+    { levelData: level, tokenData: tokens }
   );
+  expect(players.renderedTokenIds).toEqual(['pc']);
+  expect(players.cellAlphaMap['5,3']).toBe(0);
+});
 
-  // En vue joueurs, le PNJ hidden: true doit être totalement absent
-  expect(resPlayers.renderedTokensCount).toBe(1);
-  expect(resPlayers.cellAlphaMap['5,3']).toBe(0);
-  expect(resPlayers.cellAlphaMap['6,4']).toBe(0);
+test('pions : le contenu de l’image est recadré et son chargement invalide une fois', async ({ page }) => {
+  await mountStage(page);
+  const result = await page.evaluate(async (levelData) => {
+    const source = document.createElement('canvas');
+    source.width = 80;
+    source.height = 40;
+    const sourceContext = source.getContext('2d');
+    if (!sourceContext) throw new Error('Canvas 2D indisponible');
+    sourceContext.fillStyle = '#00ff00';
+    sourceContext.fillRect(0, 0, source.width, source.height);
+    const imageUrl = source.toDataURL('image/png');
+    return /** @type {any} */ (window).__stageProbe.testTokensRender({
+      levelOverrides: levelData,
+      tokensList: [{
+        id: 'portrait', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 1,
+        kind: 'pc', imageUrl, label: 'Portrait', borderColor: '#ff0000',
+        hidden: false, elevation: 0, markers: [],
+      }],
+      options: { role: 'gm', activeLevelId: 'rdc' },
+    });
+  }, level);
+  const center = result.cellColorMap['2,2'];
+  expect(center.g).toBeGreaterThan(240);
+  expect(center.r).toBeLessThan(20);
+  expect(center.b).toBeLessThan(20);
+  expect(result.invalidations).toBe(1);
+});
 
-  // Le pion PJ est toujours présent
-  expect(resPlayers.cellAlphaMap['2,2']).toBeGreaterThan(0);
+test('pions : une image absente affiche un placeholder sans casser les autres pions', async ({ page }) => {
+  await mountStage(page);
+  const result = await page.evaluate(
+    (levelData) => /** @type {any} */ (window).__stageProbe.testTokensRender({
+      levelOverrides: levelData,
+      tokensList: [
+        {
+          id: 'broken', levelId: 'rdc', cell: { a: 1, b: 1 }, sizeCells: 1,
+          kind: 'pc', imageUrl: '/maps/absent.webp', label: 'Cassé',
+          borderColor: '#ff0000', hidden: false, elevation: 0, markers: [],
+        },
+        {
+          id: 'valid-placeholder', levelId: 'rdc', cell: { a: 3, b: 1 }, sizeCells: 1,
+          kind: 'pc', imageUrl: '', label: 'Valide',
+          borderColor: '#00ff00', hidden: false, elevation: 0, markers: [],
+        },
+      ],
+      options: { role: 'gm', activeLevelId: 'rdc' },
+    }),
+    level
+  );
+  expect(result.renderedTokenIds).toEqual(['broken', 'valid-placeholder']);
+  expect(result.cellAlphaMap['1,1']).toBeGreaterThan(0);
+  expect(result.cellAlphaMap['3,1']).toBeGreaterThan(0);
+});
+
+test('pions : animation déterministe bornée et aperçu de drag sans mutation', async ({ page }) => {
+  await mountStage(page);
+  const token = {
+    id: 'moving', levelId: 'rdc', cell: { a: 4, b: 2 }, sizeCells: 1, kind: 'pc',
+    imageUrl: '', label: 'M', borderColor: '#ff0000', hidden: false,
+    elevation: 0, markers: [],
+    move: {
+      from: { a: 2, b: 2 }, to: { a: 4, b: 2 },
+      path: [{ a: 2, b: 2 }, { a: 3, b: 2 }, { a: 4, b: 2 }],
+      startedAt: 1000,
+    },
+  };
+
+  const during = await page.evaluate(
+    ({ levelData, tokenData }) => /** @type {any} */ (window).__stageProbe.testTokensRender({
+      levelOverrides: levelData,
+      tokensList: [tokenData],
+      options: { role: 'gm', activeLevelId: 'rdc', now: 1160 },
+    }),
+    { levelData: level, tokenData: token }
+  );
+  expect(during.animationActive).toBe(true);
+  expect(during.cellAlphaMap['3,2']).toBeGreaterThan(0);
+  expect(during.cellAlphaMap['4,2']).toBe(0);
+
+  const finished = await page.evaluate(
+    ({ levelData, tokenData }) => /** @type {any} */ (window).__stageProbe.testTokensRender({
+      levelOverrides: levelData,
+      tokensList: [tokenData],
+      options: { role: 'gm', activeLevelId: 'rdc', now: 1320 },
+    }),
+    { levelData: level, tokenData: token }
+  );
+  expect(finished.animationActive).toBe(false);
+  expect(finished.cellAlphaMap['4,2']).toBeGreaterThan(0);
+
+  const preview = await page.evaluate(
+    ({ levelData, tokenData }) => /** @type {any} */ (window).__stageProbe.testTokensRender({
+      levelOverrides: levelData,
+      tokensList: [tokenData],
+      options: {
+        role: 'gm',
+        activeLevelId: 'rdc',
+        now: 1320,
+        dragPreview: { tokenId: 'moving', mapPos: { x: 750, y: 150 } },
+      },
+    }),
+    { levelData: level, tokenData: token }
+  );
+  expect(preview.cellAlphaMap['7,1']).toBeGreaterThan(0);
+  expect(preview.cellAlphaMap['4,2']).toBe(0);
 });

@@ -75,6 +75,47 @@ test('Vue joueurs — Interdiction #1 : drag 1 doigt déplace la caméra (panBy)
   expect(dragTokenIntentions).toHaveLength(0);
 });
 
+test('un micro-mouvement reste un tap unique et ne déplace pas la caméra', async ({ page }) => {
+  await mountInputStage(page, 'players');
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 123, canvasBox.y + 121);
+  await page.mouse.up();
+  await page.waitForTimeout(30);
+
+  const intentions = await page.evaluate(
+    () => /** @type {any} */ (window).__stageProbe.getIntentions()
+  );
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(1);
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'panBy')).toHaveLength(0);
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'dragToken')).toHaveLength(0);
+});
+
+test('Vue MJ — un drag commencé hors pion pan la caméra sans déplacer de pion', async ({ page }) => {
+  await mountInputStage(page, 'gm');
+  await page.evaluate(() => /** @type {any} */ (window).__stageProbe.setupInput('gm', false));
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  await page.mouse.move(canvasBox.x + 180, canvasBox.y + 180);
+  await page.mouse.down();
+  await page.waitForTimeout(180);
+  await page.mouse.move(canvasBox.x + 240, canvasBox.y + 180, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(30);
+
+  const intentions = await page.evaluate(
+    () => /** @type {any} */ (window).__stageProbe.getIntentions()
+  );
+  expect(intentions.some((/** @type {any} */ item) => item.type === 'panBy')).toBe(true);
+  expect(intentions.some((/** @type {any} */ item) => item.type === 'dragToken')).toBe(false);
+});
+
 test('Vue MJ — Drag d un doigt au-delà du seuil émet une intention dragToken avec screenPos et mapPos', async ({ page }) => {
   await mountInputStage(page, 'gm');
 

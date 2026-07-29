@@ -32,6 +32,49 @@ import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 /** Champs sans lesquels rien ne peut fonctionner. `databaseURL` n'apparaît dans la console
  * Firebase qu'une fois la Realtime Database créée : son absence est l'oubli le plus fréquent. */
 const CHAMPS_REQUIS = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'appId'];
+const TRANSIENT_ASSET_URL = /^(?:data|blob):/i;
+const PRESENCE_HEARTBEAT_MS = 30_000;
+
+/**
+ * Refuse récursivement les URL qui ne peuvent survivre ni à un rechargement ni à un
+ * autre navigateur.
+ *
+ * @param {unknown} value
+ * @param {string} [context]
+ */
+export function assertNoTransientAssetUrls(value, context = 'payload') {
+  /** @type {WeakSet<object>} */
+  const visited = new WeakSet();
+
+  /**
+   * @param {unknown} current
+   * @param {string} path
+   */
+  function visit(current, path) {
+    if (typeof current === 'string') {
+      if (TRANSIENT_ASSET_URL.test(current)) {
+        const scheme = current.slice(0, current.indexOf(':') + 1);
+        throw new Error(
+          `${context} contient une URL transitoire interdite (${scheme}) au chemin ${path}`
+        );
+      }
+      return;
+    }
+    if (!current || typeof current !== 'object') return;
+    if (visited.has(current)) return;
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      current.forEach((entry, index) => visit(entry, `${path}[${index}]`));
+      return;
+    }
+    for (const [key, entry] of Object.entries(current)) {
+      visit(entry, `${path}[${JSON.stringify(key)}]`);
+    }
+  }
+
+  visit(value, '$');
+}
 
 /**
  * Transport réseau : Realtime Database pour les événements, Firestore pour le document de
@@ -78,6 +121,8 @@ export class FirebaseTransport {
 
     /** @type {import('firebase/database').Query|null} Requête bornée effectivement écoutée */
     this._liveQuery = null;
+    /** @type {(() => void)|null} */
+    this._liveUnsubscribe = null;
     /** @type {Set<(e: NetEvent) => void>} */
     this._subscribers = new Set();
     /** @type {Set<(err: unknown) => void>} */
@@ -85,7 +130,22 @@ export class FirebaseTransport {
 
     /** @type {NetEvent[]} Événements reçus avant que `snapshot()` ne soit remis */
     this._eventBuffer = [];
-    this._snapshotReady = false;
+    /** @type {'inactive'|'buffering'|'draining'|'live'} */
+    this._deliveryState = 'inactive';
+    /** @type {Promise<object>|null} */
+    this._snapshotPromise = null;
+    this._sessionEpoch = 0;
+
+    /** @type {Set<() => void>} */
+    this._presenceUnsubscribers = new Set();
+    /** @type {import('firebase/database').DatabaseReference|null} */
+    this._presenceRef = null;
+    /** @type {import('firebase/database').OnDisconnect|null} */
+    this._presenceOnDisconnect = null;
+    /** @type {ReturnType<typeof setInterval>|null} */
+    this._presenceHeartbeat = null;
+    /** @type {{ role: 'gm'|'players', build: number, label: string }|null} */
+    this._presencePayload = null;
   }
 
   // --- Authentification -----------------------------------------------------
@@ -189,6 +249,9 @@ export class FirebaseTransport {
    * @returns {() => void} désabonnement
    */
   onError(handler) {
+    if (typeof handler !== 'function') {
+      throw new Error('Le handler d’erreur doit être une fonction');
+    }
     this._errorHandlers.add(handler);
     return () => {
       this._errorHandlers.delete(handler);
@@ -204,17 +267,23 @@ export class FirebaseTransport {
     const detail =
       /** @type {any} */ (err)?.code || /** @type {any} */ (err)?.message || String(err);
     const message = `FirebaseTransport : échec ${contexte} — ${detail}`;
+    const reported =
+      err instanceof Error
+        ? Object.assign(new Error(message, { cause: err }), {
+            code: /** @type {any} */ (err).code,
+          })
+        : new Error(message);
     console.error(message, err);
 
     if (this._errorHandlers.size === 0) {
       setTimeout(() => {
-        throw err instanceof Error ? err : new Error(message);
+        throw reported;
       }, 0);
       return;
     }
     for (const handler of this._errorHandlers) {
       try {
-        handler(err);
+        handler(reported);
       } catch (interne) {
         console.error('Erreur dans un handler onError :', interne);
       }
@@ -247,14 +316,19 @@ export class FirebaseTransport {
       );
     }
 
+    this._stopSessionListeners();
+    this._sessionEpoch += 1;
+    const epoch = this._sessionEpoch;
     this._sessionId = sessionId;
     this._role = role;
+    this._clientId = `c_${crypto.randomUUID()}`;
     this._db = getDatabase(/** @type {import('firebase/app').FirebaseApp} */ (this._app));
     this._firestore = getFirestore(
       /** @type {import('firebase/app').FirebaseApp} */ (this._app)
     );
 
-    this._snapshotReady = false;
+    this._deliveryState = 'buffering';
+    this._snapshotPromise = null;
     this._eventBuffer = [];
 
     const eventsRef = ref(this._db, `session/${sessionId}/events`);
@@ -287,15 +361,24 @@ export class FirebaseTransport {
       derniereCle === null ? eventsRef : query(eventsRef, orderByKey(), startAfter(derniereCle));
     this._liveQuery = requeteVivante;
 
-    onChildAdded(requeteVivante, (snapshot) => {
-      const netEvent = /** @type {NetEvent|null} */ (snapshot.val());
-      if (!netEvent) return;
-      if (this._snapshotReady) {
-        this._notifySubscribers(netEvent);
-      } else {
-        this._eventBuffer.push(netEvent);
+    this._liveUnsubscribe = onChildAdded(
+      requeteVivante,
+      (snapshot) => {
+        if (epoch !== this._sessionEpoch) return;
+        const netEvent = /** @type {NetEvent|null} */ (snapshot.val());
+        if (!netEvent || typeof netEvent.type !== 'string') return;
+        if (this._deliveryState === 'live') {
+          this._notifySubscribers(netEvent);
+        } else {
+          this._eventBuffer.push(netEvent);
+        }
+      },
+      (err) => {
+        if (epoch === this._sessionEpoch) {
+          this._reportError(err, `écoute des événements de la session "${sessionId}"`);
+        }
       }
-    });
+    );
   }
 
   /**
@@ -315,12 +398,15 @@ export class FirebaseTransport {
     if (!this._db || !this._sessionId) {
       throw new Error('Transport non connecté');
     }
+    assertNoTransientAssetUrls(event, `événement "${event.type}"`);
 
     const complet = {
       type: event.type,
       payload: event.payload || {},
       at: typeof event.at === 'number' ? event.at : Date.now(),
       by: event.by || this._role,
+      eventId: `${this._clientId}:${Date.now()}:${crypto.randomUUID()}`,
+      clientId: this._clientId,
     };
 
     const eventsRef = ref(this._db, `session/${this._sessionId}/events`);
@@ -350,53 +436,59 @@ export class FirebaseTransport {
    *
    * @returns {Promise<object>}
    */
-  async snapshot() {
+  snapshot() {
     if (!this._sessionId) {
-      throw new Error('Transport non connecté');
+      return Promise.reject(new Error('Transport non connecté'));
     }
+    if (this._snapshotPromise) return this._snapshotPromise;
 
-    let etat = {};
-    if (this._firestore) {
-      try {
-        const docRef = doc(this._firestore, 'campaigns', this._sessionId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          etat = docSnap.data();
-        }
-      } catch (err) {
-        console.warn('Échec lecture Firestore (tentative LocalStorage) :', err);
-      }
-    }
-
-    // Repli LocalStorage si Firestore n'a rien renvoyé ou est indisponible (mode hors-ligne)
-    if (!etat || Object.keys(etat).length === 0) {
-      try {
-        if (typeof localStorage !== 'undefined') {
-          const localCamp = localStorage.getItem(`rpg_campaign_${this._sessionId}`);
-          const localSess = localStorage.getItem(`rpg_session_${this._sessionId}`);
-          if (localCamp) {
-            const campObj = JSON.parse(localCamp);
-            const sessObj = localSess ? JSON.parse(localSess) : {};
-            etat = {
-              campaign: campObj,
-              activeLevelId: sessObj.activeLevelId,
-              selectedTokenId: sessObj.selectedTokenId,
-            };
+    const sessionId = this._sessionId;
+    const epoch = this._sessionEpoch;
+    this._snapshotPromise = (async () => {
+      let etat = {};
+      if (this._firestore) {
+        try {
+          const docRef = doc(this._firestore, 'campaigns', sessionId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            etat = docSnap.data();
           }
+        } catch (err) {
+          this._reportError(err, `lecture du snapshot "${sessionId}"`);
         }
-      } catch (e) {
-        console.warn('Échec lecture LocalStorage dans snapshot() :', e);
       }
-    }
 
-    this._snapshotReady = true;
-    const tamponnes = this._eventBuffer;
-    this._eventBuffer = [];
-    for (const event of tamponnes) {
-      this._notifySubscribers(event);
-    }
+      // Repli LocalStorage si Firestore n'a rien renvoyé ou est indisponible.
+      if (!etat || Object.keys(etat).length === 0) {
+        try {
+          if (typeof localStorage !== 'undefined') {
+            const localCamp = localStorage.getItem(`rpg_campaign_${sessionId}`);
+            const localSess = localStorage.getItem(`rpg_session_${sessionId}`);
+            if (localCamp) {
+              const campObj = JSON.parse(localCamp);
+              const sessObj = localSess ? JSON.parse(localSess) : {};
+              etat = {
+                campaign: campObj,
+                activeLevelId: sessObj.activeLevelId,
+                selectedTokenId: sessObj.selectedTokenId,
+              };
+            }
+          }
+        } catch (err) {
+          this._reportError(err, `lecture du repli local "${sessionId}"`);
+        }
+      }
 
-    return etat;
+      if (epoch !== this._sessionEpoch) {
+        throw new Error('La session a changé pendant la lecture du snapshot');
+      }
+
+      // La continuation de `await snapshot()` applique l'état complet avant que ce timer
+      // ne vide les deltas reçus pendant sa lecture.
+      setTimeout(() => this._activateBufferedEvents(epoch), 0);
+      return etat;
+    })();
+    return this._snapshotPromise;
   }
 
   /**
@@ -409,25 +501,28 @@ export class FirebaseTransport {
     if (!this._sessionId) {
       throw new Error('Transport non connecté');
     }
+    if (!campaignData || typeof campaignData !== 'object') {
+      throw new Error('Snapshot invalide pour sauvegarde');
+    }
+    assertNoTransientAssetUrls(campaignData, 'snapshot');
 
-    // Sauvegarde en LocalStorage SANS imageUrl (trop volumineux)
+    // Les URL HTTP(S) persistantes sont conservées dans le repli local.
     if (typeof localStorage !== 'undefined') {
       try {
-        const campaignForStorage = /** @type {any} */ (structuredClone(campaignData));
-        if (campaignForStorage.levels) {
-          campaignForStorage.levels.forEach((/** @type {any} */ l) => {
-            delete l.imageUrl;
-          });
-        }
-        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campaignForStorage));
-      } catch (e) {
-        console.warn('Erreur écriture LocalStorage :', e);
+        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campaignData));
+      } catch (err) {
+        this._reportError(err, `écriture du repli local "${this._sessionId}"`);
       }
     }
 
     // Firestore sauvegarde le complet (avec imageUrl)
     if (this._firestore) {
-      await setDoc(doc(this._firestore, 'campaigns', this._sessionId), campaignData);
+      try {
+        await setDoc(doc(this._firestore, 'campaigns', this._sessionId), campaignData);
+      } catch (err) {
+        this._reportError(err, `sauvegarde du snapshot "${this._sessionId}"`);
+        throw err;
+      }
     }
   }
 
@@ -441,22 +536,44 @@ export class FirebaseTransport {
     if (!this._db || !this._sessionId) {
       throw new Error('Transport non connecté');
     }
-    if (!this._clientId) {
-      this._clientId = 'c_' + Math.random().toString(36).substring(2, 9);
+    if (
+      !presenceData ||
+      !Number.isSafeInteger(presenceData.build) ||
+      typeof presenceData.label !== 'string'
+    ) {
+      throw new Error('Présence invalide (build entier et label requis)');
     }
     const presenceRef = ref(this._db, `session/${this._sessionId}/presence/${this._clientId}`);
-    const payload = {
+    const payload = /** @type {{ role: 'gm'|'players', build: number, label: string }} */ ({
       role: presenceData.role || this._role || 'players',
-      at: Date.now(),
       build: presenceData.build,
       label: presenceData.label,
-    };
-    await set(presenceRef, payload);
-    try {
-      await onDisconnect(presenceRef).remove();
-    } catch {
-      // Ignoré
+    });
+    if (payload.role !== 'gm' && payload.role !== 'players') {
+      throw new Error('Présence invalide (role attendu : "gm" ou "players")');
     }
+
+    if (this._presenceHeartbeat) clearInterval(this._presenceHeartbeat);
+
+    const disconnectRegistration = onDisconnect(presenceRef);
+    try {
+      // Enregistrer la suppression avant l'écriture ferme la fenêtre où un client pourrait
+      // disparaître en laissant une présence fantôme.
+      await disconnectRegistration.remove();
+      await set(presenceRef, { ...payload, at: Date.now() });
+    } catch (err) {
+      this._reportError(err, 'publication de la présence');
+      throw err;
+    }
+    this._presenceRef = presenceRef;
+    this._presenceOnDisconnect = disconnectRegistration;
+    this._presencePayload = payload;
+    this._presenceHeartbeat = setInterval(() => {
+      if (!this._presenceRef || !this._presencePayload) return;
+      set(this._presenceRef, { ...this._presencePayload, at: Date.now() }).catch((err) =>
+        this._reportError(err, 'rafraîchissement de la présence')
+      );
+    }, PRESENCE_HEARTBEAT_MS);
   }
 
   /**
@@ -469,13 +586,25 @@ export class FirebaseTransport {
     if (!this._db || !this._sessionId) {
       throw new Error('Transport non connecté');
     }
+    if (typeof handler !== 'function') {
+      throw new Error('Le handler de présence doit être une fonction');
+    }
     const presenceRef = ref(this._db, `session/${this._sessionId}/presence`);
-    const unsubscribe = onValue(presenceRef, (snap) => {
-      const val = snap.val() || {};
-      handler(val);
-    });
+    const unsubscribe = onValue(
+      presenceRef,
+      (snap) => {
+        const val = snap.val() || {};
+        handler(val);
+      },
+      (err) => this._reportError(err, 'écoute de la présence')
+    );
+    this._presenceUnsubscribers.add(unsubscribe);
+    let active = true;
     return () => {
-      off(presenceRef);
+      if (!active) return;
+      active = false;
+      this._presenceUnsubscribers.delete(unsubscribe);
+      unsubscribe();
     };
   }
 
@@ -488,6 +617,17 @@ export class FirebaseTransport {
   }
 
   /**
+   * Permet à l'application d'ignorer l'écho réseau d'une mutation déjà appliquée localement.
+   * Les anciens événements sans `clientId` restent compatibles et retournent `false`.
+   *
+   * @param {NetEvent & { clientId?: string }} event
+   * @returns {boolean}
+   */
+  isOwnEvent(event) {
+    return Boolean(this._clientId && event?.clientId === this._clientId);
+  }
+
+  /**
    * Vide le canal d'événements de la session. Le canal est en ajout pur : il grossit tant
    * qu'on ne le purge pas. Geste de fin de séance, et nettoyage des tests.
    *
@@ -497,30 +637,72 @@ export class FirebaseTransport {
     if (!this._db || !this._sessionId) {
       throw new Error('Transport non connecté');
     }
-    await remove(ref(this._db, `session/${this._sessionId}/events`));
+    try {
+      await remove(ref(this._db, `session/${this._sessionId}/events`));
+    } catch (err) {
+      this._reportError(err, `purge des événements "${this._sessionId}"`);
+      throw err;
+    }
   }
 
   /** @returns {void} */
   disconnect() {
-    if (this._liveQuery) {
-      off(this._liveQuery);
-      this._liveQuery = null;
-    }
-    if (this._db && this._sessionId && this._clientId) {
-      try {
-        const presenceRef = ref(this._db, `session/${this._sessionId}/presence/${this._clientId}`);
-        remove(presenceRef);
-      } catch {
-        // Ignoré
-      }
-    }
+    this._sessionEpoch += 1;
+    this._stopSessionListeners();
     this._subscribers.clear();
-    this._errorHandlers.clear();
     this._eventBuffer = [];
-    this._snapshotReady = false;
+    this._deliveryState = 'inactive';
+    this._snapshotPromise = null;
     this._sessionId = null;
     this._role = null;
     this._clientId = null;
+  }
+
+  /**
+   * Coupe les écouteurs et retire au mieux la présence de la session quittée.
+   * @private
+   */
+  _stopSessionListeners() {
+    if (this._liveUnsubscribe) {
+      this._liveUnsubscribe();
+      this._liveUnsubscribe = null;
+    } else if (this._liveQuery) {
+      off(this._liveQuery);
+    }
+    this._liveQuery = null;
+
+    for (const unsubscribe of this._presenceUnsubscribers) unsubscribe();
+    this._presenceUnsubscribers.clear();
+    if (this._presenceHeartbeat) {
+      clearInterval(this._presenceHeartbeat);
+      this._presenceHeartbeat = null;
+    }
+    if (this._presenceRef) {
+      const presenceRef = this._presenceRef;
+      const disconnectRegistration = this._presenceOnDisconnect;
+      // La suppression distante passe avant l'annulation de onDisconnect : si le réseau
+      // tombe entre les deux, le serveur conserve ainsi l'ordre de secours.
+      remove(presenceRef)
+        .then(() => disconnectRegistration?.cancel())
+        .catch((err) => this._reportError(err, 'retrait de la présence à la déconnexion'));
+      this._presenceRef = null;
+    }
+    this._presenceOnDisconnect = null;
+    this._presencePayload = null;
+  }
+
+  /**
+   * @private
+   * @param {number} epoch
+   */
+  _activateBufferedEvents(epoch) {
+    if (epoch !== this._sessionEpoch || this._deliveryState !== 'buffering') return;
+    this._deliveryState = 'draining';
+    while (this._eventBuffer.length > 0) {
+      const event = /** @type {NetEvent} */ (this._eventBuffer.shift());
+      this._notifySubscribers(event);
+    }
+    this._deliveryState = 'live';
   }
 
   /**

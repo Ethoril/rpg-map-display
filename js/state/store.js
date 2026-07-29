@@ -54,6 +54,8 @@ function deepFreeze(obj) {
 
 /** @type {string | null} */
 let currentSessionId = null;
+/** @type {Error|null} */
+let lastPersistenceError = null;
 
 /**
  * Configure l'identifiant de session actif pour la persistance automatique en LocalStorage.
@@ -83,6 +85,19 @@ function getStorage() {
 }
 
 /**
+ * Valide une campagne candidate avant de remplacer l'état courant.
+ *
+ * @param {Campaign} candidate
+ * @param {string} operation
+ */
+function assertValidCampaign(candidate, operation) {
+  const errors = validateCampaign(candidate);
+  if (errors.length > 0) {
+    throw new Error(`${operation} refusée : ${errors.join(' ; ')}`);
+  }
+}
+
+/**
  * Sauvegarde manuellement la campagne et l'état de session courant dans LocalStorage.
  *
  * @param {string} [sessionId]
@@ -93,15 +108,10 @@ export function saveToLocalStorage(sessionId) {
   if (!targetSessionId || !storage) return;
   try {
     if (campaign) {
-      const campaignForStorage = /** @type {any} */ (structuredClone(campaign));
-      if (campaignForStorage.levels) {
-        campaignForStorage.levels.forEach((/** @type {any} */ l) => {
-          if (l.imageUrl && l.imageUrl.startsWith('data:')) {
-            delete l.imageUrl;
-          }
-        });
-      }
-      storage.setItem(`rpg_campaign_${targetSessionId}`, JSON.stringify(campaignForStorage));
+      assertValidCampaign(campaign, 'Sauvegarde de la campagne');
+      storage.setItem(`rpg_campaign_${targetSessionId}`, JSON.stringify(campaign));
+    } else {
+      storage.removeItem(`rpg_campaign_${targetSessionId}`);
     }
     storage.setItem(
       `rpg_session_${targetSessionId}`,
@@ -110,8 +120,13 @@ export function saveToLocalStorage(sessionId) {
         selectedTokenId: getSelectedTokenId(),
       })
     );
+    lastPersistenceError = null;
   } catch (err) {
-    console.warn('Erreur écriture LocalStorage :', err);
+    lastPersistenceError = new Error(
+      `Erreur écriture LocalStorage : ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
+    );
+    throw lastPersistenceError;
   }
 }
 
@@ -125,6 +140,7 @@ export function loadFromLocalStorage(sessionId) {
   const storage = getStorage();
   if (!sessionId || !storage) return false;
   currentSessionId = sessionId;
+  lastPersistenceError = null;
   try {
     const rawCamp = storage.getItem(`rpg_campaign_${sessionId}`);
     const rawSess = storage.getItem(`rpg_session_${sessionId}`);
@@ -143,9 +159,18 @@ export function loadFromLocalStorage(sessionId) {
     );
     return true;
   } catch (err) {
-    console.warn('Erreur chargement LocalStorage :', err);
+    lastPersistenceError = new Error(
+      `Erreur chargement LocalStorage : ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
+    );
+    console.warn(lastPersistenceError.message);
     return false;
   }
+}
+
+/** @returns {Error|null} */
+export function getLastPersistenceError() {
+  return lastPersistenceError;
 }
 
 /**
@@ -158,10 +183,6 @@ export function loadFromLocalStorage(sessionId) {
  * @returns {void}
  */
 export function restoreFromSnapshot(snapshotData, options = {}) {
-  console.log('[DEBUG] restoreFromSnapshot appelée :', {
-    hasCampaign: !!(snapshotData && snapshotData.campaign),
-    levels: snapshotData?.campaign?.levels?.length ?? snapshotData?.levels?.length,
-  });
   if (!snapshotData || typeof snapshotData !== 'object') return;
 
   if (options.sessionId) {
@@ -182,14 +203,16 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     campaign = structuredClone(campaignCandidate);
   }
 
-  const targetLevelId =
+  const requestedLevelId =
     options.activeLevelId ||
     snapshotData.activeLevelId ||
     (campaign && campaign.levels.length > 0 ? campaign.levels[0].id : null);
 
-  if (campaign && targetLevelId && campaign.levels.some((l) => l.id === targetLevelId)) {
-    activeLevelId = targetLevelId;
-  }
+  activeLevelId = campaign
+    ? campaign.levels.some((level) => level.id === requestedLevelId)
+      ? requestedLevelId
+      : campaign.levels[0]?.id ?? null
+    : null;
 
   const targetTokenId = snapshotData.selectedTokenId || null;
   if (campaign && targetTokenId && campaign.tokens.some((t) => t.id === targetTokenId)) {
@@ -240,10 +263,11 @@ export function subscribe(listener) {
  * @returns {void}
  */
 export function loadCampaign(campaignData) {
-  const errors = validateCampaign(campaignData);
-  if (errors.length > 0) {
+  try {
+    assertValidCampaign(campaignData, 'Chargement de la campagne');
+  } catch (err) {
     throw new Error(
-      `Impossible de charger la campagne : document invalide. ${errors.join(' ; ')}`
+      `Impossible de charger la campagne : document invalide. ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
@@ -350,7 +374,8 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
     );
   }
 
-  const token = campaign.tokens.find((t) => t.id === tokenId);
+  const candidate = structuredClone(campaign);
+  const token = candidate.tokens.find((t) => t.id === tokenId);
   if (!token) {
     throw new Error(`Pion inconnu : "${tokenId}"`);
   }
@@ -366,6 +391,9 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
       startedAt: moveData.startedAt ?? Date.now(),
     };
   }
+
+  assertValidCampaign(candidate, `Déplacement du pion "${tokenId}"`);
+  campaign = candidate;
 
   // Si le pion est actuellement sélectionné, mettre à jour les cases atteignables
   if (getSelectedTokenId() === tokenId) {
@@ -387,15 +415,10 @@ export function addToken(tokenData) {
     throw new Error('Aucune campagne chargée');
   }
 
-  if (
-    !tokenData.cell ||
-    !Number.isInteger(tokenData.cell.a) ||
-    !Number.isInteger(tokenData.cell.b)
-  ) {
-    throw new Error('Coordonnées du pion non entières');
-  }
-
-  campaign.tokens.push(structuredClone(tokenData));
+  const candidate = structuredClone(campaign);
+  candidate.tokens.push(structuredClone(tokenData));
+  assertValidCampaign(candidate, `Ajout du pion "${tokenData?.id || 'inconnu'}"`);
+  campaign = candidate;
   notifySubscribers();
 }
 
@@ -406,16 +429,21 @@ export function addToken(tokenData) {
  * @returns {void}
  */
 export function addLevel(levelData) {
+  /** @type {Campaign} */
+  let candidate;
   if (!campaign) {
-    campaign = createCampaign({ levels: [structuredClone(levelData)] });
+    candidate = createCampaign({ levels: [structuredClone(levelData)] });
   } else {
-    const idx = campaign.levels.findIndex((l) => l.id === levelData.id);
+    candidate = structuredClone(campaign);
+    const idx = candidate.levels.findIndex((l) => l.id === levelData.id);
     if (idx !== -1) {
-      campaign.levels[idx] = structuredClone(levelData);
+      candidate.levels[idx] = structuredClone(levelData);
     } else {
-      campaign.levels.push(structuredClone(levelData));
+      candidate.levels.push(structuredClone(levelData));
     }
   }
+  assertValidCampaign(candidate, `Ajout de l'étage "${levelData?.id || 'inconnu'}"`);
+  campaign = candidate;
   activeLevelId = levelData.id;
   notifySubscribers();
 }
@@ -423,17 +451,40 @@ export function addLevel(levelData) {
 /**
  * Met à jour l'étage actif avec les propriétés fournies.
  *
- * @param {Partial<Level>} levelUpdates
+ * @param {Omit<Partial<Level>, 'grid'> & {grid?: Partial<import('../core/types.js').GridConfig>}} levelUpdates
  * @returns {void}
  */
 export function updateActiveLevel(levelUpdates) {
   if (!campaign || !activeLevelId) return;
-  const idx = campaign.levels.findIndex((l) => l.id === activeLevelId);
-  if (idx === -1) return;
+  updateLevel(activeLevelId, levelUpdates);
+}
 
-  const currentLevel = campaign.levels[idx];
+/**
+ * Met à jour un étage identifié, indépendamment de l'étage actif.
+ * La campagne candidate complète est validée avant toute mutation.
+ *
+ * @param {string} levelId
+ * @param {Omit<Partial<Level>, 'grid'> & {grid?: Partial<import('../core/types.js').GridConfig>}} levelUpdates
+ * @returns {void}
+ */
+export function updateLevel(levelId, levelUpdates) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const idx = campaign.levels.findIndex((l) => l.id === levelId);
+  if (idx === -1) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+  if (levelUpdates.id !== undefined && levelUpdates.id !== levelId) {
+    throw new Error(
+      `Mise à jour de l'étage "${levelId}" refusée : son identifiant ne peut pas être modifié`
+    );
+  }
+
+  const candidate = structuredClone(campaign);
+  const currentLevel = candidate.levels[idx];
   const gridUpdates = levelUpdates.grid || {};
-  campaign.levels[idx] = {
+  candidate.levels[idx] = {
     ...currentLevel,
     ...levelUpdates,
     grid: {
@@ -441,11 +492,10 @@ export function updateActiveLevel(levelUpdates) {
       ...gridUpdates,
     },
   };
+  assertValidCampaign(candidate, `Mise à jour de l'étage "${levelId}"`);
+  campaign = candidate;
   notifySubscribers();
 }
-
-/** Alias updateLevel pour compatibilité avec le contrat T-22 */
-export const updateLevel = updateActiveLevel;
 
 /**
  * Supprime un pion de la campagne par son identifiant.

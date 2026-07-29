@@ -40,9 +40,19 @@ export function mountGMVersionBadge(container, options = {}) {
   `;
 
   const banner = /** @type {HTMLElement} */ (container.querySelector('#version-mismatch-banner-gm'));
+  const transport = /** @type {any} */ (options.transport);
+  /** @type {string|null} */
+  let transportError = null;
 
   function update() {
-    const mismatch = checkBuildMismatch(localBuild);
+    const selfClientId =
+      transport && typeof transport.getClientId === 'function' ? transport.getClientId() : '';
+    const mismatch = checkBuildMismatch(localBuild, selfClientId || '');
+    if (transportError) {
+      banner.textContent = `Connexion impossible : ${transportError}`;
+      banner.style.display = 'block';
+      return;
+    }
     if (mismatch.hasMismatch) {
       const remoteBuild = mismatch.remoteBuild;
       banner.textContent = `La tablette exécute la build ${remoteBuild}, ce poste la ${localBuild}. Recharge la tablette.`;
@@ -53,21 +63,40 @@ export function mountGMVersionBadge(container, options = {}) {
   }
 
   const unsubPresence = subscribePresence(update);
+  const stalePresenceTimer = setInterval(update, 30_000);
 
   let unsubTransportPresence = null;
-  if (options.transport) {
-    const transport = /** @type {any} */ (options.transport);
-    if (typeof transport.subscribePresence === 'function') {
-      unsubTransportPresence = transport.subscribePresence((/** @type {any} */ presences) => {
-        setPresenceMap(presences);
+  let unsubTransportError = null;
+  if (transport) {
+    if (typeof transport.onError === 'function') {
+      unsubTransportError = transport.onError((/** @type {unknown} */ err) => {
+        transportError =
+          /** @type {any} */ (err)?.message || /** @type {any} */ (err)?.code || String(err);
+        update();
       });
     }
+    if (typeof transport.subscribePresence === 'function') {
+      try {
+        unsubTransportPresence = transport.subscribePresence((/** @type {any} */ presences) => {
+          setPresenceMap(presences);
+        });
+      } catch (err) {
+        transportError = /** @type {any} */ (err)?.message || String(err);
+      }
+    }
     if (typeof transport.publishPresence === 'function') {
-      transport.publishPresence({
-        role: options.role || 'gm',
-        build: localBuild,
-        label: localLabel,
-      });
+      Promise.resolve()
+        .then(() =>
+          transport.publishPresence({
+            role: options.role || 'gm',
+            build: localBuild,
+            label: localLabel,
+          })
+        )
+        .catch((err) => {
+          transportError = /** @type {any} */ (err)?.message || String(err);
+          update();
+        });
     }
   }
 
@@ -76,7 +105,9 @@ export function mountGMVersionBadge(container, options = {}) {
   return {
     detach: () => {
       unsubPresence();
+      clearInterval(stalePresenceTimer);
       if (unsubTransportPresence) unsubTransportPresence();
+      if (unsubTransportError) unsubTransportError();
     },
     update,
   };
@@ -118,6 +149,9 @@ export function mountPlayerVersionBadge(options = {}) {
   /** @type {ReturnType<typeof setTimeout>|null} */
   let fadeTimer = null;
   let isMismatching = false;
+  const transport = /** @type {any} */ (options.transport);
+  /** @type {string|null} */
+  let transportError = null;
 
   function hideAfterDelay() {
     if (fadeTimer) clearTimeout(fadeTimer);
@@ -136,7 +170,17 @@ export function mountPlayerVersionBadge(options = {}) {
 
   function update() {
     if (!overlay) return;
-    const mismatch = checkBuildMismatch(localBuild);
+    const selfClientId =
+      transport && typeof transport.getClientId === 'function' ? transport.getClientId() : '';
+    const mismatch = checkBuildMismatch(localBuild, selfClientId || '');
+    if (transportError) {
+      isMismatching = true;
+      if (fadeTimer) clearTimeout(fadeTimer);
+      overlay.style.backgroundColor = '#d32f2f';
+      overlay.style.opacity = '1';
+      overlay.textContent = `${localLabel} · Connexion impossible`;
+      return;
+    }
     if (mismatch.hasMismatch) {
       isMismatching = true;
       if (fadeTimer) clearTimeout(fadeTimer);
@@ -184,21 +228,40 @@ export function mountPlayerVersionBadge(options = {}) {
   window.addEventListener('pointercancel', handlePointerUp);
 
   const unsubPresence = subscribePresence(update);
+  const stalePresenceTimer = setInterval(update, 30_000);
 
   let unsubTransportPresence = null;
-  if (options.transport) {
-    const transport = /** @type {any} */ (options.transport);
-    if (typeof transport.subscribePresence === 'function') {
-      unsubTransportPresence = transport.subscribePresence((/** @type {any} */ presences) => {
-        setPresenceMap(presences);
+  let unsubTransportError = null;
+  if (transport) {
+    if (typeof transport.onError === 'function') {
+      unsubTransportError = transport.onError((/** @type {unknown} */ err) => {
+        transportError =
+          /** @type {any} */ (err)?.message || /** @type {any} */ (err)?.code || String(err);
+        update();
       });
     }
+    if (typeof transport.subscribePresence === 'function') {
+      try {
+        unsubTransportPresence = transport.subscribePresence((/** @type {any} */ presences) => {
+          setPresenceMap(presences);
+        });
+      } catch (err) {
+        transportError = /** @type {any} */ (err)?.message || String(err);
+      }
+    }
     if (typeof transport.publishPresence === 'function') {
-      transport.publishPresence({
-        role: options.role || 'players',
-        build: localBuild,
-        label: localLabel,
-      });
+      Promise.resolve()
+        .then(() =>
+          transport.publishPresence({
+            role: options.role || 'players',
+            build: localBuild,
+            label: localLabel,
+          })
+        )
+        .catch((err) => {
+          transportError = /** @type {any} */ (err)?.message || String(err);
+          update();
+        });
     }
   }
 
@@ -214,7 +277,9 @@ export function mountPlayerVersionBadge(options = {}) {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
       unsubPresence();
+      clearInterval(stalePresenceTimer);
       if (unsubTransportPresence) unsubTransportPresence();
+      if (unsubTransportError) unsubTransportError();
       if (overlay && overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
       }

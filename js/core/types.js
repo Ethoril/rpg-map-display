@@ -216,8 +216,6 @@
  */
 
 // Ce fichier ne contient AUCUN code exécutable : uniquement des @typedef et l'export vide
-// ci-dessous (ARCHITECTURE.md §1 et §3). Les types PixiJS se réfèrent directement au
-// paquet — `import('pixi.js').Graphics` — jamais à un alias déclaré ici.
+// ci-dessous (ARCHITECTURE.md §1 et §3). Le rendu Canvas utilise les types DOM natifs.
 
 export {}
-

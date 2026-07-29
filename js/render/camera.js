@@ -7,7 +7,7 @@
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 
 /**
- * Caméra 2D Pixi v8 : pivot + position.
+ * Caméra 2D indépendante du moteur : centre de vue, zoom et conversions de coordonnées.
  * Gère correctement resolution + autoDensity.
  */
 export class Camera {

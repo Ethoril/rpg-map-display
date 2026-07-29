@@ -4,15 +4,13 @@
 /** @typedef {import('../core/types.js').MapPoint} MapPoint */
 
 /**
- * @typedef {Object} TapCellIntention
- * @property {'tapCell'} type
- * @property {MapPoint} at Position de la case sur la carte
- */
-
-/**
- * @typedef {Object} TapTokenIntention
- * @property {'tapToken'} type
- * @property {ScreenPoint} at Position du clic sur l'écran (pour hit-test pion)
+ * Intention de tap unique. Le point d'entrée applicatif effectue ensuite le hit-test et
+ * décide si la cible est un pion, une case ou le vide.
+ *
+ * @typedef {Object} TapIntention
+ * @property {'tap'} type
+ * @property {ScreenPoint} screenPos
+ * @property {MapPoint} mapPos
  */
 
 /**
@@ -27,7 +25,8 @@
  * @property {'dragToken'} type
  * @property {ScreenPoint} screenPos Position courante sur l'écran
  * @property {MapPoint} mapPos Même position sur la carte
- * @property {'start'|'move'|'end'} [phase] Phase du glisser (optionnelle)
+ * @property {string} tokenId Identifiant déterminé au pointerdown
+ * @property {'start'|'move'|'end'} phase Phase du glisser
  */
 
 /**
@@ -45,7 +44,7 @@
  */
 
 /**
- * @typedef {TapCellIntention | TapTokenIntention | PanIntention | DragTokenIntention | PinchZoomIntention | LongPressIntention} InputIntention
+ * @typedef {TapIntention | PanIntention | DragTokenIntention | PinchZoomIntention | LongPressIntention} InputIntention
  */
 
 /**

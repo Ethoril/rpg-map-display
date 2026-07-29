@@ -106,10 +106,8 @@ for (const url of urls) {
   }
 }
 
-// Cohérence import map ⇄ devDependencies. Un paquet peut être installé en devDependency
-// pour ses seuls types (pixi.js) alors que le navigateur le charge depuis le CDN. Si les
-// deux versions divergent, `tsc` vérifie le code contre une API qui n'est pas celle
-// exécutée à table : la vérification devient un mensonge silencieux. C'est bloquant.
+// Cohérence import map ⇄ devDependencies. Si une dépendance CDN est aussi installée
+// localement pour ses types, les versions doivent rester strictement identiques.
 const pkgJsonPath = path.join(rootDir, 'package.json');
 /** @type {{ devDependencies?: Record<string, string> }} */
 const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));

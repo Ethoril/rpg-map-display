@@ -38,7 +38,7 @@ async function setupGMView(page) {
 }
 
 test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
-  test('Importation UVTT : charge minimal.uvtt et crée l étage dans le store', async ({ page }) => {
+  test('Importation UVTT : garde la base64 en aperçu puis ajoute l étage avec une URL publiée', async ({ page }) => {
     await setupGMView(page);
 
     // Basculer sur l'onglet UVTT
@@ -51,10 +51,21 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
       buffer: Buffer.from(MINIMAL_UVTT_CONTENT, 'utf-8'),
     });
 
-    // Vérifier l'affichage du message de succès dans l'interface
+    // Le chargement du fichier seul reste un aperçu local et ne touche pas le store.
     const statusText = page.locator('#uvtt-status');
     await expect(statusText).toBeVisible();
-    await expect(statusText).toContainText('importé avec succès');
+    await expect(statusText).toContainText('Aperçu UVTT local chargé');
+    await expect(page.locator('#btn-validate-uvtt-import')).toBeDisabled();
+
+    const beforePublish = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return store.getActiveLevel();
+    });
+    expect(beforePublish).toBeNull();
+
+    await page.fill('#uvtt-canonical-url', 'maps/minimal.webp');
+    await page.click('#btn-validate-uvtt-import');
+    await expect(statusText).toContainText('ajouté avec son asset publié');
 
     // Vérifier que le store contient l'étage UVTT importé
     const activeLevel = await page.evaluate(async () => {
@@ -66,6 +77,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(activeLevel?.widthCells).toBe(10);
     expect(activeLevel?.heightCells).toBe(8);
     expect(activeLevel?.pxPerCell).toBe(64);
+    expect(activeLevel?.imageUrl).toBe('maps/minimal.webp');
   });
 
   test('Importation Image Calibrée : importe une image 10x8 cases x 140px', async ({ page }) => {
@@ -81,7 +93,9 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
       buffer: TEST_PNG_BUFFER,
     });
 
-    // Attendre que le bouton soit activé (image chargée)
+    // L'aperçu seul n'est pas ajoutable : une URL canonique est obligatoire.
+    await expect(page.locator('#btn-validate-image-import')).toBeDisabled();
+    await page.fill('#image-canonical-url', 'maps/map-test.webp');
     await expect(page.locator('#btn-validate-image-import')).toBeEnabled();
 
     // Remplir les paramètres de calibration : 10 cases large, 8 cases haut, 140 px/case
@@ -94,7 +108,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
 
     const statusText = page.locator('#image-status');
     await expect(statusText).toBeVisible();
-    await expect(statusText).toContainText('importée et calibrée avec succès');
+    await expect(statusText).toContainText('publiée ajoutée et calibrée avec succès');
 
     // Vérifier les propriétés de l'étage dans le store
     const activeLevel = await page.evaluate(async () => {
@@ -107,6 +121,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(activeLevel?.heightCells).toBe(8);
     expect(activeLevel?.pxPerCell).toBe(140);
     expect(activeLevel?.grid.type).toBe('square');
+    expect(activeLevel?.imageUrl).toBe('maps/map-test.webp');
   });
 
   test('Générateur de Pions & Réglages Grille : pion créé et grille modifiée', async ({ page }) => {
@@ -119,6 +134,9 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
       mimeType: 'image/png',
       buffer: TEST_PNG_BUFFER,
     });
+    await page.fill('#img-cells-wide', '10');
+    await page.fill('#img-cells-tall', '8');
+    await page.fill('#image-canonical-url', 'maps/map-test.webp');
     await page.click('#btn-validate-image-import');
 
     // 2. Aller dans l'onglet Pions et générer un pion
@@ -144,6 +162,10 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     const addedToken = tokens.find((/** @type {any} */ t) => t.label === 'Chevalier');
     expect(addedToken).toBeDefined();
     expect(addedToken?.sizeCells).toBe(2);
+    expect(addedToken?.levelId).toBe(
+      await page.evaluate(async () => (await import('../js/state/store.js')).getActiveLevelId())
+    );
+    expect(addedToken?.imageUrl.startsWith('data:')).toBe(false);
 
     // 3. Aller dans l'onglet Grille et modifier les réglages
     await page.click('.gm-tab-btn[data-tab="grid-settings"]');
@@ -168,6 +190,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
       mimeType: 'image/png',
       buffer: TEST_PNG_BUFFER,
     });
+    await page.fill('#image-canonical-url', 'maps/dungeon.webp');
     await page.click('#btn-validate-image-import');
 
     await page.click('.gm-tab-btn[data-tab="token-maker"]');
@@ -191,5 +214,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(state.level).not.toBeNull();
     expect(state.token).toBeDefined();
     expect(state.token?.label).toBe('Dragon');
+    expect(state.token?.levelId).toBe(state.level?.id);
+    expect(state.token?.imageUrl.startsWith('data:')).toBe(false);
   });
 });

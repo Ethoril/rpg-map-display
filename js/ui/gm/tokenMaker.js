@@ -1,5 +1,5 @@
 // @ts-check
-import { createToken } from '../../core/schema.js';
+import { createToken, isPersistableAssetUrl } from '../../core/schema.js';
 
 /**
  * @typedef {import('../../core/types.js').Token} Token
@@ -7,7 +7,7 @@ import { createToken } from '../../core/schema.js';
 
 /**
  * @typedef {Object} TokenMakerOptions
- * @property {string} [defaultLevelId] LevelId par défaut à attribuer au pion généré
+ * @property {string|null} defaultLevelId LevelId actif à attribuer au pion généré
  * @property {(token: Token, dataUrl: string) => void} [onGenerate] Callback appelé lors de la génération
  * @property {(token: Token, dataUrl: string) => void} [onDownload] Callback appelé lors du téléchargement
  */
@@ -16,11 +16,14 @@ import { createToken } from '../../core/schema.js';
  * Composant de création et recadrage de pion MJ.
  *
  * @param {HTMLElement} container Élément HTML conteneur
- * @param {TokenMakerOptions} [options]
+ * @param {TokenMakerOptions} options
  */
-export function createTokenMaker(container, options = {}) {
+export function createTokenMaker(container, options) {
   if (!container) {
     throw new Error('createTokenMaker : conteneur HTML requis');
+  }
+  if (!Object.prototype.hasOwnProperty.call(options, 'defaultLevelId')) {
+    throw new Error('createTokenMaker : defaultLevelId est obligatoire');
   }
 
   // --- Structure DOM ---
@@ -62,7 +65,14 @@ export function createTokenMaker(container, options = {}) {
 
         <label for="token-label">Nom du pion :</label>
         <input type="text" id="token-label" value="Pion" />
+
+        <label for="token-canonical-url">URL publiée :</label>
+        <input type="text" id="token-canonical-url" placeholder="Auto : maps/tokens/token-&lt;id&gt;.webp" />
       </div>
+
+      <p id="token-maker-status" style="margin: 0; font-size: 0.75rem; color: #aaa;">
+        Le WebP sera téléchargé localement. Placez-le dans maps/tokens/ avant de partager la campagne.
+      </p>
 
       <div class="token-maker-actions" style="display: flex; gap: 0.5rem;">
         <button id="btn-generate-token" style="flex: 1; padding: 0.5rem;" disabled>Générer pion</button>
@@ -86,6 +96,10 @@ export function createTokenMaker(container, options = {}) {
   const sizeCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-size-cells'));
   const speedCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-speed-cells'));
   const labelInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-label'));
+  const canonicalUrlInput = /** @type {HTMLInputElement} */ (
+    container.querySelector('#token-canonical-url')
+  );
+  const status = /** @type {HTMLElement} */ (container.querySelector('#token-maker-status'));
 
   const btnGenerate = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-generate-token'));
   const btnDownload = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-download-token'));
@@ -117,6 +131,27 @@ export function createTokenMaker(container, options = {}) {
   let currentToken = null;
   /** @type {string|null} */
   let currentDataUrl = null;
+  /** @type {string|null} */
+  let defaultLevelId = options.defaultLevelId ?? null;
+
+  function refreshGenerateAvailability() {
+    const explicitUrl = canonicalUrlInput.value.trim();
+    const urlIsValid = explicitUrl === '' || isPersistableAssetUrl(explicitUrl);
+    btnGenerate.disabled = !loadedImage || !defaultLevelId || !urlIsValid;
+
+    if (!defaultLevelId) {
+      status.style.color = '#f1c40f';
+      status.textContent = 'Ajoutez ou sélectionnez un étage avant de générer un pion.';
+    } else if (!urlIsValid) {
+      status.style.color = '#e74c3c';
+      status.textContent =
+        'URL invalide : utilisez une URL relative ou HTTPS publiée, jamais data: ou blob:.';
+    } else {
+      status.style.color = '#aaa';
+      status.textContent =
+        'Le WebP sera téléchargé localement. Placez-le dans maps/tokens/ avant de partager la campagne.';
+    }
+  }
 
   // --- Contraintes et redessin des guides ---
   function getMinScale() {
@@ -212,7 +247,7 @@ export function createTokenMaker(container, options = {}) {
         offsetY = 0;
         clampState();
         drawPreview();
-        btnGenerate.disabled = false;
+        refreshGenerateAvailability();
       };
       img.src = /** @type {string} */ (evt.target?.result);
     };
@@ -311,6 +346,7 @@ export function createTokenMaker(container, options = {}) {
   // Changements dans le formulaire -> redessine le guide
   shapeSelect.addEventListener('change', drawPreview);
   colorInput.addEventListener('input', drawPreview);
+  canonicalUrlInput.addEventListener('input', refreshGenerateAvailability);
 
   // Synchronisation suggestive kind <-> guide shape if desired
   kindSelect.addEventListener('change', () => {
@@ -325,6 +361,9 @@ export function createTokenMaker(container, options = {}) {
   // --- Génération du pion ---
   function generateToken() {
     if (!loadedImage) return null;
+    if (!defaultLevelId) {
+      throw new Error('Impossible de générer un pion sans étage actif');
+    }
 
     const sizeCells = Math.max(1, parseInt(sizeCellsInput.value, 10) || 1);
     const speedCells = Math.max(1, parseInt(speedCellsInput.value, 10) || 3);
@@ -379,14 +418,25 @@ export function createTokenMaker(container, options = {}) {
     // Export en WebP (ou PNG par repli du navigateur)
     const dataUrl = outCanvas.toDataURL('image/webp');
 
-    // Instanciation du pion respectant le contrat createToken
+    const tokenId = crypto.randomUUID();
+    const explicitCanonicalUrl = canonicalUrlInput.value.trim();
+    const canonicalUrl =
+      explicitCanonicalUrl || `maps/tokens/token-${tokenId}.webp`;
+    if (!isPersistableAssetUrl(canonicalUrl) || canonicalUrl === '') {
+      throw new Error(
+        'URL du pion non persistable : utilisez une URL relative ou HTTPS publiée'
+      );
+    }
+
+    // Le data URL reste l'aperçu/téléchargement local. Le pion partagé ne
+    // conserve que son URL canonique persistable.
     const token = createToken({
-      id: crypto.randomUUID(),
-      levelId: options.defaultLevelId ?? 'rdc',
+      id: tokenId,
+      levelId: defaultLevelId,
       cell: { a: 0, b: 0 },
       sizeCells,
       kind,
-      imageUrl: dataUrl,
+      imageUrl: canonicalUrl,
       borderColor,
       label,
       hidden: false,
@@ -394,7 +444,7 @@ export function createTokenMaker(container, options = {}) {
       visionDim: 10,
       emitsLight: null,
       speedCells,
-      playerMovable: true,
+      playerMovable: kind === 'pc',
       locked: false,
       elevation: 0,
       markers: [],
@@ -404,6 +454,8 @@ export function createTokenMaker(container, options = {}) {
     currentDataUrl = dataUrl;
 
     btnDownload.disabled = false;
+    status.style.color = '#2ecc71';
+    status.textContent = `Aperçu généré. Publiez le fichier sous ${canonicalUrl}.`;
 
     if (options.onGenerate) {
       options.onGenerate(token, dataUrl);
@@ -438,6 +490,7 @@ export function createTokenMaker(container, options = {}) {
 
   // Rendu initial (vide)
   drawPreview();
+  refreshGenerateAvailability();
 
   return {
     loadImageFile,
@@ -445,6 +498,14 @@ export function createTokenMaker(container, options = {}) {
     downloadToken,
     getCurrentToken: () => currentToken,
     getCurrentDataUrl: () => currentDataUrl,
+    /**
+     * Met à jour l'étage cible. Une valeur null désactive la génération.
+     * @param {string|null} levelId
+     */
+    setDefaultLevelId: (levelId) => {
+      defaultLevelId = levelId;
+      refreshGenerateAvailability();
+    },
     setShape: (/** @type {string} */ shape) => {
       shapeSelect.value = shape;
       drawPreview();

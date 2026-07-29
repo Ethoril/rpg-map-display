@@ -1,5 +1,6 @@
 // @ts-check
-import { initStage } from '../render/stage.js';
+
+import { initStage, renderLayerStack } from '../render/stage.js';
 import { Camera } from '../render/camera.js';
 import { FrameLoop } from '../render/frame.js';
 import { BackgroundLayer } from '../render/layers/background.js';
@@ -7,266 +8,373 @@ import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { gridFor } from '../grid/index.js';
-import { FirebaseTransport } from '../transport/FirebaseTransport.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
+import { createNetworkStatus, connectSession } from './session.js';
+import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 
 /**
- * Verrouille l'orientation (portrait mobile), le Wake Lock et tente le plein écran.
+ * @returns {Promise<() => void>}
  */
 async function setupMobileLocks() {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return () => {};
+  /** @type {any|null} */
+  let wakeLock = null;
 
-  // 1. Verrouillage orientation (portrait mobile)
-  const orientation = /** @type {any} */ (screen.orientation);
-  if (orientation && typeof orientation.lock === 'function') {
+  async function lockOrientation() {
+    const orientation = /** @type {any} */ (screen.orientation);
+    if (!orientation || typeof orientation.lock !== 'function') return;
     try {
-      await orientation.lock('portrait');
+      await orientation.lock('landscape');
     } catch {
-      // Ignoré si non supporté ou refusé par le navigateur
+      // Une nouvelle tentative a lieu au premier geste.
     }
   }
 
-  // 2. Wake Lock en contexte sécurisé
-  if ('wakeLock' in navigator && window.isSecureContext) {
+  async function acquireWakeLock() {
+    if (!('wakeLock' in navigator) || !window.isSecureContext || document.hidden) return;
     try {
-      await navigator.wakeLock.request('screen');
+      wakeLock = await /** @type {any} */ (navigator).wakeLock.request('screen');
     } catch {
-      // Ignoré si non supporté ou refusé par le navigateur
+      wakeLock = null;
     }
   }
 
-  // 3. Plein écran
-  if (document.documentElement.requestFullscreen) {
-    try {
-      await document.documentElement.requestFullscreen();
-    } catch {
-      // Ignoré si non supporté ou refusé sans geste utilisateur
+  async function activateFromGesture() {
+    await lockOrientation();
+    await acquireWakeLock();
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch {
+        // La PWA peut être déjà plein écran ou le navigateur peut refuser.
+      }
     }
   }
+
+  const onVisibilityChange = () => {
+    if (!document.hidden) void acquireWakeLock();
+  };
+  const onFirstGesture = () => {
+    void activateFromGesture();
+  };
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  document.addEventListener('pointerdown', onFirstGesture, { once: true });
+  await lockOrientation();
+  await acquireWakeLock();
+
+  return () => {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    document.removeEventListener('pointerdown', onFirstGesture);
+    try {
+      wakeLock?.release?.();
+    } catch {
+      // Déjà libéré.
+    }
+    wakeLock = null;
+  };
 }
 
 /**
- * Initialise l'application Joueurs (Point d'entrée).
- *
  * @param {Object} [options]
  * @param {HTMLCanvasElement} [options.canvas]
  * @param {Transport} [options.transport]
  * @param {Record<string, any>} [options.firebaseConfig]
+ * @param {string} [options.sessionId]
  */
 export async function bootstrapPlayerApp(options = {}) {
-  await setupMobileLocks();
-
+  const cleanupMobileLocks = await setupMobileLocks();
   const canvas =
     options.canvas ||
-    /** @type {HTMLCanvasElement} */ (document.querySelector('#board')) ||
+    /** @type {HTMLCanvasElement|null} */ (document.querySelector('#board')) ||
     document.createElement('canvas');
+  const stage = await initStage(canvas);
+  const camera = new Camera(stage.width, stage.height);
+  /** @type {FrameLoop} */
+  let frameLoop;
+  const requestRender = () => frameLoop?.requestFrame();
 
-  // 1. Initialisation du canvas 2D natif et des couches de rendu
-  const { canvas: canvasElem, context: ctx, layers, resolution } = await initStage(canvas);
+  const backgroundLayer = new BackgroundLayer({ invalidate: requestRender });
+  const gridLayer = new GridLayer();
+  const moveZoneLayer = new MoveZoneLayer();
+  const tokensLayer = new TokensLayer({ invalidate: requestRender });
 
-  // 2. Caméra & Boucle de rendu à la demande
-  const width = canvasElem.width / resolution;
-  const height = canvasElem.height / resolution;
-  const camera = new Camera(width, height);
-  const frameLoop = new FrameLoop(() => renderAll());
-
-  const bgLayer = new BackgroundLayer(layers.background);
-  const gridLayer = new GridLayer(layers.gridLayer);
-  const moveZoneLayer = new MoveZoneLayer(layers.moveZone);
-  const tokensLayer = new TokensLayer(layers.tokens);
-
-  // Fonction de redessin global
-  function renderAll() {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
-    ctx.restore();
-
-    ctx.save();
-    ctx.scale(resolution, resolution);
-    camera.applyToContext(ctx);
-
-    const state = store.getState();
-    const { campaign, activeLevel, selectedToken, selectedTokenId, reachableCells } = state;
-
-    if (activeLevel) {
-      if (activeLevel.imageUrl) {
-        bgLayer.load(activeLevel.imageUrl).then(() => {
-          frameLoop.requestFrame();
-        });
-        bgLayer.render(ctx);
-      }
-
-      const gridAdapter = gridFor(activeLevel);
-      gridLayer.render(ctx, gridAdapter);
-
-      const tokens = campaign ? campaign.tokens : [];
-      tokensLayer.render(ctx, gridAdapter, tokens, selectedTokenId, { role: 'players' });
-
-      if (selectedToken && reachableCells && reachableCells.size > 0) {
-        moveZoneLayer.render(ctx, gridAdapter, selectedTokenId, reachableCells, selectedToken);
-      } else {
-        moveZoneLayer.clear();
-      }
-    }
-
-    ctx.restore();
-    frameLoop.requestFrame();
-  }
-
-  // S'abonner aux changements d'état du store
-  store.subscribe(renderAll);
-
-  // 3. Transport Firebase & URL Autonome (?session=<id>&camera=follow)
-  let transport = options.transport || null;
   const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = urlParams.get('session');
+  const sessionId = options.sessionId || urlParams.get('session') || 'local-player';
   const cameraFollow = urlParams.get('camera') === 'follow';
-  const fbConfig = options.firebaseConfig || null;
+  store.setSessionId(sessionId);
 
-  if (sessionId) {
-    store.setSessionId(sessionId);
+  let restoredCamera = false;
+  try {
+    const saved = localStorage.getItem(`rpg_camera_${sessionId}`);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (
+        typeof parsed.x === 'number' &&
+        typeof parsed.y === 'number' &&
+        typeof parsed.zoom === 'number'
+      ) {
+        camera.setPan(parsed.x, parsed.y);
+        camera.setZoom(parsed.zoom);
+        restoredCamera = true;
+      }
+    }
+  } catch {
+    restoredCamera = false;
+  }
 
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const savedCam = localStorage.getItem(`rpg_camera_${sessionId}`);
-        if (savedCam) {
-          const camData = JSON.parse(savedCam);
-          if (typeof camData.x === 'number' && typeof camData.y === 'number') {
-            camera.setPan(camData.x, camData.y);
+  /** @type {string|null} */
+  let lastActiveLevelId = null;
+  function fitActiveLevel() {
+    const activeLevel = store.getActiveLevel();
+    if (!activeLevel || activeLevel.id === lastActiveLevelId) return;
+    lastActiveLevelId = activeLevel.id;
+    if (restoredCamera) {
+      restoredCamera = false;
+      return;
+    }
+    const grid = gridFor(activeLevel);
+    const bottomRight = grid.mapFromCellPoint({
+      cellX: activeLevel.widthCells,
+      cellY: activeLevel.heightCells,
+    });
+    camera.setPan(bottomRight.x / 2, bottomRight.y / 2);
+    camera.setZoom(
+      Math.min(stage.width / Math.max(1, bottomRight.x), stage.height / Math.max(1, bottomRight.y))
+    );
+  }
+
+  function renderAll() {
+    stage.context.save();
+    stage.context.setTransform(1, 0, 0, 1, 0, 0);
+    stage.context.clearRect(0, 0, stage.canvas.width, stage.canvas.height);
+    stage.context.restore();
+
+    fitActiveLevel();
+    const state = store.getState();
+    const activeLevel = state.activeLevel;
+    if (!activeLevel) return;
+
+    const grid = gridFor(activeLevel);
+    const bottomRight = grid.mapFromCellPoint({
+      cellX: activeLevel.widthCells,
+      cellY: activeLevel.heightCells,
+    });
+    void backgroundLayer.load(activeLevel.imageUrl);
+
+    stage.context.save();
+    stage.context.scale(stage.resolution, stage.resolution);
+    camera.applyToContext(stage.context);
+    let animationActive = false;
+    renderLayerStack({
+      background: () =>
+        backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, {
+          role: 'players',
+        }),
+      grid: () => gridLayer.render(stage.context, grid),
+      moveZone: () =>
+        moveZoneLayer.render(stage.context, grid, {
+          selectedToken: state.selectedToken,
+          reachableCells: state.reachableCells,
+        }),
+      tokens: () => {
+        const result = tokensLayer.render(
+          stage.context,
+          grid,
+          state.campaign?.tokens ?? [],
+          state.selectedTokenId,
+          {
+            role: 'players',
+            activeLevelId: activeLevel.id,
+            now: Date.now(),
           }
-          if (typeof camData.zoom === 'number') {
-            camera.setZoom(camData.zoom);
-          }
+        );
+        animationActive = result.animationActive;
+      },
+    });
+    stage.context.restore();
+    if (animationActive) requestRender();
+  }
+  frameLoop = new FrameLoop(renderAll);
+
+  const networkStatus = createNetworkStatus('players', sessionId);
+  /** @type {Transport|null} */
+  let transport = null;
+  try {
+    transport = await connectSession({
+      injectedTransport: options.transport || null,
+      firebaseConfig: options.firebaseConfig || null,
+      sessionId,
+      role: 'players',
+      loginHost: document.body,
+      onStatus: networkStatus.update,
+    });
+  } catch {
+    transport = null;
+  }
+
+  const transportExtended = /** @type {any} */ (transport);
+  let applyingRemote = false;
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let snapshotTimer = null;
+
+  function scheduleSnapshot() {
+    if (!transportExtended?.saveSnapshot || applyingRemote) return;
+    if (snapshotTimer !== null) clearTimeout(snapshotTimer);
+    snapshotTimer = setTimeout(() => {
+      snapshotTimer = null;
+      Promise.resolve(transportExtended.saveSnapshot(createSnapshotPayload())).catch((error) =>
+        networkStatus.update('error', error)
+      );
+    }, 250);
+  }
+
+  const unsubscribeStore = store.subscribe(() => {
+    requestRender();
+    scheduleSnapshot();
+  });
+
+  /** @type {(() => void)|null} */
+  let unsubscribeEvents = null;
+  if (transport) {
+    unsubscribeEvents = transport.subscribe((event) => {
+      if (transportExtended.isOwnEvent?.(event)) return;
+      if (cameraFollow && event.type === 'view.change') {
+        const payload = /** @type {any} */ (event.payload);
+        if (payload?.camera) {
+          camera.setPan(payload.camera.x, payload.camera.y);
+          camera.setZoom(payload.camera.zoom);
+          requestRender();
         }
+        return;
       }
-    } catch {
-      // Ignoré
-    }
-  }
-
-  if (!transport && sessionId && fbConfig) {
-    try {
-      const fb = new FirebaseTransport(fbConfig);
-      await fb.connect(sessionId, 'players');
-      transport = fb;
-    } catch (e) {
-      console.warn('Transport Firebase non disponible en vue joueurs :', e);
-    }
-  }
-
-  // Restauration du snapshot avant tout delta (T-24)
-  if (sessionId) {
-    store.setSessionId(sessionId);
-  }
-  if (transport && sessionId) {
-    try {
-      const snapshotData = /** @type {any} */ (await transport.snapshot());
-      if (snapshotData && (snapshotData.levels || snapshotData.campaign)) {
-        store.restoreFromSnapshot(snapshotData, { sessionId });
-      } else {
-        store.loadFromLocalStorage(sessionId);
+      applyingRemote = true;
+      try {
+        applyNetworkEvent(event);
+      } finally {
+        applyingRemote = false;
       }
-    } catch (e) {
-      console.warn('Erreur restauration snapshot :', e);
+    });
+
+    try {
+      const snapshot = /** @type {any} */ (await transport.snapshot());
+      applyingRemote = true;
+      try {
+        if (snapshot && (snapshot.campaign || snapshot.levels)) {
+          store.restoreFromSnapshot(snapshot, { sessionId });
+        } else {
+          store.loadFromLocalStorage(sessionId);
+          const persistenceError = store.getLastPersistenceError();
+          if (persistenceError) networkStatus.update('error', persistenceError);
+        }
+      } finally {
+        applyingRemote = false;
+      }
+    } catch (error) {
+      networkStatus.update('error', error);
       store.loadFromLocalStorage(sessionId);
     }
-  } else if (sessionId) {
+  } else {
     store.loadFromLocalStorage(sessionId);
+    const persistenceError = store.getLastPersistenceError();
+    if (persistenceError) networkStatus.update('error', persistenceError);
   }
 
-  // 4. Montage du bootstrap de la vue joueurs (gestion des taps et synchro transport)
   const playerControls = bootstrapPlayerView({
     element: canvas,
     camera,
     transport: transport || undefined,
   });
-
-  // Montage de l'overlay de version Joueurs
   const versionBadge = mountPlayerVersionBadge({
     transport: transport || undefined,
     role: 'players',
   });
 
-  const persistCamera = () => {
-    if (sessionId && typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem(
-          `rpg_camera_${sessionId}`,
-          JSON.stringify({ x: camera.x, y: camera.y, zoom: camera.zoom })
-        );
-      } catch {
-        // Ignoré
-      }
+  function persistCamera() {
+    try {
+      localStorage.setItem(
+        `rpg_camera_${sessionId}`,
+        JSON.stringify({ x: camera.x, y: camera.y, zoom: camera.zoom })
+      );
+    } catch {
+      // Le rendu continue ; la caméra sera simplement réinitialisée au prochain chargement.
     }
-  };
+  }
 
-  // Interception des gestes de pan / pinch sur la vue joueurs
   const originalEmit = playerControls.pointerInput.emit.bind(playerControls.pointerInput);
   playerControls.pointerInput.emit = (intention) => {
     if (intention.type === 'panBy') {
-      camera.setPan(camera.x - intention.deltaX / camera.zoom, camera.y - intention.deltaY / camera.zoom);
+      camera.setPan(
+        camera.x - intention.deltaX / camera.zoom,
+        camera.y - intention.deltaY / camera.zoom
+      );
       persistCamera();
-      renderAll();
+      requestRender();
     } else if (intention.type === 'pinchZoom') {
+      const before = camera.screenToMap(intention.center);
       camera.setZoom(camera.zoom * intention.scaleFactor);
+      const after = camera.screenToMap(intention.center);
+      camera.setPan(camera.x + before.x - after.x, camera.y + before.y - after.y);
       persistCamera();
-      renderAll();
+      requestRender();
     }
     originalEmit(intention);
   };
 
-  // Si camera=follow et qu'un événement camera/view est reçu du réseau
-  if (cameraFollow && transport) {
-    transport.subscribe((event) => {
-      if (event.type === 'view.change' && event.payload) {
-        const payload = /** @type {any} */ (event.payload);
-        if (payload.camera) {
-          if (typeof payload.camera.x === 'number' && typeof payload.camera.y === 'number') {
-            camera.setPan(payload.camera.x, payload.camera.y);
-          }
-          if (typeof payload.camera.zoom === 'number') {
-            camera.setZoom(payload.camera.zoom);
-          }
-          renderAll();
-        }
-      }
-    });
-  }
+  const onResize = () => {
+    stage.resize();
+    camera.setViewport(stage.width, stage.height);
+    lastActiveLevelId = null;
+    requestRender();
+  };
+  window.addEventListener('resize', onResize);
+  requestRender();
 
-  // Redimensionnement de la fenêtre
-  window.addEventListener('resize', () => {
-    const parent = canvasElem.parentElement;
-    const w = parent ? parent.clientWidth : window.innerWidth;
-    const h = parent ? parent.clientHeight : window.innerHeight;
-    canvasElem.width = Math.floor(w * resolution);
-    canvasElem.height = Math.floor(h * resolution);
-    canvasElem.style.width = `${w}px`;
-    canvasElem.style.height = `${h}px`;
-    camera.setViewport(w, h);
-    renderAll();
-  });
-
-  renderAll();
+  const destroy = () => {
+    playerControls.detach();
+    versionBadge.detach();
+    cleanupMobileLocks();
+    unsubscribeStore();
+    unsubscribeEvents?.();
+    if (snapshotTimer !== null) clearTimeout(snapshotTimer);
+    window.removeEventListener('resize', onResize);
+    frameLoop.stop();
+    transport?.disconnect();
+    networkStatus.remove();
+  };
 
   return {
-    canvas: canvasElem,
-    context: ctx,
+    canvas: stage.canvas,
+    context: stage.context,
     camera,
     frameLoop,
     pointerInput: playerControls.pointerInput,
+    backgroundLayer,
+    tokensLayer,
     transport,
-    detach: playerControls.detach,
+    sessionId,
+    destroy,
   };
 }
 
-// Démarrage automatique dans le DOM
+function autoStart() {
+  const globalOptions =
+    typeof window !== 'undefined'
+      ? /** @type {any} */ (window).__RPG_APP_OPTIONS__ || {}
+      : {};
+  const promise = bootstrapPlayerApp(globalOptions).then((app) => {
+    /** @type {any} */ (window).__RPG_APP__ = app;
+    return app;
+  });
+  /** @type {any} */ (window).__RPG_APP_PROMISE__ = promise;
+}
+
 if (typeof document !== 'undefined' && document.readyState !== 'loading') {
-  bootstrapPlayerApp();
+  autoStart();
 } else if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => bootstrapPlayerApp());
+  document.addEventListener('DOMContentLoaded', autoStart, { once: true });
 }

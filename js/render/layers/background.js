@@ -1,83 +1,215 @@
 // @ts-check
 
-/** @type {HTMLImageElement|null} */
-let lastImageCache = null;
+const BACKGROUND_CACHE_LIMIT = 8;
 
 /**
- * Couche de fond d'etage (image de carte en Canvas 2D natif).
+ * @typedef {'idle'|'loading'|'ready'|'error'} BackgroundStatus
+ * @typedef {{
+ *   status: 'loading'|'ready'|'error',
+ *   image: HTMLImageElement|null,
+ *   error: Error|null,
+ *   promise: Promise<HTMLImageElement>
+ * }} CacheEntry
+ */
+
+/** @type {Map<string, CacheEntry>} */
+const imageCache = new Map();
+
+/** @param {string} url @param {CacheEntry} entry */
+function remember(url, entry) {
+  imageCache.delete(url);
+  imageCache.set(url, entry);
+  while (imageCache.size > BACKGROUND_CACHE_LIMIT) {
+    const oldest = imageCache.keys().next().value;
+    if (oldest !== undefined) imageCache.delete(oldest);
+  }
+}
+
+/** @param {unknown} value @returns {Error} */
+function asError(value) {
+  return value instanceof Error ? value : new Error('Impossible de charger l’image de fond');
+}
+
+/**
+ * Fond de carte Canvas avec état explicite et cache LRU par URL.
  */
 export class BackgroundLayer {
   /**
-   * @param {any} [container] Conteneur de couche factice (compatibilite).
+   * @param {{
+   *   invalidate?: () => void,
+   *   imageFactory?: () => HTMLImageElement
+   * }} [options]
    */
-  constructor(container = null) {
-    /** @type {HTMLImageElement|null} */
-    this.image = null;
+  constructor(options = {}) {
+    this.invalidate = options.invalidate ?? (() => {});
+    this.imageFactory = options.imageFactory ?? (() => new Image());
+    /** @type {BackgroundStatus} */
+    this.status = 'idle';
     /** @type {string|null} */
     this.currentUrl = null;
+    /** @type {HTMLImageElement|null} */
+    this.image = null;
+    /** @type {Error|null} */
+    this.error = null;
+    /** @type {Promise<void>} */
+    this.pending = Promise.resolve();
+    this.loadVersion = 0;
   }
 
   /**
-   * Charge une image de fond de facon asynchrone via Image natif.
-   *
-   * @param {string} imageUrl URL de l'image de fond
+   * @param {string|null|undefined} imageUrl
+   * @param {{ retry?: boolean }} [options]
    * @returns {Promise<void>}
    */
-  load(imageUrl) {
-    if (!imageUrl || this.currentUrl === imageUrl) {
-      return Promise.resolve();
+  load(imageUrl, options = {}) {
+    const url = imageUrl?.trim() ?? '';
+    if (!url) {
+      this.loadVersion++;
+      this.currentUrl = null;
+      this.image = null;
+      this.error = null;
+      this.status = 'idle';
+      this.pending = Promise.resolve();
+      return this.pending;
     }
-    this.currentUrl = imageUrl;
 
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        if (this.currentUrl === imageUrl) {
-          this.image = img;
-          lastImageCache = img;
-        }
-        resolve();
-      };
-      img.onerror = (err) => {
-        console.warn('Erreur lors du chargement de l\'image de fond :', err);
-        resolve();
-      };
-      img.src = imageUrl;
-    });
-  }
-
-  /**
-   * Applique directement un element Image.
-   *
-   * @param {HTMLImageElement} img
-   */
-  setImage(img) {
-    this.image = img;
-    if (img) {
-      lastImageCache = img;
-      if (img.src) {
-        this.currentUrl = img.src;
-      }
+    if (
+      !options.retry &&
+      this.currentUrl === url &&
+      (this.status === 'loading' || this.status === 'ready' || this.status === 'error')
+    ) {
+      return this.pending;
     }
-  }
 
-  /**
-   * Dessine l'image de fond sur le contexte Canvas 2D, scalee aux dimensions du grid.
-   * La transformation camera (pan & zoom) est deja appliquee au contexte.
-   * Redessine la derniere image en cache pendant que le chargement est en cours.
-   *
-   * @param {CanvasRenderingContext2D} ctx Contexte Canvas 2D
-   * @param {number} [width] Largeur du grid en pixels (si omis, utilise taille native image)
-   * @param {number} [height] Hauteur du grid en pixels (si omis, utilise taille native image)
-   */
-  render(ctx, width, height) {
-    if (!ctx) return;
-    const imgToUse = this.image || lastImageCache;
-    if (!imgToUse) return;
-    if (width && height) {
-      ctx.drawImage(imgToUse, 0, 0, width, height);
+    const version = ++this.loadVersion;
+    this.currentUrl = url;
+    this.image = null;
+    this.error = null;
+    this.status = 'loading';
+
+    if (options.retry) imageCache.delete(url);
+    let entry = imageCache.get(url);
+    if (entry?.status === 'error' && !options.retry) {
+      this.status = 'error';
+      this.error = entry.error;
+      this.pending = Promise.resolve();
+      remember(url, entry);
+      return this.pending;
+    }
+    if (!entry || entry.status === 'error') {
+      const image = this.imageFactory();
+      /** @type {CacheEntry} */
+      const nextEntry = {
+        status: 'loading',
+        image: null,
+        error: null,
+        promise: Promise.resolve(image),
+      };
+      nextEntry.promise = new Promise((resolve, reject) => {
+        image.onload = () => {
+          nextEntry.status = 'ready';
+          nextEntry.image = image;
+          remember(url, nextEntry);
+          resolve(image);
+        };
+        image.onerror = (event) => {
+          const error = asError(event);
+          nextEntry.status = 'error';
+          nextEntry.error = error;
+          remember(url, nextEntry);
+          reject(error);
+        };
+        image.src = url;
+      });
+      // Évite un rejet non observé entre la création et l'abonnement ci-dessous.
+      nextEntry.promise.catch(() => {});
+      entry = nextEntry;
+      remember(url, entry);
     } else {
-      ctx.drawImage(imgToUse, 0, 0);
+      remember(url, entry);
     }
+
+    if (entry.status === 'ready' && entry.image) {
+      this.image = entry.image;
+      this.status = 'ready';
+      this.pending = Promise.resolve();
+      return this.pending;
+    }
+
+    this.pending = entry.promise.then(
+      (image) => {
+        if (this.loadVersion !== version || this.currentUrl !== url) return;
+        this.image = image;
+        this.error = null;
+        this.status = 'ready';
+        this.invalidate();
+      },
+      (reason) => {
+        if (this.loadVersion !== version || this.currentUrl !== url) return;
+        this.image = null;
+        this.error = asError(reason);
+        this.status = 'error';
+        this.invalidate();
+      }
+    );
+    return this.pending;
+  }
+
+  /** @returns {Promise<void>} */
+  retry() {
+    if (!this.currentUrl) return Promise.resolve();
+    return this.load(this.currentUrl, { retry: true });
+  }
+
+  /**
+   * Installe une image locale transitoire sans la placer dans le cache partagé.
+   * @param {HTMLImageElement} image
+   * @param {string} [url]
+   */
+  setImage(image, url = '') {
+    this.loadVersion++;
+    this.currentUrl = url || image.currentSrc || image.src || null;
+    this.image = image;
+    this.error = null;
+    this.status = 'ready';
+    this.pending = Promise.resolve();
+    this.invalidate();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} width Largeur de la carte en pixels carte
+   * @param {number} height Hauteur de la carte en pixels carte
+   * @param {{ role?: 'gm'|'players', neutralColor?: string }} [options]
+   */
+  render(ctx, width, height, options = {}) {
+    if (!ctx || width <= 0 || height <= 0) return;
+    ctx.save();
+    ctx.fillStyle = options.neutralColor ?? '#34383f';
+    ctx.fillRect(0, 0, width, height);
+
+    if (this.status === 'ready' && this.image) {
+      const sourceWidth = this.image.naturalWidth || this.image.width;
+      const sourceHeight = this.image.naturalHeight || this.image.height;
+      if (sourceWidth > 0 && sourceHeight > 0) {
+        const scale = Math.min(width / sourceWidth, height / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        ctx.drawImage(
+          this.image,
+          (width - drawWidth) / 2,
+          (height - drawHeight) / 2,
+          drawWidth,
+          drawHeight
+        );
+      }
+    } else if (this.status === 'error' && options.role === 'gm') {
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Carte indisponible — réessayez le chargement', width / 2, height / 2);
+    }
+    ctx.restore();
   }
 }

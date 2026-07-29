@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Deux familles de tests, deux exécuteurs, aucune ambiguïté :
 //   tests/*.test.mjs → node:test   (logique pure, aucun navigateur)   `pnpm run test:unit`
-//   tests/*.spec.mjs → Playwright  (navigateur, vrai Pixi, vrai DOM)  `pnpm run test:e2e`
+//   tests/*.spec.mjs → Playwright  (navigateur, vrai Canvas, vrai DOM) `pnpm run test:e2e`
 //
 // Avant cette séparation, `pnpm test` lançait Playwright sur des fichiers node:test :
 // il n'y trouvait aucun test Playwright et sortait en 1, tout en exécutant au passage

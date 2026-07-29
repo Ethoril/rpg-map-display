@@ -18,6 +18,10 @@ import {
   saveToLocalStorage,
   loadFromLocalStorage,
   restoreFromSnapshot,
+  addToken,
+  addLevel,
+  updateActiveLevel,
+  updateLevel,
 } from '../js/state/store.js';
 
 import { setSelectionState } from '../js/state/selection.js';
@@ -237,6 +241,8 @@ test('setSelectionState refuse bruyamment une sélection sans étage actif', () 
 
 test('restoreFromSnapshot et persistance LocalStorage (T-24)', () => {
   const camp = makeValidCampaign();
+  camp.levels[0].imageUrl = 'maps/rdc.webp';
+  camp.tokens[0].imageUrl = 'https://cdn.example.test/hero.webp';
 
   // 1. Restauration d'un snapshot direct
   restoreFromSnapshot(camp, { sessionId: 'test-session-1', activeLevelId: 'et1' });
@@ -260,5 +266,139 @@ test('restoreFromSnapshot et persistance LocalStorage (T-24)', () => {
   assert.strictEqual(loaded, true);
   assert.strictEqual(getState().campaign?.campaignId, 'camp-test');
   assert.strictEqual(getState().activeLevelId, 'rdc');
+  assert.strictEqual(getState().campaign?.levels[0].imageUrl, 'maps/rdc.webp');
+  assert.strictEqual(
+    getState().campaign?.tokens[0].imageUrl,
+    'https://cdn.example.test/hero.webp'
+  );
 });
 
+test('addToken valide toute la campagne et ne modifie pas l’état en cas de refus', () => {
+  loadCampaign(makeValidCampaign());
+  const before = getCampaign();
+
+  assert.throws(
+    () =>
+      addToken(
+        createToken({
+          id: 'orphelin',
+          levelId: 'niveau-inconnu',
+          cell: { a: 0, b: 0 },
+        })
+      ),
+    /levelId inconnu/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+
+  assert.throws(
+    () =>
+      addToken(
+        /** @type {any} */ ({
+          id: 'incomplet',
+          levelId: 'rdc',
+          cell: { a: 0, b: 0 },
+          sizeCells: 1,
+          kind: 'pc',
+          imageUrl: '',
+        })
+      ),
+    /objet non conforme au schéma Token/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+
+  assert.throws(
+    () =>
+      addToken(
+        createToken({
+          id: 'hero-1',
+          levelId: 'rdc',
+          cell: { a: 0, b: 0 },
+        })
+      ),
+    /Identifiant de pion dupliqué/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+
+  assert.throws(
+    () =>
+      addToken(
+        createToken({
+          id: 'hors-limites',
+          levelId: 'rdc',
+          cell: { a: 39, b: 29 },
+          sizeCells: 2,
+        })
+      ),
+    /position hors limites/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+});
+
+test('addLevel et updateActiveLevel valident avant mutation', () => {
+  loadCampaign(makeValidCampaign());
+  const before = getCampaign();
+
+  assert.throws(
+    () =>
+      addLevel(
+        createLevel({
+          id: 'asset-temporaire',
+          imageUrl: 'data:image/png;base64,AAAA',
+        })
+      ),
+    /imageUrl non persistable/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+
+  assert.throws(
+    () => updateActiveLevel({ widthCells: 1 }),
+    /position hors limites/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+});
+
+test('updateLevel cible un étage non actif de façon transactionnelle', () => {
+  loadCampaign(makeValidCampaign());
+  assert.strictEqual(getState().activeLevelId, 'rdc');
+
+  updateLevel('et1', { name: 'Étage distant', grid: { color: '#123456' } });
+  const state = getState();
+  assert.strictEqual(state.activeLevelId, 'rdc');
+  assert.strictEqual(state.campaign?.levels.find((level) => level.id === 'et1')?.name, 'Étage distant');
+  assert.strictEqual(
+    state.campaign?.levels.find((level) => level.id === 'et1')?.grid.color,
+    '#123456'
+  );
+
+  const before = getCampaign();
+  assert.throws(() => updateLevel('inconnu', { name: 'Impossible' }), /Étage inconnu/);
+  assert.deepStrictEqual(getCampaign(), before);
+  assert.throws(() => updateLevel('et1', { id: 'renommé' }), /identifiant ne peut pas être modifié/);
+  assert.deepStrictEqual(getCampaign(), before);
+});
+
+test('moveTokenToCell refuse une destination hors limites sans altérer le pion', () => {
+  loadCampaign(makeValidCampaign());
+  const before = getCampaign();
+
+  assert.throws(
+    () => moveTokenToCell('hero-1', { a: -1, b: 0 }),
+    /position hors limites/
+  );
+  assert.deepStrictEqual(getCampaign(), before);
+});
+
+test('une campagne contenant une data URL est refusée avant chargement ou sauvegarde', () => {
+  const valid = makeValidCampaign();
+  loadCampaign(valid);
+  const before = getCampaign();
+
+  const invalid = makeValidCampaign();
+  invalid.levels[0].imageUrl = 'data:image/png;base64,AAAA';
+  assert.throws(() => loadCampaign(invalid), /imageUrl non persistable/);
+  assert.deepStrictEqual(getCampaign(), before);
+
+  // L’état valide précédent reste sauvegardable sans transformation silencieuse.
+  setSessionId('persistable-assets');
+  assert.doesNotThrow(() => saveToLocalStorage());
+});

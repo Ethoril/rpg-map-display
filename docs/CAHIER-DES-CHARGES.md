@@ -702,8 +702,8 @@ de lumière dans les angles. Si déduplication souhaitée : fusion de segments
 
 ## 9. Rendu & performance
 
-**Stack.** PixiJS (WebGL) pour le rendu. Vanilla JS pour la logique et l'UI, cohérent
-avec l'existant. Recadrage des pions au Canvas natif.
+**Stack.** Canvas 2D natif pour le rendu. Vanilla JS pour la logique et l'UI, cohérent
+avec l'existant. Le moteur tiers précédemment essayé a été retiré après échec d'intégration.
 
 **Boucle de rendu à la demande** (pattern repris de `anim.js`) : la boucle rAF
 **s'arrête complètement** quand rien n'est animé, et ne redémarre qu'à un déplacement,
@@ -713,11 +713,10 @@ batterie majeur sur 4 h. **Exigence, pas optimisation optionnelle.**
 
 ### Fonds animés — faisables, mais ils annulent l'exigence ci-dessus
 
-PixiJS accepte une vidéo comme texture (`VideoSource`). WebM/VP9 ou MP4/H.264 pour le
-décodage matériel de l'Exynos ; jamais de GIF/APNG/WebP animé à la taille d'une carte
-(décodage logiciel). Autoplay Chrome Android : `muted` + `playsinline` requis — gratuit,
-les cartes n'ont pas de son. La mémoire est meilleure qu'une grosse texture statique (une
-seule frame résidente). Fog et masques de vision se composent sans changement.
+Une future vidéo de fond devra utiliser un élément `<video>` comme source de `drawImage`.
+WebM/VP9 ou MP4/H.264 sont requis pour le décodage matériel de l'Exynos ; jamais de
+GIF/APNG/WebP animé à la taille d'une carte. Autoplay Chrome Android : `muted` +
+`playsinline` requis. Cette capacité reste hors du lot stabilisé et exige une mesure dédiée.
 
 Deux coûts réels :
 
@@ -745,7 +744,7 @@ l'étage désactive le rendu à la demande.
 **Optimisations retenues :**
 - Index spatial (grille uniforme ou quadtree) sur les segments : ne tester que ceux dans
   le rayon utile.
-- Union des polygones de vision rendue en **un seul masque / stencil** Pixi, pas en
+- Union des polygones de vision rendue en **un seul masque Canvas hors écran**, pas en
   passes multiples.
 - Résolution de rendu plafonnée à 1.5 (§3).
 - Textures de pions en atlas.

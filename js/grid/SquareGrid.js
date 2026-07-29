@@ -164,10 +164,9 @@ export class SquareGrid {
    * Trace le quadrillage sur le contexte Canvas 2D.
    *
    * @param {CanvasRenderingContext2D} ctx
-   * @param {object} [_viewport]
    * @returns {void}
    */
-  renderGrid(ctx, _viewport) {
+  renderGrid(ctx) {
     if (this.visible === false || this.opacity <= 0 || !ctx) return;
 
     ctx.save();

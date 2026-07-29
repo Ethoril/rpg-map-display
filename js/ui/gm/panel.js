@@ -20,6 +20,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
+ * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -27,6 +28,7 @@ export function createGMPanel(container, options = {}) {
   }
 
   const { transport } = options;
+  const listeners = new AbortController();
 
   container.className = 'gm-panel-root';
   container.style.display = 'flex';
@@ -70,9 +72,8 @@ export function createGMPanel(container, options = {}) {
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center;">
             <label for="grid-type">Type de grille :</label>
-            <select id="grid-type">
+            <select id="grid-type" disabled title="Les grilles hexagonales sont hors du lot actuel">
               <option value="square">Carrée (Square)</option>
-              <option value="hex">Hexagonale (Hex)</option>
             </select>
 
             <label for="grid-color">Couleur :</label>
@@ -90,8 +91,10 @@ export function createGMPanel(container, options = {}) {
   `;
 
   const footerEl = /** @type {HTMLElement} */ (container.querySelector('.gm-panel-footer'));
+  /** @type {ReturnType<typeof mountGMVersionBadge>|null} */
+  let versionBadge = null;
   if (footerEl) {
-    mountGMVersionBadge(footerEl, { transport, role: 'gm' });
+    versionBadge = mountGMVersionBadge(footerEl, { transport, role: 'gm' });
   }
 
   // --- Gestion de la navigation par onglets ---
@@ -118,7 +121,7 @@ export function createGMPanel(container, options = {}) {
           /** @type {HTMLElement} */ (pane).style.display = 'none';
         }
       });
-    });
+    }, { signal: listeners.signal });
   });
 
   // --- Montage des sous-composants ---
@@ -157,6 +160,7 @@ export function createGMPanel(container, options = {}) {
 
   // Initialisation du générateur de pions avec ajout direct au store lors de la génération
   const tokenMaker = createTokenMaker(tokenMakerMount, {
+    defaultLevelId: store.getActiveLevelId(),
     onGenerate: (token, _dataUrl) => {
       // Ajout automatique du pion généré au store
       store.addToken(token);
@@ -182,7 +186,8 @@ export function createGMPanel(container, options = {}) {
 
   function updateGridFromUI() {
     const visible = gridVisibleInput.checked;
-    const type = /** @type {import('../../core/types.js').GridType} */ (gridTypeSelect.value === 'hex' ? 'hex' : 'square');
+    /** @type {import('../../core/types.js').GridType} */
+    const type = 'square';
     const color = gridColorInput.value;
     const opacity = parseFloat(gridOpacityInput.value);
 
@@ -214,10 +219,10 @@ export function createGMPanel(container, options = {}) {
     }
   }
 
-  gridVisibleInput.addEventListener('change', updateGridFromUI);
-  gridTypeSelect.addEventListener('change', updateGridFromUI);
-  gridColorInput.addEventListener('input', updateGridFromUI);
-  gridOpacityInput.addEventListener('input', updateGridFromUI);
+  gridVisibleInput.addEventListener('change', updateGridFromUI, { signal: listeners.signal });
+  gridTypeSelect.addEventListener('change', updateGridFromUI, { signal: listeners.signal });
+  gridColorInput.addEventListener('input', updateGridFromUI, { signal: listeners.signal });
+  gridOpacityInput.addEventListener('input', updateGridFromUI, { signal: listeners.signal });
 
   // Synchronisation initiale des champs de grille depuis le store si un étage est présent
   const activeLvl = store.getActiveLevel();
@@ -230,7 +235,8 @@ export function createGMPanel(container, options = {}) {
   }
 
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
-  store.subscribe(() => {
+  const unsubscribeStore = store.subscribe(() => {
+    tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     const currentLvl = store.getActiveLevel();
     if (currentLvl && currentLvl.grid) {
       gridVisibleInput.checked = currentLvl.grid.visible ?? true;
@@ -243,5 +249,11 @@ export function createGMPanel(container, options = {}) {
 
   return {
     tokenMaker,
+    destroy: () => {
+      listeners.abort();
+      unsubscribeStore();
+      versionBadge?.detach();
+      container.replaceChildren();
+    },
   };
 }

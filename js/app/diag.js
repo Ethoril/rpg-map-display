@@ -14,6 +14,7 @@ import { VERSION } from '../core/version.js';
 import { MAX_TEXTURE_FALLBACK, RENDER_RESOLUTION_CAP } from '../core/constants.js';
 import { createCampaign, createLevel, createToken } from '../core/schema.js';
 import { loadCampaign, getState, getActiveLevel, resetStore } from '../state/store.js';
+import { saveFirebaseConfig } from './runtimeConfig.js';
 
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
@@ -149,9 +150,10 @@ function diagnosticStore() {
 
 /** @returns {Promise<{ canvas: HTMLCanvasElement, context: CanvasRenderingContext2D, loop: FrameLoop, camera: Camera }>} */
 async function preparerScene() {
-  const { canvas: cv, context, layers, resolution } = await initStage(canvas);
+  const stage = await initStage(canvas);
+  const { canvas: cv, context, resolution } = stage;
 
-  const camera = new Camera(cv.width / resolution, cv.height / resolution);
+  const camera = new Camera(stage.width, stage.height);
   camera.setZoom(0.4);
   camera.setPan(1400, 1050);
 
@@ -299,8 +301,7 @@ const CLE_CONFIG = 'rpg-diag-firebase-config';
 async function diagnosticFirebase() {
   const champ = /** @type {HTMLInputElement} */ (document.getElementById('config'));
   const saisie = champ.value.trim();
-  if (saisie) localStorage.setItem(CLE_CONFIG, saisie);
-  const brut = localStorage.getItem(CLE_CONFIG);
+  const brut = saisie || localStorage.getItem(CLE_CONFIG);
 
   if (!brut) {
     ecrire('Coller la configuration Firebase (JSON) dans le champ, puis relancer.');
@@ -311,8 +312,10 @@ async function diagnosticFirebase() {
   let config;
   try {
     config = JSON.parse(brut);
+    saveFirebaseConfig(config);
+    localStorage.setItem(CLE_CONFIG, JSON.stringify(config));
   } catch {
-    ecrire('Configuration illisible : JSON attendu.');
+    ecrire('Configuration Firebase illisible ou incomplète.');
     return;
   }
 

@@ -16,6 +16,7 @@ async function mountPlayerViewInPage(page) {
     content: `
       import * as store from './js/state/store.js';
       import { bootstrapPlayerView } from './js/ui/player/bootstrap.js';
+      import { applyNetworkEvent } from './js/app/networkEvents.js';
       import { createCampaign, createLevel, createToken } from './js/core/schema.js';
       import { Camera } from './js/render/camera.js';
 
@@ -107,7 +108,17 @@ async function mountPlayerViewInPage(page) {
             mounted.pointerInput.onIntention(intention);
           }
         },
+        dispatchTap: (x, y) => {
+          if (mounted && mounted.pointerInput) {
+            mounted.pointerInput.onIntention({
+              type: 'tap',
+              screenPos: { screenX: x, screenY: y },
+              mapPos: { x, y },
+            });
+          }
+        },
       };
+      fakeTransport.subscribe((event) => applyNetworkEvent(event));
     `,
   });
 
@@ -130,7 +141,7 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
     // 1. Tap pion à (2,2) (centre de la case = x: 350, y: 350) -> sélection + cases atteignables calculées
     await page.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
-      probe.dispatchIntention({ type: 'tapToken', at: { screenX: 350, screenY: 350 } });
+      probe.dispatchTap(350, 350);
     });
 
     const stateSelected = await page.evaluate(() => {
@@ -151,7 +162,7 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
     await page.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
       // Centre de la case (4,4) à 140px par case = (4.5 * 140, 4.5 * 140) = (630, 630)
-      probe.dispatchIntention({ type: 'tapCell', at: { x: 630, y: 630 } });
+      probe.dispatchTap(630, 630);
     });
 
     const stateMoved = await page.evaluate(() => {
@@ -185,7 +196,7 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
     await page.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
       // Centre de la case (9,9) = (9.5 * 140, 9.5 * 140) = (1330, 1330)
-      probe.dispatchIntention({ type: 'tapCell', at: { x: 1330, y: 1330 } });
+      probe.dispatchTap(1330, 1330);
     });
 
     const stateRefused = await page.evaluate(() => {
@@ -216,8 +227,8 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
 
     await page.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
-      probe.dispatchIntention({ type: 'tapToken', at: { screenX: 350, screenY: 350 } });
-      probe.dispatchIntention({ type: 'tapCell', at: { x: 490, y: 490 } }); // case (3,3)
+      probe.dispatchTap(350, 350);
+      probe.dispatchTap(490, 490); // case (3,3)
     });
 
     const resUnmovable = await page.evaluate(() => {
@@ -240,8 +251,8 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
 
     await page.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
-      probe.dispatchIntention({ type: 'tapToken', at: { screenX: 350, screenY: 350 } });
-      probe.dispatchIntention({ type: 'tapCell', at: { x: 490, y: 490 } }); // case (3,3)
+      probe.dispatchTap(350, 350);
+      probe.dispatchTap(490, 490); // case (3,3)
     });
 
     const resLocked = await page.evaluate(() => {
@@ -288,8 +299,8 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
     // Onglet 1 : effectue un déplacement de (2,2) à (4,4)
     await page1.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
-      probe.dispatchIntention({ type: 'tapToken', at: { screenX: 350, screenY: 350 } });
-      probe.dispatchIntention({ type: 'tapCell', at: { x: 630, y: 630 } });
+      probe.dispatchTap(350, 350);
+      probe.dispatchTap(630, 630);
     });
 
     // Attendre la synchronisation réseau sur Onglet 2
@@ -343,8 +354,8 @@ test.describe('T-23 — Vue joueurs autonome', () => {
       };
     });
 
-    expect(['contain', 'none']).toContain(styles.overscrollBehavior);
-    expect(['manipulation', 'none']).toContain(styles.touchAction);
+    expect(styles.overscrollBehavior).toBe('none');
+    expect(styles.touchAction).toBe('none');
   });
 
   test('Deux onglets synchronisés sur même session : déplacements réciproques < 500 ms', async ({ context }) => {
@@ -378,8 +389,8 @@ test.describe('T-23 — Vue joueurs autonome', () => {
     const startTime = Date.now();
     await page1.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
-      probe.dispatchIntention({ type: 'tapToken', at: { screenX: 350, screenY: 350 } });
-      probe.dispatchIntention({ type: 'tapCell', at: { x: 630, y: 630 } });
+      probe.dispatchTap(350, 350);
+      probe.dispatchTap(630, 630);
     });
 
     await page2.waitForFunction(() => {
@@ -565,6 +576,3 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
     expect(res.playerOverlayOpacity).toBe('1');
   });
 });
-
-
-

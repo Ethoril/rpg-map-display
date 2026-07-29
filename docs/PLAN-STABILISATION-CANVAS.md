@@ -1,5 +1,10 @@
 # PLAN DE STABILISATION — Canvas 2D, persistance et synchronisation
 
+> **État au 29 juillet 2026 : correctifs C-01 à C-11 implémentés et validés localement.**
+> Typage et tests unitaires verts ; 39 tests navigateur réussis. Les 2 scénarios Firebase
+> réels restent ignorés sans configuration externe, et les mesures physiques de la section 19
+> restent volontairement à réaliser sur la tablette cible.
+
 > Document de travail créé après l’audit du 29 juillet 2026.
 >
 > Ce plan remplace la recommandation initiale de « revenir au dernier Pixi fonctionnel » :

@@ -20,7 +20,16 @@ if (brut) {
     console.warn('RPG_FIREBASE_CONFIG illisible (JSON attendu) :', err);
   }
 }
-const complet = Boolean(config?.apiKey && config?.testEmail && config?.testPassword);
+const champsRequis = [
+  'apiKey',
+  'authDomain',
+  'databaseURL',
+  'projectId',
+  'appId',
+  'testEmail',
+  'testPassword',
+];
+const complet = Boolean(config && champsRequis.every((champ) => config?.[champ]));
 const RAISON =
   'RPG_FIREBASE_CONFIG absente ou incomplète (apiKey, authDomain, databaseURL, projectId, ' +
   'appId, testEmail, testPassword requis) : un projet Firebase réel est nécessaire.';
@@ -87,6 +96,8 @@ test('deux clients : rien n\'est livré avant snapshot(), tout l\'est après', a
   try {
     // Le MJ publie alors qu'aucun des deux n'a encore appelé snapshot().
     await mj.publish('token.move');
+    await mj.publish('door.toggle');
+    await mj.publish('camera.publish');
 
     // L'événement a bel et bien traversé le réseau — mais il ne doit PAS avoir été livré :
     // c'est tout le contrat de T-14. Sans tampon, ce test échoue ici.
@@ -96,9 +107,13 @@ test('deux clients : rien n\'est livré avant snapshot(), tout l\'est après', a
       'aucun delta ne doit être livré avant que snapshot() ne soit résolu'
     ).toEqual([]);
 
-    // Après snapshot(), le tampon est vidé dans l'ordre.
+    // Après snapshot(), le tampon est vidé une seule fois et dans l'ordre des clés push.
     await joueurs.snapshot();
-    await expect.poll(() => joueurs.recus(), { timeout: 10000 }).toContain('token.move');
+    await expect.poll(() => joueurs.recus(), { timeout: 10000 }).toEqual([
+      'token.move',
+      'door.toggle',
+      'camera.publish',
+    ]);
 
     expect(await joueurs.erreurs(), 'aucun échec asynchrone attendu').toEqual([]);
     expect(await mj.erreurs(), 'aucun échec asynchrone attendu').toEqual([]);

@@ -4,6 +4,7 @@ import {
   createCampaign,
   createLevel,
   createToken,
+  isPersistableAssetUrl,
   validateCampaign,
   terrainCostRecordToMap,
   terrainCostMapToRecord,
@@ -70,6 +71,61 @@ test('Validation refuse sizeCells < 1', () => {
   assert.ok(errors.length >= 2, 'Doit avoir au moins 2 erreurs de sizeCells');
   assert.ok(errors.some((err) => err.includes('sizeCells doit être >= 1') && err.includes('t1')));
   assert.ok(errors.some((err) => err.includes('sizeCells doit être >= 1') && err.includes('t2')));
+});
+
+test('Les assets persistants acceptent les URLs relatives/HTTPS et refusent les URLs temporaires', () => {
+  assert.equal(isPersistableAssetUrl(''), true);
+  assert.equal(isPersistableAssetUrl('maps/ruines.webp'), true);
+  assert.equal(isPersistableAssetUrl('/maps/ruines.webp?v=2'), true);
+  assert.equal(isPersistableAssetUrl('https://cdn.example.test/ruines.webp'), true);
+
+  assert.equal(isPersistableAssetUrl('data:image/png;base64,AAAA'), false);
+  assert.equal(isPersistableAssetUrl('blob:https://example.test/id'), false);
+  assert.equal(isPersistableAssetUrl('http://example.test/insecure.webp'), false);
+  assert.equal(isPersistableAssetUrl('//example.test/ambiguous.webp'), false);
+  assert.equal(isPersistableAssetUrl('javascript:alert(1)'), false);
+});
+
+test('Validation refuse les imageUrl temporaires des étages et des pions', () => {
+  const level = createLevel({
+    id: 'rdc',
+    imageUrl: 'data:image/webp;base64,AAAA',
+  });
+  const token = createToken({
+    id: 't1',
+    levelId: 'rdc',
+    imageUrl: 'blob:https://example.test/token',
+  });
+  const errors = validateCampaign(createCampaign({ levels: [level], tokens: [token] }));
+
+  assert.ok(errors.some((err) => err.includes('Étage "rdc"') && err.includes('imageUrl non persistable')));
+  assert.ok(errors.some((err) => err.includes('Pion "t1"') && err.includes('imageUrl non persistable')));
+});
+
+test('createToken rend les PJ déplaçables et les PNJ non déplaçables par défaut', () => {
+  assert.equal(createToken({ kind: 'pc' }).playerMovable, true);
+  assert.equal(createToken({ kind: 'npc' }).playerMovable, false);
+  assert.equal(createToken({ kind: 'npc', playerMovable: true }).playerMovable, true);
+});
+
+test('Validation refuse identifiants dupliqués et pions hors limites', () => {
+  const level = createLevel({ id: 'rdc', widthCells: 5, heightCells: 5 });
+  const token = createToken({
+    id: 'doublon',
+    levelId: 'rdc',
+    cell: { a: 4, b: 4 },
+    sizeCells: 2,
+  });
+  const errors = validateCampaign(
+    createCampaign({
+      levels: [level, createLevel({ id: 'rdc' })],
+      tokens: [token, createToken({ ...token })],
+    })
+  );
+
+  assert.ok(errors.some((err) => err.includes("Identifiant d'étage dupliqué")));
+  assert.ok(errors.some((err) => err.includes('Identifiant de pion dupliqué')));
+  assert.ok(errors.some((err) => err.includes('position hors limites')));
 });
 
 test('Conversion terrainCost Record <-> Map', () => {

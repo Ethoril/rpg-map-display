@@ -1,7 +1,7 @@
 // @ts-check
 import { parseUvtt } from '../../import/uvtt.js';
 import { calibrateFromRect } from '../../import/imageCalibrate.js';
-import { createLevel } from '../../core/schema.js';
+import { createLevel, isPersistableAssetUrl } from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
 /**
@@ -50,6 +50,22 @@ export function createImportPanel(container, options = {}) {
           <input type="file" id="uvtt-file-input" accept=".uvtt,.json" style="display: none;" />
         </label>
 
+        <div id="uvtt-preview-wrap" style="display: none; margin-top: 0.75rem;">
+          <img id="uvtt-local-preview" alt="Aperçu local de la carte UVTT" style="display: block; width: 100%; max-height: 180px; object-fit: contain; background: #111; border-radius: 4px;" />
+        </div>
+
+        <label for="uvtt-canonical-url" style="display: block; margin-top: 0.75rem; font-size: 0.85rem;">
+          URL publiée de l'image :
+        </label>
+        <input id="uvtt-canonical-url" type="text" placeholder="maps/ma-carte.webp" style="box-sizing: border-box; width: 100%; margin-top: 0.25rem;" />
+        <p style="margin: 0.35rem 0 0.75rem; font-size: 0.75rem; color: #aaa;">
+          L'image intégrée sert uniquement d'aperçu local. Préparez le WebP avec le CLI,
+          publiez-le dans maps/, puis indiquez son URL ici.
+        </p>
+        <button id="btn-validate-uvtt-import" style="width: 100%; padding: 0.5rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+          Ajouter l'étage publié
+        </button>
+
         <div id="uvtt-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
       </div>
       `
@@ -86,6 +102,15 @@ export function createImportPanel(container, options = {}) {
           <canvas id="image-calibration-canvas" width="300" height="180" style="width: 100%; height: 100%; display: block;"></canvas>
         </div>
 
+        <label for="image-canonical-url" style="display: block; font-size: 0.85rem;">
+          URL publiée de l'image :
+        </label>
+        <input id="image-canonical-url" type="text" placeholder="maps/ma-carte.webp" style="box-sizing: border-box; width: 100%; margin: 0.25rem 0 0.35rem;" />
+        <p style="margin: 0 0 0.75rem; font-size: 0.75rem; color: #aaa;">
+          Le fichier choisi reste un aperçu local. Placez l'image dans maps/ et indiquez
+          son URL publiée avant de créer l'étage partagé.
+        </p>
+
         <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
           Valider l'importation d'image
         </button>
@@ -101,8 +126,23 @@ export function createImportPanel(container, options = {}) {
   // --- Éléments du DOM ---
   const uvttInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#uvtt-file-input'));
   const uvttStatus = /** @type {HTMLElement|null} */ (container.querySelector('#uvtt-status'));
+  const uvttCanonicalUrl = /** @type {HTMLInputElement|null} */ (
+    container.querySelector('#uvtt-canonical-url')
+  );
+  const uvttPreviewWrap = /** @type {HTMLElement|null} */ (
+    container.querySelector('#uvtt-preview-wrap')
+  );
+  const uvttPreview = /** @type {HTMLImageElement|null} */ (
+    container.querySelector('#uvtt-local-preview')
+  );
+  const btnValidateUvtt = /** @type {HTMLButtonElement|null} */ (
+    container.querySelector('#btn-validate-uvtt-import')
+  );
 
   const imageInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#image-file-input'));
+  const imageCanonicalUrl = /** @type {HTMLInputElement|null} */ (
+    container.querySelector('#image-canonical-url')
+  );
   const cellsWideInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-cells-wide'));
   const cellsTallInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-cells-tall'));
   const pxPerCellInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-px-per-cell'));
@@ -115,6 +155,28 @@ export function createImportPanel(container, options = {}) {
   let loadedCalibImage = null;
   /** @type {string|null} */
   let loadedImageDataUrl = null;
+  /** @type {ReturnType<typeof parseUvtt>|null} */
+  let pendingUvtt = null;
+
+  /**
+   * @param {HTMLInputElement|null} input
+   */
+  function hasCanonicalUrl(input) {
+    const value = input?.value.trim() ?? '';
+    return value !== '' && isPersistableAssetUrl(value);
+  }
+
+  function refreshUvttButton() {
+    if (btnValidateUvtt) {
+      btnValidateUvtt.disabled = !pendingUvtt || !hasCanonicalUrl(uvttCanonicalUrl);
+    }
+  }
+
+  function refreshImageButton() {
+    if (btnValidateImage) {
+      btnValidateImage.disabled = !loadedCalibImage || !hasCanonicalUrl(imageCanonicalUrl);
+    }
+  }
 
   // --- Logique Import UVTT ---
   if (uvttInput) {
@@ -127,32 +189,31 @@ export function createImportPanel(container, options = {}) {
         try {
           const text = /** @type {string} */ (e.target?.result);
           const parsed = parseUvtt(text);
+          pendingUvtt = parsed;
 
-          // Si une image base64 est intégrée dans le UVTT, construire l'URL data
-          if (parsed.imageBase64 && !parsed.level.imageUrl) {
-            parsed.level.imageUrl = parsed.imageBase64.startsWith('data:')
+          // La base64 du fichier UVTT est réservée à cet aperçu DOM et ne
+          // franchit jamais la frontière du store ou du transport.
+          if (uvttPreview && uvttPreviewWrap && parsed.imageBase64) {
+            uvttPreview.src = parsed.imageBase64.startsWith('data:')
               ? parsed.imageBase64
               : `data:image/png;base64,${parsed.imageBase64}`;
+            uvttPreviewWrap.style.display = 'block';
           }
-
-          // Ajouter l'étage dans le store
-          store.addLevel(parsed.level);
+          refreshUvttButton();
 
           if (uvttStatus) {
             uvttStatus.style.display = 'block';
-            uvttStatus.style.color = '#2ecc71';
-            let statusHtml = `<strong>Étage "${parsed.level.name}" importé avec succès !</strong><br>Dimensions : ${parsed.level.widthCells}×${parsed.level.heightCells} cases (${parsed.level.pxPerCell} px/case).`;
+            uvttStatus.style.color = '#f1c40f';
+            let statusHtml = `<strong>Aperçu UVTT local chargé.</strong><br>Dimensions : ${parsed.level.widthCells}×${parsed.level.heightCells} cases (${parsed.level.pxPerCell} px/case). Indiquez l'URL publiée pour ajouter cet étage à la campagne.`;
 
             if (parsed.warnings && parsed.warnings.length > 0) {
               statusHtml += `<br><span style="color: #f1c40f;">Avertissement : ${parsed.warnings.join(' ; ')}</span>`;
             }
             uvttStatus.innerHTML = statusHtml;
           }
-
-          if (options.onImportUvtt) {
-            options.onImportUvtt(parsed);
-          }
         } catch (err) {
+          pendingUvtt = null;
+          refreshUvttButton();
           if (uvttStatus) {
             uvttStatus.style.display = 'block';
             uvttStatus.style.color = '#e74c3c';
@@ -163,6 +224,25 @@ export function createImportPanel(container, options = {}) {
       reader.readAsText(file);
     });
   }
+
+  uvttCanonicalUrl?.addEventListener('input', refreshUvttButton);
+  btnValidateUvtt?.addEventListener('click', () => {
+    if (!pendingUvtt || !uvttCanonicalUrl || !hasCanonicalUrl(uvttCanonicalUrl)) return;
+
+    const level = {
+      ...pendingUvtt.level,
+      imageUrl: uvttCanonicalUrl.value.trim(),
+    };
+    store.addLevel(level);
+    const publishedResult = { ...pendingUvtt, level };
+
+    if (uvttStatus) {
+      uvttStatus.style.display = 'block';
+      uvttStatus.style.color = '#2ecc71';
+      uvttStatus.innerHTML = `<strong>Étage "${level.name}" ajouté avec son asset publié.</strong><br>URL : ${level.imageUrl}`;
+    }
+    options.onImportUvtt?.(publishedResult);
+  });
 
   // --- Logique Import Image & Calibration ---
   function drawCalibrationPreview() {
@@ -234,7 +314,7 @@ export function createImportPanel(container, options = {}) {
           if (suggestedH > 0 && cellsTallInput) cellsTallInput.value = String(suggestedH);
 
           drawCalibrationPreview();
-          if (btnValidateImage) btnValidateImage.disabled = false;
+          refreshImageButton();
         };
         img.src = dataUrl;
       };
@@ -247,10 +327,21 @@ export function createImportPanel(container, options = {}) {
   if (pxPerCellInput) {
     pxPerCellInput.addEventListener('input', drawCalibrationPreview);
   }
+  imageCanonicalUrl?.addEventListener('input', refreshImageButton);
 
   if (btnValidateImage) {
     btnValidateImage.addEventListener('click', () => {
-      if (!loadedCalibImage || !loadedImageDataUrl || !cellsWideInput || !cellsTallInput || !pxPerCellInput) return;
+      if (
+        !loadedCalibImage ||
+        !loadedImageDataUrl ||
+        !imageCanonicalUrl ||
+        !hasCanonicalUrl(imageCanonicalUrl) ||
+        !cellsWideInput ||
+        !cellsTallInput ||
+        !pxPerCellInput
+      ) {
+        return;
+      }
 
       const cellsWide = Math.max(1, parseInt(cellsWideInput.value, 10) || 20);
       const cellsTall = Math.max(1, parseInt(cellsTallInput.value, 10) || 15);
@@ -266,7 +357,7 @@ export function createImportPanel(container, options = {}) {
       const level = createLevel({
         id: `level-${Date.now()}`,
         name: 'Carte Image Calibrée',
-        imageUrl: loadedImageDataUrl,
+        imageUrl: imageCanonicalUrl.value.trim(),
         pxPerCell: pxPerCell,
         widthCells: cellsWide,
         heightCells: cellsTall,
@@ -285,7 +376,7 @@ export function createImportPanel(container, options = {}) {
       if (imageStatus) {
         imageStatus.style.display = 'block';
         imageStatus.style.color = '#2ecc71';
-        imageStatus.innerHTML = `<strong>Image importée et calibrée avec succès !</strong><br>Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case).`;
+        imageStatus.innerHTML = `<strong>Image publiée ajoutée et calibrée avec succès !</strong><br>Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case). URL : ${level.imageUrl}`;
       }
 
       if (options.onImportImage) {

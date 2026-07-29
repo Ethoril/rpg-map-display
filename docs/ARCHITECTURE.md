@@ -74,7 +74,7 @@ F:\rpg-map-display\
 │   │   └─ fog.js                 [2]  masque raster, OR, encodage PNG
 │   │
 │   ├─ render/
-│   │   ├─ stage.js               [1a] Application Pixi + ordre des couches
+│   │   ├─ stage.js               [1a] contexte Canvas 2D + ordre des couches
 │   │   ├─ camera.js              [1a] SEUL fichier convertissant carte ⇄ écran
 │   │   ├─ frame.js               [1a] boucle à la demande (coalescence rAF)
 │   │   └─ layers/
@@ -107,6 +107,9 @@ F:\rpg-map-display\
 │   │       └─ levelSelector.js   [3]  sélecteur d'étage joueurs
 │   │
 │   └─ app/
+│       ├─ runtimeConfig.js       [1a] résolution de la configuration Firebase Web publique
+│       ├─ session.js             [1a] authentification et connexion d'une page
+│       ├─ networkEvents.js       [1a] application idempotente des NetEvent au store
 │       ├─ gm.js                  [1a] point d'entrée vue MJ
 │       ├─ player.js              [1a] point d'entrée vue joueurs
 │       └─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
@@ -125,7 +128,7 @@ F:\rpg-map-display\
 ├─ maps/                          [1a] images traitées, commitées
 ├─ tests/                         [1a] deux familles, deux exécuteurs :
 │                                      *.test.mjs → node:test (logique pure)
-│                                      *.spec.mjs → Playwright (navigateur, vrai Pixi)
+│                                      *.spec.mjs → Playwright (navigateur, vrai Canvas)
 │                                      mountStage.mjs, mountTransport.mjs → sondes chargées
 │                                      dans la page, typées comme le reste du dépôt
 └─ docs/
@@ -276,8 +279,8 @@ Interface pure. Aucune implémentation dans ce fichier.
  *   Dijkstra pondéré. Clé = cellKey, valeur = coût cumulé. Interdit le corner-cutting en
  *   carré : une diagonale exige les deux arêtes orthogonales adjacentes libres.
  *
- * @property {(g: import('pixi.js').Graphics, viewport: object) => void} renderGrid
- *   Trace le quadrillage. Seule dépendance de rendu tolérée dans l'adaptateur.
+ * @property {(context: CanvasRenderingContext2D) => void} renderGrid
+ *   Trace le quadrillage sur le contexte déjà transformé par la caméra.
  */
 export {}
 ```
@@ -355,7 +358,7 @@ dégrader**. Ils sont écrits au lot 1a et ne doivent jamais être désactivés.
 7. **Versions centralisées** — aucun numéro de version ni URL de CDN dans un `.js`.
 8. **`js/core/types.js` sans code exécutable** — aucune `class`, aucune `function`, aucun
    `export` autre que `export {}`. Ajouté après coup : rien ne surveillait mécaniquement
-   cette règle, et elle a sauté une fois (faux Pixi introduit à T-15, cf. `ETAT.md` §4).
+   cette règle, et elle a déjà sauté lors d'une ancienne tentative de moteur tiers.
    Un faux exporté depuis le fichier de types est doublement nuisible — il rend la
    vérification verte et le typage aveugle.
 

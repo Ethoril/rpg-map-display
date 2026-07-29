@@ -1,117 +1,88 @@
 // @ts-check
 
 /**
- * Gestionnaire de la boucle de rendu à la demande (rAF coalescé).
- * Ne déclenche le rendu Canvas 2D que lorsqu'une frame est explicitement demandée.
+ * Boucle de rendu à la demande. Une demande déjà planifiée est coalescée et
+ * aucune frame suivante n'est créée implicitement.
  */
 export class FrameLoop {
   /**
-   * @param {(() => void)|object|null} [onRender] Callback de rendu principal ou objet exposant render()
+   * @param {(timestamp: number) => void} onRender
    */
-  constructor(onRender = null) {
-    /** @type {(() => void)|object|null} */
+  constructor(onRender) {
+    if (typeof onRender !== 'function') {
+      throw new TypeError('FrameLoop attend un callback de rendu');
+    }
+
+    /** @type {(timestamp: number) => void} */
     this.onRender = onRender;
     this.requested = false;
     this.running = false;
-    /** @type {any} */
+    /** @type {number|ReturnType<typeof setTimeout>|null} */
     this.rafId = null;
     this.frameCount = 0;
-    /** @type {Set<(count: number) => void>} */
+    /** @type {Set<(count: number, timestamp: number) => void>} */
     this.listeners = new Set();
   }
 
   /**
-   * Demande le rendu d'une frame à la prochaine rAF.
-   * Si une frame est déjà planifiée, plusieurs appels consécutifs sont coalescés.
+   * @returns {boolean} true si une nouvelle frame a été planifiée
    */
   requestFrame() {
-    if (this.requested) return;
+    if (this.requested) return false;
     this.requested = true;
-    if (!this.running) {
-      this.running = true;
-      this._schedule();
-    }
+    this.running = true;
+    this._schedule();
+    return true;
   }
 
-  /**
-   * Ajoute un écouteur de rendu.
-   * @param {(count: number) => void} fn
-   */
+  /** @param {(count: number, timestamp: number) => void} fn */
   addListener(fn) {
     this.listeners.add(fn);
   }
 
-  /**
-   * Retire un écouteur de rendu.
-   * @param {(count: number) => void} fn
-   */
+  /** @param {(count: number, timestamp: number) => void} fn */
   removeListener(fn) {
     this.listeners.delete(fn);
   }
 
-  /**
-   * Internal scheduler using rAF or fallback.
-   * @private
-   */
+  /** @private */
   _schedule() {
     if (typeof requestAnimationFrame !== 'undefined') {
-      this.rafId = requestAnimationFrame(() => this._tick());
+      this.rafId = requestAnimationFrame((timestamp) => this._tick(timestamp));
     } else {
-      this.rafId = setTimeout(() => this._tick(), 16);
+      this.rafId = setTimeout(() => this._tick(Date.now()), 16);
     }
   }
 
   /**
+   * @param {number} timestamp
    * @private
    */
-  _tick() {
+  _tick(timestamp) {
+    // La demande est consommée avant le callback. Une invalidation émise pendant
+    // le rendu planifie donc explicitement une nouvelle frame.
     this.requested = false;
+    this.running = false;
+    this.rafId = null;
     this.frameCount++;
 
-    if (typeof this.onRender === 'function') {
-      try {
-        this.onRender();
-      } catch (err) {
-        console.error(err);
-      }
-    } else if (this.onRender && typeof /** @type {any} */ (this.onRender).render === 'function') {
-      try {
-        /** @type {any} */ (this.onRender).render();
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
+    // Les exceptions restent observables par le navigateur ou le test appelant.
+    this.onRender(timestamp);
     for (const listener of this.listeners) {
-      try {
-        listener(this.frameCount);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
-    // Arrêt immédiat si aucun réabonnement de frame n'a eu lieu pendant le tick
-    if (!this.requested) {
-      this.running = false;
-      this.rafId = null;
-    } else {
-      this._schedule();
+      listener(this.frameCount, timestamp);
     }
   }
 
-  /**
-   * Arrête la boucle de rendu et annule la rAF planifiée.
-   */
   stop() {
     this.requested = false;
     this.running = false;
-    if (this.rafId !== null) {
-      if (typeof cancelAnimationFrame !== 'undefined') {
-        cancelAnimationFrame(/** @type {number} */ (this.rafId));
-      } else {
-        clearTimeout(this.rafId);
-      }
-      this.rafId = null;
+    if (this.rafId === null) return;
+
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(/** @type {number} */ (this.rafId));
+    } else {
+      clearTimeout(this.rafId);
     }
+    this.rafId = null;
   }
 }

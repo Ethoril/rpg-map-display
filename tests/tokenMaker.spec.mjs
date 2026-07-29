@@ -33,7 +33,9 @@ async function setupTokenMaker(page) {
     document.body.appendChild(container);
 
     const module = await import('../js/ui/gm/tokenMaker.js');
-    /** @type {any} */ (window).__tokenMakerInstance = module.createTokenMaker(container);
+    /** @type {any} */ (window).__tokenMakerInstance = module.createTokenMaker(container, {
+      defaultLevelId: 'level-test',
+    });
   });
 
   expect(errors).toEqual([]);
@@ -98,12 +100,15 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(token.id).toBeTruthy();
     expect(typeof token.id).toBe('string');
     expect(token.kind).toBe('pc');
+    expect(token.levelId).toBe('level-test');
     expect(token.sizeCells).toBe(2);
     expect(token.speedCells).toBe(3);
     expect(token.borderColor).toBe('#ff0000');
     expect(token.label).toBe('Guerrier Rouge');
     expect(token.hidden).toBe(false);
     expect(token.playerMovable).toBe(true);
+    expect(token.imageUrl).toMatch(/^maps\/tokens\/token-.*\.webp$/);
+    expect(token.imageUrl.startsWith('data:')).toBe(false);
     expect(token.locked).toBe(false);
     expect(token.elevation).toBe(0);
     expect(Array.isArray(token.markers)).toBe(true);
@@ -159,6 +164,8 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     });
 
     expect(tokenResult.token.kind).toBe('npc');
+    expect(tokenResult.token.levelId).toBe('level-test');
+    expect(tokenResult.token.playerMovable).toBe(false);
     expect(tokenResult.token.sizeCells).toBe(1);
     expect(tokenResult.token.speedCells).toBe(4);
     expect(tokenResult.token.borderColor).toBe('#00ff00');
@@ -174,5 +181,39 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
 
     expect(dimensions.width).toBe(200);
     expect(dimensions.height).toBe(200);
+  });
+
+  test('Désactive la génération sans étage actif et refuse une URL temporaire', async ({ page }) => {
+    await setupTokenMaker(page);
+
+    await page.setInputFiles('#token-maker-root #token-file-input', {
+      name: 'hero.png',
+      mimeType: 'image/png',
+      buffer: TEST_PNG_BUFFER,
+    });
+
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__tokenMakerInstance.setDefaultLevelId(null);
+    });
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeDisabled();
+    await expect(page.locator('#token-maker-root #token-maker-status')).toContainText(
+      'Ajoutez ou sélectionnez un étage'
+    );
+
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__tokenMakerInstance.setDefaultLevelId('level-actif');
+    });
+    await page.fill('#token-maker-root #token-canonical-url', 'data:image/png;base64,AAAA');
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeDisabled();
+
+    await page.fill('#token-maker-root #token-canonical-url', 'maps/tokens/hero.webp');
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeEnabled();
+    await page.click('#token-maker-root #btn-generate-token');
+
+    const token = await page.evaluate(
+      () => /** @type {any} */ (window).__tokenMakerInstance.getCurrentToken()
+    );
+    expect(token.levelId).toBe('level-actif');
+    expect(token.imageUrl).toBe('maps/tokens/hero.webp');
   });
 });

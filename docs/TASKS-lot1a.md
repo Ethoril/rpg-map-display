@@ -44,7 +44,7 @@ Rappels permanents :
 - **Le bon exécuteur pour le bon test** (cf. `STACK.md` §5) : logique pure en
   `tests/*.test.mjs` (`node:test`), navigateur en `tests/*.spec.mjs` (Playwright). Un critère
   énoncé « test Playwright » ne se satisfait pas en test unitaire, et un module qui importe
-  `pixi.js` ne se teste pas sous Node — le rendre testable exigerait un faux, ce qui est
+  l’ancien moteur de rendu ne se testait pas sous Node — le rendre testable exigeait un faux, ce qui est
   interdit (interdiction n°16).
 - **Un critère de vérification qui ne peut pas être atteint est un défaut du plan, pas de
   l'implémentation.** Le signaler dans la ligne « Écarts » et demander l'arbitrage. Ne
@@ -328,7 +328,7 @@ n'augmente plus. *(La tenue à 30 fps sous cast n'est pas vérifiable ici : à s
 « à vérifier par le mainteneur ».)*
 **Dépend de :** T-13
 
-### T-15b — Rétablir le vrai PixiJS et séparer les deux exécuteurs de tests
+### T-15b — Historique : rétablir le vrai moteur et séparer les deux exécuteurs de tests
 **Fichiers :** `package.json`, `jsconfig.json`, `playwright.config.mjs`, `scripts/serve.mjs`,
 `scripts/check-deps.mjs`, `js/core/types.js`, `js/render/stage.js`, `tests/mountStage.mjs`,
 `tests/stage.spec.mjs`, `tests/render.test.mjs`, `tests/squareGrid.test.mjs`,
@@ -336,7 +336,7 @@ n'augmente plus. *(La tenue à 30 fps sous cast n'est pas vérifiable ici : à s
 
 **Contexte :** T-15 a été livrée avec un **faux Pixi**. Trois gestes se tenaient l'un l'autre :
 deux classes exécutables (`Application`, `Container`) ajoutées à `js/core/types.js` — qui doit
-n'en contenir aucune ; un alias `"pixi.js": ["./js/core/types.js"]` dans `jsconfig.json` — qui
+n'en contenir aucune ; un alias du paquet vers `js/core/types.js` dans `jsconfig.json` — qui
 rendait toute l'API v8 `any` ; et un `try/catch` silencieux dans `stage.js` basculant sur ce
 faux dès que l'import échouait. Le critère Playwright du contrat avait alors été satisfait par
 un test `node:test` contre l'imitation. Par ailleurs `pnpm test` valait `playwright test` sans
@@ -345,10 +345,10 @@ exécutés par simple effet de bord de la collecte. Défaut du plan sur un point
 d'exécuteur par famille de test), écart d'implémentation sur les autres.
 
 **Contrat :**
-- `pixi.js` en devDependency **exacte**, version identique à l'import map (cf. `STACK.md` §4).
+- le paquet du moteur en devDependency **exacte**, version identique à l'import map (historique).
   Le runtime continue de charger Pixi depuis le CDN ; `node_modules` ne sert qu'à `tsc`.
 - Supprimer l'alias de `jsconfig.json` et **restaurer `export {}`** dans `js/core/types.js`.
-- `stage.js` : import nu `from 'pixi.js'`, **aucun repli**. Sous Node l'import doit échouer
+- `stage.js` : import nu du moteur, **aucun repli**. Sous Node l'import devait échouer
   bruyamment (`CONVENTIONS.md` §6) : ce module ne se teste qu'au navigateur.
 - Séparer les exécuteurs : `*.test.mjs` → `node:test`, `*.spec.mjs` → Playwright.
   `playwright.config.mjs` avec `testMatch` explicite et un `webServer` servi par

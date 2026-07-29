@@ -61,8 +61,7 @@ test('MoveZoneLayer : surlignage exact des cases atteignables et non-interactivi
     { level: levelData, token: tokenPJ, keys: reachableKeys }
   );
 
-  // Vérification de la non-interactivité
-  expect(resSelected.eventMode).toBe('none');
+  expect(resSelected.renderedCells).toBe(reachableMap.size);
 
   // Vérification case par case : chaque case atteignable est surlignée, et AUCUNE case hors Dijkstra
   for (let a = 0; a < level.widthCells; a++) {
@@ -89,6 +88,7 @@ test('MoveZoneLayer : surlignage exact des cases atteignables et non-interactivi
       }),
     { level: levelData, keys: reachableKeys }
   );
+  expect(resUnselected.renderedCells).toBe(0);
 
   for (let a = 0; a < level.widthCells; a++) {
     for (let b = 0; b < level.heightCells; b++) {

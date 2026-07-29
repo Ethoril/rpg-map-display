@@ -18,11 +18,7 @@
     "@types/node": "^26.1.1",
     "firebase": "12.16.0",
     "jimp": "^1.6.1",
-    "pixi.js": "8.19.0",
     "typescript": "^5.7.0"
   },
-  "build": 34,
-  "dependencies": {
-    "pixi-viewport": "^6.0.3"
-  }
+  "build": 34
 }

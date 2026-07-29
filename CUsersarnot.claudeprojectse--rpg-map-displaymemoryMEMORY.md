@@ -1,1 +1,0 @@
-- [Canvas 2D Migration Status](CANVAS2D_MIGRATION_STATUS.md) — Core working (import, zoom, pan, grid). 4 bugs: F5 image, token move, token image, grid change.
