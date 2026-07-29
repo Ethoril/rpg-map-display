@@ -68,8 +68,8 @@ export async function bootstrapGMApp(options = {}) {
         console.log('[DEBUG] Pas d\'imageUrl, pas de fond');
       }
 
+      const gridAdapter = gridFor(activeLevel);
       try {
-        const gridAdapter = gridFor(activeLevel);
         console.log('[DEBUG] gridLayer.render() appelée');
         gridLayer.render(gridAdapter);
         console.log('[DEBUG] gridLayer.render() réussi');
