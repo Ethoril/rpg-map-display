@@ -117,19 +117,38 @@ export async function createSceneLibrary(container, options = {}) {
         }
       }
 
-      // Synchronisation joueurs : un événement par étage, au format attendu par
-      // js/app/networkEvents.js (`{ level }` au singulier).
-      // NOTE U-05 : le mode « Charger » remplace la campagne côté MJ mais le
-      // transport ne sait pas encore remplacer une campagne entière ; les
-      // joueurs reçoivent donc les étages ajoutés, pas la remise à zéro.
+      // Synchronisation joueurs (U-05). Les deux modes ne diffusent pas la même
+      // chose parce qu'ils ne font pas la même chose côté MJ :
+      //   — « Charger » *remplace* la campagne. Seul un instantané absolu
+      //     propage aussi la disparition des étages précédents, qu'une suite de
+      //     `level.add` ne peut pas exprimer.
+      //   — « Ajouter comme étage » est additif : un `level.add` par étage, au
+      //     format attendu par js/app/networkEvents.js (`{ level }` au singulier).
+      //
+      // `scene.load` est le type du cahier des charges §7 ; rien n'est inventé.
+      // Le payload ne porte que l'état non recalculable (CONVENTIONS §4) : ni
+      // étage actif dérivé, ni cases atteignables, ni pion sélectionné résolu.
       if (transport) {
-        for (const level of sceneData.levels) {
+        if (mode === 'load') {
           transport.publish({
-            type: 'level.add',
-            payload: { level },
+            type: 'scene.load',
+            payload: {
+              campaign: store.getCampaign(),
+              activeLevelId: store.getActiveLevelId(),
+              selectedTokenId: null,
+            },
             at: Date.now(),
             by: 'gm',
           });
+        } else {
+          for (const level of sceneData.levels) {
+            transport.publish({
+              type: 'level.add',
+              payload: { level },
+              at: Date.now(),
+              by: 'gm',
+            });
+          }
         }
       }
 

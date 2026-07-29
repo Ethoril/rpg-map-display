@@ -1,13 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-
-/**
- * Attend le vrai démarrage automatique d'une page applicative.
- * @param {import('@playwright/test').Page} page
- */
-async function waitForApp(page) {
-  await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__RPG_APP__));
-}
+import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
 test('les vraies pages Canvas arrêtent de rendre lorsque la scène est immobile', async ({ page }) => {
   for (const path of ['/index.html?session=idle-gm', '/player.html?session=idle-player']) {
@@ -100,79 +93,6 @@ test('un vrai F5 MJ conserve campagne, URL canonique, pion, étage et caméra', 
     camera: beforeReload,
   });
 });
-
-/**
- * Injecte un transport BroadcastChannel dans la vraie page, sans relais manuel du test.
- * @param {import('@playwright/test').Page} page
- * @param {string} sessionId
- * @param {any} snapshot
- */
-async function installBrowserTransport(page, sessionId, snapshot) {
-  await page.addInitScript(
-    ({ injectedSessionId, injectedSnapshot }) => {
-      Object.defineProperty(Element.prototype, 'requestFullscreen', {
-        configurable: true,
-        value: () => Promise.resolve(),
-      });
-
-      class BrowserTestTransport {
-        constructor() {
-          this.clientId = crypto.randomUUID();
-          /** @type {Set<(event: any) => void>} */
-          this.listeners = new Set();
-          /** @type {BroadcastChannel|null} */
-          this.channel = null;
-        }
-
-        async connect(/** @type {string} */ connectedSessionId) {
-          this.channel = new BroadcastChannel(`rpg-test-${connectedSessionId}`);
-          this.channel.addEventListener('message', (message) => {
-            for (const listener of this.listeners) listener(message.data);
-          });
-        }
-
-        publish(/** @type {any} */ event) {
-          this.channel?.postMessage({
-            ...event,
-            eventId: crypto.randomUUID(),
-            clientId: this.clientId,
-          });
-        }
-
-        subscribe(/** @type {(event: any) => void} */ listener) {
-          this.listeners.add(listener);
-          return () => this.listeners.delete(listener);
-        }
-
-        async snapshot() {
-          return structuredClone(injectedSnapshot);
-        }
-
-        async saveSnapshot() {}
-
-        isOwnEvent(/** @type {any} */ event) {
-          return event?.clientId === this.clientId;
-        }
-
-        onError() {
-          return () => {};
-        }
-
-        disconnect() {
-          this.channel?.close();
-          this.channel = null;
-          this.listeners.clear();
-        }
-      }
-
-      /** @type {any} */ (window).__RPG_APP_OPTIONS__ = {
-        sessionId: injectedSessionId,
-        transport: new BrowserTestTransport(),
-      };
-    },
-    { injectedSessionId: sessionId, injectedSnapshot: snapshot }
-  );
-}
 
 test('deux vraies pages joueurs convergent via leur transport, sans relais du test', async ({
   browser,

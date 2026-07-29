@@ -17,6 +17,34 @@ export function applyNetworkEvent(event) {
   const campaign = store.getCampaign();
 
   switch (event.type) {
+    // Remplacement complet de la scène (U-05), pendant réseau du mode
+    // « Charger » côté MJ. Le payload est un instantané **absolu** et non un
+    // delta : le rejouer deux fois converge vers le même état.
+    case 'scene.load': {
+      // `restoreFromSnapshot` ne remplace la campagne que si `levels` est un
+      // tableau ; sans cette garde, une forme aberrante passerait la validation
+      // sans rien remplacer tout en effaçant la sélection.
+      if (!payload.campaign || !Array.isArray(payload.campaign.levels)) return false;
+
+      try {
+        store.restoreFromSnapshot({
+          campaign: payload.campaign,
+          activeLevelId: payload.activeLevelId ?? null,
+          selectedTokenId: payload.selectedTokenId ?? null,
+        });
+      } catch (err) {
+        // CONVENTIONS §6 : une donnée réseau inattendue se journalise et
+        // s'ignore, sans corrompre le store. `restoreFromSnapshot` valide avant
+        // de muter : l'état courant, valide, est resté en place.
+        console.error(
+          `Événement "scene.load" refusé, état courant conservé : ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+        return false;
+      }
+      return true;
+    }
     case 'level.add': {
       if (!payload.level) return false;
       store.addLevel(payload.level);
