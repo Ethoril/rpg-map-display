@@ -65,7 +65,8 @@ export async function bootstrapGMApp(options = {}) {
       if (activeLevel.imageUrl) {
         bgLayer.load(activeLevel.imageUrl);
       } else {
-        console.log('[DEBUG] Pas d\'imageUrl, pas de fond');
+        console.log('[DEBUG] Pas d\'imageUrl, fond gris par défaut');
+        app.stage.background = { r: 0.5, g: 0.5, b: 0.5 };
       }
 
       const gridAdapter = gridFor(activeLevel);
