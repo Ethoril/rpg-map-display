@@ -5,25 +5,34 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, validateCampaign } from '../js/core/schema.js';
+import { SUPPORTED_EXTENSIONS, isSupportedSource } from '../scripts/prepare-maps.mjs';
 
 // Exigence de FIXTURES.md §1 : un export réel doit être parsé sans erreur. Les fixtures
 // synthétiques ne reproduisent pas ce que produit Dungeondraft — polylignes dégénérées,
 // listes de lumières vides, `grid_type` absent, `map_origin` non entier, casse variable.
 //
 // `fixtures/real/` est ignoré par git : les cartes peuvent être sous licence tierce. Le test
-// s'ignore donc avec une raison explicite quand le dossier est vide, plutôt que d'échouer sur
-// une machine fraîchement clonée.
+// s'ignore donc avec une raison explicite quand le dossier est vide ou sans fichiers reconnus,
+// plutôt que d'échouer sur une machine fraîchement clonée.
 
 const dossier = path.resolve('fixtures/real');
-const fichiers = fs.existsSync(dossier)
-  ? fs.readdirSync(dossier).filter((f) => f.toLowerCase().endsWith('.uvtt'))
+const dirExists = fs.existsSync(dossier);
+const entries = dirExists
+  ? fs.readdirSync(dossier).filter((f) => !f.startsWith('.'))
   : [];
 
-const raison =
-  fichiers.length === 0
-    ? 'fixtures/real/ est vide : déposer un export UVTT réel (cf. docs/FIXTURES.md §1). ' +
-      'Le parsing UVTT n\'est validé qu\'en théorie tant que ce test s\'ignore.'
-    : undefined;
+const fichiers = entries.filter(isSupportedSource);
+
+let raison;
+if (!dirExists || entries.length === 0) {
+  raison =
+    'fixtures/real/ est absent ou vide : déposer un export VTT réel (cf. docs/FIXTURES.md §1). ' +
+    'Le parsing VTT n\'est validé qu\'en théorie tant que ce test s\'ignore.';
+} else if (fichiers.length === 0) {
+  raison =
+    `fixtures/real/ ne contient aucun fichier avec une extension reconnue (${SUPPORTED_EXTENSIONS.join(', ')}) : ` +
+    'déposer un export .uvtt, .dd2vtt ou .df2vtt réel.';
+}
 
 test('les exports UVTT réels se parsent et produisent une campagne valide', { skip: raison }, () => {
   for (const nom of fichiers) {

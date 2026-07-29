@@ -10,6 +10,25 @@ import { resample } from './resample.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
+export const SUPPORTED_EXTENSIONS = ['.uvtt', '.dd2vtt', '.df2vtt'];
+
+/**
+ * Un nom de fichier désigne-t-il un export VTT reconnu ?
+ *
+ * Point d'entrée **unique** de cette décision. La constante seule n'unifiait que
+ * la liste, pas la comparaison : la préparation globait en respectant la casse
+ * pendant que les tests de fixtures l'ignoraient. Un `CARTE.DD2VTT` était donc
+ * validé par les tests mais invisible à la préparation — une carte simplement
+ * absente de la bibliothèque, sans le moindre message.
+ *
+ * @param {string} fileName - nom de fichier, sans chemin
+ * @returns {boolean}
+ */
+export function isSupportedSource(fileName) {
+  if (fileName.startsWith('.')) return false;
+  const lower = fileName.toLowerCase();
+  return SUPPORTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 /**
  * Dérive un nom affichable depuis le slug du fichier source.
@@ -128,7 +147,7 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
   const catalogEntry = {
     id: baseName,
     name: displayName,
-    sourceUrl: `maps/${baseName}.uvtt`,
+    sourceUrl: `maps/${path.basename(uvttPath)}`,
     sceneUrl: `maps/generated/${sceneFileName}`,
     imageUrl: `maps/generated/${webpFileName}`,
     sourceHash: `sha256-${sourceHash}`,
@@ -153,8 +172,112 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
 }
 
 /**
+ * Associe chaque fichier source à son slug et refuse toute collision.
+ *
+ * Appelée **avant** toute préparation : un catalogue ne peut pas contenir deux
+ * entrées de même identifiant, et le refus doit intervenir avant le moindre
+ * octet écrit (critère U-02).
+ *
+ * Atteignable en pratique depuis que le filtre reconnaît `.uvtt`, `.dd2vtt` et
+ * `.df2vtt` : `x.uvtt` et `x.dd2vtt` produisent le même slug. C'est le cas que
+ * couvre le test « collision bout-en-bout ».
+ *
+ * @param {string[]} fileNames - noms de fichiers, sans chemin
+ * @returns {{ file: string, slug: string }[]}
+ */
+export function planSources(fileNames) {
+  /** @type {Map<string, string[]>} */
+  const bySlug = new Map();
+
+  for (const file of fileNames) {
+    const slug = path.basename(file, path.extname(file));
+    const known = bySlug.get(slug);
+    if (known) {
+      known.push(file);
+    } else {
+      bySlug.set(slug, [file]);
+    }
+  }
+
+  const collisions = [...bySlug.entries()].filter(([, files]) => files.length > 1);
+  if (collisions.length > 0) {
+    const detail = collisions
+      .map(([slug, files]) => `${slug} ← ${files.join(', ')}`)
+      .join(' ; ');
+    throw new Error(
+      `Slugs en collision, aucun catalogue publié : ${detail}`
+    );
+  }
+
+  return fileNames.map((file) => ({
+    file,
+    slug: path.basename(file, path.extname(file)),
+  }));
+}
+
+/**
+ * Relève les artefacts de `generated/` que le nouveau catalogue ne référence
+ * plus.
+ *
+ * Ils sont **signalés et conservés** : U-02 interdit la suppression. Un
+ * artefact orphelin est peut-être encore référencé par une campagne enregistrée
+ * côté navigateur.
+ *
+ * @param {string} mapsDir
+ * @param {any[]} catalogEntries
+ * @returns {string[]} avertissements
+ */
+function findOrphanArtifacts(mapsDir, catalogEntries) {
+  const generatedDir = path.join(mapsDir, 'generated');
+  if (!fs.existsSync(generatedDir)) return [];
+
+  const referenced = new Set();
+  for (const entry of catalogEntries) {
+    referenced.add(path.basename(entry.sceneUrl));
+    referenced.add(path.basename(entry.imageUrl));
+  }
+
+  return fs
+    .readdirSync(generatedDir)
+    .filter((name) => !name.startsWith('.') && !referenced.has(name))
+    .sort()
+    .map(
+      (name) =>
+        `Artefact orphelin conservé : maps/generated/${name} — plus référencé par le catalogue, à supprimer à la main après vérification`
+    );
+}
+
+/**
+ * Publie le catalogue par `rename` seul.
+ *
+ * `rename` remplace la cible de façon atomique. Un `unlink` préalable ouvrirait
+ * une fenêtre pendant laquelle le catalogue n'existe plus : ne pas le
+ * réintroduire.
+ *
+ * @param {string} catalogPath
+ * @param {unknown} catalog
+ */
+function publishCatalog(catalogPath, catalog) {
+  const tempCatalogPath = `${catalogPath}.tmp`;
+  fs.writeFileSync(tempCatalogPath, JSON.stringify(catalog, null, 2), 'utf-8');
+  try {
+    fs.renameSync(tempCatalogPath, catalogPath);
+  } catch (err) {
+    // Ne pas laisser un .tmp derrière soi : il serait pris pour un catalogue
+    // en attente à la préparation suivante.
+    fs.rmSync(tempCatalogPath, { force: true });
+    throw err;
+  }
+}
+
+/**
  * Prépare tous les fichiers UVTT du répertoire maps/.
- * Génère catalog.json de manière atomique.
+ *
+ * Transactionnel : le catalogue n'est publié que si **toutes** les cartes ont
+ * été préparées. Une seule carte fautive fait échouer l'appel sans écrire
+ * `catalog.json`, et le catalogue précédent reste intact octet pour octet
+ * (U-02, plan §6.9). Les artefacts déjà produits par les cartes valides sont
+ * conservés et signalés comme orphelins, jamais supprimés.
  *
  * @param {{
  *   mapsDir?: string,
@@ -168,6 +291,7 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
  *   totalLights: number,
  *   warnings: string[]
  * }>}
+ * @throws {Error} si une carte échoue ou si deux sources partagent un slug
  */
 export async function prepareMaps(options = {}) {
   const mapsDir = options.mapsDir || path.join(rootDir, 'maps');
@@ -178,14 +302,13 @@ export async function prepareMaps(options = {}) {
     fs.mkdirSync(mapsDir, { recursive: true });
   }
 
-  // Trouver tous les .uvtt directement sous maps/
-  const uvttFiles = fs
-    .readdirSync(mapsDir)
-    .filter((f) => f.endsWith('.uvtt') && !f.startsWith('.'))
-    .sort();
+  // Trouver tous les fichiers VTT reconnus directement sous maps/
+  const uvttFiles = fs.readdirSync(mapsDir).filter(isSupportedSource).sort();
 
   if (uvttFiles.length === 0) {
-    console.log('Aucun fichier .uvtt trouvé dans maps/');
+    console.log(
+      `Aucun fichier VTT (${SUPPORTED_EXTENSIONS.join(', ')}) trouvé dans ${mapsDir}`
+    );
     return {
       mapsCount: 0,
       totalWalls: 0,
@@ -195,16 +318,21 @@ export async function prepareMaps(options = {}) {
     };
   }
 
+  // Refuser les collisions de slug avant d'écrire quoi que ce soit.
+  const sources = planSources(uvttFiles);
+
   const catalogEntries = [];
   const allWarnings = [];
   let totalWalls = 0;
   let totalPortals = 0;
   let totalLights = 0;
 
-  // Préparer chaque carte — continuer même en cas d'erreur
-  const errors = [];
-  for (const uvttFile of uvttFiles) {
-    const uvttPath = path.join(mapsDir, uvttFile);
+  // Toutes les cartes sont tentées, même après une première défaillance : le
+  // mainteneur voit l'ensemble des causes en une seule passe. Rien n'est publié
+  // pour autant, la décision se prend après la boucle.
+  const failures = [];
+  for (const { file } of sources) {
+    const uvttPath = path.join(mapsDir, file);
     try {
       const result = await prepareMap(uvttPath, mapsDir, targetPxPerCell);
       catalogEntries.push(result.catalogEntry);
@@ -217,38 +345,34 @@ export async function prepareMaps(options = {}) {
       console.log(`✓ ${result.mapId} préparée`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`✗ Erreur en préparant ${uvttFile} : ${errMsg}`);
-      errors.push({ file: uvttFile, error: errMsg });
+      console.error(`✗ Erreur en préparant ${file} : ${errMsg}`);
+      failures.push({ file, error: errMsg });
     }
   }
 
-  if (errors.length > 0) {
-    console.error(`\n⚠ ${errors.length} carte(s) rejetée(s) :`);
-    for (const e of errors) {
-      console.error(` - ${e.file} : ${e.error}`);
-    }
+  // Une seule carte fautive interdit la publication. Le catalogue précédent
+  // reste en place : mieux vaut un catalogue daté qu'un catalogue amputé.
+  if (failures.length > 0) {
+    const detail = failures.map((f) => ` - ${f.file} : ${f.error}`).join('\n');
+    throw new Error(
+      `${failures.length} carte(s) en échec sur ${sources.length}, aucun catalogue publié ` +
+        `(le précédent est conservé tel quel) :\n${detail}`
+    );
   }
 
-  // Écrire le catalogue de manière atomique
   const catalog = {
     version: 1,
     maps: catalogEntries,
   };
 
-  const catalogPath = path.join(mapsDir, 'catalog.json');
-  const tempCatalogPath = catalogPath + '.tmp';
+  allWarnings.push(...findOrphanArtifacts(mapsDir, catalogEntries));
 
   if (!dryRun) {
-    fs.writeFileSync(tempCatalogPath, JSON.stringify(catalog, null, 2), 'utf-8');
-    // Atomic swap
-    if (fs.existsSync(catalogPath)) {
-      fs.unlinkSync(catalogPath);
-    }
-    fs.renameSync(tempCatalogPath, catalogPath);
+    publishCatalog(path.join(mapsDir, 'catalog.json'), catalog);
   }
 
   return {
-    mapsCount: uvttFiles.length,
+    mapsCount: catalogEntries.length,
     totalWalls,
     totalPortals,
     totalLights,
@@ -272,7 +396,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
       process.exit(0);
     })
     .catch((err) => {
-      console.error('Erreur fatale :', err);
+      // Sortie non nulle : aucun catalogue n'a été publié, et le CI doit le voir.
+      console.error(`\n✗ Préparation abandonnée.\n${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     });
 }
