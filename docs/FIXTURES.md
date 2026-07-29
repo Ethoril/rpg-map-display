@@ -40,6 +40,20 @@ une campagne acceptée par `validateCampaign`.
 
 `fixtures/real/` est dans `.gitignore` si les cartes sont sous licence ; sinon commité.
 
+**Corpus déposé le 29/07/2026 au soir.** Le dossier contient 13 exports Dungeondraft réels
+en `.dd2vtt` (~97 Mo), les douze du corpus d'analyse plus un export de référence à 150 ppg.
+`realUvtt.test.mjs` les parse tous : le test s'exécute donc réellement, et non plus en
+s'auto-ignorant. Trois points à connaître :
+
+- **Ces fichiers ne sont pas reconstituables** — le mainteneur ne peut pas les ré-exporter.
+  Ne pas les supprimer en nettoyant. Ils ne sont pas suivis par git, donc aucune
+  récupération n'est possible.
+- Ils sont en `.dd2vtt`, pas en `.uvtt`. Le test reconnaît les trois extensions du format
+  via `isSupportedSource()` (`scripts/prepare-maps.mjs`), source unique de cette décision.
+- Ne pas les utiliser comme fixtures de tests unitaires : ils pèsent de 1,6 à 9 Mo et
+  ralentiraient une suite qui tient aujourd'hui sous 2 s. Pour un cas de test, copier
+  `fixtures/synthetic/minimal.uvtt` sous l'extension voulue.
+
 ---
 
 ## 2. Arborescence
@@ -58,7 +72,7 @@ fixtures/
 │  └─ no-geometry.json
 ├─ images/
 │  └─ checker-10x8.png          damier généré, 1 case = 1 carreau
-└─ real/                        exports réels — À FOURNIR (cf. §1)
+└─ real/                        13 exports .dd2vtt réels, NON RECONSTITUABLES (cf. §1)
 ```
 
 ---

@@ -22,6 +22,27 @@ dispensent pas de gérer le cas général pour des cartes tierces (Patreon, scan
 | **Export en grille carrée, ou sans quadrillage du tout** — jamais d'hexagone peint | Le déphasage vertical décrit au §4.3, indétectable sans analyse d'image |
 | **Export 2D uniquement**, jamais « limited 3D » | Le déplacement des murs hors des lignes de grille (§6) |
 | **Export systématiquement sans bordures** | Les cases fantômes et le gaspillage de texture (§5) |
+| **Export à 150 ppg**, jamais 300 | Le dépassement du plafond de décodage JPEG (§7.2), et 78 % de pixels décodés pour rien |
+
+**Précision sur la cinquième décision, ajoutée le 29/07 au soir après mesure.** Le plafond
+de décodage ne porte pas sur le ppg mais sur le **nombre total de pixels**, autour de
+20 Mpx. Il couple donc la résolution *et* la taille de carte : un 29×22 à 150 ppg fait
+14,4 Mpx et passe, un 40×30 à 150 ppg fait 27 Mpx et échoue. La formulation robuste est
+donc **largeur × hauteur × ppg² sous ~20 Mpx**, soit environ 36×24 cases à 150 ppg. Dire
+« j'exporte en 150 » ne suffit pas pour une carte sensiblement plus grande.
+
+Mesures à l'appui, sur `test multi layer square grid_00` (29×22) :
+
+| Export | Pixels | Décodage au plafond par défaut de 512 Mo |
+|---|---|---|
+| 150 ppg → 4350×3300 | 14,4 Mpx | passe |
+| 200 ppg → 5800×4400 | 25,5 Mpx | échoue |
+| 300 ppg → 8700×6600 | 57,4 Mpx | échoue |
+
+Et le réglage est bon, pas un compromis : la chaîne cible `targetPxPerCell` 140, donc
+150 ppg est du 1:1 alors que 300 ppg fait décoder quatre fois trop pour jeter le surplus.
+Vérifié de bout en bout sur `fixtures/real/testvtt150dpi.dd2vtt` (21×14, 6,6 Mpx) :
+`prepareMap()` réussit sans aucune modification de code.
 
 Conséquence directe sur le code : le filtre d'extension et le `sourceUrl` de
 `prepare-maps.mjs` doivent traiter `.uvtt`, `.dd2vtt` et `.df2vtt` comme **un seul

@@ -39,19 +39,24 @@ laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 Résultat de la passe d’intégration du 29 juillet 2026 au soir (lot 2 terminé) :
 
 - typage : vert ;
-- tests unitaires : 81 réussis, 1 fixture réelle ignorée car absente ;
+- tests unitaires : 85 réussis, **aucun ignoré** — le corpus réel de `fixtures/real/` est
+  présent, et `realUvtt.test.mjs` le parse au lieu de s'auto-ignorer ;
 - tests navigateur : 48 réussis, 2 Firebase ignorés faute de configuration externe ;
 - les scénarios couvrent rendu, imports, bibliothèque de cartes, pions, gestes,
   plusieurs pages, reconnexion et remplacement de scène synchronisé.
 
-La suite unitaire est passée d’environ 30 s à 1,6 s : la préparation de cartes est
+La suite unitaire est passée d’environ 30 s à moins de 2 s : la préparation de cartes est
 désormais exercée sur `fixtures/synthetic/minimal.uvtt` dans un dossier temporaire, et
 `maps/` n’est plus muté par les tests.
 
-Réserve connue : `tests/input.spec.mjs` échoue par intermittence sous forte charge CPU
-(mesuré 2 échecs sur 8 exécutions locales, 0 sur 18 répétitions à vide). La cause est un
-jeu d’attentes fixes pour les frames rAF, pas un défaut de logique. À reprendre avant de
-s’appuyer sur le CI comme seule garde.
+**Réserve connue, à regarder en premier si le CI rougit.** `tests/input.spec.mjs`
+échouait par intermittence — 2 échecs sur 8 exécutions de `verify`, sur des tests
+variables. Ses attentes de durée fixe pour les frames rAF ont été remplacées par des
+attentes de condition. Depuis : 0 échec sur 6 passes e2e complètes et 4 `verify`. Mais le
+défaut **n’a jamais pu être reproduit à la demande** — une charge CPU externe ne le
+déclenche pas — donc le correctif est sain par construction, sans démonstration contrôlée
+contre l’échec observé. Les runners GitHub étant plus lents et plus variables qu’un poste
+de développement, c’est là que le doute subsiste.
 
 Les deux scénarios Firebase réels nécessitent `RPG_FIREBASE_CONFIG` avec la configuration
 Web publique et les identifiants du compte technique de test. Ces identifiants restent hors
