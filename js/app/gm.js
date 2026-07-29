@@ -86,7 +86,13 @@ export async function bootstrapGMApp(options = {}) {
   // 3. Gestion du transport de synchronisation réseau
   let transport = options.transport || null;
   const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = urlParams.get('session');
+
+  // Générer une sessionId par défaut si absent de l'URL (mode local/test)
+  const DEFAULT_SESSION_ID = 'local_' + (sessionStorage.getItem('sessionId') || 'default');
+  if (!sessionStorage.getItem('sessionId')) {
+    sessionStorage.setItem('sessionId', DEFAULT_SESSION_ID.replace('local_', ''));
+  }
+  const sessionId = urlParams.get('session') || DEFAULT_SESSION_ID;
   const fbConfig = options.firebaseConfig || null;
 
   if (!transport && sessionId && fbConfig) {
