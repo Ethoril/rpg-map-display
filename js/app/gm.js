@@ -64,9 +64,12 @@ export async function bootstrapGMApp(options = {}) {
     if (activeLevel) {
       if (activeLevel.imageUrl) {
         bgLayer.load(activeLevel.imageUrl);
+      } else {
+        console.log('[DEBUG] Pas d\'imageUrl, pas de fond');
       }
 
       const gridAdapter = gridFor(activeLevel);
+      console.log('[DEBUG] gridLayer.render() appelée');
       gridLayer.render(gridAdapter);
 
       const tokens = campaign ? campaign.tokens : [];
