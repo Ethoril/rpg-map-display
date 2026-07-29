@@ -138,6 +138,8 @@ F:\rpg-map-display\
     ├─ ARCHITECTURE.md            ce document
     ├─ TASKS-lot1a.md             découpage en tâches
     ├─ FIXTURES.md                jeux de données de test
+    ├─ MAPS-UVTT.md               mode d'emploi simple pour préparer et publier les cartes
+    ├─ PLAN-BIBLIOTHEQUE-UVTT.md plan d'intégration de la bibliothèque de scènes préparées
     ├─ PLAN-STABILISATION-CANVAS.md plan détaillé de remise à plat Canvas, persistance
     │                              et synchronisation
     └─ ETAT.md                    avancement, reprise, corrections du plan
