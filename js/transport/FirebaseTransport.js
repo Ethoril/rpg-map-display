@@ -410,14 +410,22 @@ export class FirebaseTransport {
       throw new Error('Transport non connecté');
     }
 
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campaignData));
+    // Sauvegarde en LocalStorage SANS imageUrl (trop volumineux)
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const campaignForStorage = /** @type {any} */ (structuredClone(campaignData));
+        if (campaignForStorage.levels) {
+          campaignForStorage.levels.forEach((/** @type {any} */ l) => {
+            delete l.imageUrl;
+          });
+        }
+        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campaignForStorage));
+      } catch (e) {
+        console.warn('Erreur écriture LocalStorage :', e);
       }
-    } catch (e) {
-      console.warn('Erreur écriture LocalStorage :', e);
     }
 
+    // Firestore sauvegarde le complet (avec imageUrl)
     if (this._firestore) {
       await setDoc(doc(this._firestore, 'campaigns', this._sessionId), campaignData);
     }

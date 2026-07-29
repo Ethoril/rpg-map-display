@@ -93,7 +93,15 @@ export function saveToLocalStorage(sessionId) {
   if (!targetSessionId || !storage) return;
   try {
     if (campaign) {
-      storage.setItem(`rpg_campaign_${targetSessionId}`, JSON.stringify(campaign));
+      const campaignForStorage = /** @type {any} */ (structuredClone(campaign));
+      if (campaignForStorage.levels) {
+        campaignForStorage.levels.forEach((/** @type {any} */ l) => {
+          if (l.imageUrl && l.imageUrl.startsWith('data:')) {
+            delete l.imageUrl;
+          }
+        });
+      }
+      storage.setItem(`rpg_campaign_${targetSessionId}`, JSON.stringify(campaignForStorage));
     }
     storage.setItem(
       `rpg_session_${targetSessionId}`,
