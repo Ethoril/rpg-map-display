@@ -23,6 +23,7 @@ dispensent pas de gérer le cas général pour des cartes tierces (Patreon, scan
 | **Export 2D uniquement**, jamais « limited 3D » | Le déplacement des murs hors des lignes de grille (§6) |
 | **Export systématiquement sans bordures** | Les cases fantômes et le gaspillage de texture (§5) |
 | **Export à 150 ppg**, jamais 300 | Le dépassement du plafond de décodage JPEG (§7.2), et 78 % de pixels décodés pour rien |
+| **Export sans toit** | Toute la question du modèle de calques (§9). Aucune sémantique ne tient dès qu'il y a plusieurs bâtiments sur la carte ou un départ en extérieur. L'intérieur non visité passera par le brouillard de guerre du lot 2 |
 
 **Précision sur la cinquième décision, ajoutée le 29/07 au soir après mesure.** Le plafond
 de décodage ne porte pas sur le ppg mais sur le **nombre total de pixels**, autour de
@@ -414,7 +415,36 @@ pixels et sa bbox couvre toute la zone claire : le toit **et** son ombre portée
 l'herbe.
 
 Un basculement toit / sans-toit se modélise donc comme **deux images pour un seul jeu de
-murs**. Modèle à trancher, la superposition par transparence n'étant pas une option.
+murs**. La superposition par transparence n'étant pas une option.
+
+### Décision du 29/07 au soir : pas de toit
+
+**Les toits sont abandonnés pour l'instant**, et l'export se fait sans eux. La possibilité
+de les réintroduire un jour est réservée — d'où la conservation de cette analyse.
+
+La raison n'est pas la difficulté d'implantation mais **l'absence de sémantique
+satisfaisante**, et elle est contre-intuitive :
+
+1. **Retirer le toit doit afficher l'étage 0**, le rez-de-chaussée, quel que soit le nombre
+   d'étages du bâtiment. Le toit n'est donc pas la variante de rendu de l'étage du dessous :
+   c'est la variante de rendu de *tout le bâtiment*, qui renvoie à son étage le plus bas.
+   Le modèle « deux images pour un jeu de murs » décrit mal cette relation.
+2. **Le cas d'une carte où les joueurs commencent en extérieur casse le modèle.** L'échelle
+   de la bascule n'est plus l'étage : c'est « dehors » contre « dedans », deux jeux de murs
+   différents et deux fogs différents.
+3. **Avec plusieurs bâtiments sur une même carte, aucune des trois représentations ne
+   tient.** Il faudrait une bascule par bâtiment, donc une notion de bâtiment dans le
+   modèle — un concept que ni le §6 du cahier des charges ni le format UVTT ne portent, et
+   que rien dans les fichiers sources ne permet de délimiter.
+
+**Ce qui remplace le toit :** l'intérieur d'un bâtiment non visité sera masqué par le
+**brouillard de guerre**, d'une façon à déterminer au lot 2. C'est le même effet de jeu — ne
+pas révéler l'intérieur avant d'y entrer — obtenu par un mécanisme que le projet doit de
+toute façon construire, au lieu d'un concept de calque supplémentaire.
+
+Conséquence pour le lot 2 : le fog n'est plus seulement un confort de table, il porte la
+fonction que les toits assuraient. À prendre en compte quand ses critères d'acceptation
+seront affinés.
 
 ---
 
@@ -446,17 +476,29 @@ MJ, `#grid-visible` / `#grid-opacity`, persisté par étage et diffusé aux joue
 
 ## 11. Ordre de traitement suggéré
 
-1. **Décodage JPEG** (§7.2) — blocage sec, et c'est le chemin normal puisqu'aucun PNG
-   n'est possible à la source.
-2. **`.dd2vtt` au même plan que `.uvtt`** (§7.1) et provenance (§7.3) — mécanique, avec la
-   garde de collision de slug.
-3. **Couleur ARGB des lumières** (§8) — bug franc, silencieux, non attrapé par la
-   validation.
-4. **Modèle deux-fonds / un-jeu-de-murs** pour le toit (§9) — choix de conception, à
-   trancher avant de coder.
-5. **Diagnostics d'import** (§10) — filet pour les cartes hors convention.
-6. **Convention hexagonale** (§4.3) — à figer avant le lot 4, sans quoi l'adaptateur hex
+Mis à jour le 29/07 au soir, l'ordre initial ayant été bousculé par les décisions d'export.
+
+**Fait.**
+
+- ✅ **`.dd2vtt` au même plan que `.uvtt`** (§7.1) et provenance (§7.3). `sourceUrl` porte
+  l'extension réelle, et `isSupportedSource()` centralise la reconnaissance des trois
+  extensions. La garde de collision de slug est désormais atteignable et couverte de bout en
+  bout.
+
+**À faire, par ordre de rentabilité.**
+
+1. **Couleur ARGB des lumières** (§8) — bug franc et silencieux, déjà présent dans les
+   données du dépôt : `maps/minimal.json` porte `"color": "ffffffff"` et `validateCampaign`
+   l'accepte. Brief prêt : `CHANTIER-G-COULEURS.md`.
+2. **Diagnostics d'import** (§10) — filet pour les cartes hors convention, désormais le seul
+   garde-fou puisque les conventions du §0 ne protègent que les cartes du MJ.
+3. **Décodage JPEG** (§7.2) — **rétrogradé** : la convention d'export à 150 ppg le rend
+   optionnel. Ne reste que le message d'erreur trompeur. Brief prêt :
+   `CHANTIER-E-JPEG.md`.
+4. **Convention hexagonale** (§4.3) — à figer avant le lot 4, sans quoi l'adaptateur hex
    naîtra désaligné.
 
-Sans objet, par décision d'export : le recadrage des bordures (§5), la tolérance à la
-fausse perspective (§6), la gestion d'une grille hexagonale peinte (§4.3).
+**Sans objet, par décision.** Le recadrage des bordures (§5), la tolérance à la fausse
+perspective (§6), la gestion d'une grille hexagonale peinte (§4.3), et **le modèle de toit
+(§9)** — remplacé par le brouillard de guerre du lot 2, la possibilité d'y revenir restant
+réservée.
