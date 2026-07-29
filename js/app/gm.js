@@ -145,9 +145,11 @@ export async function bootstrapGMApp(options = {}) {
     store.loadFromLocalStorage(sessionId);
   }
 
-  // Réinitialiser la caméra après restauration snapshot
+  // Réinitialiser la caméra après restauration snapshot et redessiner
   camera.setZoom(1);
   camera.setPan(0, 0);
+  // renderAll sera appelée après, mais force un rendu maintenant
+  frameLoop.requestFrame();
 
   // 4. Montage du panneau MJ
   if (panelContainer) {
