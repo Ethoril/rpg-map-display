@@ -59,6 +59,7 @@ export async function bootstrapGMApp(options = {}) {
 
     const state = store.getState();
     const { campaign, activeLevel, selectedToken, selectedTokenId, reachableCells } = state;
+    console.log('[DEBUG] renderAll state:', { hasActiveLevel: !!activeLevel, campaignLevels: campaign?.levels?.length });
 
     if (activeLevel) {
       if (activeLevel.imageUrl) {
