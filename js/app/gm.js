@@ -37,14 +37,14 @@ export async function bootstrapGMApp(options = {}) {
     options.panelContainer ||
     /** @type {HTMLElement} */ (document.querySelector('#gm-panel'));
 
-  // 1. Initialisation de l'application PixiJS v8 et de ses couches
-  const { app, layers } = await initStage(canvas);
+  // 1. Initialisation Canvas 2D natif et des couches
+  const { canvas: canvasElem, context: ctx, layers, resolution } = await initStage(canvas);
 
   // 2. Caméra & Boucle de rendu à la demande
-  const width = canvas.clientWidth || 800;
-  const height = canvas.clientHeight || 600;
+  const width = canvasElem.width / resolution;
+  const height = canvasElem.height / resolution;
   const camera = new Camera(width, height);
-  const frameLoop = new FrameLoop(app);
+  const frameLoop = new FrameLoop(() => renderAll());
 
   // Instanciation des couches de rendu
   const bgLayer = new BackgroundLayer(layers.background);
@@ -52,43 +52,71 @@ export async function bootstrapGMApp(options = {}) {
   const moveZoneLayer = new MoveZoneLayer(layers.moveZone);
   const tokensLayer = new TokensLayer(layers.tokens);
 
+  // Flag auto-zoom une seule fois au changement de niveau
+  /** @type {string|null} */
+  let lastActiveLevelId = null;
+
   // Fonction de redessin global
   function renderAll() {
-    console.log('[DEBUG] renderAll() exécutée');
-    camera.applyToContainer(app.stage);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
+    ctx.restore();
+
+    ctx.save();
+    ctx.scale(resolution, resolution);
+    camera.applyToContext(ctx);
 
     const state = store.getState();
     const { campaign, activeLevel, selectedToken, selectedTokenId, reachableCells } = state;
-    console.log('[DEBUG] renderAll state:', { hasActiveLevel: !!activeLevel, campaignLevels: campaign?.levels?.length });
 
     if (activeLevel) {
-      console.log('[DEBUG] activeLevel.imageUrl :', activeLevel.imageUrl ? 'EXISTS' : 'UNDEFINED');
-      if (activeLevel.imageUrl) {
-        bgLayer.load(activeLevel.imageUrl);
-      } else {
-        console.log('[DEBUG] Pas d\'imageUrl, fond gris par défaut');
-        app.stage.background = { r: 0.5, g: 0.5, b: 0.5 };
+      const gridAdapter = gridFor(activeLevel);
+      const bounds = gridAdapter.mapFromCellPoint({ cellX: activeLevel.widthCells, cellY: activeLevel.heightCells });
+
+      // Auto-center et zoom une seule fois par niveau
+      if (activeLevel.id !== lastActiveLevelId) {
+        lastActiveLevelId = activeLevel.id;
+        const centerX = bounds.x / 2;
+        const centerY = bounds.y / 2;
+        const zoomX = width / bounds.x;
+        const zoomY = height / bounds.y;
+        const fitZoom = Math.min(zoomX, zoomY);
+
+        camera.setPan(centerX, centerY);
+        camera.setZoom(fitZoom);
       }
 
-      const gridAdapter = gridFor(activeLevel);
+      console.log('[DEBUG] gm.js renderAll:', { hasImageUrl: !!activeLevel.imageUrl, imageUrl: activeLevel.imageUrl });
+      if (activeLevel.imageUrl) {
+        bgLayer.load(activeLevel.imageUrl).then(() => {
+          console.log('[DEBUG] gm.js load promise resolved');
+          frameLoop.requestFrame();
+        });
+        bgLayer.render(ctx);
+      } else {
+        console.log('[DEBUG] gm.js no imageUrl, drawing gray background');
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, bounds.x, bounds.y);
+      }
+
       try {
-        console.log('[DEBUG] gridLayer.render() appelée');
-        gridLayer.render(gridAdapter);
-        console.log('[DEBUG] gridLayer.render() réussi');
+        gridLayer.render(ctx, gridAdapter);
       } catch (e) {
         console.error('[DEBUG] Erreur gridLayer.render():', e);
       }
 
       const tokens = campaign ? campaign.tokens : [];
-      tokensLayer.render(gridAdapter, tokens, selectedTokenId, { role: 'gm' });
+      tokensLayer.render(ctx, gridAdapter, tokens, selectedTokenId, { role: 'gm' });
 
       if (selectedToken && reachableCells && reachableCells.size > 0) {
-        moveZoneLayer.render(gridAdapter, selectedTokenId, reachableCells, selectedToken);
+        moveZoneLayer.render(ctx, gridAdapter, selectedTokenId, reachableCells, selectedToken);
       } else {
         moveZoneLayer.clear();
       }
     }
 
+    ctx.restore();
     frameLoop.requestFrame();
   }
 
@@ -99,7 +127,6 @@ export async function bootstrapGMApp(options = {}) {
   let transport = options.transport || null;
   const urlParams = new URLSearchParams(window.location.search);
 
-  // Générer une sessionId par défaut si absent de l'URL (mode local/test)
   const DEFAULT_SESSION_ID = 'local_' + (sessionStorage.getItem('sessionId') || 'default');
   if (!sessionStorage.getItem('sessionId')) {
     sessionStorage.setItem('sessionId', DEFAULT_SESSION_ID.replace('local_', ''));
@@ -117,21 +144,13 @@ export async function bootstrapGMApp(options = {}) {
     }
   }
 
-  // Restauration du snapshot avant tout delta (T-24)
+  // Restauration du snapshot
   if (sessionId) {
     store.setSessionId(sessionId);
   }
-  console.log('[DEBUG] Avant restauration snapshot :', { sessionId, hasTransport: !!transport });
   if (transport && sessionId) {
     try {
-      console.log('[DEBUG] Restauration snapshot...', { sessionId, hasTransport: !!transport });
       const snapshotData = /** @type {any} */ (await transport.snapshot());
-      console.log('[DEBUG] Snapshot reçu :', snapshotData);
-      console.log('[DEBUG] snapshot() retourne :', {
-        hasCampaign: !!(snapshotData && snapshotData.campaign),
-        campaignLevels: snapshotData?.campaign?.levels?.length ?? snapshotData?.levels?.length,
-        keys: snapshotData ? Object.keys(snapshotData) : [],
-      });
       if (snapshotData && (snapshotData.levels || snapshotData.campaign)) {
         store.restoreFromSnapshot(snapshotData, { sessionId });
       } else {
@@ -145,10 +164,9 @@ export async function bootstrapGMApp(options = {}) {
     store.loadFromLocalStorage(sessionId);
   }
 
-  // Réinitialiser la caméra après restauration snapshot et redessiner
+  // Réinitialiser caméra après restauration
   camera.setZoom(1);
   camera.setPan(0, 0);
-  // renderAll sera appelée après, mais force un rendu maintenant
   frameLoop.requestFrame();
 
   // 4. Montage du panneau MJ
@@ -156,7 +174,7 @@ export async function bootstrapGMApp(options = {}) {
     createGMPanel(panelContainer, { transport: transport || undefined });
   }
 
-  // 5. Gestion des événements d'entrée (Pointer & Gestures)
+  // 5. Gestion des événements d'entrée
   /**
    * @param {import('../input/gestures.js').InputIntention} intention
    */
@@ -242,12 +260,11 @@ export async function bootstrapGMApp(options = {}) {
     onIntention: handleIntention,
   });
 
-  // Ajustement de la taille au redimensionnement
+  // Redimensionnement
   window.addEventListener('resize', () => {
-    const w = canvas.clientWidth || 800;
-    const h = canvas.clientHeight || 600;
+    const w = canvasElem.width / resolution;
+    const h = canvasElem.height / resolution;
     camera.setViewport(w, h);
-    app.renderer.resize(w, h);
     renderAll();
   });
 
@@ -255,7 +272,8 @@ export async function bootstrapGMApp(options = {}) {
   renderAll();
 
   return {
-    app,
+    canvasElem,
+    ctx,
     camera,
     frameLoop,
     pointerInput,

@@ -25,19 +25,24 @@ export class BackgroundLayer {
    * @returns {Promise<void>}
    */
   load(imageUrl) {
+    console.log('[DEBUG] BackgroundLayer.load called:', { imageUrl, currentUrl: this.currentUrl, loadState: this.loadState });
     if (!imageUrl || (this.currentUrl === imageUrl && this.loadState === 'loaded')) {
+      console.log('[DEBUG] BackgroundLayer.load returning early (cached)');
       return Promise.resolve();
     }
 
     this.currentUrl = imageUrl;
     this.loadState = 'loading';
+    console.log('[DEBUG] BackgroundLayer.load starting:', { imageUrl });
 
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
+        console.log('[DEBUG] BackgroundLayer.load onload fired:', { imageUrl, currentUrl: this.currentUrl, match: this.currentUrl === imageUrl });
         if (this.currentUrl === imageUrl) {
           this.image = img;
           this.loadState = 'loaded';
+          console.log('[DEBUG] BackgroundLayer.load state set to loaded');
           if (this.onStateChange) this.onStateChange('loaded');
         }
         resolve();
@@ -73,7 +78,11 @@ export class BackgroundLayer {
    * @param {number} [height] Hauteur du grid en pixels (si omis, utilise taille native image)
    */
   render(ctx, width, height) {
-    if (this.loadState !== 'loaded' || !this.image || !ctx) return;
+    if (this.loadState !== 'loaded' || !this.image || !ctx) {
+      console.log('[DEBUG] BackgroundLayer.render skip:', { loadState: this.loadState, hasImage: !!this.image, hasCtx: !!ctx, url: this.currentUrl });
+      return;
+    }
+    console.log('[DEBUG] BackgroundLayer.render drawing:', { loadState: this.loadState, url: this.currentUrl });
     if (width && height) {
       ctx.drawImage(this.image, 0, 0, width, height);
     } else {
