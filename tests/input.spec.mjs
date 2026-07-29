@@ -23,6 +23,36 @@ async function mountInputStage(page, role = 'players') {
   }, role);
 }
 
+/**
+ * Attend qu'une intention du type demandé ait été émise.
+ *
+ * Remplace les attentes de durée fixe qui rendaient ce fichier instable : sous
+ * charge CPU, quelques dizaines de millisecondes ne suffisent pas et le probe
+ * est encore vide. Ne pas revenir à un `waitForTimeout` et ne pas rallonger la
+ * durée « pour que ça passe » — c'est le contournement que cette fonction
+ * supprime.
+ *
+ * La caméra est modifiée synchronement dans le handler d'intention
+ * (`tests/mountStage.mjs`), donc voir l'intention suffit : son effet est déjà
+ * appliqué, il n'y a pas de frame à attendre en plus.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} type
+ */
+async function waitForIntention(page, type) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (attendu) =>
+          /** @type {any} */ (window).__stageProbe
+            .getIntentions()
+            .filter((/** @type {any} */ item) => item.type === attendu).length,
+        type
+      )
+    )
+    .toBeGreaterThan(0);
+}
+
 test('Vue joueurs — Interdiction #1 : drag 1 doigt déplace la caméra (panBy) et ne génère aucun dragToken', async ({ page }) => {
   await mountInputStage(page, 'players');
 
@@ -46,8 +76,7 @@ test('Vue joueurs — Interdiction #1 : drag 1 doigt déplace la caméra (panBy)
   await page.mouse.move(endX, endY, { steps: 5 });
   await page.mouse.up();
 
-  // Attendre la fin des frames rAF éventuelles
-  await page.waitForTimeout(50);
+  await waitForIntention(page, 'panBy');
 
   const finalCam = await page.evaluate(() => {
     const probe = /** @type {any} */ (window).__stageProbe;
@@ -85,7 +114,7 @@ test('un micro-mouvement reste un tap unique et ne déplace pas la caméra', asy
   await page.mouse.down();
   await page.mouse.move(canvasBox.x + 123, canvasBox.y + 121);
   await page.mouse.up();
-  await page.waitForTimeout(30);
+  await waitForIntention(page, 'tap');
 
   const intentions = await page.evaluate(
     () => /** @type {any} */ (window).__stageProbe.getIntentions()
@@ -104,10 +133,12 @@ test('Vue MJ — un drag commencé hors pion pan la caméra sans déplacer de pi
 
   await page.mouse.move(canvasBox.x + 180, canvasBox.y + 180);
   await page.mouse.down();
+  // Durée du geste, pas attente d'un résultat : maintien au-delà de
+  // DRAG_HOLD_MS pour montrer que sans pion sous le doigt, le drag pan quand même.
   await page.waitForTimeout(180);
   await page.mouse.move(canvasBox.x + 240, canvasBox.y + 180, { steps: 4 });
   await page.mouse.up();
-  await page.waitForTimeout(30);
+  await waitForIntention(page, 'panBy');
 
   const intentions = await page.evaluate(
     () => /** @type {any} */ (window).__stageProbe.getIntentions()
@@ -130,11 +161,12 @@ test('Vue MJ — Drag d un doigt au-delà du seuil émet une intention dragToken
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
+  // Durée du geste, pas attente d'un résultat.
   await page.waitForTimeout(200); // Maintien > DRAG_HOLD_MS (150ms)
   await page.mouse.move(endX, endY, { steps: 5 });
   await page.mouse.up();
 
-  await page.waitForTimeout(50);
+  await waitForIntention(page, 'dragToken');
 
   const intentions = await page.evaluate(() => {
     const probe = /** @type {any} */ (window).__stageProbe;
@@ -165,7 +197,7 @@ test('Pinch zoom / molette — Émission d une intention pinchZoom', async ({ pa
   await page.mouse.move(canvasBox.x + 300, canvasBox.y + 300);
   await page.mouse.wheel(0, -100);
 
-  await page.waitForTimeout(50);
+  await waitForIntention(page, 'pinchZoom');
 
   const intentions = await page.evaluate(() => {
     const probe = /** @type {any} */ (window).__stageProbe;
@@ -190,10 +222,11 @@ test('Appui long — Émission d une intention longPress si immobile pendant lon
 
   await page.mouse.move(clickX, clickY);
   await page.mouse.down();
+  // Durée du geste, pas attente d'un résultat.
   await page.waitForTimeout(600); // Maintien immobile > 500ms
   await page.mouse.up();
 
-  await page.waitForTimeout(50);
+  await waitForIntention(page, 'longPress');
 
   const intentions = await page.evaluate(() => {
     const probe = /** @type {any} */ (window).__stageProbe;
