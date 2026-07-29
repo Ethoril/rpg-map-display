@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "maps": [
+    {
+      "id": "manoir-rdc",
+      "name": "Carte UVTT",
+      "sourceUrl": "maps/manoir-rdc.uvtt",
+      "sceneUrl": "maps/generated/manoir-rdc.scene.json",
+      "imageUrl": "maps/generated/manoir-rdc.webp",
+      "sourceHash": "sha256-223ecc42a8c27214e125c8aaca8138243d6decca2e204463998193b5c1b5a23a",
+      "levelCount": 1,
+      "features": {
+        "walls": 131,
+        "portals": 40,
+        "lights": 0,
+        "bakedLighting": false
+      }
+    }
+  ]
+}

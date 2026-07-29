@@ -62,6 +62,7 @@ F:\rpg-map-display\
 │   │
 │   ├─ import/
 │   │   ├─ uvtt.js                [1a] parsing UVTT pur (aucune I/O, aucun DOM)
+│   │   ├─ catalog.js             [2]  chargeur et validateur de catalogue pur
 │   │   ├─ imageCalibrate.js      [1a] image simple → grille (source B)
 │   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>
 │   │
@@ -95,7 +96,7 @@ F:\rpg-map-display\
 │   │   │   ├─ panel.js           [1a] panneau latéral (conteneur)
 │   │   │   ├─ importPanel.js     [1a] import UVTT + image, calibration
 │   │   │   ├─ tokenMaker.js      [1a] générateur de pions (recadrage canvas)
-│   │   │   ├─ sceneLibrary.js    [1b] bibliothèque de cartes
+│   │   │   ├─ sceneLibrary.js    [2]  bibliothèque de cartes
 │   │   │   ├─ tokenLibrary.js    [1b] bibliothèque de pions
 │   │   │   ├─ handouts.js        [1b] révélation d'image
 │   │   │   ├─ fogTools.js        [2]  pinceaux révéler/masquer, reset
@@ -116,6 +117,7 @@ F:\rpg-map-display\
 │
 ├─ scripts/
 │   ├─ import-uvtt.mjs            [1a] CLI Node : .uvtt → maps/ + document de scène
+│   ├─ prepare-maps.mjs           [2]  CLI Node : scanne maps/*.uvtt, génère catalog.json
 │   ├─ resample.mjs               [1a] rééchantillonnage d'image (Node)
 │   ├─ make-fixture.mjs           [1a] génère les fixtures de test
 │   ├─ stamp-version.mjs          [1a] écrit js/core/version.js

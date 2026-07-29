@@ -38,11 +38,15 @@ export function createImportPanel(container, options = {}) {
       ${
         showUvtt
           ? `
-      <!-- Section 1 : Importation UVTT -->
-      <div class="import-uvtt-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Importation UVTT (.uvtt / .json)</h3>
+      <!-- Section 1 : Importation UVTT (Diagnostic) -->
+      <div class="import-uvtt-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333; opacity: 0.7;">
+        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #888;">⚙️ Diagnostic développeur — Import UVTT</h3>
         <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
-          Charge une carte exportée depuis Dungeondraft avec murs, portails et lumières.
+          Pour ajouter des cartes <strong>avant la séance</strong>, utilisez plutôt :
+          <code style="background: #1a1a1a; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.75rem;">pnpm maps:prepare</code>
+        </p>
+        <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
+          Cette section permet d'importer et tester localement des fichiers UVTT sans passer par la préparation complète.
         </p>
 
         <label style="display: inline-block; padding: 0.5rem 1rem; background: #333; color: #fff; border-radius: 4px; cursor: pointer; text-align: center;">
@@ -54,16 +58,8 @@ export function createImportPanel(container, options = {}) {
           <img id="uvtt-local-preview" alt="Aperçu local de la carte UVTT" style="display: block; width: 100%; max-height: 180px; object-fit: contain; background: #111; border-radius: 4px;" />
         </div>
 
-        <label for="uvtt-canonical-url" style="display: block; margin-top: 0.75rem; font-size: 0.85rem;">
-          URL publiée de l'image :
-        </label>
-        <input id="uvtt-canonical-url" type="text" placeholder="maps/ma-carte.webp" style="box-sizing: border-box; width: 100%; margin-top: 0.25rem;" />
-        <p style="margin: 0.35rem 0 0.75rem; font-size: 0.75rem; color: #aaa;">
-          L'image intégrée sert uniquement d'aperçu local. Préparez le WebP avec le CLI,
-          publiez-le dans maps/, puis indiquez son URL ici.
-        </p>
-        <button id="btn-validate-uvtt-import" style="width: 100%; padding: 0.5rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
-          Ajouter l'étage publié
+        <button id="btn-validate-uvtt-import" style="width: 100%; padding: 0.5rem; margin-top: 0.75rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+          Charger (aperçu local)
         </button>
 
         <div id="uvtt-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
@@ -76,10 +72,11 @@ export function createImportPanel(container, options = {}) {
         showImage
           ? `
       <!-- Section 2 : Importation Image avec Calibration -->
-      <div class="import-image-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Importation Image + Calibration</h3>
+      <div class="import-image-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333; opacity: 0.7;">
+        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #888;">⚙️ Diagnostic développeur — Import Image + Calibration</h3>
         <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
           Charge une image classique (JPG/PNG) et définis ses dimensions en cases.
+          Les changements restent locaux et ne sont pas persistés.
         </p>
 
         <label style="display: inline-block; padding: 0.5rem 1rem; background: #333; color: #fff; border-radius: 4px; cursor: pointer; text-align: center; margin-bottom: 0.75rem;">
@@ -102,17 +99,8 @@ export function createImportPanel(container, options = {}) {
           <canvas id="image-calibration-canvas" width="300" height="180" style="width: 100%; height: 100%; display: block;"></canvas>
         </div>
 
-        <label for="image-canonical-url" style="display: block; font-size: 0.85rem;">
-          URL publiée de l'image :
-        </label>
-        <input id="image-canonical-url" type="text" placeholder="maps/ma-carte.webp" style="box-sizing: border-box; width: 100%; margin: 0.25rem 0 0.35rem;" />
-        <p style="margin: 0 0 0.75rem; font-size: 0.75rem; color: #aaa;">
-          Le fichier choisi reste un aperçu local. Placez l'image dans maps/ et indiquez
-          son URL publiée avant de créer l'étage partagé.
-        </p>
-
-        <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
-          Valider l'importation d'image
+        <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+          Charger (aperçu local)
         </button>
 
         <div id="image-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
@@ -168,13 +156,16 @@ export function createImportPanel(container, options = {}) {
 
   function refreshUvttButton() {
     if (btnValidateUvtt) {
-      btnValidateUvtt.disabled = !pendingUvtt || !hasCanonicalUrl(uvttCanonicalUrl);
+      // Sans champ URL, le bouton s'active dès qu'une UVTT est chargée
+      // (c'est un aperçu local de diagnostic, pas une publication)
+      btnValidateUvtt.disabled = !pendingUvtt;
     }
   }
 
   function refreshImageButton() {
     if (btnValidateImage) {
-      btnValidateImage.disabled = !loadedCalibImage || !hasCanonicalUrl(imageCanonicalUrl);
+      // Sans champ URL, le bouton s'active dès qu'une image est chargée
+      btnValidateImage.disabled = !loadedCalibImage;
     }
   }
 
@@ -225,13 +216,13 @@ export function createImportPanel(container, options = {}) {
     });
   }
 
-  uvttCanonicalUrl?.addEventListener('input', refreshUvttButton);
   btnValidateUvtt?.addEventListener('click', () => {
-    if (!pendingUvtt || !uvttCanonicalUrl || !hasCanonicalUrl(uvttCanonicalUrl)) return;
+    if (!pendingUvtt) return;
 
+    // En diagnostic : l'aperçu local suffit, pas de publication
     const level = {
       ...pendingUvtt.level,
-      imageUrl: uvttCanonicalUrl.value.trim(),
+      // Pas d'imageUrl persistée — c'est un aperçu local temporaire
     };
     store.addLevel(level);
     const publishedResult = { ...pendingUvtt, level };
@@ -239,7 +230,7 @@ export function createImportPanel(container, options = {}) {
     if (uvttStatus) {
       uvttStatus.style.display = 'block';
       uvttStatus.style.color = '#2ecc71';
-      uvttStatus.innerHTML = `<strong>Étage "${level.name}" ajouté avec son asset publié.</strong><br>URL : ${level.imageUrl}`;
+      uvttStatus.innerHTML = `<strong>✓ Étage "${level.name}" chargé (aperçu local uniquement).</strong><br><span style="font-size: 0.8rem; color: #aaa;">Pour publier, utilisez : <code style="background: #1a1a1a; padding: 0.2rem 0.4rem; border-radius: 3px;">pnpm maps:prepare</code></span>`;
     }
     options.onImportUvtt?.(publishedResult);
   });
@@ -327,15 +318,12 @@ export function createImportPanel(container, options = {}) {
   if (pxPerCellInput) {
     pxPerCellInput.addEventListener('input', drawCalibrationPreview);
   }
-  imageCanonicalUrl?.addEventListener('input', refreshImageButton);
 
   if (btnValidateImage) {
     btnValidateImage.addEventListener('click', () => {
       if (
         !loadedCalibImage ||
         !loadedImageDataUrl ||
-        !imageCanonicalUrl ||
-        !hasCanonicalUrl(imageCanonicalUrl) ||
         !cellsWideInput ||
         !cellsTallInput ||
         !pxPerCellInput
@@ -357,7 +345,7 @@ export function createImportPanel(container, options = {}) {
       const level = createLevel({
         id: `level-${Date.now()}`,
         name: 'Carte Image Calibrée',
-        imageUrl: imageCanonicalUrl.value.trim(),
+        // Pas d'imageUrl persistée — c'est un aperçu local temporaire
         pxPerCell: pxPerCell,
         widthCells: cellsWide,
         heightCells: cellsTall,
@@ -376,7 +364,7 @@ export function createImportPanel(container, options = {}) {
       if (imageStatus) {
         imageStatus.style.display = 'block';
         imageStatus.style.color = '#2ecc71';
-        imageStatus.innerHTML = `<strong>Image publiée ajoutée et calibrée avec succès !</strong><br>Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case). URL : ${level.imageUrl}`;
+        imageStatus.innerHTML = `<strong>✓ Image calibrée chargée (aperçu local uniquement).</strong><br>Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case)`;
       }
 
       if (options.onImportImage) {

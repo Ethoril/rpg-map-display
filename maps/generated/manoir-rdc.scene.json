@@ -1,0 +1,1873 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-manoir-rdc",
+  "name": "Carte UVTT",
+  "levels": [
+    {
+      "id": "uvtt-level",
+      "name": "Carte UVTT",
+      "order": 0,
+      "imageUrl": "maps/generated/manoir-rdc.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "pxPerCell": 85.33333333333333,
+      "widthCells": 48,
+      "heightCells": 45,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "terrainCost": null,
+      "walls": [
+        [
+          {
+            "cellX": 3,
+            "cellY": 12
+          },
+          {
+            "cellX": 11,
+            "cellY": 12
+          }
+        ],
+        [
+          {
+            "cellX": 3,
+            "cellY": 16
+          },
+          {
+            "cellX": 6,
+            "cellY": 16
+          }
+        ],
+        [
+          {
+            "cellX": 6,
+            "cellY": 18
+          },
+          {
+            "cellX": 14,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 7,
+            "cellY": 29
+          },
+          {
+            "cellX": 8,
+            "cellY": 29
+          }
+        ],
+        [
+          {
+            "cellX": 7,
+            "cellY": 34
+          },
+          {
+            "cellX": 11,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 9,
+            "cellY": 25
+          },
+          {
+            "cellX": 14,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 10,
+            "cellY": 29
+          },
+          {
+            "cellX": 11,
+            "cellY": 29
+          }
+        ],
+        [
+          {
+            "cellX": 11,
+            "cellY": 13
+          },
+          {
+            "cellX": 16,
+            "cellY": 13
+          }
+        ],
+        [
+          {
+            "cellX": 12,
+            "cellY": 28
+          },
+          {
+            "cellX": 14,
+            "cellY": 28
+          }
+        ],
+        [
+          {
+            "cellX": 12,
+            "cellY": 34
+          },
+          {
+            "cellX": 18,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 15,
+            "cellY": 18
+          },
+          {
+            "cellX": 16,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 15,
+            "cellY": 25
+          },
+          {
+            "cellX": 20,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 15,
+            "cellY": 26
+          },
+          {
+            "cellX": 19,
+            "cellY": 26
+          }
+        ],
+        [
+          {
+            "cellX": 15,
+            "cellY": 31
+          },
+          {
+            "cellX": 16,
+            "cellY": 31
+          }
+        ],
+        [
+          {
+            "cellX": 16,
+            "cellY": 6
+          },
+          {
+            "cellX": 19,
+            "cellY": 6
+          }
+        ],
+        [
+          {
+            "cellX": 16,
+            "cellY": 12
+          },
+          {
+            "cellX": 22,
+            "cellY": 12
+          }
+        ],
+        [
+          {
+            "cellX": 16,
+            "cellY": 19
+          },
+          {
+            "cellX": 17,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 17,
+            "cellY": 15
+          },
+          {
+            "cellX": 19,
+            "cellY": 15
+          }
+        ],
+        [
+          {
+            "cellX": 17,
+            "cellY": 31
+          },
+          {
+            "cellX": 19,
+            "cellY": 31
+          }
+        ],
+        [
+          {
+            "cellX": 18,
+            "cellY": 19
+          },
+          {
+            "cellX": 25,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 4
+          },
+          {
+            "cellX": 23,
+            "cellY": 4
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 9
+          },
+          {
+            "cellX": 20,
+            "cellY": 9
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 33
+          },
+          {
+            "cellX": 20,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 21,
+            "cellY": 9
+          },
+          {
+            "cellX": 26,
+            "cellY": 9
+          }
+        ],
+        [
+          {
+            "cellX": 22,
+            "cellY": 11
+          },
+          {
+            "cellX": 25,
+            "cellY": 11
+          }
+        ],
+        [
+          {
+            "cellX": 22,
+            "cellY": 25
+          },
+          {
+            "cellX": 25,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 22,
+            "cellY": 33
+          },
+          {
+            "cellX": 23,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 23,
+            "cellY": 5
+          },
+          {
+            "cellX": 27,
+            "cellY": 5
+          }
+        ],
+        [
+          {
+            "cellX": 23,
+            "cellY": 7
+          },
+          {
+            "cellX": 25,
+            "cellY": 7
+          }
+        ],
+        [
+          {
+            "cellX": 24,
+            "cellY": 33
+          },
+          {
+            "cellX": 28,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 25,
+            "cellY": 30
+          },
+          {
+            "cellX": 31,
+            "cellY": 30
+          }
+        ],
+        [
+          {
+            "cellX": 26,
+            "cellY": 19
+          },
+          {
+            "cellX": 30,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 26,
+            "cellY": 25
+          },
+          {
+            "cellX": 28,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 3
+          },
+          {
+            "cellX": 36,
+            "cellY": 3
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 8
+          },
+          {
+            "cellX": 36,
+            "cellY": 8
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 9
+          },
+          {
+            "cellX": 29,
+            "cellY": 9
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 11
+          },
+          {
+            "cellX": 30,
+            "cellY": 11
+          }
+        ],
+        [
+          {
+            "cellX": 28,
+            "cellY": 32
+          },
+          {
+            "cellX": 31,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 30,
+            "cellY": 12
+          },
+          {
+            "cellX": 35,
+            "cellY": 12
+          }
+        ],
+        [
+          {
+            "cellX": 30,
+            "cellY": 17
+          },
+          {
+            "cellX": 33,
+            "cellY": 17
+          }
+        ],
+        [
+          {
+            "cellX": 31,
+            "cellY": 37
+          },
+          {
+            "cellX": 37,
+            "cellY": 37
+          }
+        ],
+        [
+          {
+            "cellX": 31,
+            "cellY": 42
+          },
+          {
+            "cellX": 36,
+            "cellY": 42
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 20
+          },
+          {
+            "cellX": 34,
+            "cellY": 20
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 25
+          },
+          {
+            "cellX": 37,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 28
+          },
+          {
+            "cellX": 34,
+            "cellY": 28
+          }
+        ],
+        [
+          {
+            "cellX": 33,
+            "cellY": 30
+          },
+          {
+            "cellX": 36,
+            "cellY": 30
+          }
+        ],
+        [
+          {
+            "cellX": 33,
+            "cellY": 32
+          },
+          {
+            "cellX": 36,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 17
+          },
+          {
+            "cellX": 35,
+            "cellY": 17
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 29
+          },
+          {
+            "cellX": 37,
+            "cellY": 29
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 33
+          },
+          {
+            "cellX": 37,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 18
+          },
+          {
+            "cellX": 37,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 21
+          },
+          {
+            "cellX": 37,
+            "cellY": 21
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 41
+          },
+          {
+            "cellX": 42,
+            "cellY": 41
+          }
+        ],
+        [
+          {
+            "cellX": 37,
+            "cellY": 15
+          },
+          {
+            "cellX": 39,
+            "cellY": 15
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 18
+          },
+          {
+            "cellX": 39,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 21
+          },
+          {
+            "cellX": 39,
+            "cellY": 21
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 25
+          },
+          {
+            "cellX": 39,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 29
+          },
+          {
+            "cellX": 39,
+            "cellY": 29
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 33
+          },
+          {
+            "cellX": 39,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 37
+          },
+          {
+            "cellX": 42,
+            "cellY": 37
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 26
+          },
+          {
+            "cellX": 45,
+            "cellY": 26
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 30
+          },
+          {
+            "cellX": 41,
+            "cellY": 30
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 32
+          },
+          {
+            "cellX": 41,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 34
+          },
+          {
+            "cellX": 43,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 43,
+            "cellY": 30
+          },
+          {
+            "cellX": 45,
+            "cellY": 30
+          }
+        ],
+        [
+          {
+            "cellX": 3,
+            "cellY": 12
+          },
+          {
+            "cellX": 3,
+            "cellY": 16
+          }
+        ],
+        [
+          {
+            "cellX": 6,
+            "cellY": 16
+          },
+          {
+            "cellX": 6,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 7,
+            "cellY": 29
+          },
+          {
+            "cellX": 7,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 7,
+            "cellY": 33
+          },
+          {
+            "cellX": 7,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 9,
+            "cellY": 18
+          },
+          {
+            "cellX": 9,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 9,
+            "cellY": 20
+          },
+          {
+            "cellX": 9,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 11,
+            "cellY": 12
+          },
+          {
+            "cellX": 11,
+            "cellY": 14
+          }
+        ],
+        [
+          {
+            "cellX": 11,
+            "cellY": 16
+          },
+          {
+            "cellX": 11,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 11,
+            "cellY": 29
+          },
+          {
+            "cellX": 11,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 11,
+            "cellY": 33
+          },
+          {
+            "cellX": 11,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 12,
+            "cellY": 28
+          },
+          {
+            "cellX": 12,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 13,
+            "cellY": 25
+          },
+          {
+            "cellX": 13,
+            "cellY": 28
+          }
+        ],
+        [
+          {
+            "cellX": 15,
+            "cellY": 25
+          },
+          {
+            "cellX": 15,
+            "cellY": 31
+          }
+        ],
+        [
+          {
+            "cellX": 16,
+            "cellY": 6
+          },
+          {
+            "cellX": 16,
+            "cellY": 12
+          }
+        ],
+        [
+          {
+            "cellX": 16,
+            "cellY": 13
+          },
+          {
+            "cellX": 16,
+            "cellY": 21
+          }
+        ],
+        [
+          {
+            "cellX": 16,
+            "cellY": 22
+          },
+          {
+            "cellX": 16,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 17,
+            "cellY": 15
+          },
+          {
+            "cellX": 17,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 18,
+            "cellY": 31
+          },
+          {
+            "cellX": 18,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 18,
+            "cellY": 33
+          },
+          {
+            "cellX": 18,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 4
+          },
+          {
+            "cellX": 19,
+            "cellY": 9
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 15
+          },
+          {
+            "cellX": 19,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 25
+          },
+          {
+            "cellX": 19,
+            "cellY": 27
+          }
+        ],
+        [
+          {
+            "cellX": 19,
+            "cellY": 28
+          },
+          {
+            "cellX": 19,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 22,
+            "cellY": 9
+          },
+          {
+            "cellX": 22,
+            "cellY": 14
+          }
+        ],
+        [
+          {
+            "cellX": 22,
+            "cellY": 15
+          },
+          {
+            "cellX": 22,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 23,
+            "cellY": 4
+          },
+          {
+            "cellX": 23,
+            "cellY": 5
+          }
+        ],
+        [
+          {
+            "cellX": 23,
+            "cellY": 7
+          },
+          {
+            "cellX": 23,
+            "cellY": 11
+          }
+        ],
+        [
+          {
+            "cellX": 23,
+            "cellY": 25
+          },
+          {
+            "cellX": 23,
+            "cellY": 27
+          }
+        ],
+        [
+          {
+            "cellX": 23,
+            "cellY": 28
+          },
+          {
+            "cellX": 23,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 24,
+            "cellY": 25
+          },
+          {
+            "cellX": 24,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 25,
+            "cellY": 7
+          },
+          {
+            "cellX": 25,
+            "cellY": 9
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 3
+          },
+          {
+            "cellX": 27,
+            "cellY": 6
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 7
+          },
+          {
+            "cellX": 27,
+            "cellY": 9
+          }
+        ],
+        [
+          {
+            "cellX": 27,
+            "cellY": 19
+          },
+          {
+            "cellX": 27,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 28,
+            "cellY": 25
+          },
+          {
+            "cellX": 28,
+            "cellY": 31
+          }
+        ],
+        [
+          {
+            "cellX": 28,
+            "cellY": 32
+          },
+          {
+            "cellX": 28,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 29,
+            "cellY": 9
+          },
+          {
+            "cellX": 29,
+            "cellY": 11
+          }
+        ],
+        [
+          {
+            "cellX": 30,
+            "cellY": 11
+          },
+          {
+            "cellX": 30,
+            "cellY": 13
+          }
+        ],
+        [
+          {
+            "cellX": 30,
+            "cellY": 14
+          },
+          {
+            "cellX": 30,
+            "cellY": 19
+          }
+        ],
+        [
+          {
+            "cellX": 31,
+            "cellY": 30
+          },
+          {
+            "cellX": 31,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 31,
+            "cellY": 37
+          },
+          {
+            "cellX": 31,
+            "cellY": 42
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 3
+          },
+          {
+            "cellX": 32,
+            "cellY": 6
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 7
+          },
+          {
+            "cellX": 32,
+            "cellY": 8
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 17
+          },
+          {
+            "cellX": 32,
+            "cellY": 20
+          }
+        ],
+        [
+          {
+            "cellX": 32,
+            "cellY": 25
+          },
+          {
+            "cellX": 32,
+            "cellY": 28
+          }
+        ],
+        [
+          {
+            "cellX": 33,
+            "cellY": 30
+          },
+          {
+            "cellX": 33,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 17
+          },
+          {
+            "cellX": 34,
+            "cellY": 20
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 25
+          },
+          {
+            "cellX": 34,
+            "cellY": 26
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 27
+          },
+          {
+            "cellX": 34,
+            "cellY": 29
+          }
+        ],
+        [
+          {
+            "cellX": 34,
+            "cellY": 33
+          },
+          {
+            "cellX": 34,
+            "cellY": 37
+          }
+        ],
+        [
+          {
+            "cellX": 35,
+            "cellY": 12
+          },
+          {
+            "cellX": 35,
+            "cellY": 17
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 3
+          },
+          {
+            "cellX": 36,
+            "cellY": 8
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 18
+          },
+          {
+            "cellX": 36,
+            "cellY": 25
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 29
+          },
+          {
+            "cellX": 36,
+            "cellY": 30
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 32
+          },
+          {
+            "cellX": 36,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 37
+          },
+          {
+            "cellX": 36,
+            "cellY": 38
+          }
+        ],
+        [
+          {
+            "cellX": 36,
+            "cellY": 39
+          },
+          {
+            "cellX": 36,
+            "cellY": 42
+          }
+        ],
+        [
+          {
+            "cellX": 37,
+            "cellY": 15
+          },
+          {
+            "cellX": 37,
+            "cellY": 18
+          }
+        ],
+        [
+          {
+            "cellX": 38,
+            "cellY": 29
+          },
+          {
+            "cellX": 38,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 15
+          },
+          {
+            "cellX": 39,
+            "cellY": 30
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 32
+          },
+          {
+            "cellX": 39,
+            "cellY": 33
+          }
+        ],
+        [
+          {
+            "cellX": 39,
+            "cellY": 34
+          },
+          {
+            "cellX": 39,
+            "cellY": 37
+          }
+        ],
+        [
+          {
+            "cellX": 41,
+            "cellY": 30
+          },
+          {
+            "cellX": 41,
+            "cellY": 32
+          }
+        ],
+        [
+          {
+            "cellX": 42,
+            "cellY": 37
+          },
+          {
+            "cellX": 42,
+            "cellY": 41
+          }
+        ],
+        [
+          {
+            "cellX": 43,
+            "cellY": 30
+          },
+          {
+            "cellX": 43,
+            "cellY": 34
+          }
+        ],
+        [
+          {
+            "cellX": 45,
+            "cellY": 26
+          },
+          {
+            "cellX": 45,
+            "cellY": 30
+          }
+        ]
+      ],
+      "portals": [
+        {
+          "id": "portal-1",
+          "a": {
+            "cellX": 8,
+            "cellY": 29
+          },
+          "b": {
+            "cellX": 10,
+            "cellY": 29
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-2",
+          "a": {
+            "cellX": 14,
+            "cellY": 18
+          },
+          "b": {
+            "cellX": 15,
+            "cellY": 18
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-3",
+          "a": {
+            "cellX": 14,
+            "cellY": 25
+          },
+          "b": {
+            "cellX": 15,
+            "cellY": 25
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-4",
+          "a": {
+            "cellX": 14,
+            "cellY": 28
+          },
+          "b": {
+            "cellX": 15,
+            "cellY": 28
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-5",
+          "a": {
+            "cellX": 16,
+            "cellY": 31
+          },
+          "b": {
+            "cellX": 17,
+            "cellY": 31
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-6",
+          "a": {
+            "cellX": 17,
+            "cellY": 19
+          },
+          "b": {
+            "cellX": 18,
+            "cellY": 19
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-7",
+          "a": {
+            "cellX": 20,
+            "cellY": 9
+          },
+          "b": {
+            "cellX": 21,
+            "cellY": 9
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-8",
+          "a": {
+            "cellX": 20,
+            "cellY": 25
+          },
+          "b": {
+            "cellX": 22,
+            "cellY": 25
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-9",
+          "a": {
+            "cellX": 20,
+            "cellY": 33
+          },
+          "b": {
+            "cellX": 22,
+            "cellY": 33
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-10",
+          "a": {
+            "cellX": 24,
+            "cellY": 30
+          },
+          "b": {
+            "cellX": 25,
+            "cellY": 30
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-11",
+          "a": {
+            "cellX": 25,
+            "cellY": 11
+          },
+          "b": {
+            "cellX": 27,
+            "cellY": 11
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-12",
+          "a": {
+            "cellX": 25,
+            "cellY": 19
+          },
+          "b": {
+            "cellX": 26,
+            "cellY": 19
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-13",
+          "a": {
+            "cellX": 25,
+            "cellY": 25
+          },
+          "b": {
+            "cellX": 26,
+            "cellY": 25
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-14",
+          "a": {
+            "cellX": 26,
+            "cellY": 9
+          },
+          "b": {
+            "cellX": 27,
+            "cellY": 9
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-15",
+          "a": {
+            "cellX": 33,
+            "cellY": 17
+          },
+          "b": {
+            "cellX": 34,
+            "cellY": 17
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-16",
+          "a": {
+            "cellX": 37,
+            "cellY": 18
+          },
+          "b": {
+            "cellX": 38,
+            "cellY": 18
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-17",
+          "a": {
+            "cellX": 37,
+            "cellY": 21
+          },
+          "b": {
+            "cellX": 38,
+            "cellY": 21
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-18",
+          "a": {
+            "cellX": 37,
+            "cellY": 25
+          },
+          "b": {
+            "cellX": 38,
+            "cellY": 25
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-19",
+          "a": {
+            "cellX": 37,
+            "cellY": 29
+          },
+          "b": {
+            "cellX": 38,
+            "cellY": 29
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-20",
+          "a": {
+            "cellX": 37,
+            "cellY": 33
+          },
+          "b": {
+            "cellX": 38,
+            "cellY": 33
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-21",
+          "a": {
+            "cellX": 37,
+            "cellY": 37
+          },
+          "b": {
+            "cellX": 38,
+            "cellY": 37
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-22",
+          "a": {
+            "cellX": 41,
+            "cellY": 30
+          },
+          "b": {
+            "cellX": 43,
+            "cellY": 30
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-23",
+          "a": {
+            "cellX": 7,
+            "cellY": 32
+          },
+          "b": {
+            "cellX": 7,
+            "cellY": 33
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-24",
+          "a": {
+            "cellX": 9,
+            "cellY": 19
+          },
+          "b": {
+            "cellX": 9,
+            "cellY": 20
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-25",
+          "a": {
+            "cellX": 11,
+            "cellY": 14
+          },
+          "b": {
+            "cellX": 11,
+            "cellY": 16
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-26",
+          "a": {
+            "cellX": 11,
+            "cellY": 32
+          },
+          "b": {
+            "cellX": 11,
+            "cellY": 33
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-27",
+          "a": {
+            "cellX": 16,
+            "cellY": 21
+          },
+          "b": {
+            "cellX": 16,
+            "cellY": 22
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-28",
+          "a": {
+            "cellX": 18,
+            "cellY": 32
+          },
+          "b": {
+            "cellX": 18,
+            "cellY": 33
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-29",
+          "a": {
+            "cellX": 19,
+            "cellY": 27
+          },
+          "b": {
+            "cellX": 19,
+            "cellY": 28
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-30",
+          "a": {
+            "cellX": 22,
+            "cellY": 14
+          },
+          "b": {
+            "cellX": 22,
+            "cellY": 15
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-31",
+          "a": {
+            "cellX": 23,
+            "cellY": 5
+          },
+          "b": {
+            "cellX": 23,
+            "cellY": 7
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-32",
+          "a": {
+            "cellX": 23,
+            "cellY": 27
+          },
+          "b": {
+            "cellX": 23,
+            "cellY": 28
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-33",
+          "a": {
+            "cellX": 27,
+            "cellY": 6
+          },
+          "b": {
+            "cellX": 27,
+            "cellY": 7
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-34",
+          "a": {
+            "cellX": 28,
+            "cellY": 31
+          },
+          "b": {
+            "cellX": 28,
+            "cellY": 32
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-35",
+          "a": {
+            "cellX": 30,
+            "cellY": 13
+          },
+          "b": {
+            "cellX": 30,
+            "cellY": 14
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-36",
+          "a": {
+            "cellX": 32,
+            "cellY": 6
+          },
+          "b": {
+            "cellX": 32,
+            "cellY": 7
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-37",
+          "a": {
+            "cellX": 34,
+            "cellY": 26
+          },
+          "b": {
+            "cellX": 34,
+            "cellY": 27
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-38",
+          "a": {
+            "cellX": 36,
+            "cellY": 30
+          },
+          "b": {
+            "cellX": 36,
+            "cellY": 32
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-39",
+          "a": {
+            "cellX": 36,
+            "cellY": 38
+          },
+          "b": {
+            "cellX": 36,
+            "cellY": 39
+          },
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-40",
+          "a": {
+            "cellX": 39,
+            "cellY": 33
+          },
+          "b": {
+            "cellX": 39,
+            "cellY": 34
+          },
+          "closed": true,
+          "freestanding": false
+        }
+      ],
+      "lights": [],
+      "ambient": {
+        "color": "#ffffff",
+        "level": 1,
+        "baked": false
+      }
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "templates": [],
+  "settings": {
+    "ambientLevel": 1
+  }
+}

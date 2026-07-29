@@ -1,6 +1,7 @@
 // @ts-check
 import { createImportPanel } from './importPanel.js';
 import { createTokenMaker } from './tokenMaker.js';
+import { createSceneLibrary } from './sceneLibrary.js';
 import { VERSION } from '../../core/version.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
@@ -41,6 +42,7 @@ export function createGMPanel(container, options = {}) {
   container.innerHTML = `
     <!-- Barre d'onglets du panneau MJ -->
     <div class="gm-tabs-header" style="display: flex; background: #2a2a2a; border-bottom: 1px solid #333;">
+      <button class="gm-tab-btn" data-tab="scene-library" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">📂 Cartes</button>
       <button class="gm-tab-btn active" data-tab="import-uvtt" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #333; color: #fff; border: none; border-bottom: 2px solid #4a90e2; cursor: pointer;">UVTT</button>
       <button class="gm-tab-btn" data-tab="import-image" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Image</button>
       <button class="gm-tab-btn" data-tab="token-maker" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Pions</button>
@@ -49,6 +51,10 @@ export function createGMPanel(container, options = {}) {
 
     <!-- Conteneurs de contenu des onglets -->
     <div class="gm-tabs-content" style="flex: 1; overflow-y: auto; padding: 1rem;">
+      <div id="tab-content-scene-library" class="gm-tab-pane" style="display: none;">
+        <div id="scene-library-mount"></div>
+      </div>
+
       <div id="tab-content-import-uvtt" class="gm-tab-pane" style="display: block;">
         <div id="import-uvtt-mount"></div>
       </div>
@@ -125,6 +131,7 @@ export function createGMPanel(container, options = {}) {
   });
 
   // --- Montage des sous-composants ---
+  const sceneLibraryMount = /** @type {HTMLElement} */ (container.querySelector('#scene-library-mount'));
   const uvttMount = /** @type {HTMLElement} */ (container.querySelector('#import-uvtt-mount'));
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
@@ -176,6 +183,21 @@ export function createGMPanel(container, options = {}) {
       }
     },
   });
+
+  // Initialisation de la bibliothèque de cartes
+  let sceneLibrary = null;
+  createSceneLibrary(sceneLibraryMount, { transport })
+    .then((lib) => {
+      sceneLibrary = lib;
+    })
+    .catch((err) => {
+      console.error('Erreur lors du chargement de la bibliothèque de cartes :', err);
+      sceneLibraryMount.innerHTML = `
+        <div style="padding: 1rem; background: #3a1a1a; color: #e07070; border-radius: 4px; border: 1px solid #5a3a3a;">
+          ✗ Erreur : Impossible de charger la bibliothèque de cartes.
+        </div>
+      `;
+    });
 
   // --- Réglages de la grille ---
   const gridVisibleInput = /** @type {HTMLInputElement} */ (container.querySelector('#grid-visible'));
@@ -253,6 +275,7 @@ export function createGMPanel(container, options = {}) {
       listeners.abort();
       unsubscribeStore();
       versionBadge?.detach();
+      sceneLibrary?.destroy();
       container.replaceChildren();
     },
   };

@@ -8,6 +8,7 @@
     "test:unit": "node --test \"tests/*.test.mjs\"",
     "test:e2e": "playwright test",
     "serve": "node scripts/serve.mjs",
+    "maps:prepare": "node scripts/prepare-maps.mjs",
     "typecheck": "tsc --noEmit -p jsconfig.json",
     "stamp": "node scripts/stamp-version.mjs",
     "check-deps": "node scripts/check-deps.mjs"
