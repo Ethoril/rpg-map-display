@@ -2,11 +2,28 @@
 import { test, expect } from '@playwright/test';
 
 /**
+ * Seuils désarmant l'appui long.
+ *
+ * Un maintien exprimé en durée fixe n'est sûr que si le geste n'a **pas** de
+ * borne supérieure. Or il en a une : au-delà de `longPressMs` (500 ms par
+ * défaut), `PointerInput` bascule `mode = 'longPress'`
+ * (`js/input/pointer.js:238`) et le déplacement qui suit ne produit plus jamais
+ * de `panBy` ni de `dragToken`. Un maintien de 180 ms n'a donc que 320 ms de
+ * marge, et une page affamée la consomme : l'intention attendue n'arrive jamais,
+ * et aucune attente d'observation, même de 5 s, ne la fera apparaître.
+ *
+ * Les tests qui veulent « au-delà du seuil de drag, mais pas un appui long »
+ * repoussent donc ce seuil hors d'atteinte au lieu de parier sur l'horloge.
+ */
+const SANS_APPUI_LONG = { longPressMs: 100_000 };
+
+/**
  * Helper pour monter la scène index.html avec le Probe d'input.
  * @param {import('@playwright/test').Page} page
  * @param {'players'|'gm'} [role='players']
+ * @param {{longPressMs?: number, dragHoldMs?: number}} [options] seuils temporels
  */
-async function mountInputStage(page, role = 'players') {
+async function mountInputStage(page, role = 'players', options = {}) {
   /** @type {string[]} */
   const erreurs = [];
   page.on('pageerror', (err) => erreurs.push(err.message));
@@ -17,10 +34,13 @@ async function mountInputStage(page, role = 'players') {
 
   expect(erreurs).toEqual([]);
 
-  await page.evaluate((r) => {
-    const probe = /** @type {any} */ (window).__stageProbe;
-    probe.setupInput(r);
-  }, role);
+  await page.evaluate(
+    ({ r, o }) => {
+      const probe = /** @type {any} */ (window).__stageProbe;
+      probe.setupInput(r, true, o);
+    },
+    { r: role, o: options }
+  );
 }
 
 /**
@@ -126,7 +146,11 @@ test('un micro-mouvement reste un tap unique et ne déplace pas la caméra', asy
 
 test('Vue MJ — un drag commencé hors pion pan la caméra sans déplacer de pion', async ({ page }) => {
   await mountInputStage(page, 'gm');
-  await page.evaluate(() => /** @type {any} */ (window).__stageProbe.setupInput('gm', false));
+  // `canDrag: false` — aucun pion sous le doigt — et appui long désarmé.
+  await page.evaluate(
+    (o) => /** @type {any} */ (window).__stageProbe.setupInput('gm', false, o),
+    SANS_APPUI_LONG
+  );
   const canvasBox = await page.locator('#board').boundingBox();
   expect(canvasBox).not.toBeNull();
   if (!canvasBox) return;
@@ -135,6 +159,8 @@ test('Vue MJ — un drag commencé hors pion pan la caméra sans déplacer de pi
   await page.mouse.down();
   // Durée du geste, pas attente d'un résultat : maintien au-delà de
   // DRAG_HOLD_MS pour montrer que sans pion sous le doigt, le drag pan quand même.
+  // La borne supérieure est désarmée par SANS_APPUI_LONG, donc un dépassement
+  // sous charge ne reclasse plus le geste en appui long.
   await page.waitForTimeout(180);
   await page.mouse.move(canvasBox.x + 240, canvasBox.y + 180, { steps: 4 });
   await page.mouse.up();
@@ -148,7 +174,9 @@ test('Vue MJ — un drag commencé hors pion pan la caméra sans déplacer de pi
 });
 
 test('Vue MJ — Drag d un doigt au-delà du seuil émet une intention dragToken avec screenPos et mapPos', async ({ page }) => {
-  await mountInputStage(page, 'gm');
+  // Appui long désarmé : le maintien ci-dessous doit dépasser DRAG_HOLD_MS sans
+  // risquer de franchir longPressMs sous charge.
+  await mountInputStage(page, 'gm', SANS_APPUI_LONG);
 
   const canvasBox = await page.locator('#board').boundingBox();
   expect(canvasBox).not.toBeNull();

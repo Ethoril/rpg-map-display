@@ -56,14 +56,26 @@ La suite unitaire est passée d’environ 30 s à moins de 2 s : la préparation
 désormais exercée sur `fixtures/synthetic/minimal.uvtt` dans un dossier temporaire, et
 `maps/` n’est plus muté par les tests.
 
-**Réserve connue, à regarder en premier si le CI rougit.** `tests/input.spec.mjs`
-échouait par intermittence — 2 échecs sur 8 exécutions de `verify`, sur des tests
-variables. Ses attentes de durée fixe pour les frames rAF ont été remplacées par des
-attentes de condition. Depuis : 0 échec sur 6 passes e2e complètes et 4 `verify`. Mais le
-défaut **n’a jamais pu être reproduit à la demande** — une charge CPU externe ne le
-déclenche pas — donc le correctif est sain par construction, sans démonstration contrôlée
-contre l’échec observé. Les runners GitHub étant plus lents et plus variables qu’un poste
-de développement, c’est là que le doute subsiste.
+**Instabilité de `tests/input.spec.mjs` — résolue, en deux temps.** Le fichier échouait par
+intermittence sous charge, 2 fois sur 8 exécutions de `verify`, sur des tests variables. Il
+y avait **deux causes distinctes**, et la première correction n’a traité que l’une :
+
+1. **Attentes d’observation trop courtes.** Des `waitForTimeout` de 30 à 50 ms pour laisser
+   arriver une intention. Remplacées par des attentes de condition (`expect.poll`).
+2. **Maintien d’appui dans une fenêtre bornée.** Les tests qui maintiennent l’appui pour
+   dépasser `DRAG_HOLD_MS` (150 ms) doivent rester **sous** `longPressMs` (500 ms) : au-delà,
+   `PointerInput` bascule `mode = 'longPress'` (`js/input/pointer.js:238`) et le déplacement
+   suivant ne produit plus jamais de `panBy` ni de `dragToken`. Un maintien de 180 ms n’avait
+   que 320 ms de marge, et une page affamée la consomme. Aucune attente d’observation, même
+   de 5 s, ne pouvait rattraper ça : l’intention n’était jamais émise. Ces tests désarment
+   désormais le seuil (`longPressMs` porté hors d’atteinte) au lieu de parier sur l’horloge.
+
+Démonstration contrôlée du second point : avec le seuil désarmé, un maintien de 1500 ms
+passe ; sans désarmement, le même maintien échoue. La course est supprimée, pas rendue
+improbable.
+
+Leçon à garder : **une attente de durée fixe n’est sûre comme durée de geste que si le geste
+n’a pas de borne supérieure.** Ici il en avait une.
 
 Les deux scénarios Firebase réels nécessitent `RPG_FIREBASE_CONFIG` avec la configuration
 Web publique et les identifiants du compte technique de test. Ces identifiants restent hors

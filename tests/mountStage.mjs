@@ -91,12 +91,20 @@ const probe = {
   },
   setupInput: (
     /** @type {'gm'|'players'} */ role = 'players',
-    /** @type {boolean} */ canDrag = true
+    /** @type {boolean} */ canDrag = true,
+    /**
+     * Seuils temporels, à surcharger quand un test doit maintenir l'appui dans
+     * une fenêtre bornée — voir le commentaire de `waitForIntention` dans
+     * `tests/input.spec.mjs`.
+     * @type {{longPressMs?: number, dragHoldMs?: number}}
+     */
+    options = {}
   ) => {
     currentInput?.detach();
     emittedIntentions.length = 0;
     currentInput = new PointerInput(canvasElem, camera, {
       role,
+      ...options,
       canStartTokenDrag: (_screenPoint, _mapPoint) =>
         role === 'gm' && canDrag ? 'probe-token' : null,
       onIntention: (intention) => {
