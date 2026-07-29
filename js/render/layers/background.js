@@ -1,5 +1,8 @@
 // @ts-check
 
+/** @type {HTMLImageElement|null} */
+let lastImageCache = null;
+
 /**
  * Couche de fond d'etage (image de carte en Canvas 2D natif).
  */
@@ -12,10 +15,6 @@ export class BackgroundLayer {
     this.image = null;
     /** @type {string|null} */
     this.currentUrl = null;
-    /** @type {string} */
-    this.loadState = 'idle';
-    /** @type {Function|null} */
-    this.onStateChange = null;
   }
 
   /**
@@ -25,31 +24,22 @@ export class BackgroundLayer {
    * @returns {Promise<void>}
    */
   load(imageUrl) {
-    console.log('[DEBUG] BackgroundLayer.load called:', { imageUrl, currentUrl: this.currentUrl, loadState: this.loadState });
-    if (!imageUrl || (this.currentUrl === imageUrl && this.loadState === 'loaded')) {
-      console.log('[DEBUG] BackgroundLayer.load returning early (cached)');
+    if (!imageUrl || this.currentUrl === imageUrl) {
       return Promise.resolve();
     }
-
     this.currentUrl = imageUrl;
-    this.loadState = 'loading';
-    console.log('[DEBUG] BackgroundLayer.load starting:', { imageUrl });
 
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
-        console.log('[DEBUG] BackgroundLayer.load onload fired:', { imageUrl, currentUrl: this.currentUrl, match: this.currentUrl === imageUrl });
         if (this.currentUrl === imageUrl) {
           this.image = img;
-          this.loadState = 'loaded';
-          console.log('[DEBUG] BackgroundLayer.load state set to loaded');
-          if (this.onStateChange) this.onStateChange('loaded');
+          lastImageCache = img;
         }
         resolve();
       };
       img.onerror = (err) => {
         console.warn('Erreur lors du chargement de l\'image de fond :', err);
-        this.loadState = 'error';
         resolve();
       };
       img.src = imageUrl;
@@ -63,30 +53,31 @@ export class BackgroundLayer {
    */
   setImage(img) {
     this.image = img;
-    if (img && img.src) {
-      this.currentUrl = img.src;
+    if (img) {
+      lastImageCache = img;
+      if (img.src) {
+        this.currentUrl = img.src;
+      }
     }
   }
 
   /**
    * Dessine l'image de fond sur le contexte Canvas 2D, scalee aux dimensions du grid.
    * La transformation camera (pan & zoom) est deja appliquee au contexte.
-   * Ne dessine que si l'image est entierement chargee.
+   * Redessine la derniere image en cache pendant que le chargement est en cours.
    *
    * @param {CanvasRenderingContext2D} ctx Contexte Canvas 2D
    * @param {number} [width] Largeur du grid en pixels (si omis, utilise taille native image)
    * @param {number} [height] Hauteur du grid en pixels (si omis, utilise taille native image)
    */
   render(ctx, width, height) {
-    if (this.loadState !== 'loaded' || !this.image || !ctx) {
-      console.log('[DEBUG] BackgroundLayer.render skip:', { loadState: this.loadState, hasImage: !!this.image, hasCtx: !!ctx, url: this.currentUrl });
-      return;
-    }
-    console.log('[DEBUG] BackgroundLayer.render drawing:', { loadState: this.loadState, url: this.currentUrl });
+    if (!ctx) return;
+    const imgToUse = this.image || lastImageCache;
+    if (!imgToUse) return;
     if (width && height) {
-      ctx.drawImage(this.image, 0, 0, width, height);
+      ctx.drawImage(imgToUse, 0, 0, width, height);
     } else {
-      ctx.drawImage(this.image, 0, 0);
+      ctx.drawImage(imgToUse, 0, 0);
     }
   }
 }

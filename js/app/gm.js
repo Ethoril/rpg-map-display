@@ -87,15 +87,10 @@ export async function bootstrapGMApp(options = {}) {
         camera.setZoom(fitZoom);
       }
 
-      console.log('[DEBUG] gm.js renderAll:', { hasImageUrl: !!activeLevel.imageUrl, imageUrl: activeLevel.imageUrl });
       if (activeLevel.imageUrl) {
-        bgLayer.load(activeLevel.imageUrl).then(() => {
-          console.log('[DEBUG] gm.js load promise resolved');
-          frameLoop.requestFrame();
-        });
+        bgLayer.load(activeLevel.imageUrl);
         bgLayer.render(ctx);
       } else {
-        console.log('[DEBUG] gm.js no imageUrl, drawing gray background');
         ctx.fillStyle = '#808080';
         ctx.fillRect(0, 0, bounds.x, bounds.y);
       }
