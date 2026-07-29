@@ -27,18 +27,21 @@ Les blocs C-01 à C-11 du plan de stabilisation sont implémentés :
 
 ```text
 pnpm install
-pnpm run typecheck
-pnpm run test:unit
-pnpm run test:e2e
+pnpm run verify        # typecheck + test:unit + test:e2e, arrêt à la première erreur
 pnpm run check-deps
 ```
 
-Résultat de la passe d’intégration du 29 juillet 2026 :
+`pnpm run verify` est la commande de référence : c'est celle que le CI exécute et
+dont dépend le déploiement GitHub Pages. Lancer seulement `test:unit` a déjà
+laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
+
+Résultat de la passe d’intégration du 29 juillet 2026 (après correction du lot 2) :
 
 - typage : vert ;
-- tests unitaires : 67 réussis, 1 fixture réelle ignorée car absente ;
-- tests navigateur : 39 réussis, 2 Firebase ignorés faute de configuration externe ;
-- les scénarios couvrent rendu, imports, pions, gestes, plusieurs pages et reconnexion.
+- tests unitaires : 77 réussis, 1 fixture réelle ignorée car absente ;
+- tests navigateur : 43 réussis, 2 Firebase ignorés faute de configuration externe ;
+- les scénarios couvrent rendu, imports, bibliothèque de cartes, pions, gestes,
+  plusieurs pages et reconnexion.
 
 Les deux scénarios Firebase réels nécessitent `RPG_FIREBASE_CONFIG` avec la configuration
 Web publique et les identifiants du compte technique de test. Ces identifiants restent hors

@@ -277,15 +277,26 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
 
 ## 9. Définition de « terminé »
 
-Une tâche n'est terminée que si **les quatre** conditions sont réunies :
+Une tâche n'est terminée que si **les cinq** conditions sont réunies :
 
-1. `pnpm run typecheck` ne rapporte aucune erreur, code de sortie 0.
+1. `pnpm run verify` ne rapporte aucune erreur, code de sortie 0.
+   Cette commande enchaîne `typecheck`, `test:unit` puis `test:e2e` et s'arrête à
+   la première défaillance. **Les trois doivent passer**, y compris les tests
+   navigateur : un lot déclaré terminé sans avoir lancé `test:e2e` n'est pas un
+   lot terminé, c'est une hypothèse.
    *Unique exception : `TS18003` (« No inputs were found ») à la tâche T-01, avant
    l'existence du premier fichier source. Partout ailleurs, une sortie non nulle = non
    terminé.*
-2. La vérification d'acceptation propre à la tâche passe (cf. `docs/TASKS-lot1a.md`).
-3. Aucune interdiction de la §8 n'est violée.
-4. Aucun fichier hors manifeste n'a été créé.
+2. Le parcours utilisateur ajouté ou modifié a été **réellement exercé** — bouton
+   cliqué, page rechargée — et non seulement compilé. Un test qui monte un
+   composant sans déclencher son action principale ne couvre pas cette condition.
+3. La vérification d'acceptation propre à la tâche passe (cf. `docs/TASKS-lot1a.md`).
+4. Aucune interdiction de la §8 n'est violée.
+5. Aucun fichier hors manifeste n'a été créé.
+
+> Un critère d'acceptation ne se réécrit jamais pour coller au comportement obtenu.
+> Si un test échoue, c'est le code qui est en cause jusqu'à preuve du contraire ;
+> affaiblir l'assertion transforme un bug en fonctionnalité documentée.
 
 En cas de blocage, livrer ce qui fonctionne, **dire explicitement ce qui manque et
 pourquoi**, et ne pas cocher la tâche. Un rapport honnête d'échec partiel est utile ; une

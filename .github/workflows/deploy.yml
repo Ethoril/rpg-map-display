@@ -4,13 +4,61 @@ on:
   push:
     branches:
       - main
+  # Les pull requests exécutent la vérification sans jamais déployer.
+  pull_request:
+    branches:
+      - main
 
 permissions:
+  contents: read
   pages: write
   id-token: write
 
 jobs:
+  # Porte de vérification. Rien ne part en production sans elle.
+  #
+  # Elle existe parce qu'un lot a été déclaré « terminé » alors que le typecheck
+  # sortait 10 erreurs et que 4 tests e2e étaient rouges, avec un déploiement
+  # automatique et sans filet. Cf. docs/CONVENTIONS.md §9.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      # Même version majeure que le poste de développement, pour que « vert en
+      # local » et « vert en CI » signifient la même chose.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Playwright pilote un vrai Chromium : il faut le navigateur et ses
+      # dépendances système.
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # typecheck → unit → e2e, du moins coûteux au plus coûteux.
+      - run: pnpm run verify
+
+      # Traces des tests navigateur en échec, pour diagnostiquer sans rejouer
+      # la séance à l'aveugle.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
   deploy:
+    # LA garde : pas de déploiement si la vérification échoue.
+    needs: verify
+    # Les pull requests sont vérifiées mais jamais publiées.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
