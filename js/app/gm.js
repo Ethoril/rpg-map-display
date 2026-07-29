@@ -99,6 +99,26 @@ export async function bootstrapGMApp(options = {}) {
     }
   }
 
+  // Restauration du snapshot avant tout delta (T-24)
+  if (sessionId) {
+    store.setSessionId(sessionId);
+  }
+  if (transport && sessionId) {
+    try {
+      const snapshotData = /** @type {any} */ (await transport.snapshot());
+      if (snapshotData && (snapshotData.levels || snapshotData.campaign)) {
+        store.restoreFromSnapshot(snapshotData, { sessionId });
+      } else {
+        store.loadFromLocalStorage(sessionId);
+      }
+    } catch (e) {
+      console.warn('Erreur restauration snapshot :', e);
+      store.loadFromLocalStorage(sessionId);
+    }
+  } else if (sessionId) {
+    store.loadFromLocalStorage(sessionId);
+  }
+
   // 4. Montage du panneau MJ
   if (panelContainer) {
     createGMPanel(panelContainer, { transport: transport || undefined });

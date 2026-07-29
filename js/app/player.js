@@ -149,6 +149,9 @@ export async function bootstrapPlayerApp(options = {}) {
   }
 
   // Restauration du snapshot avant tout delta (T-24)
+  if (sessionId) {
+    store.setSessionId(sessionId);
+  }
   if (transport && sessionId) {
     try {
       const snapshotData = /** @type {any} */ (await transport.snapshot());
