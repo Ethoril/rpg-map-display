@@ -6,6 +6,181 @@
  * @typedef {import('./types.js').Token} Token
  */
 
+const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Valide si une valeur est une couleur CSS au format `#RRGGBB`.
+ * @param {unknown} val
+ * @returns {boolean}
+ */
+export function isValidHexColor(val) {
+  return typeof val === 'string' && HEX_COLOR_REGEX.test(val);
+}
+
+/**
+ * Normalise une chaîne de couleur héritée (ex. ARGB "ffffffff", "ffF7EAE4", "F7EAE4") vers "#RRGGBB".
+ *
+ * @param {unknown} rawColor
+ * @returns {{ color: string, warning?: string, changed: boolean }}
+ */
+export function normalizeColor(rawColor) {
+  if (typeof rawColor === 'string') {
+    const trimmed = rawColor.trim();
+    if (HEX_COLOR_REGEX.test(trimmed)) {
+      return { color: trimmed, changed: false };
+    }
+    if (/^[0-9a-fA-F]{8}$/.test(trimmed)) {
+      const alpha = trimmed.slice(0, 2);
+      const rgb = trimmed.slice(2);
+      const color = `#${rgb}`;
+      let warning;
+      if (alpha.toLowerCase() !== 'ff') {
+        warning = `Conversion de la couleur ARGB "${trimmed}" en "${color}" (alpha "${alpha}" ignoré)`;
+      } else {
+        warning = `Normalisation de la couleur ARGB "${trimmed}" au format "#RRGGBB" ("${color}")`;
+      }
+      return { color, warning, changed: true };
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(trimmed)) {
+      const color = `#${trimmed}`;
+      return {
+        color,
+        warning: `Normalisation de la couleur "${trimmed}" au format "#RRGGBB" ("${color}")`,
+        changed: true,
+      };
+    }
+  }
+
+  const displayVal = typeof rawColor === 'string' ? `"${rawColor}"` : String(rawColor);
+  return {
+    color: '#ffffff',
+    warning: `Couleur invalide ${displayVal}, normalisée vers "#ffffff"`,
+    changed: true,
+  };
+}
+
+/**
+ * Normalise l'ensemble des couleurs d'un document de campagne sur les 8 chemins définis par le schéma.
+ * Convertit les formats hérités (ARGB, hex sans #) vers "#RRGGBB" et signale les conversions via console.warn.
+ *
+ * **Fonction pure : l'entrée n'est jamais mutée.** Elle travaille sur une copie
+ * et la retourne. Muter l'argument échouait sur un document gelé — et
+ * `getCampaign()` en renvoie un — avec un `Cannot assign to read only property`
+ * maquillé en « document invalide », soit précisément le diagnostic trompeur que
+ * ce contrôle de couleurs est censé supprimer.
+ *
+ * @param {any} campaign
+ * @returns {any} copie normalisée (ou l'entrée telle quelle si ce n'est pas un objet)
+ */
+export function normalizeCampaignColors(campaign) {
+  if (!campaign || typeof campaign !== 'object') return campaign;
+
+  campaign = structuredClone(campaign);
+
+  if (Array.isArray(campaign.levels)) {
+    for (const level of campaign.levels) {
+      if (!level || typeof level !== 'object') continue;
+      const levelId = level.id || 'inconnu';
+
+      // 1. GridConfig.color
+      if (level.grid && typeof level.grid.color === 'string' && !isValidHexColor(level.grid.color)) {
+        const res = normalizeColor(level.grid.color);
+        level.grid.color = res.color;
+        if (res.warning) {
+          console.warn(`[schema] Étage "${levelId}" grid.color : ${res.warning}`);
+        }
+      }
+
+      // 2. Light.color
+      if (Array.isArray(level.lights)) {
+        for (const light of level.lights) {
+          if (light && typeof light.color === 'string' && !isValidHexColor(light.color)) {
+            const res = normalizeColor(light.color);
+            light.color = res.color;
+            if (res.warning) {
+              console.warn(`[schema] Étage "${levelId}" lumière "${light.id || 'inconnue'}" color : ${res.warning}`);
+            }
+          }
+        }
+      }
+
+      // 3. AmbientLight.color
+      if (level.ambient && typeof level.ambient.color === 'string' && !isValidHexColor(level.ambient.color)) {
+        const res = normalizeColor(level.ambient.color);
+        level.ambient.color = res.color;
+        if (res.warning) {
+          console.warn(`[schema] Étage "${levelId}" ambient.color : ${res.warning}`);
+        }
+      }
+    }
+  }
+
+  // 4. Token.borderColor et 5. Token.emitsLight.color
+  if (Array.isArray(campaign.tokens)) {
+    for (const token of campaign.tokens) {
+      if (!token || typeof token !== 'object') continue;
+      const tokenId = token.id || 'inconnu';
+
+      if (typeof token.borderColor === 'string' && !isValidHexColor(token.borderColor)) {
+        const res = normalizeColor(token.borderColor);
+        token.borderColor = res.color;
+        if (res.warning) {
+          console.warn(`[schema] Pion "${tokenId}" borderColor : ${res.warning}`);
+        }
+      }
+
+      if (token.emitsLight && typeof token.emitsLight.color === 'string' && !isValidHexColor(token.emitsLight.color)) {
+        const res = normalizeColor(token.emitsLight.color);
+        token.emitsLight.color = res.color;
+        if (res.warning) {
+          console.warn(`[schema] Pion "${tokenId}" emitsLight.color : ${res.warning}`);
+        }
+      }
+    }
+  }
+
+  // 6. Template.color
+  if (Array.isArray(campaign.templates)) {
+    for (const template of campaign.templates) {
+      if (!template || typeof template !== 'object') continue;
+      const templateId = template.id || 'inconnu';
+      if (typeof template.color === 'string' && !isValidHexColor(template.color)) {
+        const res = normalizeColor(template.color);
+        template.color = res.color;
+        if (res.warning) {
+          console.warn(`[schema] Gabarit "${templateId}" color : ${res.warning}`);
+        }
+      }
+    }
+  }
+
+  // 7. TokenLibraryEntry.emitsLight.color et 8. TokenLibraryEntry.borderColor
+  if (Array.isArray(campaign.tokenLibrary)) {
+    for (const entry of campaign.tokenLibrary) {
+      if (!entry || typeof entry !== 'object') continue;
+      const entryId = entry.id || 'inconnu';
+
+      if (typeof entry.borderColor === 'string' && !isValidHexColor(entry.borderColor)) {
+        const res = normalizeColor(entry.borderColor);
+        entry.borderColor = res.color;
+        if (res.warning) {
+          console.warn(`[schema] TokenLibrary "${entryId}" borderColor : ${res.warning}`);
+        }
+      }
+
+      if (entry.emitsLight && typeof entry.emitsLight.color === 'string' && !isValidHexColor(entry.emitsLight.color)) {
+        const res = normalizeColor(entry.emitsLight.color);
+        entry.emitsLight.color = res.color;
+        if (res.warning) {
+          console.warn(`[schema] TokenLibrary "${entryId}" emitsLight.color : ${res.warning}`);
+        }
+      }
+    }
+  }
+
+  return campaign;
+}
+
 /**
  * Fabrique d'une instance de campagne avec valeurs par défaut (CdC §6).
  *
@@ -230,6 +405,8 @@ export function validateCampaign(campaign) {
         !Number.isFinite(level.grid.offsetY)
       ) {
         errors.push(`Étage "${levelId || 'inconnu'}" : configuration de grille invalide`);
+      } else if (level.grid.color !== undefined && !isValidHexColor(level.grid.color)) {
+        errors.push(`Étage "${levelId || 'inconnu'}" : couleur de grille invalide "${level.grid.color}" (format #RRGGBB attendu)`);
       }
       if (
         !Array.isArray(level.walls) ||
@@ -239,6 +416,18 @@ export function validateCampaign(campaign) {
         typeof level.ambient !== 'object'
       ) {
         errors.push(`Étage "${levelId || 'inconnu'}" : structure d'étage incomplète`);
+      } else {
+        // Validation des couleurs de lumière
+        for (const light of level.lights) {
+          if (!light || !isValidHexColor(light.color)) {
+            const lightColor = light?.color;
+            errors.push(`Étage "${levelId || 'inconnu'}" : lumière "${light?.id || 'inconnue'}" a une couleur invalide "${lightColor}" (format #RRGGBB attendu)`);
+          }
+        }
+        // Validation de la couleur d'ambiance
+        if (!isValidHexColor(level.ambient.color)) {
+          errors.push(`Étage "${levelId || 'inconnu'}" : éclairage ambiant a une couleur invalide "${level.ambient.color}" (format #RRGGBB attendu)`);
+        }
       }
       if (!Array.isArray(level.animatedOverlays)) {
         errors.push(`Étage "${levelId || 'inconnu'}" : animatedOverlays doit être un tableau`);
@@ -301,6 +490,15 @@ export function validateCampaign(campaign) {
       if (token.kind !== 'pc' && token.kind !== 'npc') {
         errors.push(`Pion "${tokenId}" : kind doit valoir "pc" ou "npc"`);
       }
+
+      if (!isValidHexColor(token.borderColor)) {
+        errors.push(`Pion "${tokenId}" : borderColor invalide "${token.borderColor}" (format #RRGGBB attendu)`);
+      }
+
+      if (token.emitsLight && !isValidHexColor(token.emitsLight.color)) {
+        errors.push(`Pion "${tokenId}" : emitsLight.color invalide "${token.emitsLight.color}" (format #RRGGBB attendu)`);
+      }
+
       if (
         typeof token.borderColor !== 'string' ||
         typeof token.label !== 'string' ||
@@ -332,6 +530,25 @@ export function validateCampaign(campaign) {
         errors.push(
           `Pion "${tokenId}" : position hors limites de l'étage "${token.levelId}"`
         );
+      }
+    }
+  }
+
+  if (Array.isArray(campaign.templates)) {
+    for (const template of campaign.templates) {
+      if (template && !isValidHexColor(template.color)) {
+        errors.push(`Gabarit "${template.id || 'inconnu'}" : color invalide "${template.color}" (format #RRGGBB attendu)`);
+      }
+    }
+  }
+
+  if (Array.isArray(campaign.tokenLibrary)) {
+    for (const entry of campaign.tokenLibrary) {
+      if (entry && !isValidHexColor(entry.borderColor)) {
+        errors.push(`TokenLibrary "${entry.id || 'inconnu'}" : borderColor invalide "${entry.borderColor}" (format #RRGGBB attendu)`);
+      }
+      if (entry?.emitsLight && !isValidHexColor(entry.emitsLight.color)) {
+        errors.push(`TokenLibrary "${entry.id || 'inconnu'}" : emitsLight.color invalide "${entry.emitsLight.color}" (format #RRGGBB attendu)`);
       }
     }
   }

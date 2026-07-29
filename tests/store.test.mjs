@@ -402,3 +402,28 @@ test('une campagne contenant une data URL est refusée avant chargement ou sauve
   setSessionId('persistable-assets');
   assert.doesNotThrow(() => saveToLocalStorage());
 });
+
+test('Une campagne héritée contenant un ARGB est chargée après conversion et pas refusée', () => {
+  const camp = makeValidCampaign();
+  // @ts-ignore - intentionnel pour simuler une donnée héritée non conforme
+  camp.levels[0].lights.push({
+    id: 'legacy-light',
+    at: { cellX: 1, cellY: 1 },
+    range: 5,
+    intensity: 2.5,
+    color: 'ffffffff',
+    shadows: true,
+  });
+  // @ts-ignore
+  camp.levels[0].ambient.color = 'ffF7EAE4';
+
+  assert.doesNotThrow(() => {
+    loadCampaign(camp);
+  });
+
+  const state = getState();
+  const loadedLight = state.campaign?.levels[0].lights.find((l) => l.id === 'legacy-light');
+  assert.equal(loadedLight?.color, '#ffffff');
+  assert.equal(state.campaign?.levels[0].ambient.color, '#F7EAE4');
+});
+

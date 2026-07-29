@@ -1858,8 +1858,8 @@
       ],
       "lights": [],
       "ambient": {
-        "color": "#ffffff",
-        "level": 1,
+        "color": "#000000",
+        "level": 0,
         "baked": false
       }
     }

@@ -140,3 +140,49 @@ test('Conversion terrainCost Record <-> Map', () => {
   assert.equal(terrainCostMapToRecord(null), null);
   assert.equal(terrainCostRecordToMap(null).size, 0);
 });
+
+test('Validation refuse une couleur hors #RRGGBB sur au moins deux des 8 chemins du modèle', () => {
+  const level = createLevel({ id: 'rdc' });
+  level.lights.push({
+    id: 'light-argb',
+    at: { cellX: 1, cellY: 1 },
+    range: 3,
+    intensity: 1,
+    color: 'ffffffff',
+    shadows: true,
+  });
+  level.ambient.color = 'ffffffff';
+
+  const token = createToken({
+    id: 't1',
+    levelId: 'rdc',
+    cell: { a: 0, b: 0 },
+    borderColor: '00ff00', // Manque le #
+  });
+
+  const campaign = createCampaign({
+    levels: [level],
+    tokens: [token],
+    templates: [
+      {
+        id: 'tpl1',
+        levelId: 'rdc',
+        shape: 'circle',
+        origin: { a: 0, b: 0 },
+        radiusCells: 2,
+        directionDeg: 0,
+        widthCells: 1,
+        color: 'invalid-color',
+        visibleToPlayers: true,
+      },
+    ],
+  });
+
+  const errors = validateCampaign(campaign);
+  assert.ok(errors.length >= 4, 'Doit trouver au moins 4 erreurs de format de couleur');
+  assert.ok(errors.some((err) => err.includes('lumière "light-argb"') && err.includes('ffffffff')));
+  assert.ok(errors.some((err) => err.includes('éclairage ambiant') && err.includes('ffffffff')));
+  assert.ok(errors.some((err) => err.includes('Pion "t1"') && err.includes('borderColor invalide')));
+  assert.ok(errors.some((err) => err.includes('Gabarit "tpl1"') && err.includes('color invalide')));
+});
+

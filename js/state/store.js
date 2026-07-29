@@ -1,6 +1,6 @@
 // @ts-check
 
-import { validateCampaign, createCampaign } from '../core/schema.js';
+import { validateCampaign, createCampaign, normalizeCampaignColors } from '../core/schema.js';
 import {
   setSelectionState,
   clearSelectionState,
@@ -196,11 +196,15 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     : null;
 
   if (campaignCandidate) {
-    const errors = validateCampaign(campaignCandidate);
+    // Normaliser avant de valider : un instantané hérité est converti, pas
+    // refusé. La copie évite de muter l'objet de l'appelant — un payload réseau
+    // ou un document gelé.
+    const normalise = normalizeCampaignColors(campaignCandidate);
+    const errors = validateCampaign(normalise);
     if (errors.length > 0) {
       throw new Error(`Snapshot invalide : ${errors.join(' ; ')}`);
     }
-    campaign = structuredClone(campaignCandidate);
+    campaign = structuredClone(normalise);
   }
 
   const requestedLevelId =
@@ -263,16 +267,22 @@ export function subscribe(listener) {
  * @returns {void}
  */
 export function loadCampaign(campaignData) {
+  // Normaliser d'abord : un document hérité doit être converti, jamais refusé.
+  // La normalisation rend une copie, donc `campaignData` reste intact — y compris
+  // s'il est gelé.
+  const normalise = normalizeCampaignColors(campaignData);
+
   try {
-    assertValidCampaign(campaignData, 'Chargement de la campagne');
+    assertValidCampaign(normalise, 'Chargement de la campagne');
   } catch (err) {
     throw new Error(
       `Impossible de charger la campagne : document invalide. ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
-  campaign = structuredClone(campaignData);
-  activeLevelId = campaign.levels.length > 0 ? campaign.levels[0].id : null;
+  const chargee = structuredClone(normalise);
+  campaign = chargee;
+  activeLevelId = chargee.levels.length > 0 ? chargee.levels[0].id : null;
   clearSelectionState();
 
   notifySubscribers();

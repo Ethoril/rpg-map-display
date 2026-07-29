@@ -50,3 +50,61 @@ test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON 
     process.argv = originalArgv;
   }
 });
+
+test('parseUvttColor convertit les 4 formes de couleur avec avertissements appropriés', async () => {
+  const { parseUvttColor } = await import('../js/import/uvtt.js');
+
+  // 1. ARGB 8 hex avec alpha ff
+  const res1 = parseUvttColor('ffF7EAE4');
+  assert.equal(res1.color, '#F7EAE4');
+  assert.equal(res1.warning, undefined);
+
+  // 2. ARGB 8 hex avec alpha != ff
+  const res2 = parseUvttColor('80F7EAE4');
+  assert.equal(res2.color, '#F7EAE4');
+  assert.ok(res2.warning?.includes('80'));
+
+  // 3. RGB 6 hex sans #
+  const res3 = parseUvttColor('F7EAE4');
+  assert.equal(res3.color, '#F7EAE4');
+  assert.equal(res3.warning, undefined);
+
+  // 4. #RRGGBB déjà valide
+  const res4 = parseUvttColor('#F7EAE4');
+  assert.equal(res4.color, '#F7EAE4');
+  assert.equal(res4.warning, undefined);
+
+  // 5. Entrée invalide -> repli #ffffff avec avertissement
+  const res5 = parseUvttColor('invalide');
+  assert.equal(res5.color, '#ffffff');
+  assert.ok(res5.warning?.includes('invalide'));
+
+  const res6 = parseUvttColor(null);
+  assert.equal(res6.color, '#ffffff');
+  assert.ok(res6.warning?.includes('null'));
+});
+
+test('parseUvtt convertit les lumières ARGB et lit environment.ambient_light', async () => {
+  const { parseUvtt } = await import('../js/import/uvtt.js');
+  const sampleUvtt = {
+    resolution: { pixels_per_grid: 100, map_size: { x: 10, y: 10 } },
+    lights: [
+      {
+        id: 'l1',
+        position: { x: 2, y: 3 },
+        range: 5,
+        intensity: 2.5,
+        color: 'ffF7EAE4',
+        shadows: true,
+      },
+    ],
+    environment: {
+      ambient_light: 'ff112233',
+    },
+  };
+
+  const parsed = parseUvtt(sampleUvtt);
+  assert.equal(parsed.lights[0].color, '#F7EAE4');
+  assert.equal(parsed.level.ambient.color, '#112233');
+});
+
