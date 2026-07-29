@@ -1,7 +1,14 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 29 juillet 2026, soir — lot 2 terminé : catalogue transactionnel
-> (U-02), contrôles de grille couverts (U-00), remplacement de scène synchronisé (U-05).
+> Dernière mise à jour : 29 juillet 2026, soir — **bibliothèque UVTT terminée** (U-00 à
+> U-06 de `PLAN-BIBLIOTHEQUE-UVTT.md`) : catalogue transactionnel, contrôles de grille
+> couverts, remplacement de scène synchronisé.
+>
+> ⚠️ **Attention à la numérotation.** Le « lot 2 » de `PLAN-BIBLIOTHEQUE-UVTT.md` désigne la
+> bibliothèque UVTT et n'a rien à voir avec le **Lot 2 du cahier des charges §11** (lignes
+> de vue, portes, fog, éditeur de murs, gabarits, marqueurs), qui n'est **pas commencé**.
+> Ne pas confondre les deux : la bibliothèque est une tranche du Lot 1b du CdC.
+>
 > Les mesures physiques sur tablette et les scénarios Firebase réels restent à valider dans
 > leur environnement.
 
@@ -110,7 +117,23 @@ Ces points ne doivent pas être déclarés réussis à partir d’un test deskto
 
 ## Suite produit
 
-La stabilisation du plateau doit être relue avant de reprendre les lots fonctionnels
-suivants : brouillard de guerre, vision, éclairage, bibliothèques et étages multiples.
+Avancement mesuré contre les lots du cahier des charges §11, au 29 juillet 2026 au soir.
+Relevé pour éviter de confondre « le plateau est solide » et « le produit est proche ».
+
+| Lot du CdC §11 | État |
+|---|---|
+| **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
+| **1b — La prépa MJ** | ~1 critère sur 4. La bibliothèque de scènes est faite. Manquent la bibliothèque de pions (§5.7), la révélation d’image (§5.8) et le badge d’élévation |
+| **2 — Lignes de vue, portes & tactique** | **0 sur 13.** `js/vision/` n’existe pas ; aucun code de fog, de rendu de murs, d’éditeur de murs, de gabarits ni de marqueurs d’état |
+| **3 — Étages & lumière** | 0 sur 6 |
+| **4 — Hexagone & confort de table** | 0 sur 6. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
+| Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |
+| §12 Questions ouvertes | 8, dont plusieurs conditionnent des choix de conception du lot 2 |
+
+Le substrat est en place : plateau, grille, pions, gestes, transport, persistance, import.
+Le lot 2 est le plus gros du projet et il consommera une géométrie que la chaîne se contente
+aujourd’hui de **transporter** — 131 murs et 40 portes arrivent intacts dans le store et
+aucun sous-système ne les lit encore.
+
 Toute optimisation GPU future devra passer par un nouveau contrat de renderer et des
 mesures tablette ; elle ne justifie pas de restaurer l’ancienne implantation.
