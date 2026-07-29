@@ -219,25 +219,30 @@ export function createImportPanel(container, options = {}) {
   btnValidateUvtt?.addEventListener('click', () => {
     if (!pendingUvtt) return;
 
-    // En diagnostic : utiliser l'image base64 du UVTT pour l'aperçu local
+    // En diagnostic : créer un niveau SANS imageUrl (aperçu local, ne passe pas par le store)
+    // L'imageUrl vide empêche le chargement d'une ressource inexistante
     const level = {
       ...pendingUvtt.level,
-      // Utiliser la base64 du UVTT comme imageUrl temporaire (aperçu local uniquement)
-      imageUrl: pendingUvtt.imageBase64 ? (
-        pendingUvtt.imageBase64.startsWith('data:')
-          ? pendingUvtt.imageBase64
-          : `data:image/png;base64,${pendingUvtt.imageBase64}`
-      ) : '',
+      imageUrl: '', // Pas d'image persistée — diagnostic uniquement
     };
-    store.addLevel(level);
-    const publishedResult = { ...pendingUvtt, level };
 
-    if (uvttStatus) {
-      uvttStatus.style.display = 'block';
-      uvttStatus.style.color = '#2ecc71';
-      uvttStatus.innerHTML = `<strong>✓ Étage "${level.name}" chargé (aperçu local uniquement).</strong><br><span style="font-size: 0.8rem; color: #aaa;">Pour publier, utilisez : <code style="background: #1a1a1a; padding: 0.2rem 0.4rem; border-radius: 3px;">pnpm maps:prepare</code></span>`;
+    try {
+      store.addLevel(level);
+      const publishedResult = { ...pendingUvtt, level };
+
+      if (uvttStatus) {
+        uvttStatus.style.display = 'block';
+        uvttStatus.style.color = '#2ecc71';
+        uvttStatus.innerHTML = `<strong>✓ Étage "${level.name}" chargé (aperçu local — pas d'image).</strong><br><span style="font-size: 0.8rem; color: #aaa;">Pour publier avec image, utilisez : <code style="background: #1a1a1a; padding: 0.2rem 0.4rem; border-radius: 3px;">pnpm maps:prepare</code></span>`;
+      }
+      options.onImportUvtt?.(publishedResult);
+    } catch (err) {
+      if (uvttStatus) {
+        uvttStatus.style.display = 'block';
+        uvttStatus.style.color = '#e07070';
+        uvttStatus.innerHTML = `<strong>Erreur :</strong> ${err instanceof Error ? err.message : String(err)}`;
+      }
     }
-    options.onImportUvtt?.(publishedResult);
   });
 
   // --- Logique Import Image & Calibration ---
