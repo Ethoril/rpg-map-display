@@ -47,12 +47,12 @@ Vérifié sur la vraie carte `manoir-rdc.uvtt` : nom « Manoir — RDC », 131 m
 
 | Unité | Objet | État |
 |---|---|---|
-| U-00 | Tests du contrat de préparation | ⚠️ présents, mais une assertion a été affaiblie (cf. chantier B) |
+| U-00 | Tests du contrat de préparation | ✅ assertion restaurée, 9 cas en dossier temporaire |
 | U-01 | API de préparation pure | ✅ `prepareMap()` / `prepareMaps()` |
-| U-02 | Génération **atomique** du catalogue | ❌ non transactionnel (chantier B) |
+| U-02 | Génération **atomique** du catalogue | ✅ transactionnel, `rename` seul, orphelins signalés |
 | U-03 | Modèle et chargeur de catalogue | ✅ `validateCatalog()`, `loadCatalog()` |
 | U-04 | Interface de bibliothèque MJ | ✅ fonctionnel, 4 e2e qui cliquent réellement |
-| U-05 | Synchronisation et reconnexion | ⚠️ partiel (chantier C) |
+| U-05 | Synchronisation et reconnexion | ✅ `scene.load`, 5 e2e dont un vrai F5 joueurs |
 | U-06 | Retrait du parcours URL manuel | ✅ aucun champ URL, import local en diagnostic |
 
 ### Mise en garde sur l'historique
@@ -109,6 +109,11 @@ Ces deux règles viennent directement des défauts constatés aujourd'hui.
 ---
 
 ## 5. La suite — trois chantiers
+
+> **Les trois chantiers ont été livrés le 29/07 au soir**, dans l'ordre B → A → C,
+> `verify` en code 0 à la fin de chacun. Les spécifications sont conservées
+> ci-dessous telles qu'écrites : elles servent de référence pour la relecture.
+> Les écarts entre la spécification et ce qui a été fait sont notés en §8.
 
 Méthode : ces spécifications sont écrites pour être exécutées par Gemini, puis
 vérifiées. Chaque chantier est indépendant et peut être livré seul.
@@ -272,3 +277,70 @@ le store. Elle ne rend fonctionnel aucun de ces éléments :
 Les données sont présentes et vérifiées — 131 murs et 40 portes chargés pour le
 manoir. Ce sont les lots graphiques suivants qui devront les consommer. La
 présence des données dans le store ne vaut pas fonctionnalité.
+
+---
+
+## 8. Livraison du 29/07 au soir — écarts et restes
+
+Rien n'est commité : le mainteneur relit puis commite.
+
+### Mesures
+
+| | Avant | Après |
+|---|---|---|
+| `verify` | exit 1 (flake, cf. ci-dessous) | exit 0, confirmé sur plusieurs passes |
+| Tests unitaires | 77 réussis, ~30 s | 81 réussis, 1,6 s |
+| Tests navigateur | 43 réussis | 48 réussis |
+| `pnpm maps:prepare` | — | catalogue identique octet pour octet, 131 murs / 40 portes |
+| CLI sur carte fautive | exit 0, catalogue amputé | exit 1, catalogue précédent intact |
+
+### La baseline n'était pas verte au départ
+
+`tests/gmPanel.spec.mjs:142` échouait par intermittence, **avant toute
+modification**. Cause : `importPanel.js` écrase `#img-cells-wide` / `#img-cells-tall`
+depuis `img.onload`. Le test remplissait 10×8 sans attendre le chargement ; quand
+l'`onload` arrivait après, l'étage devenait 1×1 (`Math.round(100/140)`) et le pion
+2×2 était refusé par `addToken`. Corrigé par l'attente `toBeEnabled()` déjà
+employée par le test frère.
+
+### Écarts avec les spécifications ci-dessus
+
+- **Chantier C, nom de l'événement.** La spécification dit « `NetEvent.type` est
+  un `string` libre : aucun type à étendre » sans nommer l'événement.
+  `CONVENTIONS.md` §4 interdit d'inventer un type hors du cahier des charges §7,
+  or celui-ci contient déjà `scene.load` — « MJ | ponctuel — déclenche un snapshot
+  complet ». C'est donc `scene.load` qui a été implémenté.
+- **Chantier C, instantané invalide.** Il est journalisé puis ignoré, il ne lève
+  pas, conformément à `CONVENTIONS.md` §6 (« donnée réseau inattendue →
+  journaliser et ignorer, sans corrompre le store »). Sans ce `catch`,
+  l'exception remontait jusqu'au transport.
+- **Chantier C, garde supplémentaire.** Si `campaign.levels` n'est pas un
+  tableau, `restoreFromSnapshot` ne remplace rien mais efface quand même la
+  sélection. Une garde explicite l'empêche — cas non prévu au contrat.
+- **Chantier C, fichiers touchés.** Au-delà de `networkEvents.js` et
+  `sceneLibrary.js`, `installBrowserTransport` a été extrait de
+  `appIntegration.spec.mjs` vers `tests/browserTestTransport.mjs` pour être
+  partagé avec `tests/sceneSync.spec.mjs`, sans le dupliquer.
+- **Chantier B, défaut non listé.** `prepareMaps()` renvoyait
+  `mapsCount: uvttFiles.length`, donc comptait aussi les cartes en échec. Il
+  renvoie désormais le nombre réellement publié.
+- **Chantier B, couverture incomplète.** La garde de collision de slug est
+  implémentée et appelée avant toute préparation, mais elle n'est **pas couverte
+  en intégration** : le filtre ne retenant que `.uvtt` à plat, la collision est
+  hors d'atteinte par ce chemin. Elle est testée en fonction pure
+  (`planSources`). La propriété « sans rien écrire » est structurelle, pas
+  démontrée par un test.
+
+### Reste à faire
+
+1. **Attentes fixes des tests de gestes.** `tests/input.spec.mjs` échoue par
+   intermittence sous forte charge CPU — mesuré 2 échecs sur 8 exécutions
+   locales, 0 sur 18 répétitions à vide. Neuf `waitForTimeout` y attendent des
+   frames rAF avec des durées fixes, dont un de 30 ms. À remplacer par des
+   attentes de condition (`expect.poll`), en conservant les maintiens qui font
+   partie du geste (appui long, `DRAG_HOLD_MS`). Le critère d'acceptation doit
+   inclure une exécution répétée **sous charge**, sinon le défaut reste masqué.
+2. **Écrasement silencieux des dimensions à l'import.** Le défaut d'`importPanel.js`
+   décrit plus haut n'est pas qu'un problème de test : un MJ qui saisit ses
+   dimensions pendant le chargement de l'image les perd. À arbitrer — ce fichier
+   n'était dans aucun des trois chantiers.

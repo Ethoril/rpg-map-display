@@ -1,6 +1,7 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 29 juillet 2026 — mise en œuvre du plan de stabilisation Canvas.
+> Dernière mise à jour : 29 juillet 2026, soir — lot 2 terminé : catalogue transactionnel
+> (U-02), contrôles de grille couverts (U-00), remplacement de scène synchronisé (U-05).
 > Les mesures physiques sur tablette et les scénarios Firebase réels restent à valider dans
 > leur environnement.
 
@@ -35,13 +36,22 @@ pnpm run check-deps
 dont dépend le déploiement GitHub Pages. Lancer seulement `test:unit` a déjà
 laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 
-Résultat de la passe d’intégration du 29 juillet 2026 (après correction du lot 2) :
+Résultat de la passe d’intégration du 29 juillet 2026 au soir (lot 2 terminé) :
 
 - typage : vert ;
-- tests unitaires : 77 réussis, 1 fixture réelle ignorée car absente ;
-- tests navigateur : 43 réussis, 2 Firebase ignorés faute de configuration externe ;
+- tests unitaires : 81 réussis, 1 fixture réelle ignorée car absente ;
+- tests navigateur : 48 réussis, 2 Firebase ignorés faute de configuration externe ;
 - les scénarios couvrent rendu, imports, bibliothèque de cartes, pions, gestes,
-  plusieurs pages et reconnexion.
+  plusieurs pages, reconnexion et remplacement de scène synchronisé.
+
+La suite unitaire est passée d’environ 30 s à 1,6 s : la préparation de cartes est
+désormais exercée sur `fixtures/synthetic/minimal.uvtt` dans un dossier temporaire, et
+`maps/` n’est plus muté par les tests.
+
+Réserve connue : `tests/input.spec.mjs` échoue par intermittence sous forte charge CPU
+(mesuré 2 échecs sur 8 exécutions locales, 0 sur 18 répétitions à vide). La cause est un
+jeu d’attentes fixes pour les frames rAF, pas un défaut de logique. À reprendre avant de
+s’appuyer sur le CI comme seule garde.
 
 Les deux scénarios Firebase réels nécessitent `RPG_FIREBASE_CONFIG` avec la configuration
 Web publique et les identifiants du compte technique de test. Ces identifiants restent hors
@@ -55,13 +65,21 @@ La cause historique de la disparition après F5 était la suppression silencieus
 - le store valide une campagne complète avant chaque mutation et sauvegarde ;
 - l’interface exige une URL canonique publiée avant l’ajout d’un étage ou d’un pion ;
 - le transport refuse récursivement `data:` et `blob:` ;
-- une erreur de chargement d’image produit un placeholder, pas la perte de la campagne.
+- une erreur de chargement d’image produit un placeholder, pas la perte de la campagne ;
+- le remplacement de scène voyage en instantané absolu (`scene.load`), validé avant de
+  remplacer un état valide, et rejouable sans divergence.
 
 Les cartes sont préparées dans `maps/`, par exemple :
 
 ```text
 node scripts/import-uvtt.mjs chemin/vers/carte.uvtt
 ```
+
+La publication du catalogue est **transactionnelle** : `pnpm maps:prepare` n’écrit
+`catalog.json` que si toutes les cartes ont été préparées. Une seule carte fautive fait
+sortir le CLI en code non nul et laisse le catalogue précédent intact, octet pour octet.
+Les artefacts de `maps/generated/` devenus orphelins sont signalés, jamais supprimés : une
+campagne enregistrée côté navigateur peut encore les référencer.
 
 ## Démarrage d’une séance
 
