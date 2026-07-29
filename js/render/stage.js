@@ -1,64 +1,64 @@
 // @ts-check
-import { Application, Container } from 'pixi.js';
 import { RENDER_RESOLUTION_CAP } from '../core/constants.js';
 
 /**
- * @typedef {Object} StageLayers
- * @property {Container} background Image de fond ou vidéo
- * @property {Container} gridLayer Quadrillage
- * @property {Container} moveZone Cases atteignables (non interactif)
- * @property {Container} templates Gabarits de zone d'effet
- * @property {Container} tokens Pions et badges
- * @property {Container} fogLayer Masque de fog (au-dessus des pions)
+ * @typedef {Object} StageLayer
+ * @property {string} name
  */
 
 /**
- * Initialise l'application PixiJS v8 et crée la hiérarchie des couches dans l'ordre exact
+ * @typedef {Object} StageLayers
+ * @property {StageLayer} background Image de fond
+ * @property {StageLayer} gridLayer Quadrillage
+ * @property {StageLayer} moveZone Cases atteignables (non interactif)
+ * @property {StageLayer} templates Gabarits de zone d'effet
+ * @property {StageLayer} tokens Pions et badges
+ * @property {StageLayer} fogLayer Masque de fog (au-dessus des pions)
+ */
+
+/**
+ * Initialise le canvas Canvas 2D natif et crée la hiérarchie des couches dans l'ordre exact
  * de `ARCHITECTURE.md` §5.
  *
- * Module **strictement navigateur** : `pixi.js` est résolu par l'import map d'`index.html`.
- * Aucun repli n'est prévu si le chargement échoue — une scène factice qui s'initialise sans
- * rien dessiner est plus coûteuse à diagnostiquer qu'une erreur nette (`CONVENTIONS.md` §6).
- * Sous Node, l'import échoue donc bruyamment : ce module se teste au navigateur
- * (`tests/stage.spec.mjs`), pas en test unitaire.
- *
- * @param {HTMLCanvasElement} [canvasElement] Canvas HTML à attacher. Si omis, Pixi en crée un.
- * @returns {Promise<{ app: Application, layers: StageLayers }>}
+ * @param {HTMLCanvasElement} [canvasElement] Canvas HTML à attacher. Si omis, un canvas est créé.
+ * @returns {Promise<{ canvas: HTMLCanvasElement, context: CanvasRenderingContext2D, layers: StageLayers, resolution: number }>}
  */
 export async function initStage(canvasElement) {
-  const app = new Application();
+  const canvas = canvasElement || document.createElement('canvas');
 
-  // Initialisation asynchrone : idiome obligatoire en v8 (STACK.md §3).
-  await app.init({
-    canvas: canvasElement,
-    // Plafond de résolution : au-delà, le coût GPU sur Mali-G68 ne se voit pas à table.
-    resolution: Math.min(window.devicePixelRatio || 1, RENDER_RESOLUTION_CAP),
-    autoDensity: true,
-    antialias: false,
-    powerPreference: 'high-performance',
-  });
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, RENDER_RESOLUTION_CAP) : 1;
 
-  // Boucle à la demande : le ticker ne tourne jamais de lui-même, c'est `render/frame.js`
-  // qui décide quand une frame est nécessaire.
-  app.ticker.autoStart = false;
-  app.ticker.stop();
+  function resizeCanvas() {
+    const parent = canvas.parentElement;
+    const width = parent ? parent.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 800);
+    const height = parent ? parent.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 600);
+
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+  }
+
+  resizeCanvas();
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', resizeCanvas);
+  }
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Impossible de récupérer le contexte 2D du canvas');
+  }
 
   const layers = {
-    background: new Container(),
-    gridLayer: new Container(),
-    moveZone: new Container(),
-    templates: new Container(),
-    tokens: new Container(),
-    fogLayer: new Container(),
+    background: { name: 'background' },
+    gridLayer: { name: 'gridLayer' },
+    moveZone: { name: 'moveZone' },
+    templates: { name: 'templates' },
+    tokens: { name: 'tokens' },
+    fogLayer: { name: 'fogLayer' },
   };
 
-  // Ordre figé — `fogLayer` au-dessus de `tokens` garantit mécaniquement l'interdiction n°3.
-  app.stage.addChild(layers.background);
-  app.stage.addChild(layers.gridLayer);
-  app.stage.addChild(layers.moveZone);
-  app.stage.addChild(layers.templates);
-  app.stage.addChild(layers.tokens);
-  app.stage.addChild(layers.fogLayer);
-
-  return { app, layers };
+  return { canvas, context, layers, resolution: dpr };
 }

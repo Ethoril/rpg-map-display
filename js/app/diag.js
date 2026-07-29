@@ -147,35 +147,59 @@ function diagnosticStore() {
 
 // --- Scène de charge pour les mesures d'images ------------------------------
 
-/** @returns {Promise<{ app: any, loop: FrameLoop, camera: Camera }>} */
+/** @returns {Promise<{ canvas: HTMLCanvasElement, context: CanvasRenderingContext2D, loop: FrameLoop, camera: Camera }>} */
 async function preparerScene() {
-  const { app, layers } = await initStage(canvas);
-  const PIXI = await import('pixi.js');
+  const { canvas: cv, context, layers, resolution } = await initStage(canvas);
 
-  const fond = new PIXI.Graphics();
-  fond.rect(0, 0, 6720, 6300).fill({ color: 0x1b2430 });
-  layers.background.addChild(fond);
-
-  // Quadrillage 48 × 45 cases à 140 px : les dimensions d'un export Dungeondraft réel.
-  const grille = new PIXI.Graphics();
-  for (let c = 0; c <= 48; c++) grille.moveTo(c * 140, 0).lineTo(c * 140, 6300);
-  for (let r = 0; r <= 45; r++) grille.moveTo(0, r * 140).lineTo(6720, r * 140);
-  grille.stroke({ width: 2, color: 0x000000, alpha: 0.25 });
-  layers.gridLayer.addChild(grille);
-
-  for (let i = 0; i < 30; i++) {
-    const pion = new PIXI.Graphics();
-    pion.circle(0, 0, 60).fill({ color: 0xc0392b }).stroke({ width: 6, color: 0xffffff });
-    pion.position.set(200 + (i % 8) * 400, 200 + Math.floor(i / 8) * 400);
-    layers.tokens.addChild(pion);
-  }
-
-  const camera = new Camera(app.renderer.width, app.renderer.height);
+  const camera = new Camera(cv.width / resolution, cv.height / resolution);
   camera.setZoom(0.4);
   camera.setPan(1400, 1050);
 
-  const loop = new FrameLoop(app);
-  return { app, loop, camera };
+  const loop = new FrameLoop(() => {
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, cv.width, cv.height);
+    context.restore();
+
+    context.save();
+    context.scale(resolution, resolution);
+    camera.applyToContext(context);
+
+    // Fond
+    context.fillStyle = '#1b2430';
+    context.fillRect(0, 0, 6720, 6300);
+
+    // Quadrillage
+    context.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    context.lineWidth = 2;
+    context.beginPath();
+    for (let c = 0; c <= 48; c++) {
+      context.moveTo(c * 140, 0);
+      context.lineTo(c * 140, 6300);
+    }
+    for (let r = 0; r <= 45; r++) {
+      context.moveTo(0, r * 140);
+      context.lineTo(6720, r * 140);
+    }
+    context.stroke();
+
+    // Pions
+    context.fillStyle = '#c0392b';
+    context.strokeStyle = '#ffffff';
+    context.lineWidth = 6;
+    for (let i = 0; i < 30; i++) {
+      const px = 200 + (i % 8) * 400;
+      const py = 200 + Math.floor(i / 8) * 400;
+      context.beginPath();
+      context.arc(px, py, 60, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
+
+    context.restore();
+  });
+
+  return { canvas: cv, context, loop, camera };
 }
 
 /**
@@ -187,16 +211,13 @@ async function preparerScene() {
  * @returns {Promise<number[]>} images par seconde, une valeur par tranche
  */
 async function mesurerImages(dureeMs, trancheMs, progres) {
-  const { loop, camera, app } = await preparerScene();
+  const { loop, camera } = await preparerScene();
 
   let continuer = true;
   let x = 1400;
   loop.addListener(() => {
-    // Un panoramique léger à chaque image : sans mouvement, le compositeur pourrait
-    // court-circuiter le rendu et la mesure ne vaudrait rien.
     x += 0.5;
     camera.setPan(x, 1050);
-    camera.applyToContainer(app.stage);
     if (continuer) loop.requestFrame();
   });
 

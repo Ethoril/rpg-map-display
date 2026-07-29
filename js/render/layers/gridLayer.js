@@ -1,28 +1,26 @@
 // @ts-check
-import { Container, Graphics } from 'pixi.js';
 
 /**
  * Couche de tracé de la grille. Délègue intégralement le rendu à GridAdapter.renderGrid().
  */
 export class GridLayer {
   /**
-   * @param {Container} container Conteneur PixiJS parent dédié à la couche gridLayer.
+   * @param {any} [container] Conteneur de couche (compatibilité).
    */
-  constructor(container) {
-    /** @type {Container} */
+  constructor(container = null) {
     this.container = container;
-    /** @type {Graphics} */
-    this.graphics = new Graphics();
-    this.container.addChild(this.graphics);
   }
 
   /**
-   * Délègue le tracé du quadrillage à l'adaptateur de grille.
+   * Délègue le tracé du quadrillage sur le contexte 2D à l'adaptateur de grille.
    *
-   * @param {import('../../grid/GridAdapter.js').GridAdapter} grid
+   * @param {CanvasRenderingContext2D} ctx Contexte Canvas 2D
+   * @param {import('../../grid/GridAdapter.js').GridAdapter} grid Adaptateur de grille
    * @param {object} [viewport]
    */
-  render(grid, viewport = {}) {
-    grid.renderGrid(this.graphics, viewport);
+  render(ctx, grid, viewport = {}) {
+    if (grid && typeof grid.renderGrid === 'function' && ctx) {
+      grid.renderGrid(ctx, viewport);
+    }
   }
 }

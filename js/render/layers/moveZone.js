@@ -1,5 +1,4 @@
 // @ts-check
-import { Container, Graphics } from 'pixi.js';
 import { parseCellKey } from '../../core/cellKey.js';
 
 /**
@@ -17,41 +16,55 @@ import { parseCellKey } from '../../core/cellKey.js';
 
 /**
  * Couche 100% visuelle affichant la zone de déplacement (cases atteignables).
- * Aucune interactivité (hit-test désactivé via eventMode = 'none').
  */
 export class MoveZoneLayer {
   /**
-   * @param {Container} container Conteneur PixiJS parent dédié à la zone de déplacement.
+   * @param {any} [container] Conteneur de couche (compatibilité).
    */
-  constructor(container) {
-    /** @type {Container} */
+  constructor(container = null) {
     this.container = container;
-    this.container.eventMode = 'none';
-
-    /** @type {Graphics} */
-    this.graphics = new Graphics();
-    this.graphics.eventMode = 'none';
-    this.container.addChild(this.graphics);
   }
 
   /**
    * Efface le surlignage.
    */
-  clear() {
-    this.graphics.clear();
-  }
+  clear() {}
 
   /**
-   * Affiche le surlignage semi-transparent des cases atteignables.
+   * Affiche le surlignage semi-transparent des cases atteignables sur Canvas 2D.
    *
-   * @param {GridAdapter} grid Adaptateur de grille
-   * @param {SelectionState|string|null} selection Objet de sélection ou ID du pion sélectionné
-   * @param {Map<string, number>|Token[]|Token|null} [cellsReachableOrTokens] Map des cases atteignables OU liste de pions
+   * @param {CanvasRenderingContext2D|GridAdapter} ctxOrGrid Contexte Canvas 2D ou adaptateur de grille
+   * @param {GridAdapter|SelectionState|string|null} [gridOrSelection] Adaptateur de grille ou objet de sélection
+   * @param {SelectionState|Map<string, number>|string|null} [selectionOrCells] Sélection ou map de cases
+   * @param {Map<string, number>|Token[]|Token|null} [cellsOrTokens] Map des cases atteignables ou pions
    * @param {Token[]|Token|string|null} [tokensOrColor] Liste de pions, pion sélectionné ou couleur fallback
    */
-  render(grid, selection = null, cellsReachableOrTokens = null, tokensOrColor = null) {
-    this.graphics.clear();
-    if (!grid) return;
+  render(ctxOrGrid, gridOrSelection = null, selectionOrCells = null, cellsOrTokens = null, tokensOrColor = null) {
+    /** @type {CanvasRenderingContext2D|null} */
+    let ctx = null;
+    /** @type {GridAdapter|null} */
+    let grid = null;
+    /** @type {SelectionState|string|null} */
+    let selection = null;
+    /** @type {Map<string, number>|Token[]|Token|null} */
+    let cellsReachableOrTokens = null;
+    /** @type {Token[]|Token|string|null} */
+    let finalTokensOrColor = null;
+
+    if (ctxOrGrid && typeof /** @type {any} */ (ctxOrGrid).fillRect === 'function') {
+      ctx = /** @type {CanvasRenderingContext2D} */ (ctxOrGrid);
+      grid = /** @type {GridAdapter} */ (gridOrSelection);
+      selection = /** @type {SelectionState|string|null} */ (selectionOrCells);
+      cellsReachableOrTokens = cellsOrTokens;
+      finalTokensOrColor = tokensOrColor;
+    } else {
+      grid = /** @type {GridAdapter} */ (ctxOrGrid);
+      selection = /** @type {SelectionState|string|null} */ (gridOrSelection);
+      cellsReachableOrTokens = /** @type {Map<string, number>|Token[]|Token|null} */ (selectionOrCells);
+      finalTokensOrColor = /** @type {any} */ (cellsOrTokens);
+    }
+
+    if (!grid || !ctx) return;
 
     /** @type {string|null} */
     let selectedTokenId = null;
@@ -67,10 +80,10 @@ export class MoveZoneLayer {
       if (cellsReachableOrTokens instanceof Map) {
         cellsReachable = cellsReachableOrTokens;
       }
-      if (Array.isArray(tokensOrColor) || (tokensOrColor && typeof tokensOrColor === 'object')) {
-        tokens = /** @type {Token[]|Token} */ (tokensOrColor);
-      } else if (typeof tokensOrColor === 'string') {
-        fallbackColor = tokensOrColor;
+      if (Array.isArray(finalTokensOrColor) || (finalTokensOrColor && typeof finalTokensOrColor === 'object')) {
+        tokens = /** @type {Token[]|Token} */ (finalTokensOrColor);
+      } else if (typeof finalTokensOrColor === 'string') {
+        fallbackColor = finalTokensOrColor;
       }
     } else if (selection && typeof selection === 'object') {
       selectedTokenId = selection.selectedTokenId ?? selection.tokenId ?? null;
@@ -109,6 +122,10 @@ export class MoveZoneLayer {
       }
     }
 
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.3;
+
     for (const key of cellsReachable.keys()) {
       const cell = parseCellKey(key);
       const p0 = grid.mapFromCellPoint({ cellX: cell.a, cellY: cell.b });
@@ -116,9 +133,9 @@ export class MoveZoneLayer {
       const width = p1.x - p0.x;
       const height = p1.y - p0.y;
 
-      this.graphics.rect(p0.x, p0.y, width, height);
+      ctx.fillRect(p0.x, p0.y, width, height);
     }
 
-    this.graphics.fill({ color, alpha: 0.3 });
+    ctx.restore();
   }
 }

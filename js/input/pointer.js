@@ -258,12 +258,12 @@ export class PointerInput {
       const dy = screenPos.screenY - this.lastScreenPos.screenY;
       this.lastScreenPos = screenPos;
 
-      if (this.role === 'players') {
-        // Vue joueurs — interdiction #1 : drag à 1 doigt = pan de la carte (panBy), jamais drag pion
-        this.isPanning = true;
-        this.queuePan(dx, dy);
-      } else {
-        // Vue MJ — interdiction #9 : drag pion autorisé au-delà du seuil DRAG_HOLD_MS / distance
+      // Pan de la carte en tous les cas (joueurs ou MJ)
+      this.isPanning = true;
+      this.queuePan(dx, dy);
+
+      if (this.role !== 'players') {
+        // Vue MJ — aussi : drag pion autorisé au-delà du seuil DRAG_HOLD_MS / distance
         const isExceeded = isDragThresholdExceeded(
           this.startScreenPos,
           screenPos,

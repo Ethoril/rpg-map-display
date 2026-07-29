@@ -161,15 +161,20 @@ export class SquareGrid {
   }
 
   /**
-   * Trace le quadrillage sur l'instance Graphics fournie.
+   * Trace le quadrillage sur le contexte Canvas 2D.
    *
-   * @param {import('pixi.js').Graphics} g
+   * @param {CanvasRenderingContext2D} ctx
    * @param {object} [_viewport]
    * @returns {void}
    */
-  renderGrid(g, _viewport) {
-    g.clear();
-    if (this.visible === false || this.opacity <= 0) return;
+  renderGrid(ctx, _viewport) {
+    if (this.visible === false || this.opacity <= 0 || !ctx) return;
+
+    ctx.save();
+    ctx.strokeStyle = this.color;
+    ctx.globalAlpha = this.opacity;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
 
     const startX = this.offsetX;
     const endX = this.offsetX + this.widthCells * this.pxPerCell;
@@ -178,16 +183,17 @@ export class SquareGrid {
 
     for (let col = 0; col <= this.widthCells; col++) {
       const x = this.offsetX + col * this.pxPerCell;
-      g.moveTo(x, startY);
-      g.lineTo(x, endY);
+      ctx.moveTo(x, startY);
+      ctx.lineTo(x, endY);
     }
 
     for (let row = 0; row <= this.heightCells; row++) {
       const y = this.offsetY + row * this.pxPerCell;
-      g.moveTo(startX, y);
-      g.lineTo(endX, y);
+      ctx.moveTo(startX, y);
+      ctx.lineTo(endX, y);
     }
 
-    g.stroke({ color: this.color, alpha: this.opacity, width: 1 });
+    ctx.stroke();
+    ctx.restore();
   }
 }

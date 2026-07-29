@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      pixi-viewport:
+        specifier: ^6.0.3
+        version: 6.0.3(pixi.js@8.19.0)
     devDependencies:
       '@jimp/wasm-webp':
         specifier: ^1.6.1
@@ -575,6 +579,11 @@ packages:
   pixelmatch@5.3.0:
     resolution: {integrity: sha512-o8mkY4E/+LNUf6LzX96ht6k6CEDi65k9G2rjMtBe9Oo+VPKSvl+0GKHuH/AlG+GA5LPG/i5hrekkxUc3s2HU+Q==}
     hasBin: true
+
+  pixi-viewport@6.0.3:
+    resolution: {integrity: sha512-2+qPJ0/n+8hQYhWvY+795+x9y3MiUrCOWacK0DY53whowWaGdx9iDocy7z1pBwjkZhC52YvrJQuZKK0sdVLtBw==}
+    peerDependencies:
+      pixi.js: '>=8'
 
   pixi.js@8.19.0:
     resolution: {integrity: sha512-pq1O6emA/GFjjeF+8d3Pb5t7knD8FsnfWGqQcRjYjsqFZ7QdzG1XgjLDUu0DFJRbafjV5+g8iNLFBx0b9649lg==}
@@ -1494,6 +1503,10 @@ snapshots:
   pixelmatch@5.3.0:
     dependencies:
       pngjs: 6.0.0
+
+  pixi-viewport@6.0.3(pixi.js@8.19.0):
+    dependencies:
+      pixi.js: 8.19.0
 
   pixi.js@8.19.0:
     dependencies:

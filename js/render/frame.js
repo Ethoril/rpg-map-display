@@ -2,14 +2,15 @@
 
 /**
  * Gestionnaire de la boucle de rendu à la demande (rAF coalescé).
- * Ne fait tourner le rendu PixiJS que lorsqu'une frame est explicitement demandée.
+ * Ne déclenche le rendu Canvas 2D que lorsqu'une frame est explicitement demandée.
  */
 export class FrameLoop {
   /**
-   * @param {any} [app] Application PixiJS (optionnelle)
+   * @param {(() => void)|object|null} [onRender] Callback de rendu principal ou objet exposant render()
    */
-  constructor(app = null) {
-    this.app = app;
+  constructor(onRender = null) {
+    /** @type {(() => void)|object|null} */
+    this.onRender = onRender;
     this.requested = false;
     this.running = false;
     /** @type {any} */
@@ -67,8 +68,18 @@ export class FrameLoop {
     this.requested = false;
     this.frameCount++;
 
-    if (this.app && typeof this.app.render === 'function') {
-      this.app.render();
+    if (typeof this.onRender === 'function') {
+      try {
+        this.onRender();
+      } catch (err) {
+        console.error(err);
+      }
+    } else if (this.onRender && typeof /** @type {any} */ (this.onRender).render === 'function') {
+      try {
+        /** @type {any} */ (this.onRender).render();
+      } catch (err) {
+        console.error(err);
+      }
     }
 
     for (const listener of this.listeners) {

@@ -21,5 +21,8 @@
     "pixi.js": "8.19.0",
     "typescript": "^5.7.0"
   },
-  "build": 17
+  "build": 34,
+  "dependencies": {
+    "pixi-viewport": "^6.0.3"
+  }
 }

@@ -41,7 +41,7 @@
  *   Dijkstra pondéré. Clé = cellKey, valeur = coût cumulé. Interdit le corner-cutting en
  *   carré : une diagonale exige les deux arêtes orthogonales adjacentes libres.
  *
- * @property {(g: import('pixi.js').Graphics, viewport: object) => void} renderGrid
- *   Trace le quadrillage. Seule dépendance de rendu tolérée dans l'adaptateur.
+ * @property {(ctx: CanvasRenderingContext2D, viewport?: object) => void} renderGrid
+ *   Trace le quadrillage sur le contexte 2D. Seule dépendance de rendu tolérée dans l'adaptateur.
  */
 export {}

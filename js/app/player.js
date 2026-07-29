@@ -65,14 +65,14 @@ export async function bootstrapPlayerApp(options = {}) {
     /** @type {HTMLCanvasElement} */ (document.querySelector('#board')) ||
     document.createElement('canvas');
 
-  // 1. Initialisation de l'application PixiJS v8 et des couches de rendu
-  const { app, layers } = await initStage(canvas);
+  // 1. Initialisation du canvas 2D natif et des couches de rendu
+  const { canvas: canvasElem, context: ctx, layers, resolution } = await initStage(canvas);
 
   // 2. Caméra & Boucle de rendu à la demande
-  const width = canvas.clientWidth || window.innerWidth || 800;
-  const height = canvas.clientHeight || window.innerHeight || 600;
+  const width = canvasElem.width / resolution;
+  const height = canvasElem.height / resolution;
   const camera = new Camera(width, height);
-  const frameLoop = new FrameLoop(app);
+  const frameLoop = new FrameLoop(() => renderAll());
 
   const bgLayer = new BackgroundLayer(layers.background);
   const gridLayer = new GridLayer(layers.gridLayer);
@@ -81,29 +81,40 @@ export async function bootstrapPlayerApp(options = {}) {
 
   // Fonction de redessin global
   function renderAll() {
-    camera.applyToContainer(app.stage);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
+    ctx.restore();
+
+    ctx.save();
+    ctx.scale(resolution, resolution);
+    camera.applyToContext(ctx);
 
     const state = store.getState();
     const { campaign, activeLevel, selectedToken, selectedTokenId, reachableCells } = state;
 
     if (activeLevel) {
       if (activeLevel.imageUrl) {
-        bgLayer.load(activeLevel.imageUrl);
+        bgLayer.load(activeLevel.imageUrl).then(() => {
+          frameLoop.requestFrame();
+        });
+        bgLayer.render(ctx);
       }
 
       const gridAdapter = gridFor(activeLevel);
-      gridLayer.render(gridAdapter);
+      gridLayer.render(ctx, gridAdapter);
 
       const tokens = campaign ? campaign.tokens : [];
-      tokensLayer.render(gridAdapter, tokens, selectedTokenId, { role: 'players' });
+      tokensLayer.render(ctx, gridAdapter, tokens, selectedTokenId, { role: 'players' });
 
       if (selectedToken && reachableCells && reachableCells.size > 0) {
-        moveZoneLayer.render(gridAdapter, selectedTokenId, reachableCells, selectedToken);
+        moveZoneLayer.render(ctx, gridAdapter, selectedTokenId, reachableCells, selectedToken);
       } else {
         moveZoneLayer.clear();
       }
     }
 
+    ctx.restore();
     frameLoop.requestFrame();
   }
 
@@ -229,17 +240,22 @@ export async function bootstrapPlayerApp(options = {}) {
 
   // Redimensionnement de la fenêtre
   window.addEventListener('resize', () => {
-    const w = canvas.clientWidth || window.innerWidth || 800;
-    const h = canvas.clientHeight || window.innerHeight || 600;
+    const parent = canvasElem.parentElement;
+    const w = parent ? parent.clientWidth : window.innerWidth;
+    const h = parent ? parent.clientHeight : window.innerHeight;
+    canvasElem.width = Math.floor(w * resolution);
+    canvasElem.height = Math.floor(h * resolution);
+    canvasElem.style.width = `${w}px`;
+    canvasElem.style.height = `${h}px`;
     camera.setViewport(w, h);
-    app.renderer.resize(w, h);
     renderAll();
   });
 
   renderAll();
 
   return {
-    app,
+    canvas: canvasElem,
+    context: ctx,
     camera,
     frameLoop,
     pointerInput: playerControls.pointerInput,

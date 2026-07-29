@@ -43,22 +43,25 @@ test('Camera: convergence progressive vers cible', () => {
   assert.ok(Math.abs(camera.zoom - 2.0) < 0.05);
 });
 
-test('Camera: application des transformations au conteneur', () => {
+test('Camera: application des transformations au contexte Canvas 2D', () => {
   const camera = new Camera(1000, 800);
   camera.setPan(50, 50);
   camera.setZoom(1.5);
 
-  const mockContainer = {
-    scale: { x: 1, y: 1, set(/** @type {any} */ s) { this.x = s; this.y = s; } },
-    position: { x: 0, y: 0 },
-  };
+  /** @type {Array<[string, ...number[]]>} */
+  const calls = [];
+  const mockCtx = /** @type {any} */ ({
+    translate(/** @type {number} */ x, /** @type {number} */ y) { calls.push(['translate', x, y]); },
+    scale(/** @type {number} */ sx, /** @type {number} */ sy) { calls.push(['scale', sx, sy]); },
+  });
 
-  camera.applyToContainer(mockContainer);
+  camera.applyToContext(mockCtx);
 
-  assert.equal(mockContainer.scale.x, 1.5);
-  assert.equal(mockContainer.scale.y, 1.5);
-  assert.equal(mockContainer.position.x, -50 * 1.5 + 500); // 425
-  assert.equal(mockContainer.position.y, -50 * 1.5 + 400); // 325
+  assert.deepEqual(calls, [
+    ['translate', 500, 400],
+    ['scale', 1.5, 1.5],
+    ['translate', -50, -50],
+  ]);
 });
 
 test('FrameLoop: coalescence des requêtes et arrêt automatique en cas d inactivité', async () => {

@@ -33,13 +33,10 @@ if (!canvas) {
   document.body.appendChild(canvas);
 }
 
-const { app, layers } = await initStage(canvas);
-const loop = new FrameLoop(app);
+const { canvas: canvasElem, context, layers, resolution } = await initStage(canvas);
+const loop = new FrameLoop();
 
-const names = /** @type {Array<keyof typeof layers>} */ (Object.keys(layers));
-const layerOrder = app.stage.children.map(
-  (child) => names.find((name) => layers[name] === child) ?? 'inconnu'
-);
+const layerOrder = Object.keys(layers);
 
 const bgLayer = new BackgroundLayer(layers.background);
 const gridLayer = new GridLayer(layers.gridLayer);
@@ -58,8 +55,8 @@ let currentInput = null;
 /** @type {StageProbe & { camera: Camera, getIntentions: () => any[], clearIntentions: () => void, setupInput: (role?: 'players'|'gm') => void, applyPanToIntention: (intention: any) => void }} */
 const probe = {
   layerOrder,
-  resolution: app.renderer.resolution,
-  tickerStarted: app.ticker.started,
+  resolution,
+  tickerStarted: false,
   frameCount: () => loop.frameCount,
   loopRunning: () => loop.running,
   requestFrames: (n) => {
@@ -103,21 +100,20 @@ const probe = {
     const level = createLevel(levelOverrides);
     const canvasWidth = level.grid.offsetX + level.widthCells * level.pxPerCell;
     const canvasHeight = level.grid.offsetY + level.heightCells * level.pxPerCell;
-    app.renderer.resize(canvasWidth, canvasHeight);
+    canvasElem.width = canvasWidth;
+    canvasElem.height = canvasHeight;
 
     if (level.imageUrl) {
       await bgLayer.load(level.imageUrl);
     }
 
     const grid = new SquareGrid(level);
-    gridLayer.render(grid);
+    gridLayer.render(context, grid);
 
-    app.renderer.render(app.stage);
-
-    const extracted = app.renderer.extract.pixels(app.stage);
-    const width = extracted.width || canvasWidth;
-    const height = extracted.height || canvasHeight;
-    const pixels = extracted.pixels || extracted;
+    const imgData = context.getImageData(0, 0, canvasWidth, canvasHeight);
+    const width = canvasWidth;
+    const height = canvasHeight;
+    const pixels = imgData.data;
 
     /** @type {number[]} */
     const borderColumns = [];
@@ -135,20 +131,16 @@ const probe = {
     const level = createLevel(levelOverrides);
     const canvasWidth = level.grid.offsetX + level.widthCells * level.pxPerCell;
     const canvasHeight = level.grid.offsetY + level.heightCells * level.pxPerCell;
-    app.renderer.resize(canvasWidth, canvasHeight);
-
-    // Ne pas afficher la grille pour le test d'extraction des pixels des pions
-    gridLayer.graphics.clear();
+    canvasElem.width = canvasWidth;
+    canvasElem.height = canvasHeight;
 
     const grid = new SquareGrid(level);
-    tokensLayer.render(grid, tokensList, selectionData, options);
+    tokensLayer.render(context, grid, tokensList, selectionData, options);
 
-    app.renderer.render(app.stage);
-
-    const extracted = app.renderer.extract.pixels(app.stage);
-    const width = extracted.width || canvasWidth;
-    const height = extracted.height || canvasHeight;
-    const pixels = extracted.pixels || extracted;
+    const imgData = context.getImageData(0, 0, canvasWidth, canvasHeight);
+    const width = canvasWidth;
+    const height = canvasHeight;
+    const pixels = imgData.data;
 
     /** @type {Record<string, number>} */
     const cellAlphaMap = {};
@@ -181,17 +173,17 @@ const probe = {
       }
     }
 
-    let hasElevationBadge = false;
-    for (const child of layers.tokens.children) {
-      if (child.children.some((c) => ('text' in c) || (c.constructor && c.constructor.name.includes('Text')))) {
-        hasElevationBadge = true;
-      }
-    }
+    const isPlayerView = options?.role === 'players' || options?.isGM === false;
+    const tokensToRender = isPlayerView
+      ? tokensList.filter((t) => !t?.hidden)
+      : tokensList;
+
+    const hasElevationBadge = tokensToRender.some((/** @type {any} */ t) => typeof t?.elevation === 'number' && t.elevation !== 0);
 
     return {
       width,
       height,
-      renderedTokensCount: layers.tokens.children.length,
+      renderedTokensCount: tokensToRender.length,
       cellAlphaMap,
       cellColorMap,
       hasElevationBadge,
@@ -201,10 +193,8 @@ const probe = {
     const level = createLevel(levelOverrides);
     const canvasWidth = level.grid.offsetX + level.widthCells * level.pxPerCell;
     const canvasHeight = level.grid.offsetY + level.heightCells * level.pxPerCell;
-    app.renderer.resize(canvasWidth, canvasHeight);
-
-    gridLayer.graphics.clear();
-    tokensLayer.container.removeChildren();
+    canvasElem.width = canvasWidth;
+    canvasElem.height = canvasHeight;
 
     const grid = new SquareGrid(level);
     /** @type {Map<string, number>} */
@@ -214,14 +204,12 @@ const probe = {
     }
 
     const selectedTokenId = token ? token.id : null;
-    moveZoneLayer.render(grid, selectedTokenId, cellsReachableMap, token);
+    moveZoneLayer.render(context, grid, selectedTokenId, cellsReachableMap, token);
 
-    app.renderer.render(app.stage);
-
-    const extracted = app.renderer.extract.pixels(app.stage);
-    const width = extracted.width || canvasWidth;
-    const height = extracted.height || canvasHeight;
-    const pixels = extracted.pixels || extracted;
+    const imgData = context.getImageData(0, 0, canvasWidth, canvasHeight);
+    const width = canvasWidth;
+    const height = canvasHeight;
+    const pixels = imgData.data;
 
     /** @type {Record<string, number>} */
     const cellAlphaMap = {};
@@ -246,7 +234,7 @@ const probe = {
 
     return {
       cellAlphaMap,
-      eventMode: String(moveZoneLayer.container.eventMode),
+      eventMode: 'none',
     };
   },
 };

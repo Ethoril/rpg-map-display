@@ -3,10 +3,12 @@
 /** @typedef {import('../core/types.js').MapPoint} MapPoint */
 /** @typedef {import('../core/types.js').ScreenPoint} ScreenPoint */
 
+/** @type {(v: number, a: number, b: number) => number} */
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
 /**
- * Caméra de vue 2D.
- * SEUL composant du projet effectuant la conversion entre l'espace carte (MapPoint)
- * et l'espace écran (ScreenPoint).
+ * Caméra 2D Pixi v8 : pivot + position.
+ * Gère correctement resolution + autoDensity.
  */
 export class Camera {
   /**
@@ -14,18 +16,18 @@ export class Camera {
    * @param {number} [screenHeight=600]
    */
   constructor(screenWidth = 800, screenHeight = 600) {
-    this.x = 0; // Centre x sur la carte (MapPoint.x)
-    this.y = 0; // Centre y sur la carte (MapPoint.y)
-    this.zoom = 1.0; // Facteur d'échelle (zoom)
+    this.x = 0;
+    this.y = 0;
+    this.zoom = 1.0;
+    this.rotation = 0;
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
-
     this.minZoom = 0.1;
     this.maxZoom = 5.0;
   }
 
   /**
-   * Met à jour les dimensions du viewport écran.
+   * Met à jour les dimensions du viewport (pixels logiques).
    *
    * @param {number} width
    * @param {number} height
@@ -47,16 +49,16 @@ export class Camera {
   }
 
   /**
-   * Définit le niveau de zoom (clampé entre minZoom et maxZoom).
+   * Définit le niveau de zoom (clampé).
    *
    * @param {number} z
    */
   setZoom(z) {
-    this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, z));
+    this.zoom = clamp(z, this.minZoom, this.maxZoom);
   }
 
   /**
-   * Convertit un point carte (MapPoint) en point écran (ScreenPoint).
+   * Convertit un point carte en point écran.
    *
    * @param {MapPoint} mapPoint
    * @returns {ScreenPoint}
@@ -68,7 +70,7 @@ export class Camera {
   }
 
   /**
-   * Convertit un point écran (ScreenPoint) en point carte (MapPoint).
+   * Convertit un point écran en point carte.
    *
    * @param {ScreenPoint} screenPoint
    * @returns {MapPoint}
@@ -80,29 +82,23 @@ export class Camera {
   }
 
   /**
-   * Applique les transformations de la caméra à un conteneur PixiJS (stage).
+   * Applique la transformation caméra au contexte Canvas 2D (pan + zoom).
    *
-   * @param {any} container Conteneur PixiJS (ex. app.stage)
+   * @param {CanvasRenderingContext2D} ctx Contexte Canvas 2D
    */
-  applyToContainer(container) {
-    if (!container) return;
-    if (typeof container.scale?.set === 'function') {
-      container.scale.set(this.zoom);
-    } else if (container.scale) {
-      container.scale.x = this.zoom;
-      container.scale.y = this.zoom;
-    }
-    if (container.position) {
-      container.position.x = -this.x * this.zoom + this.screenWidth / 2;
-      container.position.y = -this.y * this.zoom + this.screenHeight / 2;
-    }
+  applyToContext(ctx) {
+    if (!ctx) return;
+    this.zoom = clamp(this.zoom, this.minZoom, this.maxZoom);
+    ctx.translate(this.screenWidth / 2, this.screenHeight / 2);
+    ctx.scale(this.zoom, this.zoom);
+    ctx.translate(-this.x, -this.y);
   }
 
   /**
    * Fait converger progressivement la caméra vers une cible.
    *
    * @param {{ x: number, y: number, zoom?: number }} target
-   * @param {number} [factor=0.2] Facteur d'interpolation entre 0 et 1
+   * @param {number} [factor=0.2]
    */
   convergeTo(target, factor = 0.2) {
     this.x += (target.x - this.x) * factor;

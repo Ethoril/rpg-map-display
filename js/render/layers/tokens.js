@@ -1,5 +1,4 @@
 // @ts-check
-import { Container, Graphics, Text } from 'pixi.js';
 
 /**
  * @typedef {import('../../core/types.js').Token} Token
@@ -15,30 +14,51 @@ import { Container, Graphics, Text } from 'pixi.js';
  */
 
 /**
- * Couche de rendu des pions (sprites/placeholders), anneau de sélection,
- * badges d'élévation et marqueurs.
+ * Couche de rendu des pions via Canvas 2D natif.
  */
 export class TokensLayer {
   /**
-   * @param {Container} container Conteneur PixiJS parent dédié aux pions.
+   * @param {any} [container] Conteneur factice (compatibilité).
    */
-  constructor(container) {
-    /** @type {Container} */
+  constructor(container = null) {
     this.container = container;
   }
 
   /**
-   * Rend la liste des pions sur la grille.
+   * Rend la liste des pions sur la grille en Canvas 2D.
    *
-   * @param {GridAdapter} grid Adaptateur de grille (SquareGrid, etc.)
-   * @param {Token[]} tokens Liste des pions à afficher
-   * @param {SelectionOption|string|null} [selection] Objet de sélection ({ tokenId?: string|null }) ou id string
-   * @param {RenderOptions} [options] Options d'affichage ({ role?: 'gm'|'players', isGM?: boolean })
+   * @param {CanvasRenderingContext2D|GridAdapter} ctxOrGrid Contexte Canvas 2D ou adaptateur de grille
+   * @param {any} [gridOrTokens] Adaptateur de grille ou liste de pions
+   * @param {any} [tokensOrSelection] Liste des pions ou sélection
+   * @param {any} [selectionOrOptions] Sélection ou options
+   * @param {RenderOptions} [options] Options d'affichage
    */
-  render(grid, tokens = [], selection = null, options = {}) {
-    this.container.removeChildren();
+  render(ctxOrGrid, gridOrTokens, tokensOrSelection, selectionOrOptions, options = {}) {
+    /** @type {CanvasRenderingContext2D|null} */
+    let ctx = null;
+    /** @type {GridAdapter|null} */
+    let grid = null;
+    /** @type {Token[]} */
+    let tokens = [];
+    /** @type {SelectionOption|string|null} */
+    let selection = null;
+    /** @type {RenderOptions} */
+    let opts = options;
 
-    if (!Array.isArray(tokens) || tokens.length === 0) return;
+    if (ctxOrGrid && typeof /** @type {any} */ (ctxOrGrid).fillRect === 'function') {
+      ctx = /** @type {CanvasRenderingContext2D} */ (ctxOrGrid);
+      grid = /** @type {GridAdapter} */ (gridOrTokens);
+      tokens = Array.isArray(tokensOrSelection) ? tokensOrSelection : [];
+      selection = /** @type {SelectionOption|string|null} */ (selectionOrOptions);
+      opts = options || {};
+    } else {
+      grid = /** @type {GridAdapter} */ (ctxOrGrid);
+      tokens = Array.isArray(gridOrTokens) ? gridOrTokens : [];
+      selection = /** @type {SelectionOption|string|null} */ (tokensOrSelection);
+      opts = /** @type {RenderOptions} */ (selectionOrOptions || {});
+    }
+
+    if (!grid || !ctx || !Array.isArray(tokens) || tokens.length === 0) return;
 
     // Normaliser l'ID du pion sélectionné
     const selectedTokenId =
@@ -48,26 +68,21 @@ export class TokensLayer {
         ? selection.tokenId ?? selection.selectedTokenId ?? null
         : null;
 
-    // Filtrage pour la vue joueurs si la couche reçoit la liste non filtrée
-    const isPlayerView = options?.role === 'players' || options?.isGM === false;
+    // Filtrage pour la vue joueurs
+    const isPlayerView = opts?.role === 'players' || opts?.isGM === false;
     const tokensToRender = isPlayerView
       ? tokens.filter((t) => !t?.hidden)
       : tokens;
 
+    ctx.save();
+
+    // 1. Dessiner les disques pions
     for (const token of tokensToRender) {
       if (!token || !token.cell) continue;
 
       const sizeCells = Math.max(1, token.sizeCells ?? 1);
-
-      // Distances et limites en pixels via l'adaptateur de grille
-      const p0 = grid.mapFromCellPoint({
-        cellX: token.cell.a,
-        cellY: token.cell.b,
-      });
-      const p1 = grid.mapFromCellPoint({
-        cellX: token.cell.a + sizeCells,
-        cellY: token.cell.b + sizeCells,
-      });
+      const p0 = grid.mapFromCellPoint({ cellX: token.cell.a, cellY: token.cell.b });
+      const p1 = grid.mapFromCellPoint({ cellX: token.cell.a + sizeCells, cellY: token.cell.b + sizeCells });
 
       const width = p1.x - p0.x;
       const height = p1.y - p0.y;
@@ -76,62 +91,80 @@ export class TokensLayer {
       const radiusX = width / 2;
       const radiusY = height / 2;
 
-      const tokenGroup = new Container();
-
-      // PNJ hidden en vue MJ -> semi-transparent (alpha 0.5)
+      ctx.save();
       if (token.hidden) {
-        tokenGroup.alpha = 0.5;
+        ctx.globalAlpha = 0.5;
       }
 
-      const g = new Graphics();
-      const isSelected = selectedTokenId !== null && selectedTokenId === token.id;
-
-      // 1. Anneau de sélection (gris/blanc, rayon légèrement > sprite) — visible ssi selection.tokenId === token.id
-      if (isSelected) {
-        g.ellipse(centerX, centerY, radiusX + 3, radiusY + 3);
-        g.stroke({ color: '#ffffff', width: 3 });
-      }
-
-      // 2. Sprite du pion (ellipse colorée avec bordure pour T-17)
       const color = token.borderColor || '#ff0000';
-      g.ellipse(centerX, centerY, radiusX, radiusY);
-      g.fill(color);
-      g.stroke({ color, width: 2 });
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-      // 3. Badge d'élévation (texte blanc, petit) — affiché ssi elevation !== 0
+      ctx.restore();
+    }
+
+    // 2. Dessiner les anneaux de sélection
+    for (const token of tokensToRender) {
+      if (!token || !token.cell) continue;
+      if (selectedTokenId !== null && selectedTokenId === token.id) {
+        const sizeCells = Math.max(1, token.sizeCells ?? 1);
+        const p0 = grid.mapFromCellPoint({ cellX: token.cell.a, cellY: token.cell.b });
+        const p1 = grid.mapFromCellPoint({ cellX: token.cell.a + sizeCells, cellY: token.cell.b + sizeCells });
+
+        const width = p1.x - p0.x;
+        const height = p1.y - p0.y;
+        const centerX = p0.x + width / 2;
+        const centerY = p0.y + height / 2;
+        const radiusX = width / 2;
+        const radiusY = height / 2;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, radiusX + 3, radiusY + 3, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 3. Dessiner les badges d'élévation
+    for (const token of tokensToRender) {
+      if (!token || !token.cell) continue;
       if (typeof token.elevation === 'number' && token.elevation !== 0) {
+        const sizeCells = Math.max(1, token.sizeCells ?? 1);
+        const p0 = grid.mapFromCellPoint({ cellX: token.cell.a, cellY: token.cell.b });
+        const p1 = grid.mapFromCellPoint({ cellX: token.cell.a + sizeCells, cellY: token.cell.b + sizeCells });
+        const width = p1.x - p0.x;
+
         const badgeRadius = Math.max(8, Math.min(14, width * 0.12));
         const badgeX = p0.x + width - badgeRadius - 2;
         const badgeY = p0.y + badgeRadius + 2;
 
-        g.ellipse(badgeX, badgeY, badgeRadius, badgeRadius);
-        g.fill({ color: '#000000', alpha: 0.8 });
-        g.stroke({ color: '#ffffff', width: 1 });
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
 
         const textStr = token.elevation > 0 ? `+${token.elevation}` : `${token.elevation}`;
-        const elevText = new Text({
-          text: textStr,
-          style: {
-            fontFamily: 'sans-serif',
-            fontSize: Math.max(9, Math.round(badgeRadius * 1.1)),
-            fill: '#ffffff',
-            fontWeight: 'bold',
-            align: 'center',
-          },
-        });
-        elevText.anchor.set(0.5, 0.5);
-        elevText.x = badgeX;
-        elevText.y = badgeY;
-
-        tokenGroup.addChild(elevText);
+        ctx.font = `bold ${Math.max(9, Math.round(badgeRadius * 1.1))}px sans-serif`;
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(textStr, badgeX, badgeY);
+        ctx.restore();
       }
-
-      // 4. Marqueurs (emplacements prévus mais vides — stub pour T-21)
-      const markersContainer = new Container();
-      tokenGroup.addChild(markersContainer);
-
-      tokenGroup.addChildAt(g, 0);
-      this.container.addChild(tokenGroup);
     }
+
+    ctx.restore();
   }
 }
