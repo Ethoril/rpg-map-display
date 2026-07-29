@@ -109,6 +109,7 @@ export async function bootstrapGMApp(options = {}) {
   if (sessionId) {
     store.setSessionId(sessionId);
   }
+  console.log('[DEBUG] Avant restauration snapshot :', { sessionId, hasTransport: !!transport });
   if (transport && sessionId) {
     try {
       console.log('[DEBUG] Restauration snapshot...', { sessionId, hasTransport: !!transport });
