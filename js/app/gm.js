@@ -1,0 +1,219 @@
+// @ts-check
+import { initStage } from '../render/stage.js';
+import { Camera } from '../render/camera.js';
+import { FrameLoop } from '../render/frame.js';
+import { BackgroundLayer } from '../render/layers/background.js';
+import { GridLayer } from '../render/layers/gridLayer.js';
+import { MoveZoneLayer } from '../render/layers/moveZone.js';
+import { TokensLayer } from '../render/layers/tokens.js';
+import { PointerInput } from '../input/pointer.js';
+import { gridFor } from '../grid/index.js';
+import { createGMPanel } from '../ui/gm/panel.js';
+import { FirebaseTransport } from '../transport/FirebaseTransport.js';
+import { computeBlockedEdges } from '../import/blockedEdges.js';
+import { terrainCostRecordToMap } from '../core/schema.js';
+import { findPath } from '../movement/path.js';
+import { cellKey } from '../core/cellKey.js';
+import * as store from '../state/store.js';
+
+/** @typedef {import('../transport/Transport.js').Transport} Transport */
+
+/**
+ * Initialise l'application MJ (Point d'entrée).
+ *
+ * @param {Object} [options]
+ * @param {HTMLCanvasElement} [options.canvas]
+ * @param {HTMLElement} [options.panelContainer]
+ * @param {Transport} [options.transport]
+ * @param {Record<string, any>} [options.firebaseConfig]
+ */
+export async function bootstrapGMApp(options = {}) {
+  const canvas =
+    options.canvas ||
+    /** @type {HTMLCanvasElement} */ (document.querySelector('#board')) ||
+    document.createElement('canvas');
+
+  const panelContainer =
+    options.panelContainer ||
+    /** @type {HTMLElement} */ (document.querySelector('#gm-panel'));
+
+  // 1. Initialisation de l'application PixiJS v8 et de ses couches
+  const { app, layers } = await initStage(canvas);
+
+  // 2. Caméra & Boucle de rendu à la demande
+  const width = canvas.clientWidth || 800;
+  const height = canvas.clientHeight || 600;
+  const camera = new Camera(width, height);
+  const frameLoop = new FrameLoop(app);
+
+  // Instanciation des couches de rendu
+  const bgLayer = new BackgroundLayer(layers.background);
+  const gridLayer = new GridLayer(layers.gridLayer);
+  const moveZoneLayer = new MoveZoneLayer(layers.moveZone);
+  const tokensLayer = new TokensLayer(layers.tokens);
+
+  // Fonction de redessin global
+  function renderAll() {
+    camera.applyToContainer(app.stage);
+
+    const state = store.getState();
+    const { campaign, activeLevel, selectedToken, selectedTokenId, reachableCells } = state;
+
+    if (activeLevel) {
+      if (activeLevel.imageUrl) {
+        bgLayer.load(activeLevel.imageUrl);
+      }
+
+      const gridAdapter = gridFor(activeLevel);
+      gridLayer.render(gridAdapter);
+
+      const tokens = campaign ? campaign.tokens : [];
+      tokensLayer.render(gridAdapter, tokens, selectedTokenId, { role: 'gm' });
+
+      if (selectedToken && reachableCells && reachableCells.size > 0) {
+        moveZoneLayer.render(gridAdapter, selectedTokenId, reachableCells, selectedToken);
+      } else {
+        moveZoneLayer.clear();
+      }
+    }
+
+    frameLoop.requestFrame();
+  }
+
+  // S'abonner aux mutations du store
+  store.subscribe(renderAll);
+
+  // 3. Gestion du transport de synchronisation réseau
+  let transport = options.transport || null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session');
+  const fbConfig = options.firebaseConfig || null;
+
+  if (!transport && sessionId && fbConfig) {
+    try {
+      const fb = new FirebaseTransport(fbConfig);
+      await fb.connect(sessionId, 'gm');
+      transport = fb;
+    } catch (e) {
+      console.warn('Transport Firebase non disponible :', e);
+    }
+  }
+
+  // 4. Montage du panneau MJ
+  if (panelContainer) {
+    createGMPanel(panelContainer, { transport: transport || undefined });
+  }
+
+  // 5. Gestion des événements d'entrée (Pointer & Gestures)
+  /**
+   * @param {import('../input/gestures.js').InputIntention} intention
+   */
+  function handleIntention(intention) {
+    if (intention.type === 'panBy') {
+      camera.setPan(camera.x - intention.deltaX / camera.zoom, camera.y - intention.deltaY / camera.zoom);
+      renderAll();
+    } else if (intention.type === 'pinchZoom') {
+      const oldZoom = camera.zoom;
+      camera.setZoom(oldZoom * intention.scaleFactor);
+      renderAll();
+    } else if (intention.type === 'tapToken' || intention.type === 'tapCell') {
+      const state = store.getState();
+      const { campaign, activeLevel, selectedToken, reachableCells } = state;
+      if (!campaign || !activeLevel) return;
+
+      const grid = gridFor(activeLevel);
+      let mapPos;
+      if (intention.type === 'tapCell') {
+        mapPos = intention.at;
+      } else {
+        mapPos = camera.screenToMap(intention.at);
+      }
+
+      const targetCell = grid.cellFromPoint(mapPos);
+
+      if (!targetCell) {
+        store.selectToken(null);
+        return;
+      }
+
+      const tappedToken = campaign.tokens.find((t) => {
+        if (t.levelId !== activeLevel.id) return false;
+        const size = t.sizeCells || 1;
+        return (
+          targetCell.a >= t.cell.a &&
+          targetCell.a < t.cell.a + size &&
+          targetCell.b >= t.cell.b &&
+          targetCell.b < t.cell.b + size
+        );
+      });
+
+      if (tappedToken) {
+        store.selectToken(tappedToken.id);
+      } else if (selectedToken) {
+        const targetKey = cellKey(targetCell);
+        if (reachableCells.has(targetKey)) {
+          const blockedEdges = computeBlockedEdges(activeLevel, grid);
+          const terrainCostMap = terrainCostRecordToMap(activeLevel.terrainCost);
+          const path = findPath(grid, selectedToken.cell, targetCell, blockedEdges, terrainCostMap);
+          const startedAt = Date.now();
+
+          store.moveTokenToCell(selectedToken.id, targetCell, {
+            from: { a: selectedToken.cell.a, b: selectedToken.cell.b },
+            to: { a: targetCell.a, b: targetCell.b },
+            path,
+            startedAt,
+          });
+
+          if (transport) {
+            transport.publish({
+              type: 'token.move',
+              payload: {
+                tokenId: selectedToken.id,
+                from: { a: selectedToken.cell.a, b: selectedToken.cell.b },
+                to: { a: targetCell.a, b: targetCell.b },
+                path,
+                startedAt,
+              },
+              at: startedAt,
+              by: 'gm',
+            });
+          }
+        } else {
+          store.selectToken(null);
+        }
+      }
+    }
+  }
+
+  const pointerInput = new PointerInput(canvas, camera, {
+    role: 'gm',
+    onIntention: handleIntention,
+  });
+
+  // Ajustement de la taille au redimensionnement
+  window.addEventListener('resize', () => {
+    const w = canvas.clientWidth || 800;
+    const h = canvas.clientHeight || 600;
+    camera.setViewport(w, h);
+    app.renderer.resize(w, h);
+    renderAll();
+  });
+
+  // Premier rendu
+  renderAll();
+
+  return {
+    app,
+    camera,
+    frameLoop,
+    pointerInput,
+    transport,
+  };
+}
+
+// Démarrage automatique dans le DOM si script principal
+if (typeof document !== 'undefined' && document.readyState !== 'loading') {
+  bootstrapGMApp();
+} else if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => bootstrapGMApp());
+}

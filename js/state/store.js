@@ -1,6 +1,6 @@
 // @ts-check
 
-import { validateCampaign } from '../core/schema.js';
+import { validateCampaign, createCampaign } from '../core/schema.js';
 import {
   setSelectionState,
   clearSelectionState,
@@ -244,6 +244,54 @@ export function addToken(tokenData) {
   campaign.tokens.push(structuredClone(tokenData));
   notifySubscribers();
 }
+
+/**
+ * Ajoute un nouvel étage à la campagne (ou initialise la campagne si inexistante) et le sélectionne.
+ *
+ * @param {Level} levelData
+ * @returns {void}
+ */
+export function addLevel(levelData) {
+  if (!campaign) {
+    campaign = createCampaign({ levels: [structuredClone(levelData)] });
+  } else {
+    const idx = campaign.levels.findIndex((l) => l.id === levelData.id);
+    if (idx !== -1) {
+      campaign.levels[idx] = structuredClone(levelData);
+    } else {
+      campaign.levels.push(structuredClone(levelData));
+    }
+  }
+  activeLevelId = levelData.id;
+  notifySubscribers();
+}
+
+/**
+ * Met à jour l'étage actif avec les propriétés fournies.
+ *
+ * @param {Partial<Level>} levelUpdates
+ * @returns {void}
+ */
+export function updateActiveLevel(levelUpdates) {
+  if (!campaign || !activeLevelId) return;
+  const idx = campaign.levels.findIndex((l) => l.id === activeLevelId);
+  if (idx === -1) return;
+
+  const currentLevel = campaign.levels[idx];
+  const gridUpdates = levelUpdates.grid || {};
+  campaign.levels[idx] = {
+    ...currentLevel,
+    ...levelUpdates,
+    grid: {
+      ...currentLevel.grid,
+      ...gridUpdates,
+    },
+  };
+  notifySubscribers();
+}
+
+/** Alias updateLevel pour compatibilité avec le contrat T-22 */
+export const updateLevel = updateActiveLevel;
 
 /**
  * Supprime un pion de la campagne par son identifiant.

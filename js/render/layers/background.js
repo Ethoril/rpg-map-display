@@ -27,9 +27,13 @@ export class BackgroundLayer {
   async load(imageUrl) {
     if (!imageUrl || this.currentUrl === imageUrl) return;
     this.currentUrl = imageUrl;
-    const texture = await Assets.load(imageUrl);
-    if (this.currentUrl === imageUrl) {
-      this.sprite.texture = texture;
+    try {
+      const texture = await Assets.load(imageUrl);
+      if (this.currentUrl === imageUrl) {
+        this.sprite.texture = texture;
+      }
+    } catch (err) {
+      console.warn('Erreur lors du chargement de l’image de fond :', err);
     }
   }
 

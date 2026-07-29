@@ -24,11 +24,14 @@ import { createLevel } from '../js/core/schema.js';
  * @property {(params: { levelOverrides?: object, token?: any, cellsReachableKeys?: string[] }) => Promise<{ cellAlphaMap: Record<string, number>, eventMode: string }>} testMoveZoneRender
  */
 
-const canvas = document.createElement('canvas');
-canvas.id = 'board';
-canvas.width = 1400;
-canvas.height = 1120;
-document.body.appendChild(canvas);
+let canvas = /** @type {HTMLCanvasElement|null} */ (document.getElementById('board'));
+if (!canvas) {
+  canvas = document.createElement('canvas');
+  canvas.id = 'board';
+  canvas.width = 1400;
+  canvas.height = 1120;
+  document.body.appendChild(canvas);
+}
 
 const { app, layers } = await initStage(canvas);
 const loop = new FrameLoop(app);

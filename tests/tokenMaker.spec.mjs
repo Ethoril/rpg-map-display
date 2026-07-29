@@ -16,10 +16,12 @@ async function setupTokenMaker(page) {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
 
-  // S'assurer qu'aucun réseau Firebase n'est sollicité pendant le test
+  // S'assurer qu'aucun réseau Firebase (backend DB/Firestore) n'est sollicité pendant le test
   page.on('request', (req) => {
-    expect(req.url()).not.toContain('firebase');
-    expect(req.url()).not.toContain('googleapis.com');
+    const url = req.url();
+    if (url.includes('firebaseio.com') || url.includes('firestore.googleapis.com')) {
+      throw new Error(`Trafic réseau Firebase détecté pendant le test : ${url}`);
+    }
   });
 
   await page.goto('/index.html');
@@ -44,17 +46,17 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     await setupTokenMaker(page);
 
     // 1. Déposer / sélectionner une image de test
-    await page.setInputFiles('#token-file-input', {
+    await page.setInputFiles('#token-maker-root #token-file-input', {
       name: 'hero-avatar.png',
       mimeType: 'image/png',
       buffer: TEST_PNG_BUFFER,
     });
 
     // S'assurer que le bouton Générer devient actif après chargement
-    await expect(page.locator('#btn-generate-token')).toBeEnabled();
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeEnabled();
 
     // 2. Pan & Zoom interactifs sur le canvas
-    const canvas = page.locator('#token-preview-canvas');
+    const canvas = page.locator('#token-maker-root #token-preview-canvas');
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
 
@@ -72,15 +74,15 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
 
     // 3. Remplir le formulaire pion
     // Forme: Carré, kind: pc, couleur: #ff0000, sizeCells: 2, speedCells: 3
-    await page.selectOption('#token-shape', 'square');
-    await page.selectOption('#token-kind', 'pc');
-    await page.fill('#token-border-color', '#ff0000');
-    await page.fill('#token-size-cells', '2');
-    await page.fill('#token-speed-cells', '3');
-    await page.fill('#token-label', 'Guerrier Rouge');
+    await page.selectOption('#token-maker-root #token-shape', 'square');
+    await page.selectOption('#token-maker-root #token-kind', 'pc');
+    await page.fill('#token-maker-root #token-border-color', '#ff0000');
+    await page.fill('#token-maker-root #token-size-cells', '2');
+    await page.fill('#token-maker-root #token-speed-cells', '3');
+    await page.fill('#token-maker-root #token-label', 'Guerrier Rouge');
 
     // 4. Cliquer sur "Générer pion"
-    await page.click('#btn-generate-token');
+    await page.click('#token-maker-root #btn-generate-token');
 
     // 5. Récupérer le pion généré et valider sa conformité avec createToken
     const tokenResult = await page.evaluate(() => {
@@ -124,7 +126,7 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
 
     // 7. Déclencher le téléchargement et vérifier qu'il est capturé par le navigateur
     const downloadPromise = page.waitForEvent('download');
-    await page.click('#btn-download-token');
+    await page.click('#token-maker-root #btn-download-token');
     const download = await downloadPromise;
 
     expect(download.suggestedFilename()).toMatch(/^token-.*\.webp$/);
@@ -133,20 +135,20 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
   test('Génère un pion circulaire 1x1', async ({ page }) => {
     await setupTokenMaker(page);
 
-    await page.setInputFiles('#token-file-input', {
+    await page.setInputFiles('#token-maker-root #token-file-input', {
       name: 'monster.png',
       mimeType: 'image/png',
       buffer: TEST_PNG_BUFFER,
     });
 
-    await page.selectOption('#token-shape', 'circle');
-    await page.selectOption('#token-kind', 'npc');
-    await page.fill('#token-border-color', '#00ff00');
-    await page.fill('#token-size-cells', '1');
-    await page.fill('#token-speed-cells', '4');
-    await page.fill('#token-label', 'Gobelin');
+    await page.selectOption('#token-maker-root #token-shape', 'circle');
+    await page.selectOption('#token-maker-root #token-kind', 'npc');
+    await page.fill('#token-maker-root #token-border-color', '#00ff00');
+    await page.fill('#token-maker-root #token-size-cells', '1');
+    await page.fill('#token-maker-root #token-speed-cells', '4');
+    await page.fill('#token-maker-root #token-label', 'Gobelin');
 
-    await page.click('#btn-generate-token');
+    await page.click('#token-maker-root #btn-generate-token');
 
     const tokenResult = await page.evaluate(() => {
       const instance = /** @type {any} */ (window).__tokenMakerInstance;

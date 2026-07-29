@@ -2,7 +2,8 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>RPG Map Display</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RPG Map Display — Vue MJ</title>
   <script type="importmap">
   {
     "imports": {
@@ -14,7 +15,15 @@
     }
   }
   </script>
+  <link rel="stylesheet" href="./css/gm.css">
 </head>
 <body>
+  <div id="gm-app">
+    <div id="canvas-container">
+      <canvas id="board"></canvas>
+    </div>
+    <div id="gm-panel"></div>
+  </div>
+  <script type="module" src="./js/app/gm.js"></script>
 </body>
 </html>
