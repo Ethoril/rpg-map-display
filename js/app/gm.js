@@ -62,6 +62,7 @@ export async function bootstrapGMApp(options = {}) {
     console.log('[DEBUG] renderAll state:', { hasActiveLevel: !!activeLevel, campaignLevels: campaign?.levels?.length });
 
     if (activeLevel) {
+      console.log('[DEBUG] activeLevel.imageUrl :', activeLevel.imageUrl ? 'EXISTS' : 'UNDEFINED');
       if (activeLevel.imageUrl) {
         bgLayer.load(activeLevel.imageUrl);
       } else {
