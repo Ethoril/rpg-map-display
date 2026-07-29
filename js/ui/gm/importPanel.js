@@ -1,7 +1,7 @@
 // @ts-check
 import { parseUvtt } from '../../import/uvtt.js';
 import { calibrateFromRect } from '../../import/imageCalibrate.js';
-import { createLevel, isPersistableAssetUrl } from '../../core/schema.js';
+import { createLevel } from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
 /**
@@ -114,9 +114,6 @@ export function createImportPanel(container, options = {}) {
   // --- Éléments du DOM ---
   const uvttInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#uvtt-file-input'));
   const uvttStatus = /** @type {HTMLElement|null} */ (container.querySelector('#uvtt-status'));
-  const uvttCanonicalUrl = /** @type {HTMLInputElement|null} */ (
-    container.querySelector('#uvtt-canonical-url')
-  );
   const uvttPreviewWrap = /** @type {HTMLElement|null} */ (
     container.querySelector('#uvtt-preview-wrap')
   );
@@ -128,9 +125,6 @@ export function createImportPanel(container, options = {}) {
   );
 
   const imageInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#image-file-input'));
-  const imageCanonicalUrl = /** @type {HTMLInputElement|null} */ (
-    container.querySelector('#image-canonical-url')
-  );
   const cellsWideInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-cells-wide'));
   const cellsTallInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-cells-tall'));
   const pxPerCellInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-px-per-cell'));
@@ -146,18 +140,10 @@ export function createImportPanel(container, options = {}) {
   /** @type {ReturnType<typeof parseUvtt>|null} */
   let pendingUvtt = null;
 
-  /**
-   * @param {HTMLInputElement|null} input
-   */
-  function hasCanonicalUrl(input) {
-    const value = input?.value.trim() ?? '';
-    return value !== '' && isPersistableAssetUrl(value);
-  }
-
   function refreshUvttButton() {
     if (btnValidateUvtt) {
-      // Sans champ URL, le bouton s'active dès qu'une UVTT est chargée
-      // (c'est un aperçu local de diagnostic, pas une publication)
+      // Plus de champ URL : le bouton s'active dès qu'une UVTT est parsée.
+      // C'est un aperçu de diagnostic, jamais une publication.
       btnValidateUvtt.disabled = !pendingUvtt;
     }
   }

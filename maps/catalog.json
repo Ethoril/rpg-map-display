@@ -3,7 +3,7 @@
   "maps": [
     {
       "id": "manoir-rdc",
-      "name": "Carte UVTT",
+      "name": "Manoir — RDC",
       "sourceUrl": "maps/manoir-rdc.uvtt",
       "sceneUrl": "maps/generated/manoir-rdc.scene.json",
       "imageUrl": "maps/generated/manoir-rdc.webp",

@@ -136,34 +136,13 @@ export function createGMPanel(container, options = {}) {
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
 
-  // Initialisation des panneaux d'import UVTT et Image
-  createImportPanel(uvttMount, {
-    mode: 'uvtt',
-    onImportUvtt: (result) => {
-      if (transport) {
-        transport.publish({
-          type: 'level.add',
-          payload: { level: result.level },
-          at: Date.now(),
-          by: 'gm',
-        });
-      }
-    },
-  });
-
-  createImportPanel(imageMount, {
-    mode: 'image',
-    onImportImage: (level) => {
-      if (transport) {
-        transport.publish({
-          type: 'level.add',
-          payload: { level },
-          at: Date.now(),
-          by: 'gm',
-        });
-      }
-    },
-  });
+  // Panneaux d'import UVTT et Image — sections de DIAGNOSTIC uniquement.
+  //
+  // Aucune publication vers les joueurs ici : le plan §8 interdit d'ajouter une
+  // scène partagée depuis un simple aperçu local. Le parcours de séance passe
+  // par l'onglet « Cartes », alimenté par `pnpm maps:prepare`.
+  createImportPanel(uvttMount, { mode: 'uvtt' });
+  createImportPanel(imageMount, { mode: 'image' });
 
   // Initialisation du générateur de pions avec ajout direct au store lors de la génération
   const tokenMaker = createTokenMaker(tokenMakerMount, {
@@ -185,6 +164,7 @@ export function createGMPanel(container, options = {}) {
   });
 
   // Initialisation de la bibliothèque de cartes
+  /** @type {{destroy: () => void} | null} */
   let sceneLibrary = null;
   createSceneLibrary(sceneLibraryMount, { transport })
     .then((lib) => {

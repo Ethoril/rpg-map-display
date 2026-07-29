@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
   "campaignId": "campaign-manoir-rdc",
-  "name": "Carte UVTT",
+  "name": "Manoir — RDC",
   "levels": [
     {
       "id": "uvtt-level",
-      "name": "Carte UVTT",
+      "name": "Manoir — RDC",
       "order": 0,
       "imageUrl": "maps/generated/manoir-rdc.webp",
       "videoUrl": null,

@@ -12,6 +12,28 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 /**
+ * Dérive un nom affichable depuis le slug du fichier source.
+ *
+ * `manoir-rdc` → `Manoir — RDC`, `crypte` → `Crypte`.
+ * Les segments courts (≤ 3 lettres) sont traités comme des sigles et mis en
+ * capitales, ce qui couvre les usages courants (rdc, r1, sud…).
+ *
+ * @param {string} slug
+ * @returns {string}
+ */
+export function displayNameFromSlug(slug) {
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((segment) =>
+      segment.length <= 3
+        ? segment.toUpperCase()
+        : segment.charAt(0).toUpperCase() + segment.slice(1)
+    )
+    .join(' — ');
+}
+
+/**
  * Prépare une seule carte UVTT.
  * Fonction pure : retourne résultats sans appeler process.exit.
  *
@@ -61,6 +83,14 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
   const originX = uvttData.resolution?.map_origin?.x ?? 0;
   const originY = uvttData.resolution?.map_origin?.y ?? 0;
 
+  // Le nom porté par l'UVTT prime ; sinon on le dérive du slug du fichier,
+  // pour ne jamais afficher un « Carte UVTT » générique dans la bibliothèque.
+  const displayName =
+    typeof uvttData.name === 'string' && uvttData.name.trim() !== ''
+      ? uvttData.name.trim()
+      : displayNameFromSlug(baseName);
+
+  level.name = displayName;
   level.pxPerCell = resampleResult.pxPerCell;
   // N'UTILISER PAS data: ou blob: en persistance
   level.imageUrl = `maps/generated/${webpFileName}`;
@@ -69,7 +99,7 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
 
   const campaign = createCampaign({
     campaignId: `campaign-${baseName}`,
-    name: level.name || baseName,
+    name: displayName,
     levels: [level],
   });
 
@@ -97,7 +127,7 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
 
   const catalogEntry = {
     id: baseName,
-    name: level.name || baseName,
+    name: displayName,
     sourceUrl: `maps/${baseName}.uvtt`,
     sceneUrl: `maps/generated/${sceneFileName}`,
     imageUrl: `maps/generated/${webpFileName}`,
@@ -113,7 +143,7 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
 
   return {
     mapId: baseName,
-    name: level.name || baseName,
+    name: displayName,
     sourceHash,
     sceneFile: scenePath,
     imageFile: webpPath,

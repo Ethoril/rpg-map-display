@@ -7,18 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 
-// À implémenter dans scripts/prepare-maps.mjs
-let prepareMaps;
-
-test.before(async () => {
-  try {
-    const mod = await import('../scripts/prepare-maps.mjs');
-    prepareMaps = mod.prepareMaps;
-  } catch (err) {
-    console.error('prepare-maps.mjs non trouvé ou non exporté', err);
-    process.exit(1);
-  }
-});
+import { prepareMaps } from '../scripts/prepare-maps.mjs';
 
 test('U-00 préparation : catalog.json créé avec structure minimale', async () => {
   const testMapsDir = path.join(rootDir, 'maps');
@@ -103,12 +92,12 @@ test('U-00 identifiants stables : même UVTT produit même ID', async () => {
     // Première préparation
     const result1 = await prepareMaps({ mapsDir: testMapsDir });
     const catalog1 = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
-    const ids1 = new Set(catalog1.maps.map((m) => m.id));
+    const ids1 = new Set(catalog1.maps.map((/** @type {any} */ m) => m.id));
 
     // Deuxième préparation : doit produire les mêmes IDs
     const result2 = await prepareMaps({ mapsDir: testMapsDir });
     const catalog2 = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
-    const ids2 = new Set(catalog2.maps.map((m) => m.id));
+    const ids2 = new Set(catalog2.maps.map((/** @type {any} */ m) => m.id));
 
     assert.deepEqual(ids1, ids2, 'Les identifiants doivent être stables entre deux préparations');
   } finally {

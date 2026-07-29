@@ -34,6 +34,7 @@
  * @returns {string[]}
  */
 export function validateCatalog(obj) {
+  /** @type {string[]} */
   const errors = [];
 
   if (!obj || typeof obj !== 'object') {
@@ -41,20 +42,23 @@ export function validateCatalog(obj) {
     return errors;
   }
 
-  if (!('version' in obj)) {
+  /** @type {any} */
+  const cat = obj;
+
+  if (!('version' in cat)) {
     errors.push('Catalogue : version manquante');
-  } else if (typeof obj.version !== 'number' || obj.version < 1) {
+  } else if (typeof cat.version !== 'number' || cat.version < 1) {
     errors.push('Catalogue : version invalide ou non supportée');
   }
 
-  if (!Array.isArray(obj.maps)) {
+  if (!Array.isArray(cat.maps)) {
     errors.push('Catalogue : maps doit être un tableau');
     return errors;
   }
 
   const ids = new Set();
-  for (let i = 0; i < obj.maps.length; i++) {
-    const map = obj.maps[i];
+  for (let i = 0; i < cat.maps.length; i++) {
+    const map = cat.maps[i];
     const prefix = `Catalogue[maps[${i}]]`;
 
     if (!map || typeof map !== 'object') {
@@ -75,6 +79,7 @@ export function validateCatalog(obj) {
       errors.push(`${prefix} : name manquant`);
     }
 
+    /** @param {string} field */
     const checkUrl = (field) => {
       const url = map[field];
       if (!url || typeof url !== 'string') {
@@ -186,32 +191,15 @@ export async function loadCatalog(catalogUrl, baseUrl = globalThis.location?.hre
   return data;
 }
 
-/**
- * Résout une URL de scène/image relative au catalogue.
- * Gère le cas où le site est servi sous un sous-chemin (e.g., /rpg-map-display/).
- * Retourne toujours une URL utilisable par le navigateur.
+/*
+ * Pas de resolveMapUrl() ici, volontairement.
  *
- * @param {string} relativeUrl - URL relative dans le catalogue
- * @param {string} [baseUrl=window.location.href]
- * @returns {string} URL absolue résolue
+ * Les URLs du catalogue sont relatives au site (plan §4). Le navigateur les
+ * résout déjà par rapport au document courant, ce qui couvre nativement le cas
+ * d'un site servi sous un sous-chemin (`/rpg-map-display/`) : `fetch()` comme
+ * `img.src` acceptent le relatif.
+ *
+ * Les transformer en URL absolue serait activement nuisible : une URL
+ * `http://…` est refusée par `isPersistableAssetUrl()` et une URL `https://…`
+ * figerait l'origine dans le document persisté et synchronisé.
  */
-export function resolveMapUrl(relativeUrl, baseUrl = globalThis.location?.href) {
-  if (!relativeUrl || typeof relativeUrl !== 'string') {
-    return relativeUrl;
-  }
-
-  // Si c'est déjà une URL absolue, la retourner telle quelle
-  if (/^https?:\/\//.test(relativeUrl)) {
-    return relativeUrl;
-  }
-
-  try {
-    const base = new URL(baseUrl || globalThis.location?.href || 'http://localhost/');
-    const resolved = new URL(relativeUrl, base);
-    return resolved.href;
-  } catch (err) {
-    // Fallback : retourner l'URL relative telle quelle
-    // Le navigateur la résoudra par rapport à location.href
-    return relativeUrl;
-  }
-}
