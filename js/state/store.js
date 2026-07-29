@@ -150,6 +150,10 @@ export function loadFromLocalStorage(sessionId) {
  * @returns {void}
  */
 export function restoreFromSnapshot(snapshotData, options = {}) {
+  console.log('[DEBUG] restoreFromSnapshot appelée :', {
+    hasCampaign: !!(snapshotData && snapshotData.campaign),
+    levels: snapshotData?.campaign?.levels?.length ?? snapshotData?.levels?.length,
+  });
   if (!snapshotData || typeof snapshotData !== 'object') return;
 
   if (options.sessionId) {

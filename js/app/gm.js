@@ -105,7 +105,9 @@ export async function bootstrapGMApp(options = {}) {
   }
   if (transport && sessionId) {
     try {
+      console.log('[DEBUG] Restauration snapshot...', { sessionId, hasTransport: !!transport });
       const snapshotData = /** @type {any} */ (await transport.snapshot());
+      console.log('[DEBUG] Snapshot reçu :', snapshotData);
       if (snapshotData && (snapshotData.levels || snapshotData.campaign)) {
         store.restoreFromSnapshot(snapshotData, { sessionId });
       } else {
