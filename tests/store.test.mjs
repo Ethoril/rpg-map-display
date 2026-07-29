@@ -14,6 +14,10 @@ import {
   getCampaign,
   getActiveLevel,
   getSelectedToken,
+  setSessionId,
+  saveToLocalStorage,
+  loadFromLocalStorage,
+  restoreFromSnapshot,
 } from '../js/state/store.js';
 
 import { setSelectionState } from '../js/state/selection.js';
@@ -230,3 +234,31 @@ test('setSelectionState refuse bruyamment une sélection sans étage actif', () 
   setSelectionState(null, null);
   assert.strictEqual(getState().selectedTokenId, null);
 });
+
+test('restoreFromSnapshot et persistance LocalStorage (T-24)', () => {
+  const camp = makeValidCampaign();
+
+  // 1. Restauration d'un snapshot direct
+  restoreFromSnapshot(camp, { sessionId: 'test-session-1', activeLevelId: 'et1' });
+  const state = getState();
+  assert.strictEqual(state.campaign?.campaignId, 'camp-test');
+  assert.strictEqual(state.activeLevelId, 'et1');
+
+  // 2. Restauration à partir d'un conteneur avec session
+  restoreFromSnapshot(
+    {
+      campaign: camp,
+      activeLevelId: 'rdc',
+    },
+    { sessionId: 'test-session-1' }
+  );
+
+  assert.strictEqual(getState().activeLevelId, 'rdc');
+
+  // 3. Charger depuis LocalStorage
+  const loaded = loadFromLocalStorage('test-session-1');
+  assert.strictEqual(loaded, true);
+  assert.strictEqual(getState().campaign?.campaignId, 'camp-test');
+  assert.strictEqual(getState().activeLevelId, 'rdc');
+});
+

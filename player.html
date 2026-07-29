@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RPG Map Display — Vue Joueurs</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.19.0/dist/pixi.min.mjs",
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js"
+    }
+  }
+  </script>
+  <link rel="stylesheet" href="./css/player.css">
+</head>
+<body>
+  <div id="player-app">
+    <canvas id="board"></canvas>
+  </div>
+  <script type="module" src="./js/app/player.js"></script>
+</body>
+</html>

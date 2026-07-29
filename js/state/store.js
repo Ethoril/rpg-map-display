@@ -52,10 +52,152 @@ function deepFreeze(obj) {
   return obj;
 }
 
+/** @type {string | null} */
+let currentSessionId = null;
+
+/**
+ * Configure l'identifiant de session actif pour la persistance automatique en LocalStorage.
+ *
+ * @param {string | null} sessionId
+ */
+export function setSessionId(sessionId) {
+  currentSessionId = sessionId;
+}
+
+/** @type {Map<string, string>} */
+const inMemoryStorage = new Map();
+
+function getStorage() {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage;
+  }
+  return {
+    getItem: (/** @type {string} */ key) => inMemoryStorage.get(key) ?? null,
+    setItem: (/** @type {string} */ key, /** @type {string} */ val) => {
+      inMemoryStorage.set(key, String(val));
+    },
+    removeItem: (/** @type {string} */ key) => {
+      inMemoryStorage.delete(key);
+    },
+  };
+}
+
+/**
+ * Sauvegarde manuellement la campagne et l'état de session courant dans LocalStorage.
+ *
+ * @param {string} [sessionId]
+ */
+export function saveToLocalStorage(sessionId) {
+  const targetSessionId = sessionId || currentSessionId;
+  const storage = getStorage();
+  if (!targetSessionId || !storage) return;
+  try {
+    if (campaign) {
+      storage.setItem(`rpg_campaign_${targetSessionId}`, JSON.stringify(campaign));
+    }
+    storage.setItem(
+      `rpg_session_${targetSessionId}`,
+      JSON.stringify({
+        activeLevelId,
+        selectedTokenId: getSelectedTokenId(),
+      })
+    );
+  } catch (err) {
+    console.warn('Erreur écriture LocalStorage :', err);
+  }
+}
+
+/**
+ * Restaure la campagne et l'état de session depuis LocalStorage.
+ *
+ * @param {string} sessionId
+ * @returns {boolean} true si une campagne valide a été restaurée
+ */
+export function loadFromLocalStorage(sessionId) {
+  const storage = getStorage();
+  if (!sessionId || !storage) return false;
+  currentSessionId = sessionId;
+  try {
+    const rawCamp = storage.getItem(`rpg_campaign_${sessionId}`);
+    const rawSess = storage.getItem(`rpg_session_${sessionId}`);
+    if (!rawCamp) return false;
+
+    const campData = JSON.parse(rawCamp);
+    const sessData = rawSess ? JSON.parse(rawSess) : {};
+
+    restoreFromSnapshot(
+      {
+        campaign: campData,
+        activeLevelId: sessData.activeLevelId,
+        selectedTokenId: sessData.selectedTokenId,
+      },
+      { sessionId }
+    );
+    return true;
+  } catch (err) {
+    console.warn('Erreur chargement LocalStorage :', err);
+    return false;
+  }
+}
+
+/**
+ * Restaure le store à partir d'un snapshot (Firestore, LocalStorage ou document de campagne).
+ *
+ * @param {any} snapshotData
+ * @param {Object} [options]
+ * @param {string} [options.sessionId]
+ * @param {string} [options.activeLevelId]
+ * @returns {void}
+ */
+export function restoreFromSnapshot(snapshotData, options = {}) {
+  if (!snapshotData || typeof snapshotData !== 'object') return;
+
+  if (options.sessionId) {
+    currentSessionId = options.sessionId;
+  }
+
+  const campaignCandidate = Array.isArray(snapshotData.levels)
+    ? snapshotData
+    : snapshotData.campaign && Array.isArray(snapshotData.campaign.levels)
+    ? snapshotData.campaign
+    : null;
+
+  if (campaignCandidate) {
+    const errors = validateCampaign(campaignCandidate);
+    if (errors.length > 0) {
+      throw new Error(`Snapshot invalide : ${errors.join(' ; ')}`);
+    }
+    campaign = structuredClone(campaignCandidate);
+  }
+
+  const targetLevelId =
+    options.activeLevelId ||
+    snapshotData.activeLevelId ||
+    (campaign && campaign.levels.length > 0 ? campaign.levels[0].id : null);
+
+  if (campaign && targetLevelId && campaign.levels.some((l) => l.id === targetLevelId)) {
+    activeLevelId = targetLevelId;
+  }
+
+  const targetTokenId = snapshotData.selectedTokenId || null;
+  if (campaign && targetTokenId && campaign.tokens.some((t) => t.id === targetTokenId)) {
+    const token = campaign.tokens.find((t) => t.id === targetTokenId);
+    const level = campaign.levels.find((l) => l.id === activeLevelId) || null;
+    if (token) setSelectionState(token, level);
+  } else {
+    clearSelectionState();
+  }
+
+  notifySubscribers();
+}
+
 /**
  * Notifie tous les abonnés d'une mutation.
  */
 function notifySubscribers() {
+  if (currentSessionId) {
+    saveToLocalStorage(currentSessionId);
+  }
   for (const listener of Array.from(subscribers)) {
     try {
       listener();

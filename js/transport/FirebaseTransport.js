@@ -12,14 +12,17 @@ import {
   getDatabase,
   ref,
   push,
+  set,
   query,
   orderByKey,
   startAfter,
   limitToLast,
   get,
   onChildAdded,
+  onValue,
   off,
   remove,
+  onDisconnect,
 } from 'firebase/database';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -70,6 +73,8 @@ export class FirebaseTransport {
     this._sessionId = null;
     /** @type {'gm'|'players'|null} */
     this._role = null;
+    /** @type {string|null} */
+    this._clientId = null;
 
     /** @type {import('firebase/database').Query|null} Requête bornée effectivement écoutée */
     this._liveQuery = null;
@@ -346,13 +351,43 @@ export class FirebaseTransport {
    * @returns {Promise<object>}
    */
   async snapshot() {
-    if (!this._firestore || !this._sessionId) {
+    if (!this._sessionId) {
       throw new Error('Transport non connecté');
     }
 
-    const docRef = doc(this._firestore, 'campaigns', this._sessionId);
-    const docSnap = await getDoc(docRef);
-    const etat = docSnap.exists() ? docSnap.data() : {};
+    let etat = {};
+    if (this._firestore) {
+      try {
+        const docRef = doc(this._firestore, 'campaigns', this._sessionId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          etat = docSnap.data();
+        }
+      } catch (err) {
+        console.warn('Échec lecture Firestore (tentative LocalStorage) :', err);
+      }
+    }
+
+    // Repli LocalStorage si Firestore n'a rien renvoyé ou est indisponible (mode hors-ligne)
+    if (!etat || Object.keys(etat).length === 0) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const localCamp = localStorage.getItem(`rpg_campaign_${this._sessionId}`);
+          const localSess = localStorage.getItem(`rpg_session_${this._sessionId}`);
+          if (localCamp) {
+            const campObj = JSON.parse(localCamp);
+            const sessObj = localSess ? JSON.parse(localSess) : {};
+            etat = {
+              campaign: campObj,
+              activeLevelId: sessObj.activeLevelId,
+              selectedTokenId: sessObj.selectedTokenId,
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Échec lecture LocalStorage dans snapshot() :', e);
+      }
+    }
 
     this._snapshotReady = true;
     const tamponnes = this._eventBuffer;
@@ -365,17 +400,83 @@ export class FirebaseTransport {
   }
 
   /**
-   * Persiste le document de campagne dans Firestore. Hors interface `Transport` au sens
-   * strict, mais nécessaire à T-24 : cf. la note d'`ARCHITECTURE.md` §3.
+   * Persiste le document de campagne dans Firestore et LocalStorage (repli).
    *
    * @param {object} campaignData
    * @returns {Promise<void>}
    */
   async saveSnapshot(campaignData) {
-    if (!this._firestore || !this._sessionId) {
+    if (!this._sessionId) {
       throw new Error('Transport non connecté');
     }
-    await setDoc(doc(this._firestore, 'campaigns', this._sessionId), campaignData);
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campaignData));
+      }
+    } catch (e) {
+      console.warn('Erreur écriture LocalStorage :', e);
+    }
+
+    if (this._firestore) {
+      await setDoc(doc(this._firestore, 'campaigns', this._sessionId), campaignData);
+    }
+  }
+
+  /**
+   * Publie la présence du client local dans la session.
+   *
+   * @param {{ role?: 'gm'|'players', build: number, label: string }} presenceData
+   * @returns {Promise<void>}
+   */
+  async publishPresence(presenceData) {
+    if (!this._db || !this._sessionId) {
+      throw new Error('Transport non connecté');
+    }
+    if (!this._clientId) {
+      this._clientId = 'c_' + Math.random().toString(36).substring(2, 9);
+    }
+    const presenceRef = ref(this._db, `session/${this._sessionId}/presence/${this._clientId}`);
+    const payload = {
+      role: presenceData.role || this._role || 'players',
+      at: Date.now(),
+      build: presenceData.build,
+      label: presenceData.label,
+    };
+    await set(presenceRef, payload);
+    try {
+      await onDisconnect(presenceRef).remove();
+    } catch {
+      // Ignoré
+    }
+  }
+
+  /**
+   * S'abonne aux enregistrements de présence de la session.
+   *
+   * @param {(presences: Record<string, any>) => void} handler
+   * @returns {() => void} Désabonnement
+   */
+  subscribePresence(handler) {
+    if (!this._db || !this._sessionId) {
+      throw new Error('Transport non connecté');
+    }
+    const presenceRef = ref(this._db, `session/${this._sessionId}/presence`);
+    const unsubscribe = onValue(presenceRef, (snap) => {
+      const val = snap.val() || {};
+      handler(val);
+    });
+    return () => {
+      off(presenceRef);
+    };
+  }
+
+  /**
+   * Identifiant unique du client connecté courant.
+   * @returns {string|null}
+   */
+  getClientId() {
+    return this._clientId;
   }
 
   /**
@@ -397,11 +498,21 @@ export class FirebaseTransport {
       off(this._liveQuery);
       this._liveQuery = null;
     }
+    if (this._db && this._sessionId && this._clientId) {
+      try {
+        const presenceRef = ref(this._db, `session/${this._sessionId}/presence/${this._clientId}`);
+        remove(presenceRef);
+      } catch {
+        // Ignoré
+      }
+    }
     this._subscribers.clear();
+    this._errorHandlers.clear();
     this._eventBuffer = [];
     this._snapshotReady = false;
     this._sessionId = null;
     this._role = null;
+    this._clientId = null;
   }
 
   /**

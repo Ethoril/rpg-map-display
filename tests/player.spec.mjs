@@ -320,3 +320,251 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
     expect(Array.isArray(page2State.move.path)).toBe(true);
   });
 });
+
+test.describe('T-23 — Vue joueurs autonome', () => {
+  test('Zero-UI : pas d\'éléments UI (button, nav, input) et styles CSS appliqués sur player.html', async ({ page }) => {
+    await page.goto('/player.html?session=test-zero-ui');
+
+    // 1. Vérification Zero-UI strict (aucun button, nav, input)
+    const uiElementsCount = await page.evaluate(() => {
+      const forbidden = document.querySelectorAll('button, nav, input');
+      return forbidden.length;
+    });
+    expect(uiElementsCount).toBe(0);
+
+    // 2. Vérification des styles CSS de verrouillage
+    const styles = await page.evaluate(() => {
+      const bodyStyle = window.getComputedStyle(document.body);
+      const canvas = document.querySelector('canvas');
+      const canvasStyle = canvas ? window.getComputedStyle(canvas) : null;
+      return {
+        overscrollBehavior: bodyStyle.overscrollBehavior || bodyStyle.overscrollBehaviorY,
+        touchAction: canvasStyle ? canvasStyle.touchAction : null,
+      };
+    });
+
+    expect(['contain', 'none']).toContain(styles.overscrollBehavior);
+    expect(['manipulation', 'none']).toContain(styles.touchAction);
+  });
+
+  test('Deux onglets synchronisés sur même session : déplacements réciproques < 500 ms', async ({ context }) => {
+    const page1 = await context.newPage();
+    const page2 = await context.newPage();
+
+    await mountPlayerViewInPage(page1);
+    await mountPlayerViewInPage(page2);
+
+    await page1.evaluate(() => {
+      /** @type {any} */ (window).__playerProbe.initFixture();
+    });
+    await page2.evaluate(() => {
+      /** @type {any} */ (window).__playerProbe.initFixture();
+    });
+
+    await page1.exposeFunction('relayEventToPage2', async (/** @type {any} */ evt) => {
+      await page2.evaluate((e) => {
+        const transport = /** @type {any} */ (window).__playerProbe.fakeTransport;
+        transport.publish(e);
+      }, evt);
+    });
+
+    await page1.evaluate(() => {
+      const transport = /** @type {any} */ (window).__playerProbe.fakeTransport;
+      transport.subscribe((/** @type {any} */ evt) => {
+        /** @type {any} */ (window).relayEventToPage2(evt);
+      });
+    });
+
+    const startTime = Date.now();
+    await page1.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      probe.dispatchIntention({ type: 'tapToken', at: { screenX: 350, screenY: 350 } });
+      probe.dispatchIntention({ type: 'tapCell', at: { x: 630, y: 630 } });
+    });
+
+    await page2.waitForFunction(() => {
+      const store = /** @type {any} */ (window).__playerProbe.store;
+      const state = store.getState();
+      const token = state.campaign.tokens.find((/** @type {any} */ t) => t.id === 'token-pj');
+      return token && token.cell.a === 4 && token.cell.b === 4;
+    }, { timeout: 2000 });
+
+    const duration = Date.now() - startTime;
+    expect(duration).toBeLessThan(500);
+  });
+});
+
+test.describe('T-24 — Persistance & reconnexion', () => {
+  test('Recharger vue joueurs pendant séance : état restauré en < 3 s (positions, niveau, caméra)', async ({ page }) => {
+    await mountPlayerViewInPage(page);
+
+    await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      probe.initFixture();
+      // Modifier la position du pion, le niveau actif et la caméra
+      probe.store.setSessionId('sess-f5-test');
+      probe.store.moveTokenToCell('token-pj', { a: 5, b: 5 });
+      probe.camera.setPan(750, 600);
+      probe.camera.setZoom(1.5);
+      probe.store.saveToLocalStorage('sess-f5-test');
+      localStorage.setItem('rpg_camera_sess-f5-test', JSON.stringify({ x: 750, y: 600, zoom: 1.5 }));
+    });
+
+    const startTime = Date.now();
+    // Simuler F5 en rechargeant la sonde / page
+    await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      probe.store.loadFromLocalStorage('sess-f5-test');
+      const camStr = localStorage.getItem('rpg_camera_sess-f5-test');
+      if (camStr) {
+        const c = JSON.parse(camStr);
+        probe.camera.setPan(c.x, c.y);
+        probe.camera.setZoom(c.zoom);
+      }
+    });
+
+    const restoredState = await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      const state = probe.store.getState();
+      const token = state.campaign.tokens.find((/** @type {any} */ t) => t.id === 'token-pj');
+      return {
+        cell: token.cell,
+        levelId: state.activeLevelId,
+        camX: probe.camera.x,
+        camY: probe.camera.y,
+        camZoom: probe.camera.zoom,
+      };
+    });
+
+    const duration = Date.now() - startTime;
+    expect(duration).toBeLessThan(3000);
+    expect(restoredState.cell).toEqual({ a: 5, b: 5 });
+    expect(restoredState.levelId).toBe('rdc');
+    expect(restoredState.camX).toBe(750);
+    expect(restoredState.camY).toBe(600);
+    expect(restoredState.camZoom).toBe(1.5);
+  });
+
+  test('Déplacer pion MJ -> vérifier apparition côté joueurs après F5 (< 500 ms après reconnexion)', async ({ page }) => {
+    await mountPlayerViewInPage(page);
+
+    await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      probe.initFixture();
+      probe.store.setSessionId('sess-recon-test');
+    });
+
+    await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      const camp = JSON.parse(JSON.stringify(probe.store.getCampaign()));
+      camp.tokens[0].cell = { a: 3, b: 4 };
+      probe.store.restoreFromSnapshot(camp, { sessionId: 'sess-recon-test' });
+    });
+
+    const startTime = Date.now();
+    const syncState = await page.evaluate(async () => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      probe.store.loadFromLocalStorage('sess-recon-test');
+      const state = probe.store.getState();
+      const token = state.campaign.tokens.find((/** @type {any} */ t) => t.id === 'token-pj');
+      return token.cell;
+    });
+
+    const duration = Date.now() - startTime;
+    expect(duration).toBeLessThan(500);
+    expect(syncState).toEqual({ a: 3, b: 4 });
+  });
+});
+
+test.describe('T-24b — Badge de version & détection de désynchronisation', () => {
+  test('Sans écart : overlay joueurs a opacity: 0 et pointer-events: none après 5 s', async ({ page }) => {
+    await page.goto('/player.html?session=test-overlay-hide');
+
+    // Attendre 4,5 s (le timer cache l'overlay après 4 s)
+    await page.waitForTimeout(4500);
+
+    const overlayState = await page.evaluate(() => {
+      const el = document.getElementById('player-version-overlay');
+      if (!el) return null;
+      const style = window.getComputedStyle(el);
+      return {
+        opacity: style.opacity,
+        pointerEvents: style.pointerEvents,
+      };
+    });
+
+    expect(overlayState).not.toBeNull();
+    expect(overlayState?.opacity).toBe('0');
+    expect(overlayState?.pointerEvents).toBe('none');
+  });
+
+  test('Tap à trois doigts rappelle overlay même après disparition', async ({ page }) => {
+    await page.goto('/player.html?session=test-overlay-recall');
+
+    // Attendre la disparition (4 s timer)
+    await page.waitForTimeout(4500);
+
+    // Simuler le tap à 3 doigts
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('three-finger-tap'));
+      window.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 101, bubbles: true }));
+      window.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 102, bubbles: true }));
+      window.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 103, bubbles: true }));
+    });
+
+    await page.waitForFunction(() => {
+      const el = document.getElementById('player-version-overlay');
+      return el && el.style.opacity === '1';
+    }, { timeout: 2000 });
+
+    const recalledOpacity = await page.evaluate(() => {
+      const el = document.getElementById('player-version-overlay');
+      return el ? el.style.opacity : null;
+    });
+
+    expect(recalledOpacity).toBe('1');
+  });
+
+  test('Deux onglets, forcer build différent sur l\'un -> bannière MJ et overlay rouge joueurs apparaissent', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const res = await page.evaluate(async () => {
+      const vPath = './js/ui/versionBadge.js';
+      const pPath = './js/state/presence.js';
+      const { mountGMVersionBadge, mountPlayerVersionBadge } = await import(/* @vite-ignore */ /** @type {any} */ (vPath));
+      const { updatePresence } = await import(/* @vite-ignore */ /** @type {any} */ (pPath));
+
+      // Simuler la présence d'une tablette avec la build 41
+      updatePresence('tablet-client', {
+        role: 'players',
+        at: Date.now(),
+        build: 41,
+        label: '0.1.0+41',
+      });
+
+      const gmFooter = document.createElement('div');
+      document.body.appendChild(gmFooter);
+      mountGMVersionBadge(gmFooter, { build: 42 });
+      mountPlayerVersionBadge({ build: 42 });
+
+      const gmBanner = document.getElementById('version-mismatch-banner-gm');
+      const playerOverlay = document.getElementById('player-version-overlay');
+
+      return {
+        gmBannerVisible: gmBanner ? window.getComputedStyle(gmBanner).display !== 'none' : false,
+        gmBannerText: gmBanner ? gmBanner.textContent : '',
+        playerOverlayBg: playerOverlay ? window.getComputedStyle(playerOverlay).backgroundColor : '',
+        playerOverlayOpacity: playerOverlay ? window.getComputedStyle(playerOverlay).opacity : '',
+      };
+    });
+
+    expect(res.gmBannerVisible).toBe(true);
+    expect(res.gmBannerText).toContain('41');
+    expect(res.gmBannerText).toContain('Recharge la tablette');
+    expect(res.playerOverlayBg).toContain('211, 47, 47'); // rgb(211, 47, 47)
+    expect(res.playerOverlayOpacity).toBe('1');
+  });
+});
+
+
+

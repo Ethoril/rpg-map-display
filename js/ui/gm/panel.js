@@ -2,6 +2,7 @@
 import { createImportPanel } from './importPanel.js';
 import { createTokenMaker } from './tokenMaker.js';
 import { VERSION } from '../../core/version.js';
+import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
 /**
@@ -85,10 +86,13 @@ export function createGMPanel(container, options = {}) {
     </div>
 
     <!-- Pied de panneau : Affichage de la version -->
-    <div class="gm-panel-footer" style="padding: 0.5rem 1rem; background: #181818; border-top: 1px solid #333; font-size: 0.75rem; color: #777; text-align: center;">
-      <span>rpg-map-display · build ${VERSION.build} (${VERSION.commit}) · ${VERSION.version}</span>
-    </div>
+    <div class="gm-panel-footer" style="padding: 0.5rem 1rem; background: #181818; border-top: 1px solid #333; font-size: 0.75rem; color: #777; text-align: center;"></div>
   `;
+
+  const footerEl = /** @type {HTMLElement} */ (container.querySelector('.gm-panel-footer'));
+  if (footerEl) {
+    mountGMVersionBadge(footerEl, { transport, role: 'gm' });
+  }
 
   // --- Gestion de la navigation par onglets ---
   const tabButtons = container.querySelectorAll('.gm-tab-btn');
