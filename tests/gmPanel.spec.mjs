@@ -149,6 +149,12 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
       mimeType: 'image/png',
       buffer: TEST_PNG_BUFFER,
     });
+
+    // Attendre la fin du chargement de l'image avant de calibrer : son `onload`
+    // écrase les cases suggérées (importPanel.js), et écraserait donc 10×8 s'il
+    // arrivait après ces `fill`. Un étage 1×1 refuserait ensuite le pion 2×2.
+    await expect(page.locator('#btn-validate-image-import')).toBeEnabled();
+
     await page.fill('#img-cells-wide', '10');
     await page.fill('#img-cells-tall', '8');
     await page.click('#btn-validate-image-import');
@@ -183,15 +189,32 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
 
     // 3. Aller dans l'onglet Grille et modifier les réglages
     await page.click('.gm-tab-btn[data-tab="grid-settings"]');
+
+    /** Relit la grille de l'étage actif depuis le store. */
+    const readGrid = () =>
+      page.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        return store.getActiveLevel()?.grid;
+      });
+
     await page.fill('#grid-color', '#0000ff');
+    expect((await readGrid())?.color).toBe('#0000ff');
 
-    const updatedGrid = await page.evaluate(async () => {
-      const store = await import('../js/state/store.js');
-      const lvl = store.getActiveLevel();
-      return lvl?.grid;
-    });
+    // `#grid-visible` et `#grid-opacity` mutent l'étage *et* sont diffusés aux
+    // joueurs via `level.grid`. Ils étaient atteignables et jamais cliqués :
+    // exactement le profil du bug de U-04. On les exerce pour de vrai.
+    // Précondition : sans elle, décocher pourrait passer à vide.
+    expect((await readGrid())?.visible).toBe(true);
 
-    expect(updatedGrid?.color).toBe('#0000ff');
+    await page.uncheck('#grid-visible');
+    expect((await readGrid())?.visible).toBe(false);
+
+    await page.check('#grid-visible');
+    expect((await readGrid())?.visible).toBe(true);
+
+    await page.fill('#grid-opacity', '0.6');
+    expect((await readGrid())?.opacity).toBe(0.6);
+    await expect(page.locator('#grid-opacity-val')).toHaveText('0.6');
   });
 
   test('PC6 Validation : synchronisation du pion créé et déplacé vers le store', async ({ page }) => {
