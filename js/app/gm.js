@@ -54,6 +54,7 @@ export async function bootstrapGMApp(options = {}) {
 
   // Fonction de redessin global
   function renderAll() {
+    console.log('[DEBUG] renderAll() exécutée');
     camera.applyToContainer(app.stage);
 
     const state = store.getState();
