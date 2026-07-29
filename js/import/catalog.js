@@ -189,6 +189,7 @@ export async function loadCatalog(catalogUrl, baseUrl = globalThis.location?.hre
 /**
  * Résout une URL de scène/image relative au catalogue.
  * Gère le cas où le site est servi sous un sous-chemin (e.g., /rpg-map-display/).
+ * Retourne toujours une URL utilisable par le navigateur.
  *
  * @param {string} relativeUrl - URL relative dans le catalogue
  * @param {string} [baseUrl=window.location.href]
@@ -199,11 +200,18 @@ export function resolveMapUrl(relativeUrl, baseUrl = globalThis.location?.href) 
     return relativeUrl;
   }
 
+  // Si c'est déjà une URL absolue, la retourner telle quelle
+  if (/^https?:\/\//.test(relativeUrl)) {
+    return relativeUrl;
+  }
+
   try {
     const base = new URL(baseUrl || globalThis.location?.href || 'http://localhost/');
-    return new URL(relativeUrl, base).href;
-  } catch {
+    const resolved = new URL(relativeUrl, base);
+    return resolved.href;
+  } catch (err) {
     // Fallback : retourner l'URL relative telle quelle
+    // Le navigateur la résoudra par rapport à location.href
     return relativeUrl;
   }
 }

@@ -219,10 +219,15 @@ export function createImportPanel(container, options = {}) {
   btnValidateUvtt?.addEventListener('click', () => {
     if (!pendingUvtt) return;
 
-    // En diagnostic : l'aperçu local suffit, pas de publication
+    // En diagnostic : utiliser l'image base64 du UVTT pour l'aperçu local
     const level = {
       ...pendingUvtt.level,
-      // Pas d'imageUrl persistée — c'est un aperçu local temporaire
+      // Utiliser la base64 du UVTT comme imageUrl temporaire (aperçu local uniquement)
+      imageUrl: pendingUvtt.imageBase64 ? (
+        pendingUvtt.imageBase64.startsWith('data:')
+          ? pendingUvtt.imageBase64
+          : `data:image/png;base64,${pendingUvtt.imageBase64}`
+      ) : '',
     };
     store.addLevel(level);
     const publishedResult = { ...pendingUvtt, level };

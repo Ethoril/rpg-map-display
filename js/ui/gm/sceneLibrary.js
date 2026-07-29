@@ -185,13 +185,10 @@ export async function createSceneLibrary(container, options = {}) {
           throw new Error(`Scène invalide : ${errors.join('; ')}`);
         }
 
-        // Vérifier que l'imageUrl du catalogue correspond
+        // Mettre à jour les imageUrl pour qu'elles soient absolues (résolues par rapport au catalogue)
         if (sceneData.levels && sceneData.levels.length > 0) {
-          const firstLevel = sceneData.levels[0];
-          if (firstLevel.imageUrl && firstLevel.imageUrl !== imageUrl) {
-            // Remplacer par l'URL résolue du catalogue
-            firstLevel.imageUrl = imageUrl;
-          }
+          // Le premier niveau utilise l'imageUrl du catalogue
+          sceneData.levels[0].imageUrl = imageUrl;
         }
 
         // Ajouter ou charger selon le mode
