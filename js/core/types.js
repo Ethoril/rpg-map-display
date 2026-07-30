@@ -119,7 +119,10 @@
  * @property {Cell} cell position — TOUJOURS entière
  * @property {number} sizeCells
  * @property {'pc'|'npc'} kind
- * @property {string} imageUrl
+ * @property {string} imageUrl URL publiée (relative ou HTTPS) **ou** image `data:` embarquée
+ *   bornée — seul champ d'asset qui l'autorise. Validé par `isTokenImageUrl`, plafonné par
+ *   `TOKEN_IMAGE_MAX_BYTES` et, cumulé, par `TOKEN_IMAGE_TOTAL_MAX_BYTES`. Voir
+ *   `docs/ETAT.md` § « Persistance et assets ».
  * @property {string} borderColor
  * @property {string} label
  * @property {boolean} hidden

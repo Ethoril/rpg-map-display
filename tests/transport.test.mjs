@@ -11,6 +11,7 @@ import {
     encodeSnapshotForFirestore,
 } from '../js/transport/FirebaseTransport.js';
 import { LocalSocketTransport } from '../js/transport/LocalSocketTransport.js';
+import { TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
 import {
     checkBuildMismatch,
     clearPresence,
@@ -61,19 +62,37 @@ test('FirebaseTransport valide les arguments de connect et le statut de connexio
     await assert.rejects(async () => await transport.connect('session-1', invalidRole), /role invalide/);
 });
 
-test('la garde transport refuse data: et blob: à toute profondeur', async () => {
+test('la garde transport refuse blob: et les images embarquées non bornées, à toute profondeur', async () => {
     const transport = new FirebaseTransport(validConfig);
     const circular = /** @type {any} */ ({ imageUrl: 'https://assets.example/map.webp' });
     circular.self = circular;
     assert.doesNotThrow(() => assertNoTransientAssetUrls(circular));
 
-    assert.throws(
-        () => assertNoTransientAssetUrls({ levels: [{ tokens: [{ imageUrl: 'data:image/png;base64,x' }] }] }),
-        /data:.*levels.*tokens.*imageUrl/
-    );
+    // `blob:` est refusé sans condition : il est lié au document qui l'a créé et ne
+    // survit ni au rechargement ni au voyage vers un autre navigateur.
     assert.throws(
         () => assertNoTransientAssetUrls({ nested: ['BLOB:https://example.invalid/id'] }),
         /BLOB:|blob:/i
+    );
+
+    // Une image embarquée BORNÉE passe la garde. C'est l'amendement délibéré qui permet
+    // à un pion de naître en séance : elle porte ses octets, donc elle survit, et son
+    // plafond protège le document Firestore.
+    assert.doesNotThrow(
+        () => assertNoTransientAssetUrls({ tokens: [{ imageUrl: 'data:image/webp;base64,AAAA' }] })
+    );
+
+    // Non bornée : refusée, et la garde nomme la taille et le chemin.
+    const enorme = `data:image/png;base64,${'A'.repeat(TOKEN_IMAGE_MAX_BYTES)}`;
+    assert.throws(
+        () => assertNoTransientAssetUrls({ levels: [{ tokens: [{ imageUrl: enorme }] }] }),
+        /image embarquée non bornée.*levels.*tokens.*imageUrl/s
+    );
+
+    // Un format hors liste reste refusé même court : `data:` n'est pas un blanc-seing.
+    assert.throws(
+        () => assertNoTransientAssetUrls({ imageUrl: 'data:text/html;base64,AAAA' }),
+        /image embarquée non bornée/
     );
 
     // La garde est bien placée sur les deux frontières, avant tout appel SDK.
@@ -82,11 +101,11 @@ test('la garde transport refuse data: et blob: à toute profondeur', async () =>
     assert.throws(
         () => transport.publish({
             type: 'level.add',
-            payload: { level: { imageUrl: 'data:image/webp;base64,x' } },
+            payload: { level: { imageUrl: enorme } },
             at: Date.now(),
             by: 'gm',
         }),
-        /URL transitoire interdite/
+        /image embarquée non bornée/
     );
     await assert.rejects(
         transport.saveSnapshot({ tokens: [{ imageUrl: 'blob:https://example.invalid/id' }] }),

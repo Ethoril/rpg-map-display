@@ -1,5 +1,10 @@
 // @ts-check
-import { createToken, isPersistableAssetUrl } from '../../core/schema.js';
+import {
+  createToken,
+  isPersistableAssetUrl,
+  isBoundedImageDataUrl,
+  TOKEN_IMAGE_MAX_BYTES,
+} from '../../core/schema.js';
 
 /**
  * @typedef {import('../../core/types.js').Token} Token
@@ -67,11 +72,11 @@ export function createTokenMaker(container, options) {
         <input type="text" id="token-label" value="Pion" />
 
         <label for="token-canonical-url">URL publiée :</label>
-        <input type="text" id="token-canonical-url" placeholder="Auto : maps/tokens/token-&lt;id&gt;.webp" />
+        <input type="text" id="token-canonical-url" placeholder="Vide : image embarquée dans la campagne" />
       </div>
 
       <p id="token-maker-status" style="margin: 0; font-size: 0.75rem; color: #aaa;">
-        Le WebP sera téléchargé localement. Placez-le dans maps/tokens/ avant de partager la campagne.
+        Sans URL publiée, l'image est embarquée dans la campagne et visible tout de suite sur la tablette.
       </p>
 
       <div class="token-maker-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -151,7 +156,8 @@ export function createTokenMaker(container, options) {
     } else {
       status.style.color = '#aaa';
       status.textContent =
-        'Le WebP sera téléchargé localement. Placez-le dans maps/tokens/ avant de partager la campagne.';
+        "Sans URL publiée, l'image est embarquée dans la campagne et visible tout de suite " +
+        'sur la tablette.';
     }
   }
 
@@ -360,6 +366,47 @@ export function createTokenMaker(container, options) {
     drawPreview();
   });
 
+  /**
+   * Encode le canevas du pion en tenant sous `TOKEN_IMAGE_MAX_BYTES`.
+   *
+   * Un plafond qui refuserait l'image du MJ serait une impasse en pleine séance : il
+   * faut donc réduire, pas rejeter. La qualité baisse d'abord, la dimension ensuite —
+   * l'ordre compte, une image un peu plus compressée reste préférable à une image
+   * franchement plus petite. La réduction de dimension garantit aussi la terminaison
+   * quand le navigateur ignore le paramètre de qualité, ce que fait tout repli PNG.
+   *
+   * @param {HTMLCanvasElement} canvas
+   * @returns {{ dataUrl: string, size: number, reduced: boolean }}
+   */
+  function encodeWithinBudget(canvas) {
+    /** @type {HTMLCanvasElement} */
+    let source = canvas;
+    let reduced = false;
+
+    // 12 px est la borne basse : en dessous, l'image ne vaut plus rien comme pion, et
+    // il faut s'arrêter plutôt que boucler.
+    while (source.width >= 12) {
+      for (const quality of [0.8, 0.7, 0.6, 0.5, 0.4]) {
+        const dataUrl = source.toDataURL('image/webp', quality);
+        if (dataUrl.length <= TOKEN_IMAGE_MAX_BYTES) {
+          return { dataUrl, size: dataUrl.length, reduced };
+        }
+      }
+
+      const half = document.createElement('canvas');
+      half.width = Math.floor(source.width / 2);
+      half.height = Math.floor(source.height / 2);
+      const halfCtx = half.getContext('2d');
+      if (!halfCtx || half.width < 12) break;
+      halfCtx.drawImage(source, 0, 0, half.width, half.height);
+      source = half;
+      reduced = true;
+    }
+
+    const dataUrl = source.toDataURL('image/webp', 0.4);
+    return { dataUrl, size: dataUrl.length, reduced };
+  }
+
   // --- Génération du pion ---
   function generateToken() {
     if (!loadedImage) return null;
@@ -417,28 +464,41 @@ export function createTokenMaker(container, options) {
 
     outCtx.restore();
 
-    // Export en WebP (ou PNG par repli du navigateur)
-    const dataUrl = outCanvas.toDataURL('image/webp');
+    // Export en WebP (ou PNG par repli du navigateur), réduit pour tenir sous le plafond
+    const { dataUrl, size, reduced } = encodeWithinBudget(outCanvas);
 
     const tokenId = crypto.randomUUID();
     const explicitCanonicalUrl = canonicalUrlInput.value.trim();
-    const canonicalUrl =
-      explicitCanonicalUrl || `maps/tokens/token-${tokenId}.webp`;
-    if (!isPersistableAssetUrl(canonicalUrl) || canonicalUrl === '') {
-      throw new Error(
-        'URL du pion non persistable : utilisez une URL relative ou HTTPS publiée'
-      );
+
+    // Une URL explicite l'emporte : si le MJ a déjà publié le fichier, le référencer
+    // vaut mieux que dupliquer ses octets dans chaque campagne. Sans URL explicite,
+    // l'image est EMBARQUÉE — c'est ce qui permet au pion d'apparaître immédiatement
+    // sur le Mac et sur la tablette, sans dépôt de fichier ni commit.
+    let imageUrl;
+    if (explicitCanonicalUrl) {
+      if (!isPersistableAssetUrl(explicitCanonicalUrl)) {
+        throw new Error(
+          'URL du pion non persistable : utilisez une URL relative ou HTTPS publiée'
+        );
+      }
+      imageUrl = explicitCanonicalUrl;
+    } else {
+      if (!isBoundedImageDataUrl(dataUrl)) {
+        throw new Error(
+          `Image du pion non embarquable après réduction (${size} octets pour un plafond ` +
+            `de ${TOKEN_IMAGE_MAX_BYTES}). Publiez le fichier et renseignez son URL.`
+        );
+      }
+      imageUrl = dataUrl;
     }
 
-    // Le data URL reste l'aperçu/téléchargement local. Le pion partagé ne
-    // conserve que son URL canonique persistable.
     const token = createToken({
       id: tokenId,
       levelId: defaultLevelId,
       cell: { a: 0, b: 0 },
       sizeCells,
       kind,
-      imageUrl: canonicalUrl,
+      imageUrl,
       borderColor,
       label,
       hidden: false,
@@ -457,7 +517,15 @@ export function createTokenMaker(container, options) {
 
     btnDownload.disabled = false;
     status.style.color = '#2ecc71';
-    status.textContent = `Aperçu généré. Publiez le fichier sous ${canonicalUrl}.`;
+    if (explicitCanonicalUrl) {
+      status.textContent = `Pion ajouté. Il référence ${explicitCanonicalUrl} : publiez ce fichier.`;
+    } else {
+      const ko = (size / 1024).toFixed(1);
+      status.textContent =
+        `Pion ajouté, image embarquée (${ko} Ko` +
+        `${reduced ? ', réduite pour tenir sous le plafond' : ''}). Visible immédiatement ` +
+        'sur la tablette, aucun fichier à déposer.';
+    }
 
     if (options.onGenerate) {
       options.onGenerate(token, dataUrl);

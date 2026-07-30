@@ -187,7 +187,11 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(addedToken?.levelId).toBe(
       await page.evaluate(async () => (await import('../js/state/store.js')).getActiveLevelId())
     );
-    expect(addedToken?.imageUrl.startsWith('data:')).toBe(false);
+    // Le pion généré embarque son image, bornée : c'est ce qui le rend visible
+    // immédiatement des deux côtés. Le plafond est la garde qui protège le document
+    // Firestore, et il doit tenir jusque dans le store.
+    expect(addedToken?.imageUrl).toMatch(/^data:image\/(webp|png);base64,/);
+    expect(addedToken?.imageUrl.length).toBeLessThanOrEqual(24 * 1024);
 
     // 3. Aller dans l'onglet Grille et modifier les réglages
     await page.click('.gm-tab-btn[data-tab="grid-settings"]');
@@ -253,7 +257,8 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(state.token).toBeDefined();
     expect(state.token?.label).toBe('Dragon');
     expect(state.token?.levelId).toBe(state.level?.id);
-    expect(state.token?.imageUrl.startsWith('data:')).toBe(false);
+    expect(state.token?.imageUrl).toMatch(/^data:image\/(webp|png);base64,/);
+    expect(state.token?.imageUrl.length).toBeLessThanOrEqual(24 * 1024);
   });
 
   test('Quitter la session : efface le code mémorisé et ramène à l accueil', async ({ page }) => {

@@ -92,11 +92,49 @@ La cause historique de la disparition après F5 était la suppression silencieus
 `imageUrl` encodée en `data:` lors de la sauvegarde. Ce comportement n’existe plus :
 
 - le store valide une campagne complète avant chaque mutation et sauvegarde ;
-- l’interface exige une URL canonique publiée avant l’ajout d’un étage ou d’un pion ;
-- le transport refuse récursivement `data:` et `blob:` ;
+- l’interface exige une URL canonique publiée avant l’ajout d’un étage ;
+- le transport refuse récursivement `blob:`, et tout `data:` non borné ;
 - une erreur de chargement d’image produit un placeholder, pas la perte de la campagne ;
 - le remplacement de scène voyage en instantané absolu (`scene.load`), validé avant de
   remplacer un état valide, et rejouable sans divergence.
+
+### Amendement du 30 juillet 2026 — l’image d’un pion peut être embarquée
+
+**Le défaut corrigé.** Le générateur de pions inscrivait `maps/tokens/token-<uuid>.webp`
+dans le pion, alors qu’il ne téléchargeait le WebP que dans le dossier de téléchargement du
+MJ. Le fichier n’existant à cette URL ni sur le Mac ni sur la tablette, chaque pion créé
+s’affichait comme un cercle gris portant l’initiale de son nom — le repli de
+`render/layers/tokens.js`, qui faisait correctement son travail sur une donnée fausse. Le
+dépôt manuel décrit au chantier I était une consigne, pas un mécanisme : rien ne
+l’appliquait, et rien ne signalait qu’il manquait.
+
+**Ce qui change.** `token.imageUrl` accepte désormais une image `data:` **bornée** :
+`isBoundedImageDataUrl` la limite à 24 KiB et aux formats png/jpeg/webp/gif. Le générateur
+ré-encode jusqu’à tenir sous ce plafond — qualité d’abord, dimension ensuite — plutôt que de
+refuser l’image du MJ en pleine séance. Une URL publiée renseignée à la main l’emporte
+toujours : référencer un fichier déjà publié vaut mieux que dupliquer ses octets.
+
+**Pourquoi la règle antérieure ne s’appliquait pas ici.** Elle avait été écrite pour un fond
+de carte : `maps/generated/manoir-rdc.webp` pèse 4,9 Mo, et c’est bien un `data:` de cet
+ordre qui était supprimé en silence à la sauvegarde. Un pion de 200 px pèse trois
+kilo-octets — `maps/tokens/goblin.webp` en fait 2982. Le danger n’était jamais le schéma
+`data:`, qui **survit** au rechargement et voyage vers un autre navigateur puisqu’il porte
+ses octets ; le danger était la taille. La garde du transport teste donc maintenant cette
+propriété, et non le schéma : `blob:` reste refusé sans condition, car lui ne survit à rien.
+
+**La garde qui compte vraiment est le plafond cumulé.** `saveSnapshot` écrit la campagne
+entière dans **un seul** document Firestore, limité à 1 MiB. Un plafond par pion ne protège
+pas ce document : vingt-quatre pions au maximum individuel le rempliraient à moitié sans
+qu’aucune vérification ne se déclenche, et le défaut n’apparaîtrait qu’en séance.
+`TOKEN_IMAGE_TOTAL_MAX_BYTES` plafonne donc le cumul à 512 KiB, vérifié par
+`validateCampaign` sur la campagne et non sur le pion.
+
+**Le partage des responsabilités, à ne pas confondre.** Le champ auquel une image embarquée
+est permise est décidé par `validateCampaign`, jamais par le transport : un fond d’étage en
+`data:` reste refusé, quelle que soit sa taille. La garde du transport est un filet contre
+l’éphémère et le non borné, pas un contrôle de schéma de données.
+
+`CONVENTIONS.md` §4 porte l’exception correspondante.
 
 Les cartes sont préparées dans `maps/`, par exemple :
 

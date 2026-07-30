@@ -56,6 +56,21 @@ Pour un export UVTT :
 node scripts/import-uvtt.mjs chemin/vers/carte.uvtt
 ```
 
+## Créer un pion
+
+Le générateur de pions **embarque** l’image recadrée dans le pion : elle s’affiche
+immédiatement côté MJ et côté joueurs, sans fichier à déposer ni commit. L’image est
+ré-encodée pour tenir sous 24 KiB, et le cumul par campagne est plafonné à 512 KiB — le
+document Firestore d’une campagne est limité à 1 MiB.
+
+Renseigner le champ « URL publiée » change ce comportement : le pion référence alors ce
+chemin, et le fichier doit exister sous `maps/tokens/`. C’est la voie à préférer pour un PNJ
+récurrent, que la bibliothèque de pions (`maps/tokens/catalog.json`) sert ensuite sans
+dupliquer ses octets dans chaque campagne.
+
+Un fond d’étage, lui, n’accepte **jamais** d’image embarquée : voir
+`docs/ETAT.md` § « Persistance et assets ».
+
 ## Vérifications
 
 ```text

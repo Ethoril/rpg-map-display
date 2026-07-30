@@ -5,6 +5,10 @@ import {
   createLevel,
   createToken,
   isPersistableAssetUrl,
+  isBoundedImageDataUrl,
+  isTokenImageUrl,
+  TOKEN_IMAGE_MAX_BYTES,
+  TOKEN_IMAGE_TOTAL_MAX_BYTES,
   validateCampaign,
   terrainCostRecordToMap,
   terrainCostMapToRecord,
@@ -100,6 +104,79 @@ test('Validation refuse les imageUrl temporaires des étages et des pions', () =
 
   assert.ok(errors.some((err) => err.includes('Étage "rdc"') && err.includes('imageUrl non persistable')));
   assert.ok(errors.some((err) => err.includes('Pion "t1"') && err.includes('imageUrl non persistable')));
+});
+
+test('Une image embarquée est acceptée bornée, refusée hors format ou hors plafond', () => {
+  assert.equal(isBoundedImageDataUrl('data:image/webp;base64,AAAA'), true);
+  assert.equal(isBoundedImageDataUrl('data:image/png;base64,AAA='), true);
+
+  // Hors liste de formats : `data:` n'est pas un blanc-seing.
+  assert.equal(isBoundedImageDataUrl('data:text/html;base64,AAAA'), false);
+  assert.equal(isBoundedImageDataUrl('data:image/svg+xml;base64,AAAA'), false);
+  // Non base64, donc de taille non déductible de la chaîne.
+  assert.equal(isBoundedImageDataUrl('data:image/png,AAAA'), false);
+  assert.equal(isBoundedImageDataUrl('blob:https://example.test/id'), false);
+  assert.equal(
+    isBoundedImageDataUrl(`data:image/png;base64,${'A'.repeat(TOKEN_IMAGE_MAX_BYTES)}`),
+    false
+  );
+
+  // La tolérance est portée par isTokenImageUrl, pas par isPersistableAssetUrl : un
+  // fond d'étage ne doit pas en hériter.
+  assert.equal(isTokenImageUrl('data:image/webp;base64,AAAA'), true);
+  assert.equal(isTokenImageUrl('maps/tokens/goblin.webp'), true);
+  assert.equal(isPersistableAssetUrl('data:image/webp;base64,AAAA'), false);
+});
+
+test('Un pion accepte une image embarquée bornée, un étage jamais', () => {
+  const level = createLevel({ id: 'rdc' });
+  const token = createToken({
+    id: 't1',
+    levelId: 'rdc',
+    imageUrl: 'data:image/webp;base64,AAAA',
+  });
+  assert.deepEqual(validateCampaign(createCampaign({ levels: [level], tokens: [token] })), []);
+
+  const levelEmbarque = createLevel({ id: 'rdc', imageUrl: 'data:image/webp;base64,AAAA' });
+  const errors = validateCampaign(createCampaign({ levels: [levelEmbarque] }));
+  assert.ok(errors.some((err) => err.includes('Étage "rdc"') && err.includes('non persistable')));
+});
+
+test('Validation refuse une image de pion au-delà du plafond, et nomme sa taille', () => {
+  const enorme = `data:image/png;base64,${'A'.repeat(TOKEN_IMAGE_MAX_BYTES)}`;
+  const errors = validateCampaign(
+    createCampaign({
+      levels: [createLevel({ id: 'rdc' })],
+      tokens: [createToken({ id: 't1', levelId: 'rdc', imageUrl: enorme })],
+    })
+  );
+
+  const erreur = errors.find((err) => err.includes('Pion "t1"'));
+  assert.ok(erreur, 'Le pion fautif doit être nommé');
+  assert.ok(erreur.includes(String(enorme.length)), 'La taille reçue doit apparaître');
+  assert.ok(erreur.includes(String(TOKEN_IMAGE_MAX_BYTES)), 'Le plafond doit apparaître');
+});
+
+test('Validation refuse un cumul d’images de pions qui remplirait le document Firestore', () => {
+  // Chaque pion tient sous le plafond individuel : seul le cumul est fautif. C'est
+  // exactement le défaut qu'un plafond par pion laisse passer.
+  const image = `data:image/png;base64,${'A'.repeat(TOKEN_IMAGE_MAX_BYTES - 100)}`;
+  const nombre = Math.ceil(TOKEN_IMAGE_TOTAL_MAX_BYTES / image.length) + 1;
+  const tokens = Array.from({ length: nombre }, (_, index) =>
+    createToken({ id: `t${index}`, levelId: 'rdc', imageUrl: image })
+  );
+
+  const errors = validateCampaign(
+    createCampaign({ levels: [createLevel({ id: 'rdc' })], tokens })
+  );
+
+  const erreur = errors.find((err) => err.includes('Images de pions embarquées'));
+  assert.ok(erreur, 'Le cumul doit être signalé');
+  assert.ok(erreur.includes(String(nombre)), 'Le nombre de pions concernés doit apparaître');
+  assert.ok(
+    errors.every((err) => !err.includes('Pion "t0"')),
+    'Aucun pion ne doit être fautif individuellement'
+  );
 });
 
 test('createToken rend les PJ déplaçables et les PNJ non déplaçables par défaut', () => {

@@ -134,6 +134,21 @@ d'`ARCHITECTURE.md` l'annonçait déjà : « au lot 2 les arêtes bloquées devi
 […] elles appartiennent donc au store, avec un cache par étage ». Invalidation limitée aux
 arêtes voisines lors d'un `portal.toggle` (CdC ligne 381).
 
+**L-01, deuxième cause du même symptôme — et elle survivra au cache.** Implémenter
+`computeBlockedEdges` ne suffira **pas** à empêcher un pion de traverser un mur côté MJ, et il
+faut le savoir avant de croire la tranche terminée. Le glisser MJ (`js/app/gm.js:344-351`) ne
+consulte pas `state.reachableCells`, n'appelle pas `findPath`, et publie un chemin en ligne
+droite `[from, targetCell]`. Seul le côté joueur passe par la zone atteignable et par `findPath`
+(`js/ui/player/bootstrap.js:108-125`).
+
+**Décision du mainteneur, 30 juillet 2026 : c'est un privilège MJ, à conserver.** Le MJ pose un
+pion où il veut, mur ou pas — replacer une figurine à la main est un geste de table légitime, et
+lui imposer les règles de déplacement des joueurs le gênerait sans rien protéger. À écrire dans
+le brief L-01 : quand les 131 murs de `manoir-rdc` bloqueront enfin les joueurs, le MJ
+continuera de les franchir, **et ce n'est pas une régression**. Sans cette ligne, quelqu'un
+« corrigera » le contournement, ou pire, cherchera pourquoi le masque d'arêtes « ne marche
+pas » côté MJ.
+
 **L-04** — deux pièges nommés par le CdC, à traiter comme des critères et non comme des détails.
 Les pions ne s'affichent **que** en vision courante : les montrer en zone explorée-hors-vision
 permettrait aux joueurs de suivre les PNJ à travers les murs (CdC ligne 421). Et le critère 7

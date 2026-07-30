@@ -1,5 +1,18 @@
 # Chantier I — bibliothèque de pions (§5.7)
 
+> **Amendé le 30 juillet 2026, après clôture.** Deux faits de ce brief ne tiennent plus, et
+> le corps du document est laissé intact plutôt que réécrit :
+>
+> - le fait n°7 (« la garde transport refuse `data:` et `blob:` récursivement ») : `blob:`
+>   reste refusé sans condition, mais un `data:` **borné** passe désormais ;
+> - la décision §3.2 (« le dépôt du WebP dans `maps/tokens/` reste manuel : ce chantier ne
+>   l'aggrave ni ne la résout ») : `tokenMaker` embarque maintenant l'image dans le pion,
+>   donc plus aucun dépôt n'est requis pour qu'un pion créé s'affiche.
+>
+> La contrainte reste entière pour le **catalogue commité**, qui continue d'exiger des URL
+> vers des fichiers réels — `validateTokenCatalog` refuse toujours `data:`. Raisonnement
+> complet dans `ETAT.md` § « Persistance et assets ».
+
 > Brief d'exécution **court**, écrit le 30 juillet 2026. Autonome : tout ce qui suit a été
 > vérifié dans le dépôt, il n'y a rien à redécouvrir.
 >

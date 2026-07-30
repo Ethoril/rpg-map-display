@@ -259,7 +259,7 @@ Aucun code exécutable, uniquement des `@typedef`. Reprend le schéma du cahier 
  * @property {Cell} cell          position — TOUJOURS entière
  * @property {number} sizeCells
  * @property {'pc'|'npc'} kind
- * @property {string} imageUrl
+ * @property {string} imageUrl     URL publiée OU image data: bornée (seul champ d'asset qui l'autorise)
  * @property {string} borderColor
  * @property {string} label
  * @property {boolean} hidden

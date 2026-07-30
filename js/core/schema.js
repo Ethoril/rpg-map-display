@@ -316,6 +316,68 @@ export function isPersistableAssetUrl(value) {
 }
 
 /**
+ * Plafond en octets d'une image de pion embarquée sous forme d'URL `data:`.
+ *
+ * 24 KiB de chaîne base64 valent environ 18 Ko de WebP, largement au-delà de ce
+ * qu'un pion de 200 à 420 px demande : `maps/tokens/goblin.webp` pèse 2982 octets.
+ * Le générateur ré-encode jusqu'à tenir sous ce plafond (`ui/gm/tokenMaker.js`),
+ * il ne refuse pas l'image du MJ.
+ */
+export const TOKEN_IMAGE_MAX_BYTES = 24 * 1024;
+
+/**
+ * Plafond cumulé des images de pions embarquées dans une même campagne.
+ *
+ * C'est le plafond qui protège la contrainte réelle : `saveSnapshot` écrit la
+ * campagne entière dans **un seul** document Firestore (`transport/FirebaseTransport.js`),
+ * limité à 1 MiB par Firestore. Un plafond par pion ne protège pas ce document —
+ * vingt-quatre pions au maximum individuel le rempliraient à moitié sans qu'aucune
+ * garde ne se déclenche, et le défaut n'apparaîtrait qu'en séance.
+ */
+export const TOKEN_IMAGE_TOTAL_MAX_BYTES = 512 * 1024;
+
+const IMAGE_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * Indique si une chaîne est une image embarquée autonome et bornée.
+ *
+ * Contrairement à `blob:`, une URL `data:` **survit** au rechargement et voyage
+ * vers un autre navigateur : elle porte ses octets avec elle. Le risque n'est donc
+ * pas sa nature transitoire, c'est sa taille — la cause historique de la perte de
+ * campagne était un fond de carte de plusieurs mégaoctets encodé en `data:`, puis
+ * supprimé en silence à la sauvegarde (`docs/ETAT.md`). Une image bornée n'a pas
+ * ce défaut.
+ *
+ * Volontairement `boolean` et non un prédicat `value is string` : la garde du transport
+ * l'applique par la négative sur une valeur déjà connue comme `string`, et un prédicat
+ * y réduirait la variable à `never` dans la branche d'erreur.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isBoundedImageDataUrl(value) {
+  if (typeof value !== 'string') return false;
+  if (value.length > TOKEN_IMAGE_MAX_BYTES) return false;
+  return IMAGE_DATA_URL.test(value);
+}
+
+/**
+ * Indique si une valeur est acceptable comme image de pion.
+ *
+ * Un pion accepte, **en plus** d'une URL publiée, une image embarquée bornée : il
+ * doit pouvoir naître en pleine séance sans passer par un dépôt de fichier et un
+ * commit. Cette tolérance est délibérément limitée aux pions — un fond d'étage
+ * reste soumis à `isPersistableAssetUrl`, parce que sa taille est sans commune
+ * mesure (`maps/generated/manoir-rdc.webp` pèse 4,9 Mo).
+ *
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+export function isTokenImageUrl(value) {
+  return isPersistableAssetUrl(value) || isBoundedImageDataUrl(value);
+}
+
+/**
  * Refuse explicitement une URL d'asset non persistable.
  *
  * @param {unknown} value
@@ -481,9 +543,14 @@ export function validateCampaign(campaign) {
         errors.push(`Pion "${tokenId}" : sizeCells doit être >= 1 (reçu ${token.sizeCells})`);
       }
 
-      if (!isPersistableAssetUrl(token.imageUrl)) {
+      if (!isTokenImageUrl(token.imageUrl)) {
+        const embarquee = typeof token.imageUrl === 'string' && token.imageUrl.startsWith('data:');
         errors.push(
-          `Pion "${tokenId}" : imageUrl non persistable (URL relative ou HTTPS attendue ; data: et blob: interdits)`
+          embarquee
+            ? `Pion "${tokenId}" : image embarquée refusée (${token.imageUrl.length} octets ` +
+              `pour un plafond de ${TOKEN_IMAGE_MAX_BYTES}, ou format hors png/jpeg/webp/gif)`
+            : `Pion "${tokenId}" : imageUrl non persistable (URL relative, URL HTTPS ` +
+              'ou image embarquée bornée attendue ; blob: interdit)'
         );
       }
 
@@ -531,6 +598,25 @@ export function validateCampaign(campaign) {
           `Pion "${tokenId}" : position hors limites de l'étage "${token.levelId}"`
         );
       }
+    }
+
+    // Le plafond cumulé se vérifie sur la campagne, pas sur le pion : c'est le
+    // document Firestore de 1 MiB qui est en jeu, et il n'a pas de propriétaire
+    // parmi les pions.
+    let octetsEmbarques = 0;
+    let pionsEmbarques = 0;
+    for (const token of campaign.tokens) {
+      if (typeof token?.imageUrl === 'string' && token.imageUrl.startsWith('data:')) {
+        octetsEmbarques += token.imageUrl.length;
+        pionsEmbarques += 1;
+      }
+    }
+    if (octetsEmbarques > TOKEN_IMAGE_TOTAL_MAX_BYTES) {
+      errors.push(
+        `Images de pions embarquées : ${octetsEmbarques} octets sur ${pionsEmbarques} pions, ` +
+          `pour un plafond cumulé de ${TOKEN_IMAGE_TOTAL_MAX_BYTES}. Publier les images les plus ` +
+          'lourdes sous maps/tokens/ et référencer leur URL.'
+      );
     }
   }
 

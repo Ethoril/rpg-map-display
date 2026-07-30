@@ -107,8 +107,11 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(token.label).toBe('Guerrier Rouge');
     expect(token.hidden).toBe(false);
     expect(token.playerMovable).toBe(true);
-    expect(token.imageUrl).toMatch(/^maps\/tokens\/token-.*\.webp$/);
-    expect(token.imageUrl.startsWith('data:')).toBe(false);
+    // Sans URL publiée renseignée, l'image est EMBARQUÉE dans le pion : c'est ce qui la
+    // rend visible tout de suite sur le Mac et sur la tablette, sans dépôt de fichier.
+    expect(token.imageUrl).toMatch(/^data:image\/(webp|png);base64,/);
+    expect(token.imageUrl).toBe(dataUrl);
+    expect(token.imageUrl.length).toBeLessThanOrEqual(24 * 1024);
     expect(token.locked).toBe(false);
     expect(token.elevation).toBe(0);
     expect(Array.isArray(token.markers)).toBe(true);

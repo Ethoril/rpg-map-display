@@ -25,6 +25,7 @@ import {
   onDisconnect,
 } from 'firebase/database';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
 /** @typedef {import('./Transport.js').Transport} Transport */
@@ -37,7 +38,18 @@ const PRESENCE_HEARTBEAT_MS = 30_000;
 
 /**
  * Refuse récursivement les URL qui ne peuvent survivre ni à un rechargement ni à un
- * autre navigateur.
+ * autre navigateur, et les images embarquées non bornées.
+ *
+ * Cette garde teste la propriété qui compte, pas le schéma d'URL. Un `blob:` est lié
+ * au document qui l'a créé : il ne survit à rien, il est refusé sans condition. Un
+ * `data:` porte ses octets avec lui, donc il survit — son danger est sa **taille**,
+ * puisque `saveSnapshot` écrit toute la campagne dans un unique document Firestore de
+ * 1 MiB. Une image embarquée bornée passe donc, une image non bornée est refusée.
+ *
+ * Le champ auquel une image embarquée est permise n'est **pas** décidé ici : c'est
+ * `validateCampaign` qui le sait, et le store valide la campagne avant chaque mutation
+ * et chaque sauvegarde. Un fond d'étage en `data:` est refusé là, avant d'atteindre le
+ * réseau.
  *
  * @param {unknown} value
  * @param {string} [context]
@@ -52,11 +64,20 @@ export function assertNoTransientAssetUrls(value, context = 'payload') {
    */
   function visit(current, path) {
     if (typeof current === 'string') {
-      if (TRANSIENT_ASSET_URL.test(current)) {
+      if (TRANSIENT_ASSET_URL.test(current) && !isBoundedImageDataUrl(current)) {
         const scheme = current.slice(0, current.indexOf(':') + 1);
-        throw new Error(
-          `${context} contient une URL transitoire interdite (${scheme}) au chemin ${path}`
-        );
+        let motif;
+        if (!/^data:/i.test(current)) {
+          motif = `URL transitoire interdite (${scheme})`;
+        } else if (current.length > TOKEN_IMAGE_MAX_BYTES) {
+          motif =
+            `image embarquée non bornée (${current.length} octets pour un plafond de ` +
+            `${TOKEN_IMAGE_MAX_BYTES})`;
+        } else {
+          motif =
+            'image embarquée non bornée : seuls png, jpeg, webp et gif en base64 sont acceptés';
+        }
+        throw new Error(`${context} contient une ${motif} au chemin ${path}`);
       }
       return;
     }

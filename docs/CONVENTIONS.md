@@ -172,7 +172,11 @@ Forme unique, sans exception :
 - **Ne jamais transmettre ce que le destinataire peut recalculer.** On envoie
   `{from, to, path}`, pas la liste des cases révélées.
 - **Ne jamais transmettre d'image**, ni en base64, ni en tuile, ni en dataURL. Uniquement
-  des URLs relatives au dépôt.
+  des URLs relatives au dépôt. **Une exception, une seule** : `token.imageUrl` accepte une
+  image embarquée en `data:` sous 24 KiB (`TOKEN_IMAGE_MAX_BYTES`), plafonnée à 512 KiB
+  cumulés par campagne (`TOKEN_IMAGE_TOTAL_MAX_BYTES`). Amendée le 30 juillet 2026 — voir
+  `ETAT.md` § « Persistance et assets » pour le raisonnement. Ne pas étendre cette
+  exception à un fond d'étage : le rapport de taille est de mille pour un.
 - Tout événement doit être **idempotent** : le rejouer deux fois donne le même état.
 
 ---
