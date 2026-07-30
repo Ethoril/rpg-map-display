@@ -2,6 +2,7 @@
 import { createImportPanel } from './importPanel.js';
 import { createTokenMaker } from './tokenMaker.js';
 import { createSceneLibrary } from './sceneLibrary.js';
+import { createHandouts } from './handouts.js';
 import { VERSION } from '../../core/version.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
@@ -46,6 +47,7 @@ export function createGMPanel(container, options = {}) {
       <button class="gm-tab-btn active" data-tab="import-uvtt" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #333; color: #fff; border: none; border-bottom: 2px solid #4a90e2; cursor: pointer;">UVTT</button>
       <button class="gm-tab-btn" data-tab="import-image" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Image</button>
       <button class="gm-tab-btn" data-tab="token-maker" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Pions</button>
+      <button class="gm-tab-btn" data-tab="handouts" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Handouts</button>
       <button class="gm-tab-btn" data-tab="grid-settings" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Grille</button>
     </div>
 
@@ -65,6 +67,10 @@ export function createGMPanel(container, options = {}) {
 
       <div id="tab-content-token-maker" class="gm-tab-pane" style="display: none;">
         <div id="token-maker-mount"></div>
+      </div>
+
+      <div id="tab-content-handouts" class="gm-tab-pane" style="display: none;">
+        <div id="handouts-mount"></div>
       </div>
 
       <div id="tab-content-grid-settings" class="gm-tab-pane" style="display: none;">
@@ -135,6 +141,7 @@ export function createGMPanel(container, options = {}) {
   const uvttMount = /** @type {HTMLElement} */ (container.querySelector('#import-uvtt-mount'));
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
+  const handoutsMount = /** @type {HTMLElement} */ (container.querySelector('#handouts-mount'));
 
   // Panneaux d'import UVTT et Image — sections de DIAGNOSTIC uniquement.
   //
@@ -143,6 +150,9 @@ export function createGMPanel(container, options = {}) {
   // par l'onglet « Cartes », alimenté par `pnpm maps:prepare`.
   createImportPanel(uvttMount, { mode: 'uvtt' });
   createImportPanel(imageMount, { mode: 'image' });
+
+  // Initialisation du composant Handouts
+  const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
   // Initialisation du générateur de pions avec ajout direct au store lors de la génération
   const tokenMaker = createTokenMaker(tokenMakerMount, {
@@ -256,6 +266,7 @@ export function createGMPanel(container, options = {}) {
       unsubscribeStore();
       versionBadge?.detach();
       sceneLibrary?.destroy();
+      handouts?.destroy();
       container.replaceChildren();
     },
   };

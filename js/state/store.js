@@ -1,6 +1,12 @@
 // @ts-check
 
-import { validateCampaign, createCampaign, normalizeCampaignColors } from '../core/schema.js';
+import {
+  validateCampaign,
+  createCampaign,
+  normalizeCampaignColors,
+  isPersistableAssetUrl,
+  assertPersistableAssetUrl,
+} from '../core/schema.js';
 import {
   setSelectionState,
   clearSelectionState,
@@ -12,12 +18,16 @@ import {
 /** @typedef {import('../core/types.js').Level} Level */
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Cell} Cell */
+/** @typedef {import('../core/types.js').Handout} Handout */
 
 /** @type {Campaign | null} */
 let campaign = null;
 
 /** @type {string | null} */
 let activeLevelId = null;
+
+/** @type {Handout | null} */
+let activeHandout = null;
 
 /** @type {Set<() => void>} */
 const subscribers = new Set();
@@ -118,6 +128,7 @@ export function saveToLocalStorage(sessionId) {
       JSON.stringify({
         activeLevelId,
         selectedTokenId: getSelectedTokenId(),
+        activeHandout,
       })
     );
     lastPersistenceError = null;
@@ -134,7 +145,11 @@ export function saveToLocalStorage(sessionId) {
  * Restaure la campagne et l'état de session depuis LocalStorage.
  *
  * @param {string} sessionId
- * @returns {boolean} true si une campagne valide a été restaurée
+ * @returns {boolean} true si **un état** a été restauré : campagne, état de session, ou
+ *   les deux. Une entrée de session sans campagne est un cas réel et non une anomalie —
+ *   un handout peut être affiché avant tout chargement de carte (chantier H). Aucun
+ *   appelant n'exploite ce retour aujourd'hui ; ne pas en déduire « une campagne est
+ *   chargée » sans vérifier `getCampaign()`.
  */
 export function loadFromLocalStorage(sessionId) {
   const storage = getStorage();
@@ -144,9 +159,9 @@ export function loadFromLocalStorage(sessionId) {
   try {
     const rawCamp = storage.getItem(`rpg_campaign_${sessionId}`);
     const rawSess = storage.getItem(`rpg_session_${sessionId}`);
-    if (!rawCamp) return false;
+    if (!rawCamp && !rawSess) return false;
 
-    const campData = JSON.parse(rawCamp);
+    const campData = rawCamp ? JSON.parse(rawCamp) : null;
     const sessData = rawSess ? JSON.parse(rawSess) : {};
 
     restoreFromSnapshot(
@@ -154,6 +169,7 @@ export function loadFromLocalStorage(sessionId) {
         campaign: campData,
         activeLevelId: sessData.activeLevelId,
         selectedTokenId: sessData.selectedTokenId,
+        activeHandout: sessData.activeHandout,
       },
       { sessionId }
     );
@@ -225,6 +241,22 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     if (token) setSelectionState(token, level);
   } else {
     clearSelectionState();
+  }
+
+  const rawHandout = snapshotData.activeHandout;
+  if (
+    rawHandout &&
+    typeof rawHandout === 'object' &&
+    typeof rawHandout.imageUrl === 'string' &&
+    isPersistableAssetUrl(rawHandout.imageUrl)
+  ) {
+    activeHandout = deepFreeze({
+      id: String(rawHandout.id || 'handout-1'),
+      name: String(rawHandout.name || ''),
+      imageUrl: String(rawHandout.imageUrl),
+    });
+  } else {
+    activeHandout = null;
   }
 
   notifySubscribers();
@@ -544,6 +576,7 @@ export function removeToken(tokenId) {
 export function resetStore() {
   campaign = null;
   activeLevelId = null;
+  activeHandout = null;
   clearSelectionState();
   notifySubscribers();
 }
@@ -557,7 +590,8 @@ export function resetStore() {
  *   activeLevel: Level | null,
  *   selectedTokenId: string | null,
  *   selectedToken: Token | null,
- *   reachableCells: Map<string, number>
+ *   reachableCells: Map<string, number>,
+ *   activeHandout: Handout | null
  * }>}
  */
 export function getState() {
@@ -577,6 +611,7 @@ export function getState() {
     selectedTokenId: selId,
     selectedToken: selectedToken ? structuredClone(selectedToken) : null,
     reachableCells: getReachableCells(),
+    activeHandout: activeHandout ? structuredClone(activeHandout) : null,
   });
 }
 
@@ -615,4 +650,43 @@ export function getSelectedToken() {
   if (!campaign || !selId) return null;
   const token = campaign.tokens.find((t) => t.id === selId) || null;
   return token ? deepFreeze(structuredClone(token)) : null;
+}
+
+/**
+ * Copie figée du handout actif courant (ou null).
+ * @returns {Handout | null}
+ */
+export function getActiveHandout() {
+  return activeHandout ? deepFreeze(structuredClone(activeHandout)) : null;
+}
+
+/**
+ * Définit ou réinitialise le handout actif.
+ * Refuse les URLs non persistables (data:, blob:).
+ *
+ * @param {Handout | null} handout
+ * @returns {void}
+ */
+export function setActiveHandout(handout) {
+  if (handout === null || handout === undefined) {
+    if (activeHandout !== null) {
+      activeHandout = null;
+      notifySubscribers();
+    }
+    return;
+  }
+
+  if (typeof handout !== 'object' || !handout.imageUrl) {
+    throw new Error('Handout invalide : imageUrl requise');
+  }
+
+  assertPersistableAssetUrl(handout.imageUrl, 'imageUrl');
+
+  activeHandout = deepFreeze({
+    id: String(handout.id || `handout-${Date.now()}`),
+    name: String(handout.name || ''),
+    imageUrl: String(handout.imageUrl),
+  });
+
+  notifySubscribers();
 }

@@ -1,6 +1,7 @@
 // @ts-check
 
 import * as store from '../state/store.js';
+import { isPersistableAssetUrl } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
 
@@ -31,6 +32,7 @@ export function applyNetworkEvent(event) {
           campaign: payload.campaign,
           activeLevelId: payload.activeLevelId ?? null,
           selectedTokenId: payload.selectedTokenId ?? null,
+          activeHandout: payload.activeHandout ?? null,
         });
       } catch (err) {
         // CONVENTIONS §6 : une donnée réseau inattendue se journalise et
@@ -73,6 +75,32 @@ export function applyNetworkEvent(event) {
       });
       return true;
     }
+    case 'handout.show': {
+      if (!payload.handout || typeof payload.handout !== 'object') {
+        console.error('Événement "handout.show" refusé : payload handout manquant ou invalide');
+        return false;
+      }
+      if (
+        typeof payload.handout.imageUrl !== 'string' ||
+        !isPersistableAssetUrl(payload.handout.imageUrl)
+      ) {
+        console.error('Événement "handout.show" refusé : URL d\'image non persistable ou interdite');
+        return false;
+      }
+      try {
+        store.setActiveHandout(payload.handout);
+      } catch (err) {
+        console.error(
+          `Événement "handout.show" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'handout.hide': {
+      store.setActiveHandout(null);
+      return true;
+    }
     default:
       return false;
   }
@@ -81,7 +109,7 @@ export function applyNetworkEvent(event) {
 /**
  * Snapshot durable remis à Firestore/LocalStorage.
  *
- * @returns {{campaign: import('../core/types.js').Campaign|null, activeLevelId: string|null, selectedTokenId: string|null}}
+ * @returns {{campaign: import('../core/types.js').Campaign|null, activeLevelId: string|null, selectedTokenId: string|null, activeHandout: import('../core/types.js').Handout|null}}
  */
 export function createSnapshotPayload() {
   const state = store.getState();
@@ -89,6 +117,7 @@ export function createSnapshotPayload() {
     campaign: state.campaign,
     activeLevelId: state.activeLevelId,
     selectedTokenId: state.selectedTokenId,
+    activeHandout: state.activeHandout,
   };
 }
 

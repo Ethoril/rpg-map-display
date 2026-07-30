@@ -10,6 +10,7 @@ import { TokensLayer } from '../render/layers/tokens.js';
 import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
+import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
 import { createNetworkStatus, connectSession } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
@@ -293,6 +294,7 @@ export async function bootstrapPlayerApp(options = {}) {
     transport: transport || undefined,
     role: 'players',
   });
+  const handoutOverlay = mountHandoutOverlay();
 
   function persistCamera() {
     try {
@@ -337,6 +339,7 @@ export async function bootstrapPlayerApp(options = {}) {
   const destroy = () => {
     playerControls.detach();
     versionBadge.detach();
+    handoutOverlay.detach();
     cleanupMobileLocks();
     unsubscribeStore();
     unsubscribeEvents?.();
