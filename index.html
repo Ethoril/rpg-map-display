@@ -3,26 +3,150 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>RPG Map Display — Vue MJ</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "firebase/app": "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js",
-      "firebase/auth": "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js",
-      "firebase/database": "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js",
-      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js"
+  <title>RPG Map Display — Accueil</title>
+  <style>
+    * {
+      box-sizing: border-box;
     }
-  }
-  </script>
-  <link rel="stylesheet" href="./css/gm.css">
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100vh;
+      background-color: #121212;
+      color: #eeeeee;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 800px;
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    p.subtitle {
+      font-size: 1.1rem;
+      color: #aaa;
+      margin-bottom: 2.5rem;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      width: 100%;
+    }
+    .card {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      text-align: left;
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.4rem;
+      color: #4a90e2;
+    }
+    .card.player h2 {
+      color: #50e3c2;
+    }
+    .card p {
+      color: #bbb;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      flex-grow: 1;
+      margin-bottom: 1.5rem;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #ccc;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"] {
+      font: inherit;
+      padding: 0.6rem 0.8rem;
+      background: #2a2a2a;
+      color: #ffffff;
+      border: 1px solid #444;
+      border-radius: 4px;
+      width: 100%;
+    }
+    input[type="text"]:focus {
+      border-color: #4a90e2;
+      outline: none;
+    }
+    .btn {
+      font: inherit;
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.15s ease-in-out;
+      width: 100%;
+    }
+    .btn-gm {
+      background: #4a90e2;
+      color: #fff;
+    }
+    .btn-gm:hover {
+      background: #357abd;
+    }
+    .btn-player {
+      background: #2e7d32;
+      color: #fff;
+    }
+    .btn-player:hover {
+      background: #1b5e20;
+    }
+  </style>
 </head>
 <body>
-  <div id="gm-app">
-    <div id="canvas-container">
-      <canvas id="board"></canvas>
+  <main class="container">
+    <h1>RPG Map Display</h1>
+    <p class="subtitle">Sélectionnez votre rôle pour démarrer ou rejoindre une table de jeu.</p>
+    <div class="cards">
+      <form action="gm.html" method="get" class="card gm" id="form-gm">
+        <h2>Meneur de Jeu (MJ)</h2>
+        <p>Accédez à la vue MJ pour préparer les cartes, déplacer les tokens et gérer le brouillard de guerre.</p>
+        <div class="form-group">
+          <label for="gm-session">Identifiant de session (optionnel)</label>
+          <input type="text" id="gm-session" name="session" placeholder="Laisser vide pour générer un ID">
+        </div>
+        <button type="submit" class="btn btn-gm" id="btn-gm">Ouvrir l'Espace MJ</button>
+      </form>
+
+      <form action="player.html" method="get" class="card player" id="form-player">
+        <h2>Joueur</h2>
+        <p>Rejoignez l'affichage joueur partagé sur l'écran de table.</p>
+        <div class="form-group">
+          <label for="player-session">Identifiant de session (obligatoire)</label>
+          <input type="text" id="player-session" name="session" placeholder="Saisir l'ID fourni par le MJ" required>
+        </div>
+        <button type="submit" class="btn btn-player" id="btn-player">Rejoindre la Table</button>
+      </form>
     </div>
-    <div id="gm-panel"></div>
-  </div>
-  <script type="module" src="./js/app/gm.js"></script>
+  </main>
 </body>
 </html>

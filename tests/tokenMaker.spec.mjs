@@ -8,7 +8,7 @@ const TEST_PNG_BASE64 =
 const TEST_PNG_BUFFER = Buffer.from(TEST_PNG_BASE64, 'base64');
 
 /**
- * Prépare la page index.html et monte le composant TokenMaker dans le DOM.
+ * Prépare la page gm.html et monte le composant TokenMaker dans le DOM.
  * @param {import('@playwright/test').Page} page
  */
 async function setupTokenMaker(page) {
@@ -24,7 +24,7 @@ async function setupTokenMaker(page) {
     }
   });
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
 
   // Injecter et créer le composant TokenMaker
   await page.evaluate(async () => {

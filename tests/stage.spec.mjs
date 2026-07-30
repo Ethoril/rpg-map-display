@@ -7,7 +7,7 @@ async function mountStage(page) {
   /** @type {string[]} */
   const errors = [];
   page.on('pageerror', (/** @type {Error} */ error) => errors.push(error.message));
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.addScriptTag({ type: 'module', url: '/tests/mountStage.mjs' });
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__stageProbe));
   expect(errors).toEqual([]);

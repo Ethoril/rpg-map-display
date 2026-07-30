@@ -58,7 +58,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     const pageErrors = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
 
-    await page.goto('/index.html');
+    await page.goto('/gm.html');
 
     // S'assurer qu'un étage est actif dans le store
     await page.evaluate(async (lvl) => {
@@ -101,7 +101,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
   });
 
   test('2. Instanciation sans étage actif : refusée bruyamment sans muter le store', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/gm.html');
 
     // Vider la campagne / étages dans le store
     await page.evaluate(async () => {
@@ -144,7 +144,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
       })
     );
 
-    await page.goto('/index.html');
+    await page.goto('/gm.html');
     await page.waitForSelector('.gm-tab-btn[data-tab="token-maker"]');
     await page.click('.gm-tab-btn[data-tab="token-maker"]');
 
@@ -153,7 +153,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
   });
 
   test('4. Image de démonstration se décode réellement (naturalWidth > 0)', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/gm.html');
     await page.waitForSelector('.gm-tab-btn[data-tab="token-maker"]');
     await page.click('.gm-tab-btn[data-tab="token-maker"]');
 
@@ -208,7 +208,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
       await installBrowserTransport(p, sessionId, snapshot);
     }
 
-    await pageGM.goto(`/index.html?session=${sessionId}`);
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
     await pagePlayer.goto(`/player.html?session=${sessionId}`);
     await waitForApp(pageGM);
     await waitForApp(pagePlayer);

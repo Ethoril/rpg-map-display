@@ -93,7 +93,7 @@ async function setupWithCatalog(page, fixtures = {}) {
     })
   );
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.waitForSelector('.gm-tab-btn[data-tab="scene-library"]');
   await page.click('.gm-tab-btn[data-tab="scene-library"]');
 

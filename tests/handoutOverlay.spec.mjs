@@ -12,7 +12,7 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await installBrowserTransport(pageGM, sessionId, null);
     await installBrowserTransport(pagePlayer, sessionId, null);
 
-    await pageGM.goto(`/index.html?session=${sessionId}`);
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
     await pagePlayer.goto(`/player.html?session=${sessionId}`);
 
     await waitForApp(pageGM);
@@ -79,7 +79,7 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await installBrowserTransport(pageGM, sessionId, null);
     await installBrowserTransport(pagePlayer, sessionId, null);
 
-    await pageGM.goto(`/index.html?session=${sessionId}`);
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
     await pagePlayer.goto(`/player.html?session=${sessionId}`);
 
     await waitForApp(pageGM);
@@ -114,7 +114,7 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await installBrowserTransport(pageGM, sessionId, null);
     await installBrowserTransport(pagePlayer, sessionId, null);
 
-    await pageGM.goto(`/index.html?session=${sessionId}`);
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
     await pagePlayer.goto(`/player.html?session=${sessionId}`);
 
     await waitForApp(pageGM);

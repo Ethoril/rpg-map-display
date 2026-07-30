@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
 test('les vraies pages Canvas arrêtent de rendre lorsque la scène est immobile', async ({ page }) => {
-  for (const path of ['/index.html?session=idle-gm', '/player.html?session=idle-player']) {
+  for (const path of ['/gm.html?session=idle-gm', '/player.html?session=idle-player']) {
     await page.goto(path);
     await waitForApp(page);
     await page.waitForTimeout(300);
@@ -20,7 +20,7 @@ test('les vraies pages Canvas arrêtent de rendre lorsque la scène est immobile
 
 test('un vrai F5 MJ conserve campagne, URL canonique, pion, étage et caméra', async ({ page }) => {
   const sessionId = `real-f5-${Date.now()}`;
-  await page.goto(`/index.html?session=${sessionId}`);
+  await page.goto(`/gm.html?session=${sessionId}`);
   await waitForApp(page);
 
   await page.evaluate(async () => {

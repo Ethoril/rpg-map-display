@@ -67,6 +67,14 @@ export function createGMPanel(container, options = {}) {
       </div>
 
       <div id="tab-content-token-maker" class="gm-tab-pane" style="display: none;">
+        <div class="token-elevation-section" style="margin-bottom: 1.5rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
+          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Élévation du pion sélectionné</h3>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <label for="token-elevation" style="font-size: 0.85rem; color: #aaa;">Élévation :</label>
+            <input type="number" id="token-elevation" class="token-elevation-input" value="0" disabled style="width: 80px; padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+            <span id="token-elevation-label" style="font-size: 0.8rem; color: #888;">(aucun pion sélectionné)</span>
+          </div>
+        </div>
         <div class="token-library-section" style="margin-bottom: 1.5rem;">
           <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Bibliothèque de pions</h3>
           <div id="token-library-mount"></div>
@@ -273,9 +281,62 @@ export function createGMPanel(container, options = {}) {
     gridOpacityVal.textContent = String(activeLvl.grid.opacity ?? 0.25);
   }
 
+  // --- Contrôle d'élévation du pion sélectionné ---
+  const tokenElevationInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-elevation'));
+  const tokenElevationLabel = /** @type {HTMLElement} */ (container.querySelector('#token-elevation-label'));
+
+  function updateElevationUIFromStore() {
+    const selectedToken = store.getSelectedToken();
+    if (!selectedToken) {
+      tokenElevationInput.disabled = true;
+      tokenElevationInput.value = '0';
+      tokenElevationLabel.textContent = '(aucun pion sélectionné)';
+    } else {
+      tokenElevationInput.disabled = false;
+      tokenElevationInput.value = String(selectedToken.elevation ?? 0);
+      tokenElevationLabel.textContent = selectedToken.label
+        ? `Pion : ${selectedToken.label}`
+        : `Pion ID : ${selectedToken.id}`;
+    }
+  }
+
+  function handleElevationChange() {
+    const selectedToken = store.getSelectedToken();
+    if (!selectedToken) return;
+    const val = parseFloat(tokenElevationInput.value);
+    if (!Number.isFinite(val)) return;
+
+    if (selectedToken.elevation === val) return;
+
+    store.updateToken(selectedToken.id, { elevation: val });
+
+    if (transport) {
+      transport.publish({
+        type: 'token.elevation',
+        payload: {
+          tokenId: selectedToken.id,
+          elevation: val,
+        },
+        at: Date.now(),
+        by: 'gm',
+      });
+    }
+  }
+
+  // `change` seul, jamais `input`. Sur `input`, chaque frappe publiait un
+  // `token.elevation` : saisir « 12 » faisait passer le pion à +1 puis +12 sur les
+  // trois écrans, et chaque frappe coûtait deux validations de la campagne entière
+  // (celle d'`updateToken`, puis celle de `saveToLocalStorage`) plus une écriture
+  // LocalStorage. Le CdC §7 classe cet événement « ponctuel », et CONVENTIONS.md
+  // pose « aucune écriture haute fréquence ».
+  tokenElevationInput.addEventListener('change', handleElevationChange, { signal: listeners.signal });
+
+  updateElevationUIFromStore();
+
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
+    updateElevationUIFromStore();
     const currentLvl = store.getActiveLevel();
     if (currentLvl && currentLvl.grid) {
       gridVisibleInput.checked = currentLvl.grid.visible ?? true;

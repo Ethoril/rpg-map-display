@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Helper pour charger index.html et monter le stage avec la sonde.
+ * Helper pour charger gm.html et monter le stage avec la sonde.
  * @param {import('@playwright/test').Page} page
  */
 async function mountStage(page) {
@@ -10,7 +10,7 @@ async function mountStage(page) {
   const erreurs = [];
   page.on('pageerror', (err) => erreurs.push(err.message));
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.addScriptTag({ type: 'module', url: '/tests/mountStage.mjs' });
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__stageProbe));
 

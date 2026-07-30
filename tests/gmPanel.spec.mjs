@@ -2,6 +2,8 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 
 // Image PNG 100x100 valide pour les tests d'import
 const TEST_PNG_BASE64 =
@@ -13,7 +15,7 @@ const MINIMAL_UVTT_PATH = path.resolve('fixtures/synthetic/minimal.uvtt');
 const MINIMAL_UVTT_CONTENT = fs.readFileSync(MINIMAL_UVTT_PATH, 'utf-8');
 
 /**
- * Monte la vue MJ (index.html) et initialise l'application GM.
+ * Monte la vue MJ (gm.html) et initialise l'application GM.
  * @param {import('@playwright/test').Page} page
  */
 async function setupGMView(page) {
@@ -31,7 +33,7 @@ async function setupGMView(page) {
     }
   });
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.waitForSelector('.gm-tab-btn[data-tab="import-uvtt"]');
 
   expect(errors).toEqual([]);
@@ -252,5 +254,105 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(state.token?.label).toBe('Dragon');
     expect(state.token?.levelId).toBe(state.level?.id);
     expect(state.token?.imageUrl.startsWith('data:')).toBe(false);
+  });
+
+  test('Contrôle d élévation MJ : désactivé sans sélection, actif avec pion sélectionné', async ({ page }) => {
+    await setupGMView(page);
+
+    await page.click('.gm-tab-btn[data-tab="token-maker"]');
+
+    const elevationInput = page.locator('#token-elevation');
+    await expect(elevationInput).toBeDisabled();
+    await expect(page.locator('#token-elevation-label')).toHaveText('(aucun pion sélectionné)');
+
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const schema = await import('../js/core/schema.js');
+      const lvl = schema.createLevel({ id: 'l1', name: 'Niveau 1' });
+      const tok = schema.createToken({ id: 't1', levelId: 'l1', label: 'Mage' });
+      const camp = schema.createCampaign({
+        campaignId: 'c1',
+        name: 'Campagne',
+        levels: [lvl],
+        tokens: [tok],
+      });
+      store.loadCampaign(camp);
+      store.setSelection('t1');
+    });
+
+    await expect(elevationInput).toBeEnabled();
+    await expect(page.locator('#token-elevation-label')).toContainText('Mage');
+    await expect(elevationInput).toHaveValue('0');
+
+    await elevationInput.fill('4');
+    await elevationInput.dispatchEvent('change');
+
+    const elevation = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return store.getSelectedToken()?.elevation;
+    });
+    expect(elevation).toBe(4);
+  });
+
+  test('Synchronisation 2 vraies pages : modification d élévation répercutée via token.elevation', async ({ context }) => {
+    const sessionId = `test-elevation-sync-${Date.now()}`;
+    const level = createLevel({ id: 'l1', name: 'Etage', imageUrl: 'maps/minimal.webp' });
+    const token = createToken({ id: 't1', levelId: 'l1', cell: { a: 1, b: 1 }, label: 'Héros' });
+    const snapshot = {
+      campaign: createCampaign({
+        campaignId: 'c-sync',
+        name: 'Sync',
+        levels: [level],
+        tokens: [token],
+      }),
+      activeLevelId: 'l1',
+      selectedTokenId: null,
+    };
+
+    const pageGM = await context.newPage();
+    const pagePlayer = await context.newPage();
+
+    await installBrowserTransport(pageGM, sessionId, snapshot);
+    await installBrowserTransport(pagePlayer, sessionId, snapshot);
+
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
+    await pagePlayer.goto(`/player.html?session=${sessionId}`);
+    await waitForApp(pageGM);
+    await waitForApp(pagePlayer);
+
+    await pageGM.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      store.setSelection('t1');
+    });
+
+    await pageGM.click('.gm-tab-btn[data-tab="token-maker"]');
+
+    // Valider la valeur comme le fait un utilisateur : `change`, pas `input`. Les deux
+    // opérations sont faites dans la même tâche à dessein — `updateElevationUIFromStore`
+    // réécrit la valeur de l'input à chaque notification du store, et une notification
+    // arrivant entre la saisie et la validation la ramènerait à 0.
+    await pageGM.evaluate(() => {
+      const input = /** @type {HTMLInputElement} */ (document.querySelector('#token-elevation'));
+      input.value = '3';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    await expect.poll(() =>
+      pagePlayer.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        const tok = store.getCampaign()?.tokens.find((/** @type {any} */ t) => t.id === 't1');
+        return tok?.elevation;
+      })
+    ).toBe(3);
+
+    const published = await pageGM.evaluate(
+      () => /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+    );
+    const elevationEvents = published.filter((/** @type {any} */ e) => e.type === 'token.elevation');
+    expect(elevationEvents).toHaveLength(1);
+    expect(elevationEvents[0].payload).toEqual({ tokenId: 't1', elevation: 3 });
+
+    await pageGM.close();
+    await pagePlayer.close();
   });
 });

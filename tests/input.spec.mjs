@@ -18,7 +18,7 @@ import { test, expect } from '@playwright/test';
 const SANS_APPUI_LONG = { longPressMs: 100_000 };
 
 /**
- * Helper pour monter la scène index.html avec le Probe d'input.
+ * Helper pour monter la scène gm.html avec le Probe d'input.
  * @param {import('@playwright/test').Page} page
  * @param {'players'|'gm'} [role='players']
  * @param {{longPressMs?: number, dragHoldMs?: number}} [options] seuils temporels
@@ -28,7 +28,7 @@ async function mountInputStage(page, role = 'players', options = {}) {
   const erreurs = [];
   page.on('pageerror', (err) => erreurs.push(err.message));
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.addScriptTag({ type: 'module', url: '/tests/mountStage.mjs' });
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__stageProbe));
 

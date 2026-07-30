@@ -539,6 +539,46 @@ export function updateLevel(levelId, levelUpdates) {
   notifySubscribers();
 }
 
+const ALLOWED_TOKEN_PATCH_KEYS = new Set(['elevation']);
+
+/**
+ * Met à jour les champs autorisés d'un pion existant.
+ * La campagne candidate complète est validée avant toute mutation.
+ *
+ * @param {string} tokenId
+ * @param {Partial<import('../core/types.js').Token>} patch
+ * @returns {void}
+ */
+export function updateToken(tokenId, patch) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+
+  for (const key of Object.keys(patch)) {
+    if (!ALLOWED_TOKEN_PATCH_KEYS.has(key)) {
+      throw new Error(
+        `Mise à jour du pion "${tokenId}" refusée : champ non autorisé "${key}"`
+      );
+    }
+  }
+
+  const index = campaign.tokens.findIndex((t) => t.id === tokenId);
+  if (index === -1) {
+    throw new Error(`Pion inconnu : "${tokenId}"`);
+  }
+
+  const candidate = structuredClone(campaign);
+  candidate.tokens[index] = {
+    ...candidate.tokens[index],
+    ...patch,
+  };
+
+  assertValidCampaign(candidate, `Mise à jour du pion "${tokenId}"`);
+  campaign = candidate;
+  notifySubscribers();
+}
+
+
 /**
  * Supprime un pion de la campagne par son identifiant.
  *

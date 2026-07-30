@@ -128,7 +128,7 @@ async function setupGm(page, sessionId, fixtures = {}) {
     })
   );
 
-  await page.goto(`/index.html?session=${sessionId}`);
+  await page.goto(`/gm.html?session=${sessionId}`);
   await waitForApp(page);
   await page.click('.gm-tab-btn[data-tab="scene-library"]');
   await page.waitForSelector('.scene-card-load');

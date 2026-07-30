@@ -108,7 +108,7 @@ campagne enregistrée côté navigateur peut encore les référencer.
 ## Démarrage d’une séance
 
 1. Servir le dépôt avec `pnpm run serve`.
-2. Ouvrir `index.html?session=<id>` côté MJ.
+2. Ouvrir `gm.html?session=<id>` côté MJ (ou passer par l'accueil `/`).
 3. Ouvrir `player.html?session=<même-id>` côté tablette.
 4. En mode Firebase, se connecter avec Google lorsque la page le demande.
 5. Vérifier le badge réseau : `Firebase connecté` ou `Mode local`.
@@ -119,6 +119,7 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 ## Ce qui reste à vérifier manuellement
 
 - tenue à 30 fps sous cast sur la tablette cible ;
+- lisibilité du badge d'élévation (+N/−N) sous cast sur la tablette cible (miroir passif Google Cast) ;
 - température et stabilité pendant une séance de 45 minutes puis quatre heures ;
 - limite de texture réelle et qualité du rééchantillonnage ;
 - reprise du Wake Lock et du plein écran sur Android réel ;

@@ -10,7 +10,7 @@ async function mountPlayerViewInPage(page) {
   const erreurs = [];
   page.on('pageerror', (err) => erreurs.push(err.message));
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.addScriptTag({
     type: 'module',
     content: `
@@ -537,7 +537,7 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
   });
 
   test('Deux onglets, forcer build différent sur l\'un -> bannière MJ et overlay rouge joueurs apparaissent', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/gm.html');
 
     const res = await page.evaluate(async () => {
       const vPath = './js/ui/versionBadge.js';

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import * as store from '../js/state/store.js';
 import { applyNetworkEvent, createSnapshotPayload } from '../js/app/networkEvents.js';
+import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 
 /** @typedef {import('../js/core/types.js').NetEvent} NetEvent */
 
@@ -128,3 +129,88 @@ test('3. Aller-retour createSnapshotPayload -> restoreFromSnapshot conservant le
   assert.equal(restored?.name, 'Carte du trésor');
   assert.equal(restored?.imageUrl, './maps/treasure.jpg');
 });
+
+test('4. applyNetworkEvent token.elevation (idempotence & rejeu)', () => {
+  const level = createLevel({ id: 'l1', name: 'Niveau 1' });
+  const token = createToken({
+    id: 't-ele-1',
+    levelId: 'l1',
+    cell: { a: 1, b: 1 },
+    label: 'Mage',
+  });
+
+  store.loadCampaign(
+    createCampaign({
+      campaignId: 'c-ele',
+      name: 'Campagne Elevation',
+      levels: [level],
+      tokens: [token],
+    })
+  );
+
+  /** @type {NetEvent} */
+  const eventElevation = {
+    type: 'token.elevation',
+    payload: {
+      tokenId: 't-ele-1',
+      elevation: 4,
+    },
+    at: Date.now(),
+    by: 'gm',
+  };
+
+  // Premier appel
+  const res1 = applyNetworkEvent(eventElevation);
+  assert.equal(res1, true);
+  assert.equal(store.getCampaign()?.tokens[0].elevation, 4);
+
+  // Rejeu (idempotence)
+  const res2 = applyNetworkEvent(eventElevation);
+  assert.equal(res2, true);
+  assert.equal(store.getCampaign()?.tokens[0].elevation, 4);
+});
+
+test('5. applyNetworkEvent token.elevation refuse pion inconnu ou valeur non finie sans muter le store', () => {
+  const level = createLevel({ id: 'l1', name: 'Niveau 1' });
+  const token = createToken({
+    id: 't-ele-2',
+    levelId: 'l1',
+    cell: { a: 1, b: 1 },
+    label: 'Guerrier',
+  });
+
+  store.loadCampaign(
+    createCampaign({
+      campaignId: 'c-ele-2',
+      name: 'Campagne Elevation 2',
+      levels: [level],
+      tokens: [token],
+    })
+  );
+
+  // Pion inconnu
+  /** @type {NetEvent} */
+  const unknownTokenEvent = {
+    type: 'token.elevation',
+    payload: { tokenId: 'pion-inconnu', elevation: 2 },
+    at: Date.now(),
+    by: 'gm',
+  };
+  const resUnknown = applyNetworkEvent(unknownTokenEvent);
+  assert.equal(resUnknown, false);
+  assert.equal(store.getCampaign()?.tokens[0].elevation, 0);
+
+  // Valeur non finie (NaN / Infinity)
+  /** @type {NetEvent} */
+  const nonFiniteEvent = {
+    type: 'token.elevation',
+    payload: { tokenId: 't-ele-2', elevation: Infinity },
+    at: Date.now(),
+    by: 'gm',
+  };
+  const resNonFinite = applyNetworkEvent(nonFiniteEvent);
+  assert.equal(resNonFinite, false);
+  assert.equal(store.getCampaign()?.tokens[0].elevation, 0);
+});
+
+

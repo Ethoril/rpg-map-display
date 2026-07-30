@@ -36,8 +36,8 @@ pnpm exec playwright install chromium
 pnpm run serve
 ```
 
-L’application MJ est servie sur `http://127.0.0.1:4173/index.html`. La vue joueurs est
-`player.html?session=<identifiant>`.
+L’application est servie sur `http://127.0.0.1:4173/` (page d'accueil). La vue MJ est sur
+`gm.html` (ou `gm.html?session=<identifiant>`) et la vue joueurs sur `player.html?session=<identifiant>`.
 
 Sans configuration Firebase, les pages annoncent explicitement le mode local. La
 configuration Firebase Web, publique par nature, peut être injectée via

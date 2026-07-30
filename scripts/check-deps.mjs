@@ -40,22 +40,41 @@ function lireImportMap(fichier) {
 const empreinte = (/** @type {Record<string, string>} */ map) =>
   JSON.stringify(map, Object.keys(map).sort());
 
-const imports = lireImportMap('index.html');
+/**
+ * Indique si une page HTML contient un script de type module.
+ * Une page sans module n'a aucune version dont dériver : elle est donc exemptée
+ * de la comparaison d'import map (cas de la page d'accueil index.html).
+ *
+ * @param {string} fichier
+ * @returns {boolean}
+ */
+function aUnScriptModule(fichier) {
+  const chemin = path.join(rootDir, fichier);
+  const html = fs.readFileSync(chemin, 'utf8');
+  return /<script\s+[^>]*type=["']module["']/i.test(html);
+}
 
-// TOUTES les pages de la racine doivent porter la MÊME import map. C'est la seule garantie
-// mécanique contre une dérive de version entre deux vues, qui produirait deux clients
-// incompatibles sur la même session (exigence de T-23, appliquée dès maintenant à toute page).
+const imports = lireImportMap('gm.html');
+
+// TOUTES les pages de la racine qui chargent des modules JS doivent porter la MÊME import map.
+// C'est la seule garantie mécanique contre une dérive de version entre deux vues, qui produirait
+// deux clients incompatibles sur la même session (exigence de T-23).
+// Les pages sans script module (ex: page d'accueil index.html) en sont exemptées.
 const autresPages = fs
   .readdirSync(rootDir)
-  .filter((f) => f.toLowerCase().endsWith('.html') && f !== 'index.html');
+  .filter((f) => f.toLowerCase().endsWith('.html') && f !== 'gm.html');
 
 for (const page of autresPages) {
+  if (!aUnScriptModule(page)) {
+    console.log(`[EXEMPT] ${page} : aucun script module, exempté d'import map.`);
+    continue;
+  }
   if (empreinte(lireImportMap(page)) !== empreinte(imports)) {
-    console.error(`[FAIL] L'import map de ${page} diffère de celle d'index.html.`);
+    console.error(`[FAIL] L'import map de ${page} diffère de celle de gm.html.`);
     console.error('Les versions n\'ont qu\'un seul domicile : toutes les pages la partagent.');
     process.exit(1);
   }
-  console.log(`[MAP OK] ${page} : import map identique à index.html.`);
+  console.log(`[MAP OK] ${page} : import map identique à gm.html.`);
 }
 /** @type {string[]} */
 const urls = Object.values(imports);

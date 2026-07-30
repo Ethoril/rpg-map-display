@@ -62,7 +62,7 @@ async function ouvrirClient(browser, sessionId, role) {
     /** @type {[Record<string, any>, string, string]} */ ([config, sessionId, role])
   );
 
-  await page.goto('/index.html');
+  await page.goto('/gm.html');
   await page.addScriptTag({ type: 'module', url: '/tests/mountTransport.mjs' });
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__probe), null, {
     timeout: 30000,

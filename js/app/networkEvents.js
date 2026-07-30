@@ -75,6 +75,26 @@ export function applyNetworkEvent(event) {
       });
       return true;
     }
+    case 'token.elevation': {
+      if (!payload.tokenId || typeof payload.tokenId !== 'string' || !Number.isFinite(payload.elevation)) {
+        console.error('Événement "token.elevation" refusé : payload tokenId ou elevation invalide');
+        return false;
+      }
+      if (!campaign?.tokens.some((token) => token.id === payload.tokenId)) {
+        console.error(`Événement "token.elevation" refusé : pion inconnu "${payload.tokenId}"`);
+        return false;
+      }
+      try {
+        store.updateToken(payload.tokenId, { elevation: payload.elevation });
+      } catch (err) {
+        console.error(
+          `Événement "token.elevation" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+
     case 'handout.show': {
       if (!payload.handout || typeof payload.handout !== 'object') {
         console.error('Événement "handout.show" refusé : payload handout manquant ou invalide');

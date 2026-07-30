@@ -22,6 +22,7 @@ import {
   addLevel,
   updateActiveLevel,
   updateLevel,
+  updateToken,
 } from '../js/state/store.js';
 
 import { setSelectionState } from '../js/state/selection.js';
@@ -426,4 +427,68 @@ test('Une campagne héritée contenant un ARGB est chargée après conversion et
   assert.equal(loadedLight?.color, '#ffffff');
   assert.equal(state.campaign?.levels[0].ambient.color, '#F7EAE4');
 });
+
+test('updateToken modifie l elevation et valide la campagne entiere', () => {
+  const camp = makeValidCampaign();
+  loadCampaign(camp);
+
+  updateToken('hero-1', { elevation: 5 });
+
+  const state = getState();
+  const token = state.campaign?.tokens.find((t) => t.id === 'hero-1');
+  assert.strictEqual(token?.elevation, 5);
+});
+
+test('updateToken refuse un pion inconnu et laisse le store intact', () => {
+  const camp = makeValidCampaign();
+  loadCampaign(camp);
+  const stateBefore = getState();
+
+  assert.throws(() => {
+    updateToken('inconnu-99', { elevation: 3 });
+  }, /Pion inconnu/);
+
+  assert.deepStrictEqual(getState(), stateBefore);
+});
+
+test('updateToken refuse les champs hors liste blanche (cell, levelId, id, markers, etc.) en nommant le champ', () => {
+  const camp = makeValidCampaign();
+  loadCampaign(camp);
+  const stateBefore = getState();
+
+  assert.throws(() => {
+    // @ts-ignore
+    updateToken('hero-1', { cell: { a: 9, b: 9 } });
+  }, /champ non autorisé "cell"/);
+
+  assert.throws(() => {
+    // @ts-ignore
+    updateToken('hero-1', { levelId: 'et1' });
+  }, /champ non autorisé "levelId"/);
+
+  assert.throws(() => {
+    // @ts-ignore
+    updateToken('hero-1', { id: 'autre-id' });
+  }, /champ non autorisé "id"/);
+
+  assert.throws(() => {
+    // @ts-ignore
+    updateToken('hero-1', { markers: ['dead'] });
+  }, /champ non autorisé "markers"/);
+
+  assert.deepStrictEqual(getState(), stateBefore);
+});
+
+test('updateToken ne mute rien si la campagne candidate est invalide (elevation NaN / non finie)', () => {
+  const camp = makeValidCampaign();
+  loadCampaign(camp);
+  const stateBefore = getState();
+
+  assert.throws(() => {
+    updateToken('hero-1', { elevation: Infinity });
+  });
+
+  assert.deepStrictEqual(getState(), stateBefore);
+});
+
 
