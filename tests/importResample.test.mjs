@@ -3,25 +3,66 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { resample } from '../scripts/resample.mjs';
+import { resample, MAX_PREPARED_TEXTURE_PX } from '../scripts/resample.mjs';
 import { main as importUvttMain } from '../scripts/import-uvtt.mjs';
 import { validateCampaign } from '../js/core/schema.js';
 
-test('resample rééchantillonne une image vers WebP', async () => {
+test('resample réduit vers la cible quand la source est plus dense', async () => {
   const minimalPath = path.resolve('fixtures/synthetic/minimal.uvtt');
-  const jsonStr = fs.readFileSync(minimalPath, 'utf-8');
-  const uvttData = JSON.parse(jsonStr);
+  const uvttData = JSON.parse(fs.readFileSync(minimalPath, 'utf-8'));
 
-  const result = await resample(uvttData.image, 140, {
+  // La fixture fait 640x512 (64 px/case) : viser 32 px/case est une vraie réduction.
+  const result = await resample(uvttData.image, 32, {
     sourcePxPerCell: uvttData.resolution.pixels_per_grid,
     widthCells: uvttData.resolution.map_size.x,
     heightCells: uvttData.resolution.map_size.y,
   });
 
   assert.ok(Buffer.isBuffer(result.buffer));
-  assert.equal(result.width, 1400); // 10 * 140
-  assert.equal(result.height, 1120); // 8 * 140
-  assert.equal(result.pxPerCell, 140);
+  assert.equal(result.width, 320); // 10 * 32
+  assert.equal(result.height, 256); // 8 * 32
+  assert.equal(result.pxPerCell, 32);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('resample n’agrandit jamais au-delà de la source, et le dit', async () => {
+  const minimalPath = path.resolve('fixtures/synthetic/minimal.uvtt');
+  const uvttData = JSON.parse(fs.readFileSync(minimalPath, 'utf-8'));
+
+  // Viser 140 px/case depuis une source à 64 : la cible 1400x1120 excède les
+  // 640x512 disponibles. Agrandir ajouterait du poids sans un pixel de détail.
+  const result = await resample(uvttData.image, 140, {
+    sourcePxPerCell: uvttData.resolution.pixels_per_grid,
+    widthCells: uvttData.resolution.map_size.x,
+    heightCells: uvttData.resolution.map_size.y,
+  });
+
+  assert.equal(result.width, 640);
+  assert.equal(result.height, 512);
+  assert.equal(result.pxPerCell, 64);
+
+  // L'avertissement doit nommer la densité à réexporter, sinon il est inactionnable.
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /moins dense/);
+  assert.match(result.warnings[0], /140 px\/case/);
+});
+
+test('resample plafonne à MAX_PREPARED_TEXTURE_PX sans jamais agrandir', async () => {
+  const minimalPath = path.resolve('fixtures/synthetic/minimal.uvtt');
+  const uvttData = JSON.parse(fs.readFileSync(minimalPath, 'utf-8'));
+
+  // Cible délibérément absurde : 10 cases x 2000 px = 20000 px, bien au-delà du
+  // plafond. Les deux gardes s'appliquent dans l'ordre, et la source gagne.
+  const result = await resample(uvttData.image, 2000, {
+    widthCells: uvttData.resolution.map_size.x,
+    heightCells: uvttData.resolution.map_size.y,
+  });
+
+  assert.ok(result.width <= MAX_PREPARED_TEXTURE_PX);
+  assert.ok(result.height <= MAX_PREPARED_TEXTURE_PX);
+  assert.equal(result.width, 640);
+  assert.equal(result.height, 512);
+  assert.equal(result.warnings.length, 2);
 });
 
 test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON valide', async () => {
@@ -45,7 +86,9 @@ test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON 
     assert.deepEqual(errors, []);
 
     assert.equal(campaign.levels[0].imageUrl, 'maps/minimal.webp');
-    assert.equal(campaign.levels[0].pxPerCell, 140);
+    // 140 demandé, 64 obtenu : le garde-fou tient jusqu'au document de scène,
+    // et `pxPerCell` décrit l'image réellement écrite, pas celle demandée.
+    assert.equal(campaign.levels[0].pxPerCell, 64);
   } finally {
     process.argv = originalArgv;
   }

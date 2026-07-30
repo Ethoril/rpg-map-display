@@ -10,7 +10,7 @@
       "imageUrl": "maps/generated/manoir-rdc.webp",
       "videoUrl": null,
       "animatedOverlays": [],
-      "pxPerCell": 85.33333333333333,
+      "pxPerCell": 140,
       "widthCells": 48,
       "heightCells": 45,
       "grid": {

@@ -15,6 +15,21 @@
         "lights": 0,
         "bakedLighting": false
       }
+    },
+    {
+      "id": "testbig150",
+      "name": "Testbig150",
+      "sourceUrl": "maps/testbig150.dd2vtt",
+      "sceneUrl": "maps/generated/testbig150.scene.json",
+      "imageUrl": "maps/generated/testbig150.webp",
+      "sourceHash": "sha256-47fea547f3690aaa9f5bcf6b4ce3c8b07e219eaa53402552a829ea88ebc34d28",
+      "levelCount": 1,
+      "features": {
+        "walls": 1338,
+        "portals": 141,
+        "lights": 185,
+        "bakedLighting": true
+      }
     }
   ]
 }

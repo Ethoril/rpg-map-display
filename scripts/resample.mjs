@@ -4,7 +4,47 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Jimp } from 'jimp';
 import webpFormat from '@jimp/wasm-webp';
-import { MAX_TEXTURE_FALLBACK } from '../js/core/constants.js';
+
+/**
+ * Plafond de dimension des images préparées, en pixels.
+ *
+ * **À ne pas confondre avec `MAX_TEXTURE_FALLBACK` de `js/core/constants.js`**, qui
+ * est le repli du runtime quand la limite WebGL du GPU ne peut pas être interrogée.
+ * Celui-ci est un budget de préparation côté Node — même raisonnement que le plafond
+ * de décodage du chantier E, qui n'a délibérément pas sa place dans le modèle partagé.
+ *
+ * **La règle qui les lie** : ce plafond ne doit jamais dépasser la limite du plus
+ * faible appareil du parc, sans quoi on prépare des cartes qu'un écran ne peut pas
+ * afficher. 8192 est la valeur **mesurée** sur la Samsung Galaxy Tab S9 FE, seul
+ * appareil joueur. Le relever encore exige une nouvelle mesure, pas une estimation.
+ */
+export const MAX_PREPARED_TEXTURE_PX = 8192;
+
+/**
+ * Plafonds de décodage JPEG, relevés au-delà des défauts de `jpeg-js`.
+ *
+ * Les défauts (100 MP, 512 Mio) refusent un export Dungeondraft à 150 px/case d'à
+ * peine 65x71 cases : 9750x10650 fait 103,8 MP. Les deux plafonds comptent — lever
+ * le seul plafond de résolution laisse échouer sur la mémoire, mesuré entre 1024 et
+ * 1536 Mio pour cette image.
+ */
+const JPEG_DECODE_OPTIONS = {
+  'image/jpeg': { maxResolutionInMP: 512, maxMemoryUsageInMB: 4096 },
+};
+
+/**
+ * Qualité d'encodage WebP des cartes préparées.
+ *
+ * L'encodeur `@jimp/wasm-webp` **prend 100 par défaut**, ce qui n'était pas un
+ * choix : `encode` était appelé sans options. Mesuré sur `manoir-rdc` en 6720x6300,
+ * q100 pèse 10,01 Mio contre 4,87 en q90 — pour une carte qui pesait déjà 4,96 Mio
+ * à l'ancien plafond de 4096. Autrement dit, q90 finance intégralement le passage à
+ * 8192 : même poids qu'avant, 64 % de résolution linéaire en plus.
+ *
+ * Un cran plus bas (q80, 3,01 Mio) reste possible, mais les aplats et les dégradés
+ * d'eau sont le premier endroit où ça se verrait — à juger sur la tablette, pas ici.
+ */
+const WEBP_QUALITY = 90;
 
 // Patch fetch pour le chargement des modules WASM dans Node.js pour file://
 const originalFetch = globalThis.fetch;
@@ -53,15 +93,27 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
 
   /** @type {any} */
   let img;
+  let jimpError;
   try {
-    img = await Jimp.read(inputBuffer);
+    // `Jimp.read(buffer, options)` **jette les options en silence** : sur une entrée
+    // Buffer il délègue à `fromBuffer(url)` sans les transmettre (@jimp/core). Passer
+    // par `fromBuffer` est donc obligatoire, sans quoi les plafonds ci-dessus n'ont
+    // aucun effet et un export à 150 px/case reste refusé.
+    img = await Jimp.fromBuffer(inputBuffer, JPEG_DECODE_OPTIONS);
   } catch (err) {
+    jimpError = err;
     try {
       const format = webpFormat();
       const decoded = await format.decode(inputBuffer);
       img = new Jimp({ data: decoded.data, width: decoded.width, height: decoded.height });
-    } catch {
-      throw new Error(`Impossible de lire l'image source avec Jimp : ${err instanceof Error ? err.message : String(err)}`);
+    } catch (webpErr) {
+      // Les deux causes sont rapportées : ne garder que la première faisait passer
+      // un vrai défaut de décodage WebP pour un échec Jimp, et inversement.
+      const first = jimpError instanceof Error ? jimpError.message : String(jimpError);
+      const second = webpErr instanceof Error ? webpErr.message : String(webpErr);
+      throw new Error(
+        `Impossible de lire l'image source. Jimp : ${first} — repli WebP : ${second}`
+      );
     }
   }
 
@@ -85,17 +137,56 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
     targetHeight = srcHeight;
   }
 
-  // Vérification et plafonnement à MAX_TEXTURE_FALLBACK (4096px)
-  let finalWidth = targetWidth;
-  let finalHeight = targetHeight;
+  // Deux contraintes réduisent la cible, et elles se combinent en **un seul**
+  // facteur d'échelle. Les appliquer l'une après l'autre composerait deux
+  // arrondis vers le bas : sur une cible de 20000x16000 ramenée à une source de
+  // 640x512, la hauteur sortait à 511 au lieu de 512, et le rapport d'aspect
+  // dérivait d'autant. Un seul `floor`, donc.
 
-  if (targetWidth > MAX_TEXTURE_FALLBACK || targetHeight > MAX_TEXTURE_FALLBACK) {
-    const maxDim = Math.max(targetWidth, targetHeight);
-    const scale = MAX_TEXTURE_FALLBACK / maxDim;
-    finalWidth = Math.floor(targetWidth * scale);
-    finalHeight = Math.floor(targetHeight * scale);
+  // 1. Limite de texture des appareils du parc.
+  const capScale = Math.min(
+    1,
+    MAX_PREPARED_TEXTURE_PX / Math.max(targetWidth, targetHeight)
+  );
+
+  // 2. Garde-fou anti-agrandissement : la sortie ne dépasse jamais la source.
+  //
+  // Sans lui, une source moins dense que la cible est interpolée vers le haut : on
+  // paie le poids d'une grande image pour une netteté **inférieure** à celle du
+  // fichier d'origine, et rien ne le signale. Le défaut était inerte tant que le
+  // plafond valait 4096 ; il devient actif à 8192.
+  //
+  // Il est ici plutôt que dans une consigne d'export parce qu'une règle que rien
+  // n'applique n'est pas un mécanisme — leçon déjà payée sur l'image de pion à
+  // déposer à la main, qui affichait des ronds gris sans le moindre message.
+  const sourceScale = Math.min(1, srcWidth / targetWidth, srcHeight / targetHeight);
+
+  // `round` puis bornage par la source, plutôt que `floor`. Une source au rapport
+  // exact — 4680x5112 pour une cible 9100x9940, soit 72/140 des deux côtés —
+  // sortait à 4679x5111 : le facteur d'échelle ne retombe pas sur l'entier en
+  // binaire, et `floor` transforme 4679,9999 en un pixel perdu. Le bornage par
+  // `srcWidth`/`srcHeight` garde l'invariant « jamais au-delà de la source » que
+  // `round` seul ne garantirait pas.
+  const scale = Math.min(capScale, sourceScale);
+  const finalWidth = Math.max(1, Math.min(srcWidth, Math.round(targetWidth * scale)));
+  const finalHeight = Math.max(1, Math.min(srcHeight, Math.round(targetHeight * scale)));
+
+  if (capScale < 1) {
     warnings.push(
-      `Image rééchantillonnée (${targetWidth}x${targetHeight}) dépasse la limite de texture (${MAX_TEXTURE_FALLBACK}px). Redimensionnement à ${finalWidth}x${finalHeight}.`
+      `Image rééchantillonnée (${targetWidth}x${targetHeight}) dépasse la limite de texture (${MAX_PREPARED_TEXTURE_PX}px). Redimensionnement à ${Math.floor(targetWidth * capScale)}x${Math.floor(targetHeight * capScale)}.`
+    );
+  }
+
+  // N'avertir que si la source est la contrainte **dominante** : sous le plafond,
+  // une source plus petite que la cible brute ne prive de rien.
+  if (sourceScale < capScale) {
+    const sourceDensity =
+      widthCells && widthCells > 0 ? (srcWidth / widthCells).toFixed(1) : '?';
+    warnings.push(
+      `Source moins dense que la cible : ${srcWidth}x${srcHeight} (${sourceDensity} px/case) ` +
+        `pour une cible de ${targetWidth}x${targetHeight}. Sortie ramenée à ` +
+        `${finalWidth}x${finalHeight} plutôt qu'agrandie — agrandir ajoute du poids, ` +
+        `jamais du détail. Réexporter la carte à ${targetPxPerCell} px/case ou plus.`
     );
   }
 
@@ -107,7 +198,7 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
   img.resize({ w: finalWidth, h: finalHeight });
 
   const format = webpFormat();
-  const outputBuffer = await format.encode(img.bitmap);
+  const outputBuffer = await format.encode(img.bitmap, { quality: WEBP_QUALITY });
 
   if (options.outputPath) {
     const dir = path.dirname(options.outputPath);

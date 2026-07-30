@@ -9,6 +9,11 @@ export const FOG_PX_PER_CELL = 8;
 /**
  * Taille maximale de texture de secours (en pixels) si la limite WebGL du GPU ne peut être interrogée.
  * Garantit la compatibilité sur les appareils mobiles et tablettes modestes.
+ *
+ * **Ce n'est pas le plafond de préparation des cartes**, qui vaut
+ * `MAX_PREPARED_TEXTURE_PX` dans `scripts/resample.mjs` et se mesure sur le parc réel.
+ * Les deux ont divergé volontairement : celui-ci est une hypothèse prudente là où on
+ * ne sait pas, celui-là un budget assumé là où on a mesuré. Ne pas les réunifier.
  */
 export const MAX_TEXTURE_FALLBACK = 4096;
 

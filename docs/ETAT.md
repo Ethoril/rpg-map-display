@@ -181,6 +181,69 @@ Les cartes sont préparées dans `maps/`, par exemple :
 node scripts/import-uvtt.mjs chemin/vers/carte.uvtt
 ```
 
+### Amendement du 30 juillet 2026 — plafond de préparation à 8192, et anti-agrandissement
+
+Trois défauts liés, découverts en tentant de préparer un export Dungeondraft à 150 px/case
+(65 × 71 cases, 9750 × 10650 px, 22 Mo).
+
+**1. Un export au-delà de 100 MP était refusé, et le message désignait la mauvaise cause.**
+`jpeg-js` plafonne par défaut à 100 MP **et** à 512 Mio de mémoire — deux plafonds, dont le
+message n’en nomme qu’un. Lever le seul plafond de résolution laisse échouer sur la mémoire,
+mesurée entre 1024 et 1536 Mio pour cette image.
+
+Le piège qui a coûté le plus de temps : **`Jimp.read(buffer, options)` jette les options en
+silence.** Sur une entrée `Buffer` il délègue à `fromBuffer(url)` sans les transmettre. Passer
+les bons plafonds au code existant n’aurait donc rien changé, sans le moindre message. Le
+décodage passe désormais par `Jimp.fromBuffer`. Le repli WebP, lui, rapporte les **deux**
+causes : ne garder que la première faisait passer un vrai défaut de décodage WebP pour un
+échec Jimp.
+
+**2. Le plafond de préparation passe de 4096 à 8192**, dans `MAX_PREPARED_TEXTURE_PX`
+(`scripts/resample.mjs`) — **et non** dans `MAX_TEXTURE_FALLBACK`, qui reste à 4096. Les deux
+ne disent pas la même chose : le second est le repli du runtime quand la limite WebGL ne peut
+pas être interrogée, donc une hypothèse prudente ; le premier est un budget de préparation
+côté Node, adossé à une mesure. Même partage qu’au chantier E pour le plafond de décodage.
+La règle qui les lie : **le plafond de préparation ne doit jamais dépasser la limite du plus
+faible appareil du parc**, 8192 étant la valeur mesurée sur la Tab S9 FE.
+
+Le gain n’est pas théorique : `manoir-rdc` est exportée nativement en 6720 × 6300, et le
+plafond de 4096 en jetait **39 %**. Elle sort maintenant à sa taille native, sans
+interpolation, sans réexport.
+
+**3. Rien n’empêchait d’agrandir une source moins dense que la cible.** La chaîne visait
+`cases × 140` sans jamais comparer à la taille de la source : une carte fournie en dessous
+était interpolée vers le haut, payée au poids d’une grande image pour une netteté
+**inférieure** à celle du fichier d’origine. Le défaut était inerte tant que le plafond valait
+4096 ; il devenait actif à 8192. La sortie est désormais bornée par la source, avec un
+avertissement qui nomme la densité à réexporter.
+
+> **Une seule consigne d’export à retenir : 140 px/case ou plus.** C’est exactement le seuil
+> au-dessus duquel aucun agrandissement n’est possible, quel que soit le plafond et quelle que
+> soit la taille de la carte — la cible ne dépasse jamais `cases × 140`. En dessous, le seuil
+> dépend de la carte : une grande carte tape dans le plafond et exige donc *moins* de densité
+> qu’une petite. Contre-intuitif, d’où l’intérêt de ne retenir que 140.
+
+Le garde-fou est dans le code et non dans la consigne, parce qu’une règle que rien n’applique
+n’est pas un mécanisme — leçon déjà payée sur l’image de pion à déposer à la main, qui
+affichait des ronds gris sans le moindre message.
+
+**Deux détails d’implémentation qui ont chacun produit un défaut :**
+
+- Les deux contraintes se combinent en **un seul** facteur d’échelle. Appliquées l’une après
+  l’autre, leurs arrondis vers le bas se composaient : une source au rapport exact
+  (4680 × 5112 pour une cible 9100 × 9940, soit 72/140 des deux côtés) sortait en 4679 × 5111.
+- L’encodeur WebP prend **quality 100 par défaut**, et `encode` était appelé sans options —
+  ce n’était donc pas un choix. `manoir-rdc` pesait 10,01 Mio en q100 contre **4,87 en q90**,
+  pour une carte qui pesait déjà 4,96 Mio à l’ancien plafond. **q90 finance intégralement le
+  passage à 8192** : même poids qu’avant, 64 % de résolution linéaire en plus.
+
+**Conséquence sur les fixtures, à connaître.** Les quatre fixtures synthétiques portaient un
+PNG de **1 × 1 pixel** tout en déclarant 10 × 8 cases à 64 px/case. La suite « vérifiait »
+donc une sortie 1400 × 1120 obtenue en interpolant un unique pixel — elle ne vérifiait rien.
+`scripts/make-fixture.mjs` produit maintenant une vraie image 640 × 512 (damier à la maille de
+la case, plus une diagonale d’un pixel de large comme détail fin), cohérente avec ce que la
+fixture annonce. Les fixtures passent de 1 à 8,8 Kio, et la suite unitaire de 2,8 à 5,3 s.
+
 La publication du catalogue est **transactionnelle** : `pnpm maps:prepare` n’écrit
 `catalog.json` que si toutes les cartes ont été préparées. Une seule carte fautive fait
 sortir le CLI en code non nul et laisse le catalogue précédent intact, octet pour octet.
@@ -200,6 +263,12 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 
 ## Ce qui reste à vérifier manuellement
 
+- **tenue d’une carte préparée à 8192 px sur la tablette** — le passage du plafond de 4096 à
+  8192 n’est validé par aucune mesure d’affichage : 7499 × 8192 en RGBA fait **245 Mio décodés**
+  dans le navigateur, et 8192 est exactement la limite *mesurée* de la dalle, donc sans marge.
+  La carte `testbig150` est au catalogue pour ça (65 × 71 cases, 1338 murs, 141 portes,
+  185 lumières, 13,7 Mio de WebP). Si elle ne tient pas, le pas suivant est de redescendre
+  `MAX_PREPARED_TEXTURE_PX`, pas de bricoler le rendu ;
 - tenue à 30 fps sous cast sur la tablette cible ;
 - lisibilité du badge d'élévation (+N/−N) sous cast sur la tablette cible (miroir passif Google Cast) ;
 - température et stabilité pendant une séance de 45 minutes puis quatre heures ;

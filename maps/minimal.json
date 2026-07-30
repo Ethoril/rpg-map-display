@@ -10,7 +10,7 @@
       "imageUrl": "maps/minimal.webp",
       "videoUrl": null,
       "animatedOverlays": [],
-      "pxPerCell": 140,
+      "pxPerCell": 64,
       "widthCells": 10,
       "heightCells": 8,
       "grid": {

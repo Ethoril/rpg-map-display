@@ -4,6 +4,22 @@ test-results/
 playwright-report/
 fixtures/real/*
 !fixtures/real/.gitkeep
+
+# Sources d'export VTT : lourdes, jamais téléchargées à l'exécution.
+#
+# Seuls les artefacts de maps/generated/ sont servis ; `sourceUrl` du catalogue
+# n'est qu'une chaîne validée par `js/import/catalog.js`, jamais suivie. Le
+# workflow publie le dépôt entier (`path: '.'`), donc une source commitée part
+# aussi sur le web et compte dans la limite de 1 Go de GitHub Pages.
+#
+# Deux conséquences à connaître :
+# - `manoir-rdc.uvtt` reste suivi, car .gitignore ne désuit pas un fichier déjà
+#   commité. La règle vaut pour la suite, pas rétroactivement.
+# - sur un clone sans les sources, `pnpm maps:prepare` republierait un catalogue
+#   amputé des cartes absentes. La préparation se fait sur le poste qui détient
+#   les sources — comme fixtures/real/, et pour la même raison.
+maps/*.dd2vtt
+maps/*.df2vtt
 .DS_Store
 *.log
 .claude/

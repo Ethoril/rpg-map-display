@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Jimp } from 'jimp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,8 +18,53 @@ for (const dir of [syntheticDir, expectedDir, imagesDir, realDir]) {
   }
 }
 
-// Mock base64 image (1x1 transparent PNG)
-const mockBase64Image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const CELLS_X = 10;
+const CELLS_Y = 8;
+const PX_PER_CELL = 64;
+
+/**
+ * Fabrique une image aux dimensions que la fixture **déclare**.
+ *
+ * Les fixtures portaient jusqu'ici un PNG de 1×1 pixel tout en annonçant
+ * 10×8 cases à 64 px/case. Ça tenait tant que le rééchantillonnage agrandissait
+ * sans rien dire : la suite « vérifiait » une sortie 1400×1120 obtenue par
+ * interpolation d'un unique pixel, donc ne vérifiait rien du tout. Le garde-fou
+ * anti-agrandissement de `scripts/resample.mjs` rend ce mensonge visible, et le
+ * bon correctif est de le supprimer plutôt que d'exempter les fixtures.
+ *
+ * Le damier à la maille de la case donne une image dont le rééchantillonnage a un
+ * résultat prévisible, et la diagonale fournit du détail fin qui ne survivrait pas
+ * à une réduction fautive. Le tout compresse en quelques kilo-octets.
+ *
+ * @returns {Promise<string>} PNG encodé en base64, sans préfixe `data:`
+ */
+async function makeCalibrationImage() {
+  const width = CELLS_X * PX_PER_CELL;
+  const height = CELLS_Y * PX_PER_CELL;
+  const img = new Jimp({ width, height, color: 0x1e1e28ff });
+
+  for (let cy = 0; cy < CELLS_Y; cy++) {
+    for (let cx = 0; cx < CELLS_X; cx++) {
+      if ((cx + cy) % 2 !== 0) continue;
+      const color = 0xc8b48cff;
+      for (let y = 0; y < PX_PER_CELL; y++) {
+        for (let x = 0; x < PX_PER_CELL; x++) {
+          img.setPixelColor(color, cx * PX_PER_CELL + x, cy * PX_PER_CELL + y);
+        }
+      }
+    }
+  }
+
+  // Diagonale d'un pixel de large : le détail le plus fin que l'image contienne.
+  for (let x = 0; x < Math.min(width, height); x++) {
+    img.setPixelColor(0xff3c3cff, x, x);
+  }
+
+  const buffer = await img.getBuffer('image/png');
+  return buffer.toString('base64');
+}
+
+const mockBase64Image = await makeCalibrationImage();
 
 const baseMinimal = {
   format: 0.3,
