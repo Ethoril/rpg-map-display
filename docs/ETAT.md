@@ -129,6 +129,12 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 - limite de texture réelle et qualité du rééchantillonnage ;
 - reprise du Wake Lock et du plein écran sur Android réel ;
 - règles de sécurité du projet Firebase de production ;
+- **restriction de la clé d'API Google** (Cloud Console → Identifiants) : référents HTTP
+  limités au domaine Pages et à `127.0.0.1`, et restriction aux seules API utilisées. La clé
+  est commitée dans `firebase-config.js` et publique par nature — elle identifie le projet,
+  elle n'autorise rien — mais **non restreinte**, elle peut être présentée à d'autres API
+  Google activées sur le projet, avec le coût correspondant. C'est la seule conséquence réelle
+  de l'alerte « secret détecté » de GitHub, qui se déclenche sur le motif `AIzaSy` ;
 - purge de fin de séance selon l’usage réel.
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.

@@ -15,6 +15,22 @@
 //
 // Les identifiants du compte technique de test n'ont RIEN à faire ici : ils vivent dans le
 // secret GitHub `RPG_FIREBASE_CONFIG`, lu par la CI comme variable d'environnement.
+//
+// ── Alerte « secret détecté » de GitHub : attendue, et à ne pas confondre avec une fuite ──
+//
+// `apiKey` commence par `AIzaSy`, motif des clés d'API Google : la détection automatique se
+// déclenche donc à chaque fois. Ce n'est pas un mot de passe. Une clé Firebase Web **identifie**
+// le projet auprès des services, elle n'**autorise** rien par elle-même : l'accès aux données
+// est gouverné par les règles de sécurité Firebase, et l'authentification par les fournisseurs
+// activés et les domaines autorisés.
+//
+// MAIS la clé n'est pas inerte pour autant, et c'est le point à ne pas balayer : une clé
+// Google **non restreinte** peut être présentée à d'autres API Google activées sur le projet,
+// avec un coût ou une consommation de quota à la clé. La contre-mesure ne relève pas de ce
+// fichier — elle est dans Google Cloud Console → Identifiants → cette clé :
+//   1. restriction d'application par référents HTTP (le domaine Pages, et 127.0.0.1) ;
+//   2. restriction d'API à celles réellement utilisées (Identity Toolkit, RTDB, Firestore).
+// Consigné dans les vérifications manuelles de docs/ETAT.md.
 (function () {
   // Navigateur piloté : ne rien configurer.
   //
