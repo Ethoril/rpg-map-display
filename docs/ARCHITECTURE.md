@@ -16,10 +16,12 @@ implémentation qui lève.
 ```
 F:\rpg-map-display\
 │
-├─ index.html                     [1a] vue MJ. Import map créée en T-03b (domicile unique
+├─ index.html                     [1b] page d'accueil : choix MJ / joueurs et saisie de la
+│                                      session. Aucun module chargé, donc AUCUNE import map
+├─ gm.html                        [1a] vue MJ. Import map créée en T-03b (domicile unique
 │                                      des versions), reste de la page construit en T-22
 ├─ player.html                    [1a] vue joueurs — URL autonome, zéro UI. Import map
-│                                      IDENTIQUE à index.html (T-23)
+│                                      IDENTIQUE à gm.html (T-23)
 ├─ jsconfig.json                  [1a] checkJs strict, noEmit
 ├─ package.json                   [1a] scripts Node uniquement
 ├─ diag.html                      [1a] diagnostic matériel — limites GPU, fps, thermique,
@@ -149,6 +151,14 @@ F:\rpg-map-display\
     │                              spécifications des trois chantiers restants
     └─ ETAT.md                    avancement, reprise, corrections du plan
 ```
+
+> `index.html` et `gm.html` ont été **redistribués au chantier J**. `index.html` était la vue
+> MJ : il fallait donc connaître deux URL distinctes et retenir laquelle ouvrir. La racine
+> devient une page d'accueil qui aiguille vers l'un des deux rôles et porte la saisie de la
+> session, et la vue MJ prend `gm.html`. Le rôle de chaque page reste unique — la séparation
+> qui vaut déjà pour `player.html` et `diag.html`. Conséquence sur `check-deps.mjs` : la page
+> de référence de l'import map devient `gm.html`, et une page de la racine ne chargeant aucun
+> module est exemptée de la comparaison, n'ayant aucune version dont dériver.
 
 > `import/tokenCatalog.js` a été **ajouté au chantier I**. Le premier brief logeait le
 > chargement et la validation du catalogue de pions dans `ui/gm/tokenLibrary.js`, au motif
