@@ -151,6 +151,9 @@ F:\rpg-map-display\
     ├─ PLAN-BIBLIOTHEQUE-UVTT.md plan d'intégration de la bibliothèque de scènes préparées
     ├─ PLAN-STABILISATION-CANVAS.md plan détaillé de remise à plat Canvas, persistance
     │                              et synchronisation
+    ├─ PLAN-LOT2.md               [2] découpage du lot 2 en tranches, décisions arrêtées
+    │                              (portes à trois états, autorité vision/fog) et amendements
+    │                              du CdC à faire
     ├─ TRAVAIL-2907SOIR.md        [2] reprise du 29/07 au soir : état réel du lot 2 et
     │                              spécifications des trois chantiers restants
     └─ ETAT.md                    avancement, reprise, corrections du plan
