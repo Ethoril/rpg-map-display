@@ -43,7 +43,18 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
 
       # typecheck → unit → e2e, du moins coûteux au plus coûteux.
+      #
+      # RPG_FIREBASE_CONFIG active les deux scénarios Firebase réels de
+      # tests/firebaseTransport.spec.mjs, seuls tests du dépôt qui ne tournaient jamais.
+      # Ils exigent 7 champs : les 5 publics plus testEmail/testPassword d'un compte
+      # technique. Le secret absent, les deux tests se sautent d'eux-mêmes au lieu
+      # d'échouer — un fork sans secret reste donc vert.
+      #
+      # Ces tests écrivent dans le vrai projet Firebase : décision assumée du mainteneur
+      # de ne pas séparer un projet de test, séances et CI partageant la même base.
       - run: pnpm run verify
+        env:
+          RPG_FIREBASE_CONFIG: ${{ secrets.RPG_FIREBASE_CONFIG }}
 
       # Traces des tests navigateur en échec, pour diagnostiquer sans rejouer
       # la séance à l'aveugle.
