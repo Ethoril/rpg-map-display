@@ -53,6 +53,9 @@
 
   <canvas id="board" width="640" height="480"></canvas>
 
+  <!-- Script classique, donc exécuté AVANT les modules différés : c'est la condition pour
+       que window.RPG_FIREBASE_CONFIG existe quand resolveFirebaseConfig le cherche. -->
+  <script src="./firebase-config.js"></script>
   <script type="module" src="./js/app/diag.js"></script>
 </body>
 </html>

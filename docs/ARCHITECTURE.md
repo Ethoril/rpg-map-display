@@ -22,6 +22,10 @@ F:\rpg-map-display\
 │                                      des versions), reste de la page construit en T-22
 ├─ player.html                    [1a] vue joueurs — URL autonome, zéro UI. Import map
 │                                      IDENTIQUE à gm.html (T-23)
+├─ firebase-config.js            [1b] configuration Firebase Web publique. Script CLASSIQUE,
+│                                      pas un module : chargé par gm/player/diag AVANT les
+│                                      modules différés. Ne s'applique pas sous navigateur
+│                                      piloté (navigator.webdriver)
 ├─ jsconfig.json                  [1a] checkJs strict, noEmit
 ├─ package.json                   [1a] scripts Node uniquement
 ├─ diag.html                      [1a] diagnostic matériel — limites GPU, fps, thermique,
@@ -151,6 +155,17 @@ F:\rpg-map-display\
     │                              spécifications des trois chantiers restants
     └─ ETAT.md                    avancement, reprise, corrections du plan
 ```
+
+> `firebase-config.js` a été **ajouté après la première mise en service de Firebase**. La
+> configuration devait auparavant être collée dans `diag.html` sur chaque appareil **et**
+> chaque origine, `localStorage` étant cloisonné par les deux — et l'oubli était silencieux,
+> « Mode local » laissant l'application fonctionner sans synchronisation. Ces cinq champs sont
+> publics par nature : la protection d'un projet Firebase vient de ses règles de sécurité, pas
+> de la confidentialité de sa configuration Web. Le fichier n'est **pas** un module, pour être
+> exécuté avant les modules différés ; il est donc hors de la table du §2, qui ne régit que
+> `js/`. Il ne s'applique pas sous `navigator.webdriver` : sans cette garde, les tests e2e qui
+> n'injectent pas de transport attendraient une connexion Google au lieu de rester en mode
+> local (`app/session.js:196-201`).
 
 > `index.html` et `gm.html` ont été **redistribués au chantier J**. `index.html` était la vue
 > MJ : il fallait donc connaître deux URL distinctes et retenir laquelle ouvrir. La racine
