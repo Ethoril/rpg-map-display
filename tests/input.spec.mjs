@@ -18,6 +18,22 @@ import { test, expect } from '@playwright/test';
 const SANS_APPUI_LONG = { longPressMs: 100_000 };
 
 /**
+ * Seuils désarmant **les deux** bornes temporelles du tap.
+ *
+ * `longPressMs` n'est pas la plus serrée, et c'est le piège : émettre un `tap`
+ * exige aussi `duration < dragHoldMs` (`js/input/pointer.js:388`), soit **150 ms**
+ * par défaut pour tout l'enchaînement `down` → `move` → `up`. Or chacun de ces
+ * trois gestes est un aller-retour CDP entre Playwright et le navigateur : sous
+ * six workers concurrents, les 150 ms tombent bien avant les 500 ms de l'appui
+ * long. Ne désarmer que `longPressMs` ne change donc rien — vérifié, l'échec
+ * persistait 4 fois sur 8.
+ *
+ * À n'employer que dans les tests dont l'objet est le seuil **spatial**. Un test
+ * qui porte sur la brièveté du tap doit évidemment garder le seuil réel.
+ */
+const SANS_SEUILS_TEMPORELS = { longPressMs: 100_000, dragHoldMs: 100_000 };
+
+/**
  * Helper pour monter la scène gm.html avec le Probe d'input.
  * @param {import('@playwright/test').Page} page
  * @param {'players'|'gm'} [role='players']
@@ -125,7 +141,11 @@ test('Vue joueurs — Interdiction #1 : drag 1 doigt déplace la caméra (panBy)
 });
 
 test('un micro-mouvement reste un tap unique et ne déplace pas la caméra', async ({ page }) => {
-  await mountInputStage(page, 'players');
+  // Seuils désarmés alors même que ce test ne maintient **rien** : les trois allers-retours
+  // CDP de `down` → `move` → `up` dépassent les 150 ms de `dragHoldMs` sur une machine
+  // chargée, et `pointer.js:388` n'émet alors plus aucun `tap`. Ce test porte sur le seuil
+  // spatial — 3 px restent un tap — pas sur la brièveté du geste.
+  await mountInputStage(page, 'players', SANS_SEUILS_TEMPORELS);
   const canvasBox = await page.locator('#board').boundingBox();
   expect(canvasBox).not.toBeNull();
   if (!canvasBox) return;

@@ -2,8 +2,14 @@
 import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
+/** PNG 1×1 opaque, servi à la place de toute requête vers Drive. */
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
-  test('1. Révélation d\'un handout MJ -> Joueurs en < 500 ms et fermeture', async ({ context }) => {
+  test('1. Révélation d\'un handout MJ -> Joueurs, image réellement décodée, et fermeture', async ({ context }) => {
     const sessionId = `test-handout-${Date.now()}`;
 
     const pageGM = await context.newPage();
@@ -33,16 +39,16 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await pageGM.fill('#handout-image-url', testUrl);
     await pageGM.fill('#handout-title', 'Titre de test');
 
-    const startTime = Date.now();
     await pageGM.click('#handout-show-btn');
 
-    // Attendre l'apparition chez le joueur
+    // Attendre l'apparition chez le joueur.
+    //
+    // Le `timeout: 2000` **est** la garde : il échouerait si la révélation cessait
+    // d'être portée par un événement de transport pour dépendre d'un rafraîchissement
+    // périodique. Il n'y a plus de mesure en horloge murale ici — cf. docs/ETAT.md,
+    // « Budgets de latence dans les tests navigateur ».
     await pagePlayer.waitForSelector('#handout-overlay', { state: 'attached' });
     await expect(pagePlayer.locator('#handout-overlay')).toBeVisible({ timeout: 2000 });
-    const elapsed = Date.now() - startTime;
-
-    // Vérifier que la première apparition est rapide (< 500ms sur temps réseau local/sync)
-    expect(elapsed).toBeLessThan(500);
 
     // Vérifier que l'image est affichée
     const imgElement = pagePlayer.locator('#handout-overlay img');
@@ -50,12 +56,18 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
 
     // Et qu'elle est réellement décodée, pas seulement référencée. Attente de
     // condition et non de durée : cf. la leçon consignée dans docs/ETAT.md.
+    //
+    // Le délai est explicite et large : décoder est une question de vivacité, pas de
+    // performance. Le défaut de 5 s de `expect.poll` a déjà expiré une fois sous six
+    // workers concurrents, ce qui ne prouvait rien sur le produit.
     await expect
-      .poll(() =>
-        pagePlayer.evaluate(() => {
-          const img = document.querySelector('#handout-overlay img');
-          return img instanceof HTMLImageElement ? img.naturalWidth : 0;
-        })
+      .poll(
+        () =>
+          pagePlayer.evaluate(() => {
+            const img = document.querySelector('#handout-overlay img');
+            return img instanceof HTMLImageElement ? img.naturalWidth : 0;
+          }),
+        { timeout: 15000 }
       )
       .toBeGreaterThan(0);
 
@@ -81,6 +93,20 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await installBrowserTransport(pageGM, sessionId, null);
     await installBrowserTransport(pagePlayer, sessionId, null);
 
+    // Ce test touchait réellement drive.google.com : il dépendait donc d'une
+    // connexion et de la disponibilité d'un tiers, et il a échoué de ce fait.
+    // L'interception le rend hermétique **et** le renforce : son titre promet de
+    // vérifier ce qui part sur le réseau, ce que la seule lecture d'un attribut
+    // `src` ne prouvait pas.
+    /** @type {string[]} */
+    const requetesDrive = [];
+    for (const p of [pageGM, pagePlayer]) {
+      await p.route('https://drive.google.com/**', async (route) => {
+        requetesDrive.push(route.request().url());
+        await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 });
+      });
+    }
+
     await pageGM.goto(`/gm.html?session=${sessionId}`);
     await pagePlayer.goto(`/player.html?session=${sessionId}`);
 
@@ -105,6 +131,15 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await expect(pagePlayer.locator('#handout-overlay img')).toHaveAttribute('src', attendu);
     // Le champ MJ reflète la conversion, pour que le MJ la voie au lieu de la subir.
     await expect(pageGM.locator('#handout-image-url')).toHaveValue(attendu);
+
+    // L'assertion qui tient la promesse du titre : le navigateur a bien demandé
+    // l'URL convertie, et **jamais** le lien de partage brut — lequel sert une page
+    // HTML de 75 Ko dont aucune balise `<img>` ne tirera une image.
+    await expect.poll(() => requetesDrive.length).toBeGreaterThan(0);
+    expect(requetesDrive).not.toContain(
+      'https://drive.google.com/file/d/1tnBho2PcsZFcJyuLcuciW/view?usp=drive_link'
+    );
+    expect([...new Set(requetesDrive)]).toEqual([attendu]);
 
     // Un lien de dossier, lui, ne peut pas être converti : il est refusé côté MJ, et rien
     // n'est révélé aux joueurs.

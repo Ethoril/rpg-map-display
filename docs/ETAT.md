@@ -84,6 +84,43 @@ improbable.
 Leçon à garder : **une attente de durée fixe n’est sûre comme durée de geste que si le geste
 n’a pas de borne supérieure.** Ici il en avait une.
 
+**La leçon n’avait pas été appliquée partout — corrigé le 30 juillet 2026 au soir.** `verify`
+échouait encore une fois sur deux environ, et **pas** sur les causes déjà consignées.
+Reproduit sur `HEAD` sans aucune modification en cours : ce n’est donc une régression de rien.
+**Trois causes distinctes**, et il a fallu les traiter toutes les trois :
+
+1. **Trois budgets en horloge murale** — `handoutOverlay.spec.mjs:45`, `player.spec.mjs:454`
+   et `:535`, tous `toBeLessThan(500)`. Chacun **doublait** une attente de condition déjà
+   bornée qui gardait la même chose : les supprimer ne retire aucune couverture. Ce qu’ils
+   chronométraient n’était d’ailleurs pas le produit — pour `:454` le relais `exposeFunction`
+   entre deux processus Playwright, pour `:535` un aller-retour CDP sur une fonction
+   **synchrone**. Les attentes de condition (`timeout: 2000`) restent, et ce sont elles la
+   vraie garde : elles échoueraient si la propagation cessait d’être portée par un événement.
+2. **Un test qui touchait réellement `drive.google.com`** (`handoutOverlay.spec.mjs:79`), donc
+   dépendant d’une connexion et d’un tiers. Il est désormais intercepté par `page.route`, ce
+   qui le rend hermétique **et** le renforce : son titre promet de vérifier ce qui part sur le
+   réseau, ce que la lecture d’un attribut `src` ne prouvait pas. Il assère maintenant les URL
+   réellement demandées par le navigateur.
+3. **Le seuil temporel du tap, et ce n’était pas celui qu’on croit.** `input.spec.mjs:127`
+   échouait faute de `tap` émis. La cause évidente — `longPressMs` à 500 ms — **n’était pas la
+   bonne** : le désarmer seul laissait l’échec à 4 passes sur 8. Émettre un `tap` exige aussi
+   `duration < dragHoldMs` (`js/input/pointer.js:388`), soit **150 ms** pour tout
+   l’enchaînement `down` → `move` → `up`, chacun étant un aller-retour CDP. C’est la borne
+   serrée, trois fois plus basse que celle qu’on soupçonnait.
+
+Mesure avant/après, huit passes complètes à chaque fois : **de ~5 échecs sur 10 à 0 sur 8**,
+puis `verify` complet vert deux fois de suite.
+
+> Leçon complémentaire, qui a coûté une correction fausse : **quand deux bornes gardent le
+> même événement, c’est la plus serrée qui décide**, et ce n’est pas forcément celle qui est
+> documentée. Désarmer la mauvaise ne produit aucun signal — le test échoue exactement pareil.
+
+**Question produit ouverte, découverte en chemin et laissée telle quelle.** Un appui immobile
+entre 150 ms et 500 ms n’émet **rien du tout** : trop long pour un `tap`, trop court pour un
+`longPress`. Sur la vue joueurs, un tap un peu lent ne déplacerait donc pas le pion, sans
+aucun retour. Reste à savoir si c’est perceptible à table — la mesure est un geste humain,
+pas une suite de tests.
+
 Les deux scénarios Firebase réels nécessitent `RPG_FIREBASE_CONFIG` avec la configuration
 Web publique et les identifiants du compte technique de test. Ces identifiants restent hors
 du dépôt.

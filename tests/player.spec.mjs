@@ -408,7 +408,7 @@ test.describe('T-23 — Vue joueurs autonome', () => {
     await expect(bouton).toHaveAttribute('aria-label', 'Plein écran');
   });
 
-  test('Deux onglets synchronisés sur même session : déplacements réciproques < 500 ms', async ({ context }) => {
+  test('Deux onglets synchronisés sur même session : déplacements réciproques', async ({ context }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
 
@@ -436,22 +436,23 @@ test.describe('T-23 — Vue joueurs autonome', () => {
       });
     });
 
-    const startTime = Date.now();
     await page1.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
       probe.dispatchTap(350, 350);
       probe.dispatchTap(630, 630);
     });
 
+    // Le `timeout: 2000` est la garde, et il se suffit : il échouerait si la
+    // propagation cessait d'être portée par un événement. La mesure en horloge
+    // murale qui le doublait chronométrait en réalité le relais `exposeFunction`
+    // entre deux processus Playwright, pas le produit — cf. docs/ETAT.md,
+    // « Budgets de latence dans les tests navigateur ».
     await page2.waitForFunction(() => {
       const store = /** @type {any} */ (window).__playerProbe.store;
       const state = store.getState();
       const token = state.campaign.tokens.find((/** @type {any} */ t) => t.id === 'token-pj');
       return token && token.cell.a === 4 && token.cell.b === 4;
     }, { timeout: 2000 });
-
-    const duration = Date.now() - startTime;
-    expect(duration).toBeLessThan(500);
   });
 });
 
@@ -506,7 +507,7 @@ test.describe('T-24 — Persistance & reconnexion', () => {
     expect(restoredState.camZoom).toBe(1.5);
   });
 
-  test('Déplacer pion MJ -> vérifier apparition côté joueurs après F5 (< 500 ms après reconnexion)', async ({ page }) => {
+  test('Déplacer pion MJ -> vérifier apparition côté joueurs après F5 (reprise locale)', async ({ page }) => {
     await mountPlayerViewInPage(page);
 
     await page.evaluate(() => {
@@ -522,7 +523,9 @@ test.describe('T-24 — Persistance & reconnexion', () => {
       probe.store.restoreFromSnapshot(camp, { sessionId: 'sess-recon-test' });
     });
 
-    const startTime = Date.now();
+    // `loadFromLocalStorage` est synchrone : la durée mesurée ici était celle d'un
+    // aller-retour CDP entre Playwright et la page, jamais celle du produit. Ce qui
+    // se vérifie, c'est que la reprise locale rend la bonne case.
     const syncState = await page.evaluate(async () => {
       const probe = /** @type {any} */ (window).__playerProbe;
       probe.store.loadFromLocalStorage('sess-recon-test');
@@ -531,8 +534,6 @@ test.describe('T-24 — Persistance & reconnexion', () => {
       return token.cell;
     });
 
-    const duration = Date.now() - startTime;
-    expect(duration).toBeLessThan(500);
     expect(syncState).toEqual({ a: 3, b: 4 });
   });
 });
