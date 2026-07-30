@@ -158,16 +158,25 @@ Chemins réellement utilisés par `FirebaseTransport`, et rien d'autre :
 | Realtime Database | `session/{code}/events`, `session/{code}/presence/{clientId}` |
 | Firestore | `campaigns/{code}` |
 
-Realtime Database :
+Les règles en place sont une **liste blanche d'adresses**, plus strictes qu'un simple
+`auth != null` : seuls le compte du mainteneur, avec adresse vérifiée, et le compte technique
+de test sont admis. La console fait foi ; ce qui suit en est le reflet.
+
+Realtime Database. **La condition est portée au niveau `$sessionId`, pas sur `events` seul** —
+et c'est un correctif, pas un détail de style : les règles RTDB ne se propagent pas
+latéralement, donc une condition posée sur `events` laisse `presence` **sans aucune règle, donc
+refusé**. Le code écrit `session/{code}/presence/{clientId}` toutes les 30 s et lit le nœud
+entier ; sans cette règle, la présence échoue en `PERMISSION_DENIED` et la **détection d'écart
+de build (T-24b) ne se déclenche jamais**, `checkBuildMismatch` parcourant une liste vide.
+Porter la condition sur `$sessionId` couvre en outre les chemins que le lot 2 ajoutera.
 
 ```json
 {
   "rules": {
     "session": {
       "$sessionId": {
-        "events":   { ".read": "auth != null", ".write": "auth != null" },
-        "presence": { ".read": "auth != null",
-                      "$clientId": { ".write": "auth != null" } }
+        ".read":  "auth != null && ((auth.token.email === 'ethoril@gmail.com' && auth.token.email_verified === true) || auth.token.email === 'et.horil@gmail.com')",
+        ".write": "auth != null && ((auth.token.email === 'ethoril@gmail.com' && auth.token.email_verified === true) || auth.token.email === 'et.horil@gmail.com')"
       }
     }
   }
@@ -181,21 +190,22 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /campaigns/{sessionId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null
+        && ( (request.auth.token.email == "ethoril@gmail.com" && request.auth.token.email_verified == true)
+             || request.auth.token.email == "et.horil@gmail.com" );
     }
   }
 }
 ```
 
-**Ce que ce jeu de règles protège, et ce qu'il ne protège pas.** Il ferme la porte à tout
-visiteur non authentifié — l'essentiel. Mais `auth != null` accepte **n'importe quel compte
-Google** : quelqu'un d'authentifié qui devinerait un code de session à 5 caractères pourrait
-lire et écrire. Sur 24 millions de combinaisons et sans moyen de découvrir les codes, c'est un
-risque théorique pour une table privée.
+**Pourquoi `email_verified` n'est pas exigé du compte technique** : un compte créé en
+e-mail/mot de passe depuis la console n'est pas vérifié, la condition le rejetterait donc et les
+deux tests e2e Firebase échoueraient.
 
-Si un verrou réel est souhaité, il faut une liste blanche d'UID — celui du MJ et ceux des
-joueurs, qui écrivent aussi (`token.move`). C'est un réglage à faire une fois, au prix de
-devoir ajouter chaque nouveau joueur.
+**Limite connue et assumée** : la tablette est un appareil partagé, connecté avec le compte du
+mainteneur (CdC §3), donc deux adresses suffisent. En revanche l'« URL joueur autonome » du §216
+— un joueur ouvrant la vue sur son propre téléphone — serait refusée. À rouvrir si cet usage
+devient réel.
 
 ## Décision n°2 du §12 — latence Firebase : tranchée par architecture, pas par mesure
 
