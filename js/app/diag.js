@@ -375,17 +375,33 @@ async function diagnosticFirebase() {
   const p50 = triees[Math.floor(triees.length * 0.5)];
   const p95 = triees[Math.min(triees.length - 1, Math.floor(triees.length * 0.95))];
 
+  // Cette sonde ne filtre PAS les échos propres, et ne peut donc pas chronométrer un
+  // aller-retour serveur : la Realtime Database applique la compensation de latence et
+  // déclenche les écouteurs locaux sur la valeur optimiste, avant tout acquittement. Les
+  // chiffres ci-dessous décrivent la boucle locale du SDK — un p50 de quelques
+  // millisecondes est en dessous du temps de trajet physique vers europe-west1, ce qui le
+  // rend impossible autrement.
+  //
+  // Le verdict automatique sur la décision n°2 a été retiré : il déclarait cette décision
+  // « tranchée » sur la foi d'un nombre qui ne mesurait pas la grandeur en jeu. La décision
+  // est tranchée, mais par choix d'architecture et non par mesure — cf. docs/ETAT.md.
+  //
+  // Ce que cette section prouve réellement, et qui est sa vraie valeur : la configuration
+  // est bonne, l'authentification passe, les règles autorisent écriture, lecture et purge.
   ecrire(
     [
-      `Latence aller-retour Realtime Database (${latences.length}/${N} mesures)`,
+      `Boucle locale du SDK Realtime Database (${latences.length}/${N} mesures)`,
       '',
       `p50  ${arrondi(p50, 1)} ms`,
       `p95  ${arrondi(p95, 1)} ms`,
       `max  ${arrondi(triees[triees.length - 1], 1)} ms`,
       '',
-      p95 <= 250
-        ? '→ Sous les 250 ms : on reste sur Firebase (décision n°2 tranchée).'
-        : '→ Au-dessus de 250 ms : envisager LocalSocketTransport (décision n°2).',
+      "→ Ce n'est PAS une latence aller-retour serveur : les échos propres ne sont pas",
+      '  filtrés, et la compensation de latence les délivre avant tout acquittement.',
+      '→ Ce qui est établi : configuration valide, authentification acceptée, et règles',
+      '  autorisant écriture, lecture et purge sur la session.',
+      '→ Décision n°2 (§12) : tranchée par choix d\'architecture, pas par cette mesure.',
+      '  Le cast ajoute lui-même 150 à 400 ms (CdC §3), qui dominent le ressenti à table.',
     ].join('\n')
   );
 }

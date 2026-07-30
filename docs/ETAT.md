@@ -128,10 +128,37 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 - température et stabilité pendant une séance de 45 minutes puis quatre heures ;
 - limite de texture réelle et qualité du rééchantillonnage ;
 - reprise du Wake Lock et du plein écran sur Android réel ;
-- latence et règles de sécurité du projet Firebase de production ;
+- règles de sécurité du projet Firebase de production ;
 - purge de fin de séance selon l’usage réel.
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.
+
+## Décision n°2 du §12 — latence Firebase : tranchée par architecture, pas par mesure
+
+**On reste sur Firebase. `LocalSocketTransport` n'est pas activé.** Cette décision est prise
+sciemment **sans** la mesure que le CdC §12 réclamait, et il faut savoir pourquoi pour ne pas
+la rouvrir par erreur.
+
+1. **Le seuil de 250 ms n'est pas le maillon dominant.** Le CdC §3 relève que le cast ajoute
+   lui-même **150 à 400 ms** de latence. Ce que voient les joueurs sur la TV est gouverné par
+   le mirroring, pas par le transport : un aller-retour Firebase, même à 80 ms, disparaît dans
+   ce bruit.
+2. **La décision est de fait déjà prise.** Les lots 1a et 1b sont construits sur Firebase.
+   Basculer serait aujourd'hui un chantier, pas un réglage — la fenêtre où la mesure était
+   décisionnelle s'est refermée.
+3. **Le seul relevé obtenu ne mesurait pas la bonne grandeur.** La section 5 de `diag.html` a
+   donné p50 4,7 ms / p95 7,1 ms / max 10,6 ms le 30 juillet 2026. Ces chiffres sont **en
+   dessous du temps de trajet physique** vers `europe-west1` : la sonde ne filtre pas les
+   échos propres, et la Realtime Database délivre les écouteurs locaux sur la valeur optimiste
+   avant tout acquittement serveur. Elle chronomètre donc la boucle locale du SDK. Le verdict
+   automatique qu'elle affichait a été retiré.
+
+**Ce que ce relevé établit tout de même, et qui valait le détour :** la configuration Firebase
+est bonne, l'authentification Google passe, et les règles autorisent écriture, lecture et purge
+sur une session.
+
+**Ce qui reste le vrai juge**, et qui ne coûte rien : la première séance à table. Si la tablette
+décroche, ça se verra sans instrumentation.
 
 ## Suite produit
 
