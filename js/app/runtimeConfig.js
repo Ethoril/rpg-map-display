@@ -58,7 +58,12 @@ export function resolveFirebaseConfig(injected) {
 /**
  * Persiste uniquement la configuration Web publique.
  *
+ * Retourne la configuration normalisée pour que l'appelant puisse la réutiliser sans
+ * jamais retoucher à l'objet d'origine — lequel peut porter `testEmail`/`testPassword`
+ * si l'utilisateur a collé le JSON destiné à la CI.
+ *
  * @param {Record<string, any>} config
+ * @returns {Record<string, any>} la configuration publique effectivement persistée
  */
 export function saveFirebaseConfig(config) {
   const normalized = normalizeConfig(config);
@@ -71,5 +76,6 @@ export function saveFirebaseConfig(config) {
     throw new Error('LocalStorage indisponible : configuration Firebase non enregistrée');
   }
   localStorage.setItem(STORAGE_KEYS[0], JSON.stringify(normalized));
+  return normalized;
 }
 

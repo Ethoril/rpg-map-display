@@ -308,11 +308,18 @@ async function diagnosticFirebase() {
     return;
   }
 
+  // Ne jamais persister ni transmettre le JSON tel qu'il a été collé.
+  //
+  // `saveFirebaseConfig` retire `testEmail`/`testPassword` — c'est son rôle explicite.
+  // L'ancien code le rappelait puis réécrivait le JSON **brut** sous `CLE_CONFIG`, une clé
+  // que `resolveFirebaseConfig` lit également : coller ici le JSON destiné au secret CI
+  // déposait donc le mot de passe du compte technique en clair dans le LocalStorage de la
+  // tablette — un appareil partagé, posé sur la table (CdC §3). Seule la version
+  // normalisée est désormais stockée, et c'est elle qui alimente le transport.
   /** @type {Record<string, any>} */
   let config;
   try {
-    config = JSON.parse(brut);
-    saveFirebaseConfig(config);
+    config = saveFirebaseConfig(JSON.parse(brut));
     localStorage.setItem(CLE_CONFIG, JSON.stringify(config));
   } catch {
     ecrire('Configuration Firebase illisible ou incomplète.');
