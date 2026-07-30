@@ -15,11 +15,35 @@ const pkgRaw = fs.readFileSync(pkgPath, 'utf8');
 const pkg = JSON.parse(pkgRaw);
 
 const version = pkg.version || '0.1.0';
-const currentBuild = typeof pkg.build === 'number' ? pkg.build : 0;
-const nextBuild = currentBuild + 1;
 
-pkg.build = nextBuild;
-fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+// Deux modes, un seul fichier généré.
+//
+// Sans `RPG_BUILD` : mode local historique — le compteur de `package.json` est
+// incrémenté et réécrit. C'est un geste manuel, et c'est précisément ce qui a laissé
+// l'estampille périmée pendant plusieurs déploiements : le numéro de build ne changeant
+// plus, `checkBuildMismatch` (js/state/presence.js) comparait deux fois la même valeur
+// et l'avertissement d'écart de build ne pouvait plus se déclencher.
+//
+// Avec `RPG_BUILD` : le numéro est imposé par l'appelant (la CI le dérive du nombre de
+// commits, monotone par construction) et **`package.json` n'est pas touché** — rien à
+// commiter en retour, donc aucune boucle de déploiement.
+const buildOverride = process.env.RPG_BUILD;
+let nextBuild;
+
+if (buildOverride !== undefined && buildOverride !== '') {
+  nextBuild = Number(buildOverride);
+  // Échec bruyant volontaire : un repli silencieux sur le compteur de package.json
+  // ramènerait exactement le défaut que ce mode corrige.
+  if (!Number.isSafeInteger(nextBuild) || nextBuild < 0) {
+    console.error(`[ERREUR] RPG_BUILD invalide : "${buildOverride}" (entier positif attendu)`);
+    process.exit(1);
+  }
+} else {
+  const currentBuild = typeof pkg.build === 'number' ? pkg.build : 0;
+  nextBuild = currentBuild + 1;
+  pkg.build = nextBuild;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+}
 
 let commit = 'unknown';
 try {

@@ -64,7 +64,30 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # fetch-depth: 0 est requis : le numéro de build est dérivé du nombre de commits,
+      # que le clone superficiel par défaut tronquerait à 1.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Estampille la version dans l'artefact déployé, sans rien commiter.
+      #
+      # Cette étape existe parce que `pnpm stamp` était un geste manuel : il a été oublié
+      # pendant plusieurs déploiements, laissant `js/core/version.js` sur un build et un
+      # commit périmés. Or la détection de désynchronisation (T-24b) compare les numéros
+      # de build entre clients : un numéro figé la neutralise en silence, et une tablette
+      # gardant l'ancienne page en cache n'était plus signalée.
+      #
+      # Le compte de commits est monotone par construction et ne demande aucun compteur
+      # commité, donc aucun push de retour et aucune boucle de workflow.
+      - name: Estamper la version
+        run: |
+          RPG_BUILD="$(git rev-list --count HEAD)" node scripts/stamp-version.mjs
+          cat js/core/version.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

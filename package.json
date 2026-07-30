@@ -22,5 +22,5 @@
     "jimp": "^1.6.1",
     "typescript": "^5.7.0"
   },
-  "build": 34
+  "build": 35
 }
