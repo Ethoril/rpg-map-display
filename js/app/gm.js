@@ -10,7 +10,12 @@ import { TokensLayer } from '../render/layers/tokens.js';
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
 import { createGMPanel } from '../ui/gm/panel.js';
-import { createNetworkStatus, connectSession } from './session.js';
+import {
+  createNetworkStatus,
+  connectSession,
+  createSessionCode,
+  normalizeSessionId,
+} from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 
@@ -41,10 +46,10 @@ function tokenAtCell(campaign, activeLevel, cell) {
 function defaultGmSessionId() {
   const existing = sessionStorage.getItem('rpg-gm-session-id');
   if (existing) return existing;
-  const created =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Un UUID était illisible et intypable : le MJ doit dicter ce code, ou le recopier à la
+  // main sur la tablette, en n'ayant aucun moyen de le copier-coller d'un appareil à
+  // l'autre. Cf. createSessionCode dans app/session.js.
+  const created = createSessionCode();
   sessionStorage.setItem('rpg-gm-session-id', created);
   return created;
 }
@@ -159,7 +164,8 @@ export async function bootstrapGMApp(options = {}) {
   frameLoop = new FrameLoop(renderAll);
 
   const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = options.sessionId || urlParams.get('session') || defaultGmSessionId();
+  const sessionId =
+    options.sessionId || normalizeSessionId(urlParams.get('session')) || defaultGmSessionId();
   store.setSessionId(sessionId);
   try {
     const saved = localStorage.getItem(`rpg_camera_${sessionId}`);

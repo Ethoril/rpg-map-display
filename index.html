@@ -91,6 +91,21 @@
       border-radius: 4px;
       width: 100%;
     }
+    /* Le code de session se recopie à la main depuis le bandeau du MJ : caractères
+       espacés et généreux pour éviter une lettre lue de travers. La casse est pardonnée
+       côté application, l'affichage en majuscules n'est qu'un guide. */
+    input.session-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 1.35rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+    input.session-code::placeholder {
+      font-size: 0.9rem;
+      letter-spacing: normal;
+      text-transform: none;
+    }
     input[type="text"]:focus {
       border-color: #4a90e2;
       outline: none;
@@ -131,8 +146,10 @@
         <h2>Meneur de Jeu (MJ)</h2>
         <p>Accédez à la vue MJ pour préparer les cartes, déplacer les tokens et gérer le brouillard de guerre.</p>
         <div class="form-group">
-          <label for="gm-session">Identifiant de session (optionnel)</label>
-          <input type="text" id="gm-session" name="session" placeholder="Laisser vide pour générer un ID">
+          <label for="gm-session">Code de session (optionnel)</label>
+          <input type="text" id="gm-session" name="session" class="session-code" maxlength="5"
+                 autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"
+                 placeholder="Laisser vide pour en générer un">
         </div>
         <button type="submit" class="btn btn-gm" id="btn-gm">Ouvrir l'Espace MJ</button>
       </form>
@@ -141,8 +158,10 @@
         <h2>Joueur</h2>
         <p>Rejoignez l'affichage joueur partagé sur l'écran de table.</p>
         <div class="form-group">
-          <label for="player-session">Identifiant de session (obligatoire)</label>
-          <input type="text" id="player-session" name="session" placeholder="Saisir l'ID fourni par le MJ" required>
+          <label for="player-session">Code de session (obligatoire)</label>
+          <input type="text" id="player-session" name="session" class="session-code" maxlength="5"
+                 autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"
+                 placeholder="Les 5 caractères affichés chez le MJ" required>
         </div>
         <button type="submit" class="btn btn-player" id="btn-player">Rejoindre la Table</button>
       </form>

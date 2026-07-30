@@ -11,7 +11,7 @@ import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
 import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
-import { createNetworkStatus, connectSession } from './session.js';
+import { createNetworkStatus, connectSession, normalizeSessionId } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 
@@ -105,7 +105,10 @@ export async function bootstrapPlayerApp(options = {}) {
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
 
   const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = options.sessionId || urlParams.get('session') || 'local-player';
+  // Même normalisation que côté MJ : le code est recopié à la main sur la tablette, la
+  // casse ne doit pas décider silencieusement d'une autre session.
+  const sessionId =
+    options.sessionId || normalizeSessionId(urlParams.get('session')) || 'local-player';
   const cameraFollow = urlParams.get('camera') === 'follow';
   store.setSessionId(sessionId);
 

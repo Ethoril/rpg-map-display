@@ -6,6 +6,71 @@ import { resolveFirebaseConfig } from './runtimeConfig.js';
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 
 /**
+ * Alphabet des codes de session : 30 caractères, sans `0`, `1`, `I`, `L`, `O` ni `U`.
+ *
+ * L'exclusion n'est pas cosmétique. Le code voyage **oralement ou à la main** du bandeau MJ
+ * vers le clavier de la tablette : `0`/`O` et `1`/`I`/`L` confondus produisent une session
+ * différente, donc un plateau vide sans le moindre message d'erreur. `U` part avec eux pour
+ * éviter les mots formés par hasard.
+ */
+const ALPHABET_SESSION = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+const LONGUEUR_CODE = 5;
+
+/**
+ * Engendre un code de session court, lisible et saisissable sur une tablette.
+ *
+ * 30^5 ≈ 24 millions de combinaisons : la collision est sans objet à l'échelle d'une table
+ * de jeu, et une collision ne coûterait de toute façon qu'un code à régénérer.
+ *
+ * @returns {string} 5 caractères de `ALPHABET_SESSION`
+ */
+export function createSessionCode() {
+  const tailles = ALPHABET_SESSION.length;
+  // 240 = 8 × 30 : rejeter au-delà supprime le biais de modulo, 256 n'étant pas
+  // divisible par 30.
+  const PLAFOND = Math.floor(256 / tailles) * tailles;
+  let code = '';
+
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    while (code.length < LONGUEUR_CODE) {
+      const octets = new Uint8Array(LONGUEUR_CODE);
+      crypto.getRandomValues(octets);
+      for (const octet of octets) {
+        if (code.length >= LONGUEUR_CODE) break;
+        if (octet >= PLAFOND) continue;
+        code += ALPHABET_SESSION[octet % tailles];
+      }
+    }
+    return code;
+  }
+
+  for (let i = 0; i < LONGUEUR_CODE; i++) {
+    code += ALPHABET_SESSION[Math.floor(Math.random() * tailles)];
+  }
+  return code;
+}
+
+/**
+ * Normalise un identifiant de session **uniquement** s'il a la forme d'un code court.
+ *
+ * La casse est ainsi pardonnée à la saisie — `a7k2m` rejoint bien `A7K2M`. Mais tout ce qui
+ * n'a pas exactement la forme d'un code passe **inchangé** : les sessions engendrées avant
+ * ce changement sont des UUID, et les mettre en majuscules les ferait pointer vers un
+ * document Firestore inexistant, donc vers un plateau vide.
+ *
+ * @param {string|null|undefined} brut
+ * @returns {string} l'identifiant à utiliser, normalisé le cas échéant
+ */
+export function normalizeSessionId(brut) {
+  if (!brut) return '';
+  const candidat = brut.trim();
+  if (candidat.length !== LONGUEUR_CODE) return candidat;
+  const majuscules = candidat.toUpperCase();
+  const conforme = [...majuscules].every((c) => ALPHABET_SESSION.includes(c));
+  return conforme ? majuscules : candidat;
+}
+
+/**
  * Indicate clairement le mode réseau. Côté joueurs, le badge n'est visible que pour un état
  * cassé ou local ; côté MJ il reste discret et permanent.
  *
