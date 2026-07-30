@@ -1,8 +1,10 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 29 juillet 2026, soir — **bibliothèque UVTT terminée** (U-00 à
-> U-06 de `PLAN-BIBLIOTHEQUE-UVTT.md`) : catalogue transactionnel, contrôles de grille
-> couverts, remplacement de scène synchronisé.
+> Dernière mise à jour : 30 juillet 2026 — **le lot 1b du CdC est complet côté code.**
+> Chantiers H (révélation d'image), I (bibliothèque de pions), J (page d'accueil et vue MJ
+> sur `gm.html`) et K (badge d'élévation) livrés, après la bibliothèque UVTT (U-00 à U-06 de
+> `PLAN-BIBLIOTHEQUE-UVTT.md`). Ne reste ouvert, sur les lots 1a et 1b, que des **mesures
+> matérielles** — voir « Ce qui reste à vérifier manuellement ».
 >
 > ⚠️ **Attention à la numérotation.** Le « lot 2 » de `PLAN-BIBLIOTHEQUE-UVTT.md` désigne la
 > bibliothèque UVTT et n'a rien à voir avec le **Lot 2 du cahier des charges §11** (lignes
@@ -43,14 +45,17 @@ pnpm run check-deps
 dont dépend le déploiement GitHub Pages. Lancer seulement `test:unit` a déjà
 laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 
-Résultat de la passe d’intégration du 29 juillet 2026 au soir (lot 2 terminé) :
+Résultat de la passe d’intégration du 30 juillet 2026 (fin du lot 1b du CdC) :
 
 - typage : vert ;
-- tests unitaires : 85 réussis, **aucun ignoré** — le corpus réel de `fixtures/real/` est
-  présent, et `realUvtt.test.mjs` le parse au lieu de s'auto-ignorer ;
-- tests navigateur : 48 réussis, 2 Firebase ignorés faute de configuration externe ;
-- les scénarios couvrent rendu, imports, bibliothèque de cartes, pions, gestes,
-  plusieurs pages, reconnexion et remplacement de scène synchronisé.
+- tests unitaires : **103 réussis**, **aucun ignoré** — le corpus réel de `fixtures/real/`
+  est présent, et `realUvtt.test.mjs` le parse au lieu de s'auto-ignorer ;
+- tests navigateur : **64 réussis**, 2 Firebase ignorés faute de configuration externe ;
+- `pnpm run check-deps` : vert, import maps identiques entre `gm.html`, `player.html` et
+  `diag.html` ;
+- les scénarios couvrent rendu, imports, bibliothèque de cartes, bibliothèque de pions,
+  pions, gestes, élévation, révélation d'image, page d'accueil, plusieurs pages,
+  reconnexion et remplacement de scène synchronisé.
 
 La suite unitaire est passée d’environ 30 s à moins de 2 s : la préparation de cartes est
 désormais exercée sur `fixtures/synthetic/minimal.uvtt` dans un dossier temporaire, et
@@ -130,13 +135,13 @@ Ces points ne doivent pas être déclarés réussis à partir d’un test deskto
 
 ## Suite produit
 
-Avancement mesuré contre les lots du cahier des charges §11, au 29 juillet 2026 au soir.
+Avancement mesuré contre les lots du cahier des charges §11, au 30 juillet 2026.
 Relevé pour éviter de confondre « le plateau est solide » et « le produit est proche ».
 
 | Lot du CdC §11 | État |
 |---|---|
 | **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
-| **1b — La prépa MJ** | ~1 critère sur 4. La bibliothèque de scènes est faite. Manquent la bibliothèque de pions (§5.7), la révélation d’image (§5.8) et le badge d’élévation |
+| **1b — La prépa MJ** | **Code complet, 4 critères sur 4.** Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantier I), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
 | **2 — Lignes de vue, portes & tactique** | **0 sur 13.** `js/vision/` n’existe pas ; aucun code de fog, de rendu de murs, d’éditeur de murs, de gabarits ni de marqueurs d’état. **Périmètre élargi le 29/07 au soir** : le fog porte désormais la fonction que les toits assuraient — masquer l’intérieur d’un bâtiment non visité (`ANALYSE-DD2VTT-GRILLES.md` §9) |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | 0 sur 6. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
