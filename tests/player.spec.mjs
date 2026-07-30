@@ -337,8 +337,14 @@ test.describe('T-23 — Vue joueurs autonome', () => {
     await page.goto('/player.html?session=test-zero-ui');
 
     // 1. Vérification Zero-UI strict (aucun button, nav, input)
+    //
+    // Une seule tolérance, nommée : le bouton plein écran (dérogation demandée le
+    // 30 juillet 2026, cf. CONVENTIONS.md §8, interdiction 2). L'exclure par identifiant
+    // plutôt qu'assouplir le compte garde le test capable de refuser tout le reste.
     const uiElementsCount = await page.evaluate(() => {
-      const forbidden = document.querySelectorAll('button, nav, input');
+      const forbidden = Array.from(document.querySelectorAll('button, nav, input')).filter(
+        (el) => el.id !== 'player-fullscreen-btn'
+      );
       return forbidden.length;
     });
     expect(uiElementsCount).toBe(0);
@@ -356,6 +362,50 @@ test.describe('T-23 — Vue joueurs autonome', () => {
 
     expect(styles.overscrollBehavior).toBe('none');
     expect(styles.touchAction).toBe('none');
+  });
+
+  test('Bouton plein écran : en haut à droite, il entre puis sort du plein écran', async ({
+    page,
+  }) => {
+    await page.goto('/player.html?session=test-fullscreen-btn');
+
+    const bouton = page.locator('#player-fullscreen-btn');
+    await expect(bouton).toBeVisible();
+
+    // Ancré en haut à droite, au-dessus du handout (9000) et sous l'alerte de version (9999).
+    const ancrage = await page.evaluate(() => {
+      const el = /** @type {HTMLElement} */ (document.getElementById('player-fullscreen-btn'));
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return {
+        position: style.position,
+        zIndex: Number(style.zIndex),
+        distanceHaut: rect.top,
+        distanceDroite: window.innerWidth - rect.right,
+        libelle: el.getAttribute('aria-label'),
+      };
+    });
+    expect(ancrage.position).toBe('fixed');
+    expect(ancrage.zIndex).toBeGreaterThan(9000);
+    expect(ancrage.zIndex).toBeLessThan(9999);
+    expect(ancrage.distanceHaut).toBeLessThan(40);
+    expect(ancrage.distanceDroite).toBeLessThan(40);
+    expect(ancrage.libelle).toBe('Plein écran');
+
+    // Aller : le tap fait vraiment entrer le document en plein écran.
+    await bouton.click();
+    await page.waitForFunction(() => document.fullscreenElement !== null, undefined, {
+      timeout: 5000,
+    });
+    await expect(bouton).toHaveAttribute('aria-label', 'Quitter le plein écran');
+
+    // Retour : le même bouton en ressort. C'est ce qui manquait — l'activation au premier
+    // geste ne savait qu'entrer.
+    await bouton.click();
+    await page.waitForFunction(() => document.fullscreenElement === null, undefined, {
+      timeout: 5000,
+    });
+    await expect(bouton).toHaveAttribute('aria-label', 'Plein écran');
   });
 
   test('Deux onglets synchronisés sur même session : déplacements réciproques < 500 ms', async ({ context }) => {
@@ -574,5 +624,83 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
     expect(res.gmBannerText).toContain('Recharge la tablette');
     expect(res.playerOverlayBg).toContain('211, 47, 47'); // rgb(211, 47, 47)
     expect(res.playerOverlayOpacity).toBe('1');
+  });
+
+  test('Tablette en retard : le bouton « Mettre à jour » apparaît, seul tapable de l\'overlay', async ({
+    page,
+  }) => {
+    await page.goto('/gm.html');
+
+    await page.evaluate(async () => {
+      const vPath = './js/ui/versionBadge.js';
+      const pPath = './js/state/presence.js';
+      const { mountPlayerVersionBadge } = await import(
+        /* @vite-ignore */ /** @type {any} */ (vPath)
+      );
+      const { updatePresence } = await import(/* @vite-ignore */ /** @type {any} */ (pPath));
+
+      // Le MJ tourne sur la build 43, la tablette sur la 42 : c'est elle qui est en retard.
+      updatePresence('gm-client', {
+        role: 'gm',
+        at: Date.now(),
+        build: 43,
+        label: '0.1.0+43',
+      });
+      mountPlayerVersionBadge({ build: 42 });
+    });
+
+    const bouton = page.locator('#player-version-update');
+    await expect(bouton).toBeVisible();
+
+    const etat = await page.evaluate(() => {
+      const overlay = /** @type {HTMLElement} */ (
+        document.getElementById('player-version-overlay')
+      );
+      const button = /** @type {HTMLElement} */ (document.getElementById('player-version-update'));
+      return {
+        texte: document.getElementById('player-version-text')?.textContent || '',
+        overlayPointerEvents: window.getComputedStyle(overlay).pointerEvents,
+        boutonPointerEvents: window.getComputedStyle(button).pointerEvents,
+      };
+    });
+
+    // L'écart est nommé dans le bon sens : c'est cette page qui est périmée.
+    expect(etat.texte).toContain('Version périmée');
+    expect(etat.texte).toContain('43');
+    // La dérogation reste étroite : l'overlay n'intercepte toujours rien, le bouton seul si.
+    expect(etat.overlayPointerEvents).toBe('none');
+    expect(etat.boutonPointerEvents).toBe('auto');
+  });
+
+  test('Un tap sur « Mettre à jour » purge les caches et recharge réellement la page', async ({
+    page,
+  }) => {
+    await page.goto('/gm.html');
+
+    await page.evaluate(async () => {
+      const vPath = './js/ui/versionBadge.js';
+      const pPath = './js/state/presence.js';
+      const { mountPlayerVersionBadge } = await import(
+        /* @vite-ignore */ /** @type {any} */ (vPath)
+      );
+      const { updatePresence } = await import(/* @vite-ignore */ /** @type {any} */ (pPath));
+
+      updatePresence('gm-client', { role: 'gm', at: Date.now(), build: 43, label: '0.1.0+43' });
+      mountPlayerVersionBadge({ build: 42 });
+
+      // Marqueur volontairement non persistant : seul un vrai rechargement le fait
+      // disparaître. Un `update()` qui se contenterait de changer le libellé le laisserait.
+      /** @type {any} */ (window).__avantMiseAJour = true;
+    });
+
+    expect(await page.evaluate(() => /** @type {any} */ (window).__avantMiseAJour)).toBe(true);
+
+    await page.locator('#player-version-update').click();
+
+    await page.waitForFunction(
+      () => /** @type {any} */ (window).__avantMiseAJour === undefined,
+      undefined,
+      { timeout: 15_000 }
+    );
   });
 });

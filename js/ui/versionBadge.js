@@ -114,6 +114,99 @@ export function mountGMVersionBadge(container, options = {}) {
 }
 
 /**
+ * Recense les URL de **code** (JS/CSS) de cette origine déjà chargées par la page.
+ *
+ * Images et scènes en sont exclues à dessein : elles ne portent pas la version
+ * applicative, et les recharger coûterait plusieurs mégaoctets sur la liaison de la
+ * tablette pour rien.
+ *
+ * @returns {string[]}
+ */
+function collectCodeUrls() {
+  /** @type {Set<string>} */
+  const urls = new Set();
+  // Le document lui-même : sans lui, le rechargement repart de l'ancien HTML.
+  urls.add(location.href);
+
+  /** @param {string} raw @returns {string|null} */
+  const codeUrl = (raw) => {
+    const url = new URL(raw, location.href);
+    if (url.origin !== location.origin) return null;
+    return /\.(m?js|css)$/i.test(url.pathname) ? url.href : null;
+  };
+
+  // Resource Timing est la seule source qui recense les modules ES tirés par `import` :
+  // le DOM n'expose que les points d'entrée.
+  for (const entry of performance.getEntriesByType('resource')) {
+    const url = codeUrl(entry.name);
+    if (url) urls.add(url);
+  }
+
+  // Repli : le tampon Resource Timing est borné (250 entrées par défaut) et peut avoir
+  // débordé. Les points d'entrée déclarés dans le HTML, eux, sont toujours là.
+  try {
+    for (const el of document.querySelectorAll('script[src], link[rel="stylesheet"][href]')) {
+      const raw = el.getAttribute('src') || el.getAttribute('href');
+      const url = raw ? codeUrl(raw) : null;
+      if (url) urls.add(url);
+    }
+  } catch (err) {
+    // Une URL d'attribut malformée ne doit pas priver la purge des URL déjà recensées.
+    console.warn('Mise à jour forcée : lecture du DOM incomplète —', err);
+  }
+
+  return Array.from(urls);
+}
+
+/**
+ * Force le passage à la version publiée la plus récente.
+ *
+ * Un simple `location.reload()` ne suffit pas, et c'est le cœur du problème : GitHub Pages
+ * sert tous les fichiers avec un `Cache-Control: max-age`, et Safari iOS ressert alors les
+ * modules ES depuis son cache HTTP sans même revalider. La page se recharge, le code reste
+ * celui d'hier, et la tablette continue d'annoncer son écart de build.
+ *
+ * On rafraîchit donc explicitement chaque URL de code avec `cache: 'reload'` — qui ignore
+ * le cache **et le remplace** par la réponse réseau — avant de recharger. Le rechargement
+ * repart alors d'entrées de cache fraîches.
+ *
+ * @returns {Promise<void>}
+ */
+export async function forceReloadToLatest() {
+  // 1. Un service worker ou un Cache Storage resservirait l'ancienne version quoi qu'on
+  //    fasse ensuite. Le dépôt n'en installe aucun aujourd'hui ; la purge est là pour que
+  //    l'en ajouter un jour ne rende pas ce bouton mensonger.
+  try {
+    if (typeof caches !== 'undefined') {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+  } catch (err) {
+    // Purge best-effort : on journalise et on poursuit, le rechargement reste utile.
+    console.warn('Mise à jour forcée : purge des caches applicatifs impossible —', err);
+  }
+
+  // 2. Remplacement des entrées du cache HTTP par la version réseau.
+  const urls = collectCodeUrls();
+  const results = await Promise.allSettled(
+    urls.map((url) => fetch(url, { cache: 'reload', credentials: 'same-origin' }))
+  );
+  const echecs = results.filter((result) => result.status === 'rejected').length;
+  if (echecs > 0) {
+    console.warn(
+      `Mise à jour forcée : ${echecs}/${urls.length} ressources non rafraîchies (réseau ?)`
+    );
+  }
+
+  // 3. Rechargement, désormais servi par des entrées de cache fraîches.
+  location.reload();
+}
+
+/**
  * Monte l'overlay de version transitoire/persistant pour la vue Joueurs.
  *
  * @param {VersionBadgeOptions} [options]
@@ -144,7 +237,49 @@ export function mountPlayerVersionBadge(options = {}) {
   overlay.style.pointerEvents = 'none';
   overlay.style.transition = 'opacity 0.4s ease, background-color 0.3s ease';
   overlay.style.opacity = '1';
-  overlay.textContent = localLabel;
+
+  // Le libellé vit désormais dans son propre nœud : l'écrire ne doit pas emporter le
+  // bouton de mise à jour au passage.
+  overlay.textContent = '';
+  const overlayText = document.createElement('span');
+  overlayText.id = 'player-version-text';
+  overlayText.textContent = localLabel;
+  overlay.appendChild(overlayText);
+
+  // Tapable, et seulement tant que l'écart de build dure : l'overlay reste en
+  // `pointer-events: none`, le bouton seul le rétablit (cf. CONVENTIONS.md §8,
+  // interdiction 2).
+  //
+  // Il est créé ici mais **inséré dans le document uniquement en cas d'écart** : le zéro-UI
+  // de la vue joueurs se vérifie par `querySelectorAll('button, nav, input').length === 0`
+  // (T-23), donc un bouton simplement masqué violerait la règle sans que rien ne s'affiche.
+  const updateButton = document.createElement('button');
+  updateButton.id = 'player-version-update';
+  updateButton.type = 'button';
+  updateButton.textContent = 'Mettre à jour';
+  updateButton.style.marginLeft = '10px';
+  updateButton.style.padding = '6px 12px';
+  updateButton.style.minHeight = '32px';
+  updateButton.style.border = '0';
+  updateButton.style.borderRadius = '4px';
+  updateButton.style.background = '#ffffff';
+  updateButton.style.color = '#d32f2f';
+  updateButton.style.font = 'inherit';
+  updateButton.style.fontWeight = 'bold';
+  updateButton.style.cursor = 'pointer';
+  updateButton.style.pointerEvents = 'auto';
+  updateButton.style.touchAction = 'manipulation';
+
+  let isUpdating = false;
+  const handleUpdateClick = () => {
+    if (isUpdating) return;
+    isUpdating = true;
+    updateButton.disabled = true;
+    updateButton.style.cursor = 'default';
+    updateButton.textContent = 'Mise à jour…';
+    void forceReloadToLatest();
+  };
+  updateButton.addEventListener('click', handleUpdateClick);
 
   /** @type {ReturnType<typeof setTimeout>|null} */
   let fadeTimer = null;
@@ -178,7 +313,9 @@ export function mountPlayerVersionBadge(options = {}) {
       if (fadeTimer) clearTimeout(fadeTimer);
       overlay.style.backgroundColor = '#d32f2f';
       overlay.style.opacity = '1';
-      overlay.textContent = `${localLabel} · Connexion impossible`;
+      overlayText.textContent = `${localLabel} · Connexion impossible`;
+      // Sans réseau, forcer la mise à jour ne peut rien ramener de neuf.
+      if (!isUpdating) updateButton.remove();
       return;
     }
     if (mismatch.hasMismatch) {
@@ -186,11 +323,23 @@ export function mountPlayerVersionBadge(options = {}) {
       if (fadeTimer) clearTimeout(fadeTimer);
       overlay.style.backgroundColor = '#d32f2f';
       overlay.style.opacity = '1';
-      overlay.textContent = `${localLabel} · Écart de version (build ${mismatch.remoteBuild})`;
+      // `checkBuildMismatch` signale un écart sans dire qui est en retard. Le numéro de
+      // build étant monotone (nombre de commits, cf. le workflow de déploiement), le plus
+      // grand est le plus récent — on peut donc nommer le cas au lieu de le laisser deviner.
+      const estPerime =
+        typeof mismatch.remoteBuild === 'number' && mismatch.remoteBuild > localBuild;
+      overlayText.textContent = estPerime
+        ? `${localLabel} · Version périmée (build ${mismatch.remoteBuild} disponible)`
+        : `${localLabel} · Écart de version (build ${mismatch.remoteBuild})`;
+      // Le bouton s'affiche dans les deux sens : quand c'est le poste MJ qui est en retard,
+      // forcer ici ne fait aucun mal, et personne n'a à interpréter deux numéros de build
+      // au milieu d'une partie.
+      if (!updateButton.isConnected) overlay.appendChild(updateButton);
     } else {
       isMismatching = false;
       overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-      overlay.textContent = localLabel;
+      overlayText.textContent = localLabel;
+      if (!isUpdating) updateButton.remove();
       hideAfterDelay();
     }
   }
@@ -276,6 +425,7 @@ export function mountPlayerVersionBadge(options = {}) {
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
+      updateButton.removeEventListener('click', handleUpdateClick);
       unsubPresence();
       clearInterval(stalePresenceTimer);
       if (unsubTransportPresence) unsubTransportPresence();

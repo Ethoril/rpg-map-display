@@ -248,12 +248,24 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, les pions, le fog, le
    sélecteur d'étage et les gabarits s'affichent.
 
-   > **Trois dérogations, et trois seulement** (cf. `STACK.md` §5bis) :
+   > **Quatre dérogations, et quatre seulement** (cf. `STACK.md` §5bis) :
    > - **Overlay de version au chargement** — 4 s puis disparition totale,
    >   `pointer-events: none`, rappelable par tap à trois doigts. Rien de persistant, rien
    >   de tapable.
    > - **Bandeau de désynchronisation de version** — persistant *tant que l'écart existe*,
-   >   car c'est un état cassé et non de l'habillage.
+   >   car c'est un état cassé et non de l'habillage. Il porte **un bouton « Mettre à
+   >   jour »** (amendé le 30 juillet 2026, à la demande du mainteneur). Raison : le bandeau
+   >   annonçait un écart que le geste évident — recharger la page — ne corrigeait pas, GitHub Pages servant
+   >   tout avec un `Cache-Control: max-age` que Safari iOS honore sans revalider. Un
+   >   diagnostic sans remède n'est pas une information, c'est une impasse. Le bouton
+   >   n'existe **que** pendant l'écart et disparaît avec lui ; l'overlay lui-même reste en
+   >   `pointer-events: none`.
+   > - **Bouton de plein écran** — 44 × 44 px en haut à droite, opacité 0,4, permanent
+   >   (ajouté le 30 juillet 2026, à la demande du mainteneur). Raison : le plein écran
+   >   n'était tenté qu'au tout premier geste ; un refus du navigateur, ou une sortie par le
+   >   geste système de la tablette, laissait la carte en fenêtré sans retour possible hors
+   >   rechargement. Il ne s'affiche pas si le navigateur n'expose pas l'API plein écran —
+   >   un bouton inopérant serait pire que son absence.
    > - **Fenêtre de connexion Google** (ajoutée à T-14) — l'accès anonyme est fermé par les
    >   règles de sécurité, la tablette doit donc prouver une identité. Geste **unique** : la
    >   session est persistée, et plus rien n'apparaît aux rechargements suivants. Elle ne

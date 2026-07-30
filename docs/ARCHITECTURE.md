@@ -98,7 +98,7 @@ F:\rpg-map-display\
 │   │   └─ gestures.js            [1a] pan, pinch, tap, appui long
 │   │
 │   ├─ ui/
-│   │   ├─ versionBadge.js        [1a] affichage partagé MJ (permanent) / joueurs (transitoire)
+│   │   ├─ versionBadge.js        [1a] affichage MJ (permanent) / joueurs (transitoire) + mise à jour forcée
 │   │   ├─ gm/
 │   │   │   ├─ panel.js           [1a] panneau latéral (conteneur)
 │   │   │   ├─ importPanel.js     [1a] import UVTT + image, calibration
@@ -119,7 +119,7 @@ F:\rpg-map-display\
 │       ├─ session.js             [1a] authentification et connexion d'une page
 │       ├─ networkEvents.js       [1a] application idempotente des NetEvent au store
 │       ├─ gm.js                  [1a] point d'entrée vue MJ
-│       ├─ player.js              [1a] point d'entrée vue joueurs
+│       ├─ player.js              [1a] point d'entrée vue joueurs (+ verrous mobiles, bouton plein écran)
 │       └─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
 │
 ├─ scripts/

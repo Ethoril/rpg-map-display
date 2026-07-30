@@ -126,9 +126,12 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
 
     await expect(pagePlayer.locator('#handout-overlay')).toBeVisible();
 
-    // Vérifier Zero-UI strict
+    // Vérifier Zero-UI strict — seul le bouton plein écran est toléré (dérogation du
+    // 30 juillet 2026, cf. CONVENTIONS.md §8, interdiction 2).
     const forbiddenCount = await pagePlayer.evaluate(() => {
-      return document.querySelectorAll('button, nav, input').length;
+      return Array.from(document.querySelectorAll('button, nav, input')).filter(
+        (el) => el.id !== 'player-fullscreen-btn'
+      ).length;
     });
     expect(forbiddenCount).toBe(0);
 

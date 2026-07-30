@@ -17,6 +17,15 @@ import * as store from '../state/store.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 
+// Icônes du bouton plein écran : quatre coins qui s'écartent (entrer) ou se rejoignent
+// (sortir). Dessinées en SVG plutôt qu'en caractère Unicode — les glyphes « plein écran »
+// ne sont pas dans toutes les fontes système, et un carré tofu au-dessus de la carte est
+// pire que pas de bouton.
+const ICON_FULLSCREEN_ENTER =
+  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+const ICON_FULLSCREEN_EXIT =
+  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h3a2 2 0 0 0 2-2V3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M21 16h-3a2 2 0 0 0-2 2v3"/></svg>';
+
 /**
  * @returns {Promise<() => void>}
  */
@@ -56,21 +65,132 @@ async function setupMobileLocks() {
     }
   }
 
+  // Bouton de bascule plein écran, en haut à droite.
+  //
+  // Deuxième dérogation tapable au zéro-UI de la vue joueurs (cf. CONVENTIONS.md §8,
+  // interdiction 2), demandée le 30 juillet 2026. Le plein écran n'était tenté qu'au tout
+  // premier geste : un refus du navigateur, ou une sortie par le geste système de la
+  // tablette, laissait la carte en fenêtré sans aucun moyen d'y revenir hors rechargement.
+  const documentElement = document.documentElement;
+  const requestFullscreen =
+    documentElement.requestFullscreen ||
+    /** @type {any} */ (documentElement).webkitRequestFullscreen;
+  const exitFullscreen =
+    document.exitFullscreen || /** @type {any} */ (document).webkitExitFullscreen;
+  // Sur un navigateur sans API plein écran (Safari iOS), le bouton ne pourrait rien faire :
+  // on n'en met pas. Le zéro-UI reste alors intact.
+  const fullscreenSupported =
+    typeof requestFullscreen === 'function' &&
+    typeof exitFullscreen === 'function' &&
+    document.fullscreenEnabled !== false;
+
+  const isFullscreen = () =>
+    Boolean(document.fullscreenElement || /** @type {any} */ (document).webkitFullscreenElement);
+
+  /** @type {HTMLButtonElement|null} */
+  let fullscreenButton = null;
+
+  if (fullscreenSupported) {
+    fullscreenButton = document.createElement('button');
+    fullscreenButton.id = 'player-fullscreen-btn';
+    fullscreenButton.type = 'button';
+    fullscreenButton.style.position = 'fixed';
+    fullscreenButton.style.top = '12px';
+    fullscreenButton.style.right = '12px';
+    // Au-dessus du handout (9000), sous l'avertissement de version (9999) : une image
+    // révélée ne doit pas piéger la tablette en fenêtré, mais rien ne masque une alerte.
+    fullscreenButton.style.zIndex = '9500';
+    fullscreenButton.style.width = '44px';
+    fullscreenButton.style.height = '44px';
+    fullscreenButton.style.display = 'flex';
+    fullscreenButton.style.alignItems = 'center';
+    fullscreenButton.style.justifyContent = 'center';
+    fullscreenButton.style.padding = '0';
+    fullscreenButton.style.border = '0';
+    fullscreenButton.style.borderRadius = '8px';
+    fullscreenButton.style.background = 'rgba(0, 0, 0, 0.45)';
+    fullscreenButton.style.color = '#ffffff';
+    // Discret par défaut : présent pour la main qui le cherche, oublié par les yeux.
+    fullscreenButton.style.opacity = '0.4';
+    fullscreenButton.style.transition = 'opacity 0.2s ease';
+    fullscreenButton.style.cursor = 'pointer';
+    fullscreenButton.style.touchAction = 'manipulation';
+    fullscreenButton.style.setProperty('-webkit-tap-highlight-color', 'transparent');
+    document.body.appendChild(fullscreenButton);
+  }
+
+  function renderFullscreenButton() {
+    if (!fullscreenButton) return;
+    const actif = isFullscreen();
+    fullscreenButton.innerHTML = actif ? ICON_FULLSCREEN_EXIT : ICON_FULLSCREEN_ENTER;
+    const libelle = actif ? 'Quitter le plein écran' : 'Plein écran';
+    fullscreenButton.title = libelle;
+    fullscreenButton.setAttribute('aria-label', libelle);
+  }
+
+  const onToggleFullscreen = async () => {
+    if (!fullscreenButton) return;
+    fullscreenButton.style.opacity = '1';
+    try {
+      if (isFullscreen()) {
+        await exitFullscreen.call(document);
+      } else {
+        await requestFullscreen.call(documentElement);
+        // Le plein écran est le moment où l'orientation et la veille comptent le plus.
+        await lockOrientation();
+        await acquireWakeLock();
+      }
+    } catch (err) {
+      // Le navigateur peut refuser (hors geste utilisateur, mode PiP…). On le dit, et la
+      // carte continue de fonctionner en fenêtré.
+      console.warn('Bascule plein écran refusée par le navigateur :', err);
+    }
+    renderFullscreenButton();
+    fullscreenButton.style.opacity = '0.4';
+  };
+
+  const onFullscreenChange = () => renderFullscreenButton();
+
   const onVisibilityChange = () => {
     if (!document.hidden) void acquireWakeLock();
   };
-  const onFirstGesture = () => {
+  let firstGestureDone = false;
+  /** @param {Event} event */
+  const onFirstGesture = (event) => {
+    // Le bouton est maître de sa propre bascule : le laisser déclencher aussi l'activation
+    // « au premier geste » ferait entrer puis ressortir du plein écran sur le même tap,
+    // `pointerdown` précédant `click`.
+    if (
+      fullscreenButton &&
+      event.target instanceof Node &&
+      fullscreenButton.contains(event.target)
+    ) {
+      return;
+    }
+    if (firstGestureDone) return;
+    firstGestureDone = true;
+    document.removeEventListener('pointerdown', onFirstGesture);
     void activateFromGesture();
   };
 
   document.addEventListener('visibilitychange', onVisibilityChange);
-  document.addEventListener('pointerdown', onFirstGesture, { once: true });
+  document.addEventListener('pointerdown', onFirstGesture);
+  if (fullscreenButton) {
+    fullscreenButton.addEventListener('click', () => void onToggleFullscreen());
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    renderFullscreenButton();
+  }
   await lockOrientation();
   await acquireWakeLock();
 
   return () => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     document.removeEventListener('pointerdown', onFirstGesture);
+    document.removeEventListener('fullscreenchange', onFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    fullscreenButton?.remove();
+    fullscreenButton = null;
     try {
       wakeLock?.release?.();
     } catch {

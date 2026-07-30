@@ -176,7 +176,15 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   facturation, aucun coût n'est possible, les quotas du plan gratuit étant des plafonds durs.
   Le seul gain est d'éviter qu'un tiers épuise le quota. C'est aussi la réponse à l'alerte
   « secret détecté » de GitHub, qui se déclenche sur le motif `AIzaSy` de toute clé Google ;
-- purge de fin de séance selon l’usage réel.
+- purge de fin de séance selon l’usage réel ;
+- **efficacité réelle du bouton « Mettre à jour »** du bandeau de désynchronisation
+  (`js/ui/versionBadge.js`, `forceReloadToLatest`). Le mécanisme — refetch de chaque URL de
+  code en `cache: 'reload'`, qui remplace l'entrée du cache HTTP, avant `location.reload()` —
+  est vérifié en Chromium par `tests/player.spec.mjs`. Mais le défaut qu'il corrige est propre
+  au cache de Safari iOS, qui ressert les modules ES d'un `max-age` non expiré sans revalider :
+  **seule la tablette peut confirmer que la version affichée change après le tap.** Si l'écart
+  survit au bouton, le pas suivant est de servir le code sous une URL versionnée plutôt que de
+  négocier avec le cache.
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.
 
