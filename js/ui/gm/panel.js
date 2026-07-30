@@ -2,6 +2,7 @@
 import { createImportPanel } from './importPanel.js';
 import { createTokenMaker } from './tokenMaker.js';
 import { createSceneLibrary } from './sceneLibrary.js';
+import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
 import { VERSION } from '../../core/version.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
@@ -66,7 +67,14 @@ export function createGMPanel(container, options = {}) {
       </div>
 
       <div id="tab-content-token-maker" class="gm-tab-pane" style="display: none;">
-        <div id="token-maker-mount"></div>
+        <div class="token-library-section" style="margin-bottom: 1.5rem;">
+          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Bibliothèque de pions</h3>
+          <div id="token-library-mount"></div>
+        </div>
+        <div class="token-maker-section" style="border-top: 1px solid #333; padding-top: 1rem;">
+          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Créer un pion</h3>
+          <div id="token-maker-mount"></div>
+        </div>
       </div>
 
       <div id="tab-content-handouts" class="gm-tab-pane" style="display: none;">
@@ -138,6 +146,7 @@ export function createGMPanel(container, options = {}) {
 
   // --- Montage des sous-composants ---
   const sceneLibraryMount = /** @type {HTMLElement} */ (container.querySelector('#scene-library-mount'));
+  const tokenLibraryMount = /** @type {HTMLElement} */ (container.querySelector('#token-library-mount'));
   const uvttMount = /** @type {HTMLElement} */ (container.querySelector('#import-uvtt-mount'));
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
@@ -153,6 +162,24 @@ export function createGMPanel(container, options = {}) {
 
   // Initialisation du composant Handouts
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
+
+  // Initialisation de la bibliothèque de pions
+  /** @type {{destroy: () => void} | null} */
+  let tokenLibrary = null;
+  if (tokenLibraryMount) {
+    createTokenLibrary(tokenLibraryMount, { transport })
+      .then((lib) => {
+        tokenLibrary = lib;
+      })
+      .catch((err) => {
+        console.error('Erreur lors du chargement de la bibliothèque de pions :', err);
+        tokenLibraryMount.innerHTML = `
+          <div style="padding: 0.75rem; background: #3a1a1a; color: #e07070; border-radius: 4px; border: 1px solid #5a3a3a;">
+            ✗ Erreur : Impossible de charger la bibliothèque de pions.
+          </div>
+        `;
+      });
+  }
 
   // Initialisation du générateur de pions avec ajout direct au store lors de la génération
   const tokenMaker = createTokenMaker(tokenMakerMount, {
@@ -266,6 +293,7 @@ export function createGMPanel(container, options = {}) {
       unsubscribeStore();
       versionBadge?.detach();
       sceneLibrary?.destroy();
+      tokenLibrary?.destroy();
       handouts?.destroy();
       container.replaceChildren();
     },

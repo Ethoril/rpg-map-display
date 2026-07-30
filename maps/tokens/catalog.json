@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "tokens": [
+    {
+      "id": "goblin-scout",
+      "name": "Éclaireur Goblinoïde",
+      "imageUrl": "maps/tokens/goblin.webp",
+      "kind": "npc",
+      "sizeCells": 1,
+      "speedCells": 3,
+      "visionBright": 5,
+      "visionDim": 10,
+      "emitsLight": null,
+      "borderColor": "#e74c3c"
+    }
+  ]
+}

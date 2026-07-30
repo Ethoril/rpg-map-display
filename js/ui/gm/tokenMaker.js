@@ -74,9 +74,10 @@ export function createTokenMaker(container, options) {
         Le WebP sera téléchargé localement. Placez-le dans maps/tokens/ avant de partager la campagne.
       </p>
 
-      <div class="token-maker-actions" style="display: flex; gap: 0.5rem;">
-        <button id="btn-generate-token" style="flex: 1; padding: 0.5rem;" disabled>Générer pion</button>
-        <button id="btn-download-token" style="flex: 1; padding: 0.5rem;" disabled>Télécharger pion</button>
+      <div class="token-maker-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button id="btn-generate-token" style="flex: 1; min-width: 110px; padding: 0.5rem;" disabled>Générer pion</button>
+        <button id="btn-download-token" style="flex: 1; min-width: 110px; padding: 0.5rem;" disabled>Télécharger pion</button>
+        <button id="btn-copy-json" style="flex: 1; min-width: 110px; padding: 0.5rem;">Copier l'entrée JSON</button>
       </div>
     </div>
   `;
@@ -103,6 +104,7 @@ export function createTokenMaker(container, options) {
 
   const btnGenerate = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-generate-token'));
   const btnDownload = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-download-token'));
+  const btnCopyJson = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-copy-json'));
 
   // --- État interne ---
   /** @type {HTMLImageElement|null} */
@@ -488,6 +490,49 @@ export function createTokenMaker(container, options) {
     downloadToken();
   });
 
+  // --- Copie de l'entrée JSON pour la bibliothèque ---
+  function copyTokenLibraryEntryJson() {
+    const label = labelInput.value.trim() || 'Pion';
+    const slug = label
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'token';
+
+    const explicitUrl = canonicalUrlInput.value.trim();
+    const canonicalUrl = explicitUrl || `maps/tokens/${slug}.webp`;
+
+    /** @type {import('../../core/types.js').TokenLibraryEntry} */
+    const entry = {
+      id: slug,
+      name: label,
+      imageUrl: canonicalUrl,
+      kind: /** @type {'pc'|'npc'} */ (kindSelect.value === 'npc' ? 'npc' : 'pc'),
+      sizeCells: Math.max(1, parseInt(sizeCellsInput.value, 10) || 1),
+      speedCells: Math.max(1, parseInt(speedCellsInput.value, 10) || 3),
+      visionBright: 5,
+      visionDim: 10,
+      emitsLight: null,
+      borderColor: colorInput.value || '#ff0000',
+    };
+
+    const jsonStr = JSON.stringify(entry, null, 2);
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      void navigator.clipboard.writeText(jsonStr);
+    }
+
+    status.style.color = '#2ecc71';
+    status.textContent = `Entrée TokenLibraryEntry copiée ("${entry.id}")`;
+
+    return entry;
+  }
+
+  btnCopyJson.addEventListener('click', () => {
+    copyTokenLibraryEntryJson();
+  });
+
   // Rendu initial (vide)
   drawPreview();
   refreshGenerateAvailability();
@@ -496,6 +541,7 @@ export function createTokenMaker(container, options) {
     loadImageFile,
     generateToken,
     downloadToken,
+    copyTokenLibraryEntryJson,
     getCurrentToken: () => currentToken,
     getCurrentDataUrl: () => currentDataUrl,
     /**
