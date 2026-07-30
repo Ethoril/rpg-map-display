@@ -23,6 +23,7 @@ import {
   off,
   remove,
   onDisconnect,
+  serverTimestamp,
 } from 'firebase/database';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
@@ -305,6 +306,12 @@ export class FirebaseTransport {
     this._presenceHeartbeat = null;
     /** @type {{ role: 'gm'|'players', build: number, label: string }|null} */
     this._presencePayload = null;
+    /** @type {number} Décalage horloge serveur − horloge locale, en millisecondes */
+    this._serverTimeOffset = 0;
+    /** @type {boolean} */
+    this._serverTimeOffsetTracked = false;
+    /** @type {(() => void)|null} */
+    this._presenceVisibilityCleanup = null;
   }
 
   // --- Authentification -----------------------------------------------------
@@ -719,13 +726,22 @@ export class FirebaseTransport {
     }
 
     if (this._presenceHeartbeat) clearInterval(this._presenceHeartbeat);
+    this._presenceVisibilityCleanup?.();
+    this._trackServerTimeOffset();
 
     const disconnectRegistration = onDisconnect(presenceRef);
     try {
       // Enregistrer la suppression avant l'écriture ferme la fenêtre où un client pourrait
       // disparaître en laissant une présence fantôme.
       await disconnectRegistration.remove();
-      await set(presenceRef, { ...payload, at: Date.now() });
+      // `at` est daté par le SERVEUR, jamais par l'horloge locale.
+      //
+      // Auparavant : `at: Date.now()`. La péremption se calcule chez le lecteur par
+      // `Date.now() - at > 90 s` — donc en comparant deux horloges différentes. Une tablette
+      // en avance de quelques minutes produisait un `at` dans le futur, un âge négatif, et
+      // une présence qui **ne périmait jamais** : un écran éteint depuis des jours
+      // continuait d'annoncer sa build et de déclencher une alerte d'écart insoluble.
+      await set(presenceRef, { ...payload, at: serverTimestamp() });
     } catch (err) {
       this._reportError(err, 'publication de la présence');
       throw err;
@@ -733,12 +749,67 @@ export class FirebaseTransport {
     this._presenceRef = presenceRef;
     this._presenceOnDisconnect = disconnectRegistration;
     this._presencePayload = payload;
-    this._presenceHeartbeat = setInterval(() => {
+
+    const refreshPresence = () => {
       if (!this._presenceRef || !this._presencePayload) return;
-      set(this._presenceRef, { ...this._presencePayload, at: Date.now() }).catch((err) =>
+      set(this._presenceRef, { ...this._presencePayload, at: serverTimestamp() }).catch((err) =>
         this._reportError(err, 'rafraîchissement de la présence')
       );
-    }, PRESENCE_HEARTBEAT_MS);
+    };
+
+    // Un onglet en arrière-plan continue de battre : les navigateurs bornent les minuteries
+    // masquées à environ une par minute, ce qui reste sous les 90 s de péremption. Un vieil
+    // onglet oublié sur un appareil quelconque tenait donc la session en alerte permanente,
+    // sans que personne ne regarde son écran.
+    //
+    // La présence décrit les écrans **en service**, pas les onglets qui existent : masqué,
+    // ce client cesse de battre et se périme comme il se doit ; revenu au premier plan, il
+    // se réannonce immédiatement.
+    const startHeartbeat = () => {
+      if (this._presenceHeartbeat) return;
+      this._presenceHeartbeat = setInterval(refreshPresence, PRESENCE_HEARTBEAT_MS);
+    };
+    const stopHeartbeat = () => {
+      if (!this._presenceHeartbeat) return;
+      clearInterval(this._presenceHeartbeat);
+      this._presenceHeartbeat = null;
+    };
+    const onVisibilityChange = () => {
+      if (typeof document === 'undefined') return;
+      if (document.hidden) {
+        stopHeartbeat();
+      } else {
+        refreshPresence();
+        startHeartbeat();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      this._presenceVisibilityCleanup = () =>
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (document.hidden) return;
+    }
+    startHeartbeat();
+  }
+
+  /**
+   * Suit le décalage entre l'horloge du serveur et l'horloge locale.
+   *
+   * Firebase expose `.info/serverTimeOffset` précisément pour cela. Il sert à reconvertir les
+   * `at` datés par le serveur vers l'horloge du lecteur, de sorte que la péremption d'une
+   * présence se calcule dans un seul et même référentiel.
+   *
+   * @private
+   */
+  _trackServerTimeOffset() {
+    if (!this._db || this._serverTimeOffsetTracked) return;
+    this._serverTimeOffsetTracked = true;
+    const offsetRef = ref(this._db, '.info/serverTimeOffset');
+    onValue(offsetRef, (snapshot) => {
+      const value = snapshot.val();
+      this._serverTimeOffset = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    });
   }
 
   /**
@@ -754,12 +825,25 @@ export class FirebaseTransport {
     if (typeof handler !== 'function') {
       throw new Error('Le handler de présence doit être une fonction');
     }
+    this._trackServerTimeOffset();
     const presenceRef = ref(this._db, `session/${this._sessionId}/presence`);
     const unsubscribe = onValue(
       presenceRef,
       (snap) => {
         const val = snap.val() || {};
-        handler(val);
+        // Les `at` arrivent dans le référentiel du serveur ; on les ramène à l'horloge du
+        // lecteur ici, à la frontière du transport. Au-delà, le reste du code ne connaît
+        // qu'un seul temps, le sien, et `Date.now() - at` redevient un âge réel.
+        /** @type {Record<string, any>} */
+        const normalized = {};
+        for (const [clientId, entry] of Object.entries(/** @type {object} */ (val))) {
+          const raw = /** @type {any} */ (entry);
+          normalized[clientId] =
+            raw && typeof raw.at === 'number'
+              ? { ...raw, at: raw.at - this._serverTimeOffset }
+              : raw;
+        }
+        handler(normalized);
       },
       (err) => this._reportError(err, 'écoute de la présence')
     );
@@ -842,6 +926,8 @@ export class FirebaseTransport {
       clearInterval(this._presenceHeartbeat);
       this._presenceHeartbeat = null;
     }
+    this._presenceVisibilityCleanup?.();
+    this._presenceVisibilityCleanup = null;
     if (this._presenceRef) {
       const presenceRef = this._presenceRef;
       const disconnectRegistration = this._presenceOnDisconnect;

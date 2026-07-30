@@ -69,9 +69,42 @@ export function clearPresence() {
  */
 export function getPresenceList() {
   const now = Date.now();
-  return Array.from(presenceMap.values())
-    .filter((client) => now - client.at <= PRESENCE_STALE_AFTER_MS)
-    .map((client) => ({ ...client }));
+  return (
+    Array.from(presenceMap.values())
+      // Âge en valeur absolue, et c'est le point important.
+      //
+      // La borne était `now - client.at <= 90 s`, sans plancher : une présence datée dans le
+      // futur donnait un âge négatif, satisfaisait la condition, et ne périmait donc
+      // **jamais**. Or `at` a longtemps été écrit avec l'horloge du client (cf.
+      // `FirebaseTransport.publishPresence`) : il suffisait d'une tablette en avance de
+      // quelques minutes pour qu'un écran éteint depuis des jours continue d'annoncer sa
+      // build, et rende l'alerte d'écart de version impossible à éteindre.
+      //
+      // Les `at` sont désormais datés par le serveur, mais les enregistrements écrits par les
+      // anciennes versions traînent dans la base : ce plancher les élimine sans migration.
+      .filter((client) => Math.abs(now - client.at) <= PRESENCE_STALE_AFTER_MS)
+      .map((client) => ({ ...client }))
+  );
+}
+
+/**
+ * Liste **tous** les clients dont la build diffère de la build locale.
+ *
+ * `checkBuildMismatch` s'arrête au premier trouvé : quand plusieurs écrans divergent, le
+ * numéro affiché sautait de l'un à l'autre au gré de l'ordre d'itération, ce qui donnait
+ * l'impression d'un diagnostic erratique. Pour dire *qui* recharger, il faut les voir tous.
+ *
+ * @param {number} localBuild Build du client local
+ * @param {string} [selfClientId] Exclure optionnellement son propre clientId
+ * @returns {ClientPresence[]} Triés par build croissante, le plus en retard d'abord
+ */
+export function listBuildMismatches(localBuild, selfClientId = '') {
+  return getPresenceList()
+    .filter((client) => {
+      if (selfClientId && client.clientId === selfClientId) return false;
+      return typeof client.build === 'number' && client.build !== 0 && client.build !== localBuild;
+    })
+    .sort((a, b) => a.build - b.build);
 }
 
 /**

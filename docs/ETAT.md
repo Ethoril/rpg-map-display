@@ -188,6 +188,36 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.
 
+## Présence : trois défauts qui rendaient l'alerte d'écart de version inextinguible
+
+Constaté le 30 juillet 2026 en séance : la tablette affichait un écart avec la build 91,
+puis 90, alors qu'elle exécutait bien la 93 — la preuve étant que les boutons ajoutés en 93
+s'affichaient. Forcer la mise à jour ne changeait donc rien, et ne pouvait rien changer.
+
+1. **`at` était daté par l'horloge du client** (`Date.now()` dans `publishPresence`), mais la
+   péremption se calcule chez le lecteur : `now - at > 90 s`. Deux horloges, une soustraction.
+   Un client en avance produisait un `at` futur, donc un âge **négatif**, qui satisfait la
+   borne — la présence ne périmait jamais. Un écran éteint depuis des jours continuait
+   d'annoncer sa build. Corrigé par `serverTimestamp()` à l'écriture et reconversion vers
+   l'horloge locale via `.info/serverTimeOffset` à la frontière du transport ; `getPresenceList`
+   borne désormais l'âge **en valeur absolue**, ce qui élimine sans migration les
+   enregistrements laissés par les anciennes versions.
+2. **Le battement de cœur continuait en arrière-plan.** Les navigateurs bornent les minuteries
+   d'un onglet masqué à environ une par minute — sous les 90 s de péremption. Un onglet oublié
+   sur n'importe quel appareil tenait donc la session en alerte permanente. La présence décrit
+   les écrans *en service* : masqué, un client cesse de battre et se périme ; revenu au premier
+   plan, il se réannonce.
+3. **Le diagnostic désignait le mauvais écran.** `checkBuildMismatch` s'arrête au premier
+   client divergent — d'où le numéro qui sautait de 91 à 90 selon l'ordre d'itération — et le
+   message MJ annonçait « la tablette » quel que soit le rôle du fautif. `listBuildMismatches`
+   les rend tous, triés, et les deux vues nomment le rôle. Le bouton « Mettre à jour » ne
+   s'affiche plus que si la page est **réellement** en retard : sur l'écran déjà à jour, il
+   promettait un remède qu'il ne pouvait pas tenir.
+
+> Le premier défaut est le plus instructif : comparer deux horloges sans référentiel commun ne
+> produit pas une erreur, mais une condition qui **s'inverse silencieusement**. Une borne à
+> sens unique sur une différence de temps mérite toujours la question « et si c'était négatif ? ».
+
 ## Règles de sécurité Firebase — les seules qui protègent réellement
 
 La clé d'API est publique par conception (`firebase-config.js`) : **ce sont les règles, et

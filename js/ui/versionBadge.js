@@ -1,10 +1,20 @@
 // @ts-check
 import { VERSION } from '../core/version.js';
 import {
-  checkBuildMismatch,
+  listBuildMismatches,
   subscribePresence,
   setPresenceMap,
 } from '../state/presence.js';
+
+/**
+ * Désigne un client par son rôle, tel qu'on en parle à table.
+ *
+ * @param {'gm'|'players'} role
+ * @returns {string}
+ */
+function nommerClient(role) {
+  return role === 'gm' ? 'un poste MJ' : 'la tablette';
+}
 
 /**
  * Options de montage du badge de version.
@@ -47,15 +57,24 @@ export function mountGMVersionBadge(container, options = {}) {
   function update() {
     const selfClientId =
       transport && typeof transport.getClientId === 'function' ? transport.getClientId() : '';
-    const mismatch = checkBuildMismatch(localBuild, selfClientId || '');
+    const mismatches = listBuildMismatches(localBuild, selfClientId || '');
     if (transportError) {
       banner.textContent = `Connexion impossible : ${transportError}`;
       banner.style.display = 'block';
       return;
     }
-    if (mismatch.hasMismatch) {
-      const remoteBuild = mismatch.remoteBuild;
-      banner.textContent = `La tablette exécute la build ${remoteBuild}, ce poste la ${localBuild}. Recharge la tablette.`;
+    if (mismatches.length > 0) {
+      // Le message nommait « la tablette » quel que soit le rôle du client fautif, et n'en
+      // citait qu'un seul. Envoyer recharger le mauvais écran est pire que ne rien dire.
+      const enumeration = mismatches
+        .map((client) => `${nommerClient(client.role)} exécute la build ${client.build}`)
+        .join(' ; ');
+      const consigne = mismatches.some((client) => client.build > localBuild)
+        ? 'Recharge ce poste.'
+        : mismatches.every((client) => client.role === 'players')
+          ? 'Recharge la tablette.'
+          : 'Recharge l’écran en retard.';
+      banner.textContent = `${enumeration.charAt(0).toUpperCase()}${enumeration.slice(1)}, ce poste la ${localBuild}. ${consigne}`;
       banner.style.display = 'block';
     } else {
       banner.style.display = 'none';
@@ -307,7 +326,7 @@ export function mountPlayerVersionBadge(options = {}) {
     if (!overlay) return;
     const selfClientId =
       transport && typeof transport.getClientId === 'function' ? transport.getClientId() : '';
-    const mismatch = checkBuildMismatch(localBuild, selfClientId || '');
+    const mismatches = listBuildMismatches(localBuild, selfClientId || '');
     if (transportError) {
       isMismatching = true;
       if (fadeTimer) clearTimeout(fadeTimer);
@@ -318,23 +337,30 @@ export function mountPlayerVersionBadge(options = {}) {
       if (!isUpdating) updateButton.remove();
       return;
     }
-    if (mismatch.hasMismatch) {
+    if (mismatches.length > 0) {
       isMismatching = true;
       if (fadeTimer) clearTimeout(fadeTimer);
       overlay.style.backgroundColor = '#d32f2f';
       overlay.style.opacity = '1';
-      // `checkBuildMismatch` signale un écart sans dire qui est en retard. Le numéro de
-      // build étant monotone (nombre de commits, cf. le workflow de déploiement), le plus
-      // grand est le plus récent — on peut donc nommer le cas au lieu de le laisser deviner.
-      const estPerime =
-        typeof mismatch.remoteBuild === 'number' && mismatch.remoteBuild > localBuild;
+      // Le numéro de build est monotone (nombre de commits, cf. le workflow de déploiement) :
+      // le plus grand est le plus récent. Cette page n'est périmée que s'il existe plus récent
+      // qu'elle — les clients *en retard sur elle* ne la concernent pas.
+      const buildMax = Math.max(...mismatches.map((client) => client.build));
+      const estPerime = buildMax > localBuild;
+      const enRetard = mismatches[0];
       overlayText.textContent = estPerime
-        ? `${localLabel} · Version périmée (build ${mismatch.remoteBuild} disponible)`
-        : `${localLabel} · Écart de version (build ${mismatch.remoteBuild})`;
-      // Le bouton s'affiche dans les deux sens : quand c'est le poste MJ qui est en retard,
-      // forcer ici ne fait aucun mal, et personne n'a à interpréter deux numéros de build
-      // au milieu d'une partie.
-      if (!updateButton.isConnected) overlay.appendChild(updateButton);
+        ? `${localLabel} · Version périmée (build ${buildMax} disponible)`
+        : `${localLabel} · ${nommerClient(enRetard.role)} est en retard (build ${enRetard.build})`;
+      // Le bouton n'apparaît que si cette page est réellement en retard.
+      //
+      // Il s'affichait dans les deux sens, au motif que forcer ne ferait « aucun mal ». Si :
+      // sur l'écran déjà à jour, il promet un remède qu'il ne peut pas tenir, on le tape, la
+      // page recharge, l'alerte revient — et on cherche le défaut du mauvais côté.
+      if (estPerime) {
+        if (!updateButton.isConnected) overlay.appendChild(updateButton);
+      } else if (!isUpdating) {
+        updateButton.remove();
+      }
     } else {
       isMismatching = false;
       overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';

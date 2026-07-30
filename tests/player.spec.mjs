@@ -608,7 +608,11 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
       mountGMVersionBadge(gmFooter, { build: 42 });
       mountPlayerVersionBadge({ build: 42 });
 
-      const gmBanner = document.getElementById('version-mismatch-banner-gm');
+      // Interroger le pied de panneau monté ici, et non `getElementById` : gm.html monte
+      // déjà son propre badge, avec le même identifiant et la build réelle du dépôt. La
+      // recherche globale tombait donc sur la bannière de l'application — le test lisait un
+      // écart 35 vs 41 en croyant vérifier 42 vs 41, et le sens de la consigne lui échappait.
+      const gmBanner = gmFooter.querySelector('#version-mismatch-banner-gm');
       const playerOverlay = document.getElementById('player-version-overlay');
 
       return {
@@ -621,6 +625,9 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
 
     expect(res.gmBannerVisible).toBe(true);
     expect(res.gmBannerText).toContain('41');
+    // Ce poste est en 42, la tablette en 41 : c'est bien elle qu'il faut recharger, et le
+    // message doit désigner le bon écran — envoyer recharger le mauvais est pire que se taire.
+    expect(res.gmBannerText).toContain('La tablette exécute la build 41');
     expect(res.gmBannerText).toContain('Recharge la tablette');
     expect(res.playerOverlayBg).toContain('211, 47, 47'); // rgb(211, 47, 47)
     expect(res.playerOverlayOpacity).toBe('1');

@@ -14,6 +14,7 @@ import { LocalSocketTransport } from '../js/transport/LocalSocketTransport.js';
 import { TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
 import {
     checkBuildMismatch,
+    listBuildMismatches,
     clearPresence,
     getPresenceList,
     setPresenceMap,
@@ -206,6 +207,40 @@ test('le store de présence ignore les entrées invalides, expirées et le clien
 
     assert.deepEqual(getPresenceList().map((presence) => presence.clientId).sort(), ['self', 'tablet']);
     assert.equal(checkBuildMismatch(34, 'self').remoteBuild, 35);
+    clearPresence();
+});
+
+test('une présence datée dans le futur se périme au lieu de survivre indéfiniment', () => {
+    clearPresence();
+    const now = Date.now();
+    // Le cas réel : `at` était écrit avec l'horloge du client. Une tablette en avance de
+    // dix minutes produisait un âge négatif, la borne `now - at <= 90 s` était satisfaite,
+    // et l'écran éteint continuait d'annoncer sa build — alerte d'écart inextinguible.
+    setPresenceMap({
+        fantome: { role: 'players', at: now + 600_000, build: 90, label: '0.1.0+90' },
+        vivant: { role: 'players', at: now, build: 93, label: '0.1.0+93' },
+    });
+
+    assert.deepEqual(getPresenceList().map((presence) => presence.clientId), ['vivant']);
+    clearPresence();
+});
+
+test('listBuildMismatches les rend tous, du plus en retard au plus avancé', () => {
+    clearPresence();
+    const now = Date.now();
+    // Plusieurs écrans divergents : `checkBuildMismatch` n'en renvoyait qu'un, au gré de
+    // l'ordre d'itération — d'où un numéro de build qui sautait de 91 à 90 sans raison
+    // apparente, et un diagnostic qu'on ne pouvait pas suivre.
+    setPresenceMap({
+        self: { role: 'gm', at: now, build: 93, label: '0.1.0+93' },
+        vieux: { role: 'players', at: now, build: 90, label: '0.1.0+90' },
+        moins_vieux: { role: 'gm', at: now, build: 91, label: '0.1.0+91' },
+        aligne: { role: 'players', at: now, build: 93, label: '0.1.0+93' },
+    });
+
+    const ecarts = listBuildMismatches(93, 'self');
+    assert.deepEqual(ecarts.map((client) => client.build), [90, 91]);
+    assert.deepEqual(ecarts.map((client) => client.role), ['players', 'gm']);
     clearPresence();
 });
 
