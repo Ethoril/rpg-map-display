@@ -63,6 +63,7 @@ F:\rpg-map-display\
 │   ├─ import/
 │   │   ├─ uvtt.js                [1a] parsing UVTT pur (aucune I/O, aucun DOM)
 │   │   ├─ catalog.js             [2]  chargeur et validateur de catalogue pur
+│   │   ├─ tokenCatalog.js        [1b] chargeur et validateur du catalogue de pions, pur
 │   │   ├─ imageCalibrate.js      [1a] image simple → grille (source B)
 │   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>
 │   │
@@ -148,6 +149,17 @@ F:\rpg-map-display\
     │                              spécifications des trois chantiers restants
     └─ ETAT.md                    avancement, reprise, corrections du plan
 ```
+
+> `import/tokenCatalog.js` a été **ajouté au chantier I**. Le premier brief logeait le
+> chargement et la validation du catalogue de pions dans `ui/gm/tokenLibrary.js`, au motif
+> que ce document est fermé. C'était privilégier la lettre du manifeste sur sa raison
+> d'être : une validation qui touche le DOM n'est testable qu'au navigateur, et surtout
+> elle est **inutilisable depuis Node**. Or les couches pures sont déjà le substrat partagé
+> entre le navigateur et les CLI — `import/uvtt.js` est importé par `scripts/import-uvtt.mjs`
+> **et** `scripts/prepare-maps.mjs`, aux côtés de `core/schema.js` et `core/constants.js`.
+> Enfermer la validation dans `ui/*` interdisait donc une vérification CI du catalogue
+> commité et tout futur `prepare-tokens.mjs`. Aucune règle du §2 n'est touchée : `import/*`
+> n'importe que `core/*`, et `ui/*` peut déjà importer `import/*`.
 
 ---
 
