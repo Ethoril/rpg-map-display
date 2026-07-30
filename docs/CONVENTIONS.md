@@ -179,6 +179,20 @@ Forme unique, sans exception :
   exception à un fond d'étage : le rapport de taille est de mille pour un.
 - Tout événement doit être **idempotent** : le rejouer deux fois donne le même état.
 
+**Le trio du pion porte un nommage mixte, et c'est voulu.** Le CdC §7 annonce
+`token.create` / `update` / `delete` ; le code publie **`token.add`**, `token.update` et
+`token.delete`. La divergence est limitée à la création : elle est antérieure (chantier I,
+fait n°5) et renommer un type d'événement déjà émis casserait la relecture d'une session en
+cours. `token.update` et `token.delete`, écrits le 30 juillet 2026, ont donc pris les noms
+canoniques du CdC. **Ne pas « harmoniser » dans un sens ou dans l'autre** : aligner
+`update`/`delete` sur `add` inventerait deux noms absents du CdC, et renommer `add` en
+`create` casserait le rejeu.
+
+`token.update` porte `{ tokenId, patch }`, où `patch` contient des **valeurs absolues** et
+non des deltas — c'est ce qui le rend rejouable. Les champs acceptables sont décidés par la
+seule liste blanche de `store.updateToken` ; ne pas la recopier dans la couche réseau, les
+deux dériveraient.
+
 ---
 
 ## 5. État & mutation

@@ -539,7 +539,36 @@ export function updateLevel(levelId, levelUpdates) {
   notifySubscribers();
 }
 
-const ALLOWED_TOKEN_PATCH_KEYS = new Set(['elevation']);
+/**
+ * Champs d'un pion qu'un patch peut modifier.
+ *
+ * La liste est **fermée** à dessein : un `{...token, ...patch}` libre laisserait réécrire
+ * `id` ou `levelId` par une faute de frappe, et le pion changerait d'identité ou d'étage
+ * sans qu'aucun message ne le dise.
+ *
+ * Ce qui reste dehors, et pourquoi :
+ * - `id`, `levelId` — l'identité et l'appartenance à un étage ne se corrigent pas, elles se
+ *   recréent. Le CdC §7 prévoit `token.levelChange` pour le changement d'étage.
+ * - `cell`, `move` — la position appartient à `moveTokenToCell` et à `token.move`, qui
+ *   portent l'animation déterministe. Deux chemins vers la même donnée en feraient diverger
+ *   un des deux.
+ * - `markers` — tranche L-09 du lot 2, dont le jeu de valeurs n'est pas arrêté (CdC Q7).
+ * - `imageUrl` — remplacer l'image, c'est repasser par le générateur : un champ texte libre
+ *   n'y apporterait qu'un moyen de casser l'affichage.
+ */
+const ALLOWED_TOKEN_PATCH_KEYS = new Set([
+  'label',
+  'kind',
+  'borderColor',
+  'sizeCells',
+  'speedCells',
+  'hidden',
+  'playerMovable',
+  'locked',
+  'visionBright',
+  'visionDim',
+  'elevation',
+]);
 
 /**
  * Met à jour les champs autorisés d'un pion existant.
@@ -582,6 +611,13 @@ export function updateToken(tokenId, patch) {
 /**
  * Supprime un pion de la campagne par son identifiant.
  *
+ * Transactionnelle comme ses voisines : la suppression se fait sur une campagne candidate,
+ * validée avant d'être adoptée. Cette fonction opérait auparavant par `splice` directement
+ * sur l'état vivant — elle était la seule mutation du store à le faire, et elle n'a jamais
+ * été appelée par l'interface, donc l'écart n'était jamais apparu. Une suppression *peut*
+ * invalider une campagne, ne serait-ce qu'en vidant `tokens` sous une contrainte future ;
+ * avec un `splice`, l'état fautif serait déjà en place quand on s'en apercevrait.
+ *
  * @param {string} tokenId
  * @returns {void}
  */
@@ -595,7 +631,10 @@ export function removeToken(tokenId) {
     throw new Error(`Pion inconnu : "${tokenId}"`);
   }
 
-  campaign.tokens.splice(index, 1);
+  const candidate = structuredClone(campaign);
+  candidate.tokens.splice(index, 1);
+  assertValidCampaign(candidate, `Suppression du pion "${tokenId}"`);
+  campaign = candidate;
 
   if (getSelectedTokenId() === tokenId) {
     clearSelectionState();

@@ -404,4 +404,151 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     await pageGM.close();
     await pagePlayer.close();
   });
+
+  test('Édition du pion MJ : champs désactivés sans sélection, et un patch invalide ne mute rien', async ({
+    page,
+  }) => {
+    await setupGMView(page);
+    await page.click('.gm-tab-btn[data-tab="token-maker"]');
+
+    await expect(page.locator('#token-edit-label')).toBeDisabled();
+    await expect(page.locator('#btn-delete-token')).toBeDisabled();
+
+    // Étage de 40x30 cases : un pion posé en (38,28) ne peut pas passer en 4x4.
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const schema = await import('../js/core/schema.js');
+      store.loadCampaign(
+        schema.createCampaign({
+          campaignId: 'c-edit',
+          name: 'Campagne',
+          levels: [schema.createLevel({ id: 'l1', name: 'Niveau 1' })],
+          tokens: [
+            schema.createToken({ id: 't1', levelId: 'l1', cell: { a: 38, b: 28 }, label: 'Mage' }),
+          ],
+        })
+      );
+      store.setSelection('t1');
+    });
+
+    await expect(page.locator('#token-edit-label')).toBeEnabled();
+    await expect(page.locator('#btn-delete-token')).toBeEnabled();
+    await expect(page.locator('#token-edit-label')).toHaveValue('Mage');
+
+    // Renommage nominal.
+    await page.evaluate(() => {
+      const input = /** @type {HTMLInputElement} */ (document.querySelector('#token-edit-label'));
+      input.value = 'Archimage';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(
+      await page.evaluate(async () =>
+        (await import('../js/state/store.js')).getSelectedToken()?.label
+      )
+    ).toBe('Archimage');
+
+    // Un nom vide est refusé, et le champ revient à la valeur du store — afficher encore
+    // le vide laisserait croire à un renommage qui n'a pas eu lieu.
+    await page.evaluate(() => {
+      const input = /** @type {HTMLInputElement} */ (document.querySelector('#token-edit-label'));
+      input.value = '   ';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('#token-edit-label')).toHaveValue('Archimage');
+    await expect(page.locator('#token-edit-status')).toContainText('ne peut pas être vide');
+
+    // Agrandissement refusé par la validation de campagne : le store lève, l'interface se
+    // remet d'accord avec lui plutôt que de garder 4 à l'écran.
+    await page.evaluate(() => {
+      const input = /** @type {HTMLInputElement} */ (document.querySelector('#token-edit-size-cells'));
+      input.value = '4';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('#token-edit-status')).toContainText('hors limites');
+    await expect(page.locator('#token-edit-size-cells')).toHaveValue('1');
+    expect(
+      await page.evaluate(async () =>
+        (await import('../js/state/store.js')).getSelectedToken()?.sizeCells
+      )
+    ).toBe(1);
+  });
+
+  test('Synchronisation 2 vraies pages : édition puis suppression du pion via token.update et token.delete', async ({
+    context,
+  }) => {
+    const sessionId = `test-token-edit-sync-${Date.now()}`;
+    const level = createLevel({ id: 'l1', name: 'Etage', imageUrl: 'maps/minimal.webp' });
+    const token = createToken({ id: 't1', levelId: 'l1', cell: { a: 1, b: 1 }, label: 'Héros' });
+    const snapshot = {
+      campaign: createCampaign({
+        campaignId: 'c-sync-edit',
+        name: 'Sync',
+        levels: [level],
+        tokens: [token],
+      }),
+      activeLevelId: 'l1',
+      selectedTokenId: null,
+    };
+
+    const pageGM = await context.newPage();
+    const pagePlayer = await context.newPage();
+
+    await installBrowserTransport(pageGM, sessionId, snapshot);
+    await installBrowserTransport(pagePlayer, sessionId, snapshot);
+
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
+    await pagePlayer.goto(`/player.html?session=${sessionId}`);
+    await waitForApp(pageGM);
+    await waitForApp(pagePlayer);
+
+    await pageGM.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      store.setSelection('t1');
+    });
+    await pageGM.click('.gm-tab-btn[data-tab="token-maker"]');
+
+    // 1. Masquer le pion aux joueurs : la case à cocher voyage en `token.update`.
+    await pageGM.click('#token-edit-hidden');
+    await expect
+      .poll(() =>
+        pagePlayer.evaluate(async () => {
+          const store = await import('../js/state/store.js');
+          return store.getCampaign()?.tokens.find((/** @type {any} */ t) => t.id === 't1')?.hidden;
+        })
+      )
+      .toBe(true);
+
+    // 2. Supprimer le pion. La confirmation est acceptée : sans réponse au `confirm`, le
+    // navigateur piloté la rejette par défaut et le test passerait pour une mauvaise raison.
+    pageGM.once('dialog', (dialog) => dialog.accept());
+    await pageGM.click('#btn-delete-token');
+
+    await expect
+      .poll(() =>
+        pagePlayer.evaluate(async () => {
+          const store = await import('../js/state/store.js');
+          return store.getCampaign()?.tokens.length;
+        })
+      )
+      .toBe(0);
+
+    // Côté MJ, la suppression du pion sélectionné vide la sélection, donc désactive les
+    // contrôles : ils ne doivent pas rester actifs sur un pion absent.
+    await expect(pageGM.locator('#btn-delete-token')).toBeDisabled();
+    await expect(pageGM.locator('#token-edit-label')).toBeDisabled();
+
+    const published = await pageGM.evaluate(
+      () => /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+    );
+    const updates = published.filter((/** @type {any} */ e) => e.type === 'token.update');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload).toEqual({ tokenId: 't1', patch: { hidden: true } });
+
+    const deletes = published.filter((/** @type {any} */ e) => e.type === 'token.delete');
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].payload).toEqual({ tokenId: 't1' });
+
+    await pageGM.close();
+    await pagePlayer.close();
+  });
 });

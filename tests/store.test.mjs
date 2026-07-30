@@ -23,6 +23,7 @@ import {
   updateActiveLevel,
   updateLevel,
   updateToken,
+  removeToken,
 } from '../js/state/store.js';
 
 import { setSelectionState } from '../js/state/selection.js';
@@ -488,6 +489,77 @@ test('updateToken ne mute rien si la campagne candidate est invalide (elevation 
     updateToken('hero-1', { elevation: Infinity });
   });
 
+  assert.deepStrictEqual(getState(), stateBefore);
+});
+
+test('updateToken accepte les champs d’édition du pion, et les applique ensemble', () => {
+  loadCampaign(makeValidCampaign());
+
+  updateToken('hero-1', {
+    label: 'Ranger',
+    kind: 'npc',
+    borderColor: '#00ff00',
+    sizeCells: 2,
+    speedCells: 5,
+    hidden: true,
+    playerMovable: false,
+    locked: true,
+    visionBright: 7,
+    visionDim: 14,
+  });
+
+  const token = getCampaign()?.tokens.find((t) => t.id === 'hero-1');
+  assert.equal(token?.label, 'Ranger');
+  assert.equal(token?.kind, 'npc');
+  assert.equal(token?.borderColor, '#00ff00');
+  assert.equal(token?.sizeCells, 2);
+  assert.equal(token?.speedCells, 5);
+  assert.equal(token?.hidden, true);
+  assert.equal(token?.playerMovable, false);
+  assert.equal(token?.locked, true);
+  assert.equal(token?.visionBright, 7);
+  assert.equal(token?.visionDim, 14);
+
+  // La position et l'identité restent hors d'atteinte d'un patch.
+  assert.deepEqual(token?.cell, { a: 2, b: 2 });
+  assert.equal(token?.levelId, 'rdc');
+});
+
+test('updateToken refuse un agrandissement qui sort le pion de l’étage, sans rien muter', () => {
+  const camp = makeValidCampaign();
+  // 40x30 cases : un pion 4x4 posé en (38,28) dépasserait la bordure.
+  camp.tokens[0].cell = { a: 38, b: 28 };
+  loadCampaign(camp);
+  const stateBefore = getState();
+
+  assert.throws(() => updateToken('hero-1', { sizeCells: 4 }), /hors limites/);
+  assert.deepStrictEqual(getState(), stateBefore);
+});
+
+test('removeToken supprime le pion, désélectionne, et refuse un identifiant inconnu', () => {
+  loadCampaign(makeValidCampaign());
+  setSelection('hero-1');
+  assert.equal(getState().selectedTokenId, 'hero-1');
+
+  let notifications = 0;
+  const unsubscribe = subscribe(() => {
+    notifications += 1;
+  });
+
+  removeToken('hero-1');
+
+  assert.equal(notifications, 1, 'La suppression notifie exactement une fois');
+  assert.equal(getCampaign()?.tokens.length, 1);
+  assert.equal(getCampaign()?.tokens.some((t) => t.id === 'hero-1'), false);
+  // Supprimer le pion sélectionné doit vider la sélection : la garder pointerait sur un
+  // pion absent, et la zone de déplacement resterait affichée dans le vide.
+  assert.equal(getState().selectedTokenId, null);
+
+  unsubscribe();
+
+  const stateBefore = getState();
+  assert.throws(() => removeToken('hero-1'), /Pion inconnu/);
+  assert.throws(() => removeToken('jamais-existé'), /Pion inconnu/);
   assert.deepStrictEqual(getState(), stateBefore);
 });
 

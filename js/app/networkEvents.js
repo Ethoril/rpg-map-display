@@ -75,6 +75,51 @@ export function applyNetworkEvent(event) {
       });
       return true;
     }
+    // `token.update` porte un patch de champs absolus, jamais un delta : le rejouer deux
+    // fois converge. La liste blanche de `store.updateToken` reste seule juge des champs
+    // acceptés — la reproduire ici la ferait dériver.
+    case 'token.update': {
+      if (!payload.tokenId || typeof payload.tokenId !== 'string') {
+        console.error('Événement "token.update" refusé : tokenId manquant ou invalide');
+        return false;
+      }
+      if (!payload.patch || typeof payload.patch !== 'object' || Array.isArray(payload.patch)) {
+        console.error('Événement "token.update" refusé : patch manquant ou non objet');
+        return false;
+      }
+      if (!campaign?.tokens.some((token) => token.id === payload.tokenId)) {
+        console.error(`Événement "token.update" refusé : pion inconnu "${payload.tokenId}"`);
+        return false;
+      }
+      try {
+        store.updateToken(payload.tokenId, payload.patch);
+      } catch (err) {
+        console.error(
+          `Événement "token.update" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    // Un pion déjà absent n'est pas une erreur : c'est l'état visé. On retourne `false`
+    // parce que rien n'a changé, sans journaliser — le rejeu d'une suppression est le cas
+    // nominal d'une reconnexion, pas une anomalie.
+    case 'token.delete': {
+      if (!payload.tokenId || typeof payload.tokenId !== 'string') {
+        console.error('Événement "token.delete" refusé : tokenId manquant ou invalide');
+        return false;
+      }
+      if (!campaign?.tokens.some((token) => token.id === payload.tokenId)) return false;
+      try {
+        store.removeToken(payload.tokenId);
+      } catch (err) {
+        console.error(
+          `Événement "token.delete" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
     case 'token.elevation': {
       if (!payload.tokenId || typeof payload.tokenId !== 'string' || !Number.isFinite(payload.elevation)) {
         console.error('Événement "token.elevation" refusé : payload tokenId ou elevation invalide');

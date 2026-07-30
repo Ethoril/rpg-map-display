@@ -71,6 +71,20 @@ dupliquer ses octets dans chaque campagne.
 Un fond d’étage, lui, n’accepte **jamais** d’image embarquée : voir
 `docs/ETAT.md` § « Persistance et assets ».
 
+## Modifier ou supprimer un pion
+
+Sélectionner un pion sur la carte, puis ouvrir l’onglet **Pions** du panneau MJ. La section
+« Pion sélectionné » permet d’en changer le nom, le type, la couleur de bordure, la taille,
+la vitesse, l’élévation, et les trois drapeaux (masqué aux joueurs, déplaçable par les
+joueurs, verrouillé). La suppression demande une confirmation ; elle est irréversible.
+
+Restent volontairement hors de portée d’une modification : la **position** (elle passe par le
+déplacement, qui porte l’animation), l’**étage**, l’**identifiant**, et l’**image**. Changer
+d’image, c’est repasser par le générateur.
+
+Un patch refusé par la validation — agrandir un pion au point de le sortir de l’étage, par
+exemple — ne mute rien et le champ revient à la valeur du store, avec la raison affichée.
+
 ## Vérifications
 
 ```text

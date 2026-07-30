@@ -26,7 +26,9 @@ Les blocs C-01 à C-11 du plan de stabilisation sont implémentés :
 - fond et pions asynchrones avec placeholders ;
 - grille et zone de mouvement alignées ;
 - gestes exclusifs, drag libre côté MJ, tap vers destination côté joueurs ;
-- assets persistants limités aux URLs relatives ou HTTPS ;
+- assets persistants limités aux URLs relatives ou HTTPS, sauf l’image de pion embarquée
+  bornée (voir « Persistance et assets ») ;
+- pions créés, édités et supprimés côté MJ (`token.add` / `token.update` / `token.delete`) ;
 - mutations transactionnelles et `levelId` de pion valide ;
 - configuration, authentification et états réseau explicites ;
 - snapshot, événements idempotents, présence et reprise locale ;

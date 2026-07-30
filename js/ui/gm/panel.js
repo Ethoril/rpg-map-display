@@ -80,12 +80,47 @@ export function createGMPanel(container, options = {}) {
 
       <div id="tab-content-token-maker" class="gm-tab-pane" style="display: none;">
         <div class="token-elevation-section" style="margin-bottom: 1.5rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Élévation du pion sélectionné</h3>
+          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Pion sélectionné</h3>
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <label for="token-elevation" style="font-size: 0.85rem; color: #aaa;">Élévation :</label>
             <input type="number" id="token-elevation" class="token-elevation-input" value="0" disabled style="width: 80px; padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
             <span id="token-elevation-label" style="font-size: 0.8rem; color: #888;">(aucun pion sélectionné)</span>
           </div>
+
+          <div id="token-edit-fields" style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.75rem; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333;">
+            <label for="token-edit-label" style="font-size: 0.85rem; color: #aaa;">Nom :</label>
+            <input type="text" id="token-edit-label" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+
+            <label for="token-edit-kind" style="font-size: 0.85rem; color: #aaa;">Type :</label>
+            <select id="token-edit-kind" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;">
+              <option value="pc">PJ (Joueur)</option>
+              <option value="npc">PNJ (Non-Joueur)</option>
+            </select>
+
+            <label for="token-edit-border-color" style="font-size: 0.85rem; color: #aaa;">Bordure :</label>
+            <input type="color" id="token-edit-border-color" disabled style="padding: 0; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; height: 2rem;" />
+
+            <label for="token-edit-size-cells" style="font-size: 0.85rem; color: #aaa;">Taille (cases) :</label>
+            <input type="number" id="token-edit-size-cells" min="1" max="4" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+
+            <label for="token-edit-speed-cells" style="font-size: 0.85rem; color: #aaa;">Vitesse (cases) :</label>
+            <input type="number" id="token-edit-speed-cells" min="1" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+
+            <label for="token-edit-hidden" style="font-size: 0.85rem; color: #aaa;">Masqué aux joueurs :</label>
+            <input type="checkbox" id="token-edit-hidden" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+
+            <label for="token-edit-player-movable" style="font-size: 0.85rem; color: #aaa;">Déplaçable par les joueurs :</label>
+            <input type="checkbox" id="token-edit-player-movable" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+
+            <label for="token-edit-locked" style="font-size: 0.85rem; color: #aaa;">Verrouillé :</label>
+            <input type="checkbox" id="token-edit-locked" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+          </div>
+
+          <p id="token-edit-status" style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #888; min-height: 1rem;"></p>
+
+          <button id="btn-delete-token" disabled style="margin-top: 0.5rem; width: 100%; padding: 0.5rem; background: #5f2530; color: #fff; border: 1px solid #7a2f3c; border-radius: 4px; cursor: pointer;">
+            Supprimer ce pion
+          </button>
         </div>
         <div class="token-library-section" style="margin-bottom: 1.5rem;">
           <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Bibliothèque de pions</h3>
@@ -374,10 +409,220 @@ export function createGMPanel(container, options = {}) {
 
   updateElevationUIFromStore();
 
+  // --- Édition et suppression du pion sélectionné ---
+  const tokenEditLabel = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-label'));
+  const tokenEditKind = /** @type {HTMLSelectElement} */ (container.querySelector('#token-edit-kind'));
+  const tokenEditBorderColor = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-border-color'));
+  const tokenEditSizeCells = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-size-cells'));
+  const tokenEditSpeedCells = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-speed-cells'));
+  const tokenEditHidden = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-hidden'));
+  const tokenEditPlayerMovable = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-player-movable'));
+  const tokenEditLocked = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-locked'));
+  const tokenEditStatus = /** @type {HTMLElement} */ (container.querySelector('#token-edit-status'));
+  const btnDeleteToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-delete-token'));
+
+  const tokenEditControls = [
+    tokenEditLabel,
+    tokenEditKind,
+    tokenEditBorderColor,
+    tokenEditSizeCells,
+    tokenEditSpeedCells,
+    tokenEditHidden,
+    tokenEditPlayerMovable,
+    tokenEditLocked,
+  ];
+
+  function updateTokenEditUIFromStore() {
+    const selectedToken = store.getSelectedToken();
+    const disabled = !selectedToken;
+    for (const control of tokenEditControls) control.disabled = disabled;
+    btnDeleteToken.disabled = disabled;
+
+    if (!selectedToken) {
+      tokenEditLabel.value = '';
+      tokenEditStatus.textContent = '';
+      return;
+    }
+
+    // Ne jamais réécrire le champ que le MJ est en train de remplir. Sans cette garde,
+    // une mise à jour venue du réseau — ou notre propre notification de store — écraserait
+    // la frappe en cours au caractère près.
+    for (const [control, value] of /** @type {[HTMLInputElement|HTMLSelectElement, string][]} */ ([
+      [tokenEditLabel, selectedToken.label ?? ''],
+      [tokenEditKind, selectedToken.kind],
+      [tokenEditBorderColor, selectedToken.borderColor || '#ffffff'],
+      [tokenEditSizeCells, String(selectedToken.sizeCells ?? 1)],
+      [tokenEditSpeedCells, String(selectedToken.speedCells ?? 1)],
+    ])) {
+      if (document.activeElement !== control) control.value = value;
+    }
+    tokenEditHidden.checked = Boolean(selectedToken.hidden);
+    tokenEditPlayerMovable.checked = Boolean(selectedToken.playerMovable);
+    tokenEditLocked.checked = Boolean(selectedToken.locked);
+  }
+
+  /**
+   * Applique un patch au pion sélectionné, puis le publie.
+   *
+   * Le store valide la campagne entière et **lève** si le patch la rend invalide — passer
+   * un pion 1×1 en 4×4 au bord de la carte le sort de l'étage. Dans ce cas rien n'a muté,
+   * et l'interface doit se remettre d'accord avec le store : afficher encore la valeur
+   * refusée laisserait croire à un changement qui n'a pas eu lieu.
+   *
+   * @param {Partial<import('../../core/types.js').Token>} patch
+   */
+  function applyTokenPatch(patch) {
+    const selectedToken = store.getSelectedToken();
+    if (!selectedToken) return;
+
+    try {
+      store.updateToken(selectedToken.id, patch);
+    } catch (err) {
+      tokenEditStatus.style.color = '#e74c3c';
+      tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
+      updateTokenEditUIFromStore();
+      return;
+    }
+
+    tokenEditStatus.style.color = '#2ecc71';
+    tokenEditStatus.textContent = 'Modification appliquée.';
+
+    transport?.publish({
+      type: 'token.update',
+      payload: { tokenId: selectedToken.id, patch },
+      at: Date.now(),
+      by: 'gm',
+    });
+  }
+
+  // `change` et non `input`, pour la raison déjà écrite au-dessus pour l'élévation : le CdC
+  // §7 classe `token.update` « ponctuel », et publier à chaque frappe ferait clignoter le
+  // nom sur les trois écrans en revalidant la campagne à chaque caractère.
+  tokenEditLabel.addEventListener(
+    'change',
+    () => {
+      const value = tokenEditLabel.value.trim();
+      if (!value) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = 'Le nom ne peut pas être vide.';
+        updateTokenEditUIFromStore();
+        return;
+      }
+      if (value === store.getSelectedToken()?.label) return;
+      applyTokenPatch({ label: value });
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenEditKind.addEventListener(
+    'change',
+    () => {
+      const kind = /** @type {'pc'|'npc'} */ (tokenEditKind.value === 'npc' ? 'npc' : 'pc');
+      if (kind === store.getSelectedToken()?.kind) return;
+      applyTokenPatch({ kind });
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenEditBorderColor.addEventListener(
+    'change',
+    () => {
+      const color = tokenEditBorderColor.value;
+      if (color === store.getSelectedToken()?.borderColor) return;
+      applyTokenPatch({ borderColor: color });
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenEditSizeCells.addEventListener(
+    'change',
+    () => {
+      const value = parseInt(tokenEditSizeCells.value, 10);
+      if (!Number.isInteger(value) || value < 1) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = 'La taille doit être un entier au moins égal à 1.';
+        updateTokenEditUIFromStore();
+        return;
+      }
+      if (value === store.getSelectedToken()?.sizeCells) return;
+      applyTokenPatch({ sizeCells: value });
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenEditSpeedCells.addEventListener(
+    'change',
+    () => {
+      const value = parseFloat(tokenEditSpeedCells.value);
+      if (!Number.isFinite(value) || value < 1) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = 'La vitesse doit valoir au moins 1 case.';
+        updateTokenEditUIFromStore();
+        return;
+      }
+      if (value === store.getSelectedToken()?.speedCells) return;
+      applyTokenPatch({ speedCells: value });
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenEditHidden.addEventListener(
+    'change',
+    () => applyTokenPatch({ hidden: tokenEditHidden.checked }),
+    { signal: listeners.signal }
+  );
+
+  tokenEditPlayerMovable.addEventListener(
+    'change',
+    () => applyTokenPatch({ playerMovable: tokenEditPlayerMovable.checked }),
+    { signal: listeners.signal }
+  );
+
+  tokenEditLocked.addEventListener(
+    'change',
+    () => applyTokenPatch({ locked: tokenEditLocked.checked }),
+    { signal: listeners.signal }
+  );
+
+  // La suppression est irréversible — il n'y a pas d'annulation dans le modèle — donc elle
+  // se confirme, comme « quitter la session » plus haut.
+  btnDeleteToken.addEventListener(
+    'click',
+    () => {
+      const selectedToken = store.getSelectedToken();
+      if (!selectedToken) return;
+
+      const nom = selectedToken.label || selectedToken.id;
+      if (!window.confirm(`Supprimer le pion « ${nom} » ?\n\nCette action est irréversible.`)) {
+        return;
+      }
+
+      const tokenId = selectedToken.id;
+      try {
+        store.removeToken(tokenId);
+      } catch (err) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
+        return;
+      }
+
+      transport?.publish({
+        type: 'token.delete',
+        payload: { tokenId },
+        at: Date.now(),
+        by: 'gm',
+      });
+    },
+    { signal: listeners.signal }
+  );
+
+  updateTokenEditUIFromStore();
+
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();
+    updateTokenEditUIFromStore();
     const currentLvl = store.getActiveLevel();
     if (currentLvl && currentLvl.grid) {
       gridVisibleInput.checked = currentLvl.grid.visible ?? true;
