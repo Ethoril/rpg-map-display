@@ -1,7 +1,11 @@
 // @ts-check
 
 import * as store from '../../state/store.js';
-import { isPersistableAssetUrl } from '../../core/schema.js';
+import {
+  isPersistableAssetUrl,
+  isUnusableGoogleDriveUrl,
+  normalizeImageUrl,
+} from '../../core/schema.js';
 
 /** @typedef {import('../../transport/Transport.js').Transport} Transport */
 
@@ -77,13 +81,28 @@ export function createHandouts(mount, options = {}) {
   showBtn.addEventListener('click', () => {
     errorEl.style.display = 'none';
     errorEl.textContent = '';
-    const url = urlInput.value.trim();
+    const saisie = urlInput.value.trim();
 
-    if (!url) {
+    if (!saisie) {
       errorEl.textContent = 'Veuillez saisir une URL d\'image.';
       errorEl.style.display = 'block';
       return;
     }
+
+    if (isUnusableGoogleDriveUrl(saisie)) {
+      errorEl.textContent =
+        'Ce lien Google Drive ne désigne pas un fichier (un dossier ?). Ouvrez l\'image dans Drive, puis copiez son lien de partage.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // Un lien de partage Drive est une page HTML : converti ici, avant le store et avant le
+    // réseau, pour que ce soit une URL affichable qui parte — et non à l'affichage, où le
+    // défaut se serait manifesté sur l'écran des joueurs.
+    const url = normalizeImageUrl(saisie);
+    // Le champ reflète ce qui est réellement publié : le MJ voit la conversion plutôt que de
+    // la subir.
+    if (url !== saisie) urlInput.value = url;
 
     if (!isPersistableAssetUrl(url)) {
       errorEl.textContent = 'URL non persistable : les images data: et blob: ou absolues non-https sont interdites. Déposez le fichier dans un dossier du dépôt.';
@@ -107,6 +126,17 @@ export function createHandouts(mount, options = {}) {
         by: 'gm',
       });
     }
+
+    // Vérification délibérément NON bloquante. Au milieu d'une scène, faire patienter le MJ
+    // le temps d'un aller-retour réseau serait pire que le défaut qu'on surveille. La
+    // révélation part donc immédiatement ; si l'image ne charge pas, le MJ l'apprend ici, et
+    // non par un joueur qui décrit un cadre vide.
+    const sonde = new Image();
+    sonde.addEventListener('error', () => {
+      errorEl.textContent = `L'image n'a pas pu être chargée depuis ${url} — les joueurs voient un cadre vide. Vérifiez que le partage est bien « tous ceux qui ont le lien ».`;
+      errorEl.style.display = 'block';
+    });
+    sonde.src = url;
   }, { signal: listeners.signal });
 
   hideBtn.addEventListener('click', () => {

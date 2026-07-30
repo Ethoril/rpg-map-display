@@ -5,6 +5,8 @@ import {
   createLevel,
   createToken,
   isPersistableAssetUrl,
+  isUnusableGoogleDriveUrl,
+  normalizeImageUrl,
   isBoundedImageDataUrl,
   isTokenImageUrl,
   TOKEN_IMAGE_MAX_BYTES,
@@ -88,6 +90,53 @@ test('Les assets persistants acceptent les URLs relatives/HTTPS et refusent les 
   assert.equal(isPersistableAssetUrl('http://example.test/insecure.webp'), false);
   assert.equal(isPersistableAssetUrl('//example.test/ambiguous.webp'), false);
   assert.equal(isPersistableAssetUrl('javascript:alert(1)'), false);
+});
+
+test('Un lien de partage Google Drive devient une URL d’image directe', () => {
+  // Le lien que Drive propose par défaut : une page HTML de 75 Ko, que `<img>` ne peut pas
+  // afficher. C'est le geste naturel du MJ, donc c'est le cas à corriger, pas à refuser.
+  assert.equal(
+    normalizeImageUrl('https://drive.google.com/file/d/1tnBho2PcsZFcJyuLcuciW/view?usp=drive_link'),
+    'https://drive.google.com/thumbnail?id=1tnBho2PcsZFcJyuLcuciW&sz=w2000'
+  );
+  // Les autres formes que Drive distribue selon l'endroit où l'on clique.
+  assert.equal(
+    normalizeImageUrl('https://drive.google.com/open?id=1tnBho2PcsZFcJyuLcuciW'),
+    'https://drive.google.com/thumbnail?id=1tnBho2PcsZFcJyuLcuciW&sz=w2000'
+  );
+  assert.equal(
+    normalizeImageUrl('https://drive.usercontent.google.com/download?id=1tnBho2PcsZFcJyuLcuciW&export=view'),
+    'https://drive.google.com/thumbnail?id=1tnBho2PcsZFcJyuLcuciW&sz=w2000'
+  );
+  // Le résultat de la conversion est persistable : sans quoi le panneau le refuserait juste après.
+  assert.equal(
+    isPersistableAssetUrl(normalizeImageUrl('https://drive.google.com/file/d/1tnBho2PcsZFcJyuLcuciW/view')),
+    true
+  );
+});
+
+test('normalizeImageUrl ne touche à rien d’autre, et le dossier Drive est signalé', () => {
+  // La fonction corrige un piège nommé ; elle ne réécrit pas les adresses en général.
+  for (const url of [
+    './maps/minimal.webp',
+    '/maps/ruines.webp?v=2',
+    'https://cdn.example.test/ruines.webp',
+    'https://lh3.googleusercontent.com/d/1tnBho2PcsZFcJyuLcuciW=w2000',
+    '',
+  ]) {
+    assert.equal(normalizeImageUrl(url), url);
+  }
+
+  // Un dossier n'a pas d'octets d'image à servir : aucune conversion n'est possible, et le
+  // dire au MJ vaut mieux que de révéler un cadre vide aux joueurs.
+  assert.equal(isUnusableGoogleDriveUrl('https://drive.google.com/drive/folders/1tnBho2PcsZ'), true);
+  assert.equal(
+    normalizeImageUrl('https://drive.google.com/drive/folders/1tnBho2PcsZ'),
+    'https://drive.google.com/drive/folders/1tnBho2PcsZ'
+  );
+  assert.equal(isUnusableGoogleDriveUrl('https://drive.google.com/file/d/1tnBho2PcsZFcJyuLcuciW/view'), false);
+  assert.equal(isUnusableGoogleDriveUrl('https://cdn.example.test/ruines.webp'), false);
+  assert.equal(isUnusableGoogleDriveUrl('./maps/minimal.webp'), false);
 });
 
 test('Validation refuse les imageUrl temporaires des étages et des pions', () => {

@@ -70,6 +70,55 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     await pagePlayer.close();
   });
 
+  test('1bis. Un lien de partage Google Drive est converti avant de partir sur le réseau', async ({
+    context,
+  }) => {
+    const sessionId = `test-handout-drive-${Date.now()}`;
+
+    const pageGM = await context.newPage();
+    const pagePlayer = await context.newPage();
+
+    await installBrowserTransport(pageGM, sessionId, null);
+    await installBrowserTransport(pagePlayer, sessionId, null);
+
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
+    await pagePlayer.goto(`/player.html?session=${sessionId}`);
+
+    await waitForApp(pageGM);
+    await waitForApp(pagePlayer);
+
+    await pageGM.click('.gm-tab-btn[data-tab="handouts"]');
+    await pageGM.waitForSelector('#handout-image-url');
+
+    // Exactement ce que Drive met dans le presse-papier quand on partage une image. Tel quel,
+    // c'est une page HTML : la tablette affichait une icône de fichier cassé sur fond noir.
+    await pageGM.fill(
+      '#handout-image-url',
+      'https://drive.google.com/file/d/1tnBho2PcsZFcJyuLcuciW/view?usp=drive_link'
+    );
+    await pageGM.click('#handout-show-btn');
+
+    const attendu = 'https://drive.google.com/thumbnail?id=1tnBho2PcsZFcJyuLcuciW&sz=w2000';
+
+    // Ce qui compte : c'est l'URL convertie qui part sur le réseau et arrive à la tablette,
+    // et non le lien de partage brut corrigé à l'affichage.
+    await expect(pagePlayer.locator('#handout-overlay img')).toHaveAttribute('src', attendu);
+    // Le champ MJ reflète la conversion, pour que le MJ la voie au lieu de la subir.
+    await expect(pageGM.locator('#handout-image-url')).toHaveValue(attendu);
+
+    // Un lien de dossier, lui, ne peut pas être converti : il est refusé côté MJ, et rien
+    // n'est révélé aux joueurs.
+    await pageGM.click('#handout-hide-btn');
+    await pageGM.fill('#handout-image-url', 'https://drive.google.com/drive/folders/1tnBho2PcsZ');
+    await pageGM.click('#handout-show-btn');
+    await expect(pageGM.locator('#handout-error-msg')).toBeVisible();
+    await expect(pageGM.locator('#handout-error-msg')).toContainText('dossier');
+    await expect(pagePlayer.locator('#handout-overlay')).toBeHidden();
+
+    await pageGM.close();
+    await pagePlayer.close();
+  });
+
   test('2. Persistance après F5 (rafraîchissement) sur la vue joueurs', async ({ context }) => {
     const sessionId = `test-handout-f5-${Date.now()}`;
 

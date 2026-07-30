@@ -315,6 +315,85 @@ export function isPersistableAssetUrl(value) {
   }
 }
 
+// ── Google Drive : le lien de partage n'est pas une image ────────────────────────────────
+//
+// Coller « https://drive.google.com/file/d/<ID>/view?usp=drive_link » dans un champ image
+// donne une page HTML de 75 Ko, pas un fichier : la balise `<img>` affiche une icône cassée,
+// et sur la vue joueurs cela se traduit par un cadre noir en pleine scène. C'est le lien que
+// Drive propose par défaut au partage — l'erreur est donc la norme, pas l'exception, et la
+// refuser sans la corriger reviendrait à refuser le geste naturel du MJ.
+//
+// Deux points d'accès servent réellement les octets d'un fichier « tous ceux qui ont le
+// lien », mesurés sur un scan PNG le 30 juillet 2026 :
+//   - `/uc?export=view&id=<ID>`     → l'original, redirigé vers drive.usercontent — 9,8 Mo
+//   - `/thumbnail?id=<ID>&sz=w<N>`  → une version redimensionnée servie par le CDN — 4,0 Mo
+//
+// On retient le second : la liaison d'une tablette n'a rien à gagner à transporter un
+// original que sa dalle ne peut pas afficher. Aucun des deux ne figure dans une API publiée ;
+// si Google les change, c'est ici, et ici seulement, que ça se corrige.
+const GOOGLE_DRIVE_HOSTS = new Set([
+  'drive.google.com',
+  'docs.google.com',
+  'drive.usercontent.google.com',
+]);
+// Volontairement sans l'alternative `/d/` seule : `lh3.googleusercontent.com/d/<ID>` est déjà
+// une URL directe (elle n'est pas dans les hôtes ci-dessus), et l'ajouter ferait passer un
+// lien de dossier `/drive/folders/<ID>` pour un fichier.
+const GOOGLE_DRIVE_FILE_ID = /(?:\/file\/d\/|[?&](?:id|docid)=)([\w-]{10,})/;
+
+/** Largeur demandée au CDN Drive. Au-delà, on transporte des pixels qu'aucune tablette n'affiche. */
+export const GOOGLE_DRIVE_IMAGE_WIDTH = 2000;
+
+/**
+ * Convertit un lien de partage Google Drive en URL d'image directement affichable.
+ *
+ * Toute autre URL — relative au dépôt, HTTPS quelconque, `data:` — est rendue inchangée :
+ * cette fonction corrige un piège nommé, elle ne réécrit pas les adresses en général.
+ *
+ * @param {string} rawUrl
+ * @returns {string}
+ */
+export function normalizeImageUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return rawUrl;
+  const trimmed = rawUrl.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    // URL absolue mais illisible : ce n'est pas ici qu'on tranche. `isPersistableAssetUrl`
+    // la refusera juste après, avec son message.
+    return trimmed;
+  }
+  if (!GOOGLE_DRIVE_HOSTS.has(parsed.hostname)) return trimmed;
+
+  const found = GOOGLE_DRIVE_FILE_ID.exec(`${parsed.pathname}${parsed.search}`);
+  if (!found) return trimmed;
+  return `https://drive.google.com/thumbnail?id=${found[1]}&sz=w${GOOGLE_DRIVE_IMAGE_WIDTH}`;
+}
+
+/**
+ * Indique qu'une URL pointe vers Google Drive **sans** désigner un fichier identifiable —
+ * un dossier partagé, typiquement. Aucune conversion n'est alors possible, et il vaut mieux
+ * le dire au MJ que révéler un cadre vide aux joueurs.
+ *
+ * @param {string} rawUrl
+ * @returns {boolean}
+ */
+export function isUnusableGoogleDriveUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return false;
+  const trimmed = rawUrl.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    if (!GOOGLE_DRIVE_HOSTS.has(parsed.hostname)) return false;
+    return !GOOGLE_DRIVE_FILE_ID.test(`${parsed.pathname}${parsed.search}`);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Plafond en octets d'une image de pion embarquée sous forme d'URL `data:`.
  *

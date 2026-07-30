@@ -1,6 +1,7 @@
 // @ts-check
 
 import * as store from '../../state/store.js';
+import { normalizeImageUrl } from '../../core/schema.js';
 
 /**
  * Monte l'overlay plein écran d'affichage de handout pour la vue joueurs.
@@ -49,7 +50,10 @@ export function mountHandoutOverlay(container = document.body) {
   function update() {
     const active = store.getActiveHandout();
     if (active && active.imageUrl && overlay && img) {
-      img.src = active.imageUrl;
+      // La conversion a déjà lieu côté MJ, avant publication. Elle est répétée ici pour les
+      // handouts déjà enregistrés dans une campagne, qui portent encore un lien de partage
+      // brut : sans cela, ils resteraient cassés jusqu'à ce qu'on les republie.
+      img.src = normalizeImageUrl(active.imageUrl);
       overlay.style.display = 'flex';
     } else if (overlay && img) {
       overlay.style.display = 'none';

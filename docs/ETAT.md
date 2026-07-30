@@ -188,6 +188,34 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.
 
+## Images Google Drive : le lien de partage n'est pas une image
+
+Constaté le 30 juillet 2026 : un handout dont l'URL venait de Drive s'affichait en cadre noir
+avec une icône de fichier cassé sur la tablette. Le lien que Drive met dans le presse-papier,
+`https://drive.google.com/file/d/<ID>/view?usp=drive_link`, sert **une page HTML de 75 Ko** —
+mesuré, `content-type: text/html`. Aucune balise `<img>` n'en tirera une image.
+
+Deux points d'accès servent réellement les octets d'un fichier « tous ceux qui ont le lien »,
+mesurés sur le même scan PNG :
+
+| URL | Type | Poids |
+|---|---|---|
+| `/file/d/<ID>/view` | `text/html` | 74 Ko |
+| `/uc?export=view&id=<ID>` | `image/png` | 9,8 Mo |
+| `/thumbnail?id=<ID>&sz=w2000` | `image/png` | 4,0 Mo |
+
+`normalizeImageUrl` (`js/core/schema.js`) retient le troisième : la liaison d'une tablette n'a
+rien à gagner à transporter un original que sa dalle ne peut pas afficher. La conversion a lieu
+**côté MJ, avant le store et avant le réseau** — c'est une URL affichable qui part, pas un lien
+corrigé à l'arrivée — et elle est répétée à l'affichage pour les handouts déjà enregistrés. Un
+lien de *dossier* n'a pas d'octets à servir : il est refusé avec un message, plutôt que révélé
+en cadre vide.
+
+> Ces deux points d'accès ne figurent dans aucune API publiée. S'ils changent, `normalizeImageUrl`
+> est le seul endroit à corriger. La conversion ne s'applique qu'aux handouts : un fond d'étage
+> ou une image de pion collés depuis Drive resteraient cassés — à étendre le jour où le besoin
+> se présente.
+
 ## Présence : trois défauts qui rendaient l'alerte d'écart de version inextinguible
 
 Constaté le 30 juillet 2026 en séance : la tablette affichait un écart avec la build 91,
