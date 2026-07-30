@@ -73,6 +73,26 @@ attend un `Map<string, number>` pour des raisons de performance.
 **La conversion a lieu dans `js/core/schema.js`, au chargement, et nulle part ailleurs.**
 Ne pas propager le `Record` jusqu'au Dijkstra, ne pas persister le `Map`.
 
+### `walls` : polylignes enrobées dans Firestore, `CellPoint[][]` partout ailleurs
+
+**Firestore refuse un tableau qui contient directement un tableau** — `Function setDoc()
+called with invalid data. Nested arrays are not supported`. Or `Level.walls` est un
+`CellPoint[][]` : un mur *est* une polyligne, et une carte réelle en compte des dizaines
+(131 polylignes / 262 points sur « manoir-rdc »). La forme du modèle est juste et ne change
+pas.
+
+Chaque polyligne est donc **enrobée en `{ points: CellPoint[] }` au seul franchissement de
+la frontière Firestore**, dans `js/transport/FirebaseTransport.js`
+(`encodeSnapshotForFirestore` / `decodeSnapshotFromFirestore`). Le modèle en mémoire, le
+repli LocalStorage (JSON accepte l'imbrication) et les événements temps réel gardent la
+forme native. Le décodage tolère les deux formes : aucun document existant n'exige de
+migration.
+
+`assertNoNestedArrays` vérifie le document avant l'appel réseau et **nomme le chemin
+fautif** : le SDK, lui, ne nomme que le document, ce qui laisse chercher le champ dans tout
+le modèle. Un nouveau champ en tableau de tableaux échoue donc avec son chemin, en ligne
+comme hors ligne.
+
 ---
 
 ## 2. La cellule est un couple opaque

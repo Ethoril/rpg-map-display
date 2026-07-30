@@ -77,6 +77,144 @@ export function assertNoTransientAssetUrls(value, context = 'payload') {
 }
 
 /**
+ * Refuse récursivement un tableau directement contenu dans un tableau : Firestore ne sait
+ * pas les stocker (« Nested arrays are not supported »).
+ *
+ * Le SDK, lui, ne nomme que le document fautif — pas le champ. Sur un document de campagne
+ * qui compte des étages, des pions et des gabarits, cela laisse chercher l'aiguille dans
+ * tout le modèle. Cette garde nomme le chemin, et se déclenche avant l'appel réseau.
+ *
+ * @param {unknown} value
+ * @param {string} [context]
+ */
+export function assertNoNestedArrays(value, context = 'document') {
+  /** @type {WeakSet<object>} */
+  const visited = new WeakSet();
+
+  /**
+   * @param {unknown} current
+   * @param {string} path
+   * @param {boolean} insideArray vrai si `current` est un élément direct d'un tableau
+   */
+  function visit(current, path, insideArray) {
+    if (!current || typeof current !== 'object') return;
+    if (Array.isArray(current) && insideArray) {
+      throw new Error(
+        `${context} contient un tableau imbriqué au chemin ${path} : Firestore le refuse. ` +
+          'Enrober chaque élément dans un objet avant la persistance.'
+      );
+    }
+    if (visited.has(current)) return;
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      current.forEach((entry, index) => visit(entry, `${path}[${index}]`, true));
+      return;
+    }
+    for (const [key, entry] of Object.entries(current)) {
+      visit(entry, `${path}[${JSON.stringify(key)}]`, false);
+    }
+  }
+
+  visit(value, '$', false);
+}
+
+/**
+ * Transpose les polylignes de murs entre la forme du modèle et la forme Firestore.
+ *
+ * `Level.walls` est un `CellPoint[][]` — un mur *est* une polyligne, et une carte en compte
+ * des dizaines : la forme est juste, et le modèle la garde. Mais c'est exactement le
+ * tableau de tableaux que Firestore rejette. Les deux exigences se concilient par un
+ * enrobage, `{ points: CellPoint[] }`, appliqué **au seul franchissement de la frontière
+ * Firestore** — même discipline que `terrainCost`, persisté en `Record` et manipulé en
+ * `Map` (CONVENTIONS §1).
+ *
+ * Le modèle en mémoire, le repli LocalStorage (JSON accepte l'imbrication) et les
+ * événements temps réel conservent donc la forme native.
+ *
+ * @param {unknown} walls
+ * @returns {unknown}
+ */
+function encodeWalls(walls) {
+  if (!Array.isArray(walls)) return walls;
+  return walls.map((polyline) => (Array.isArray(polyline) ? { points: polyline } : polyline));
+}
+
+/**
+ * Inverse de `encodeWalls`. Tolère la forme native : un document écrit avant l'enrobage,
+ * comme le repli LocalStorage, reste lisible sans migration.
+ *
+ * @param {unknown} walls
+ * @returns {unknown}
+ */
+function decodeWalls(walls) {
+  if (!Array.isArray(walls)) return walls;
+  return walls.map((polyline) => {
+    if (Array.isArray(polyline)) return polyline;
+    const points = /** @type {any} */ (polyline)?.points;
+    return Array.isArray(points) ? points : polyline;
+  });
+}
+
+/**
+ * Applique une conversion de murs à tous les étages, sur une copie.
+ *
+ * Muter l'entrée corromprait le store : `createSnapshotPayload()` remet les objets vivants
+ * de l'état, pas des copies. Les deux formes d'instantané acceptées par
+ * `store.restoreFromSnapshot` sont reconnues : document de campagne nu, ou enveloppe
+ * `{ campaign, activeLevelId, … }`.
+ *
+ * @param {any} data
+ * @param {(walls: unknown) => unknown} convert
+ * @returns {any} copie convertie
+ */
+function mapLevelWalls(data, convert) {
+  if (!data || typeof data !== 'object') return data;
+
+  /**
+   * @param {any} campaign
+   * @returns {any}
+   */
+  function convertCampaign(campaign) {
+    if (!campaign || !Array.isArray(campaign.levels)) return campaign;
+    return {
+      ...campaign,
+      levels: campaign.levels.map((/** @type {any} */ level) =>
+        level && typeof level === 'object' && 'walls' in level
+          ? { ...level, walls: convert(level.walls) }
+          : level
+      ),
+    };
+  }
+
+  if (Array.isArray(data.levels)) return convertCampaign(data);
+  if (data.campaign && Array.isArray(data.campaign.levels)) {
+    return { ...data, campaign: convertCampaign(data.campaign) };
+  }
+  return data;
+}
+
+/**
+ * Instantané prêt pour Firestore : murs enrobés, reste inchangé.
+ *
+ * @param {any} snapshot
+ * @returns {any}
+ */
+export function encodeSnapshotForFirestore(snapshot) {
+  return mapLevelWalls(snapshot, encodeWalls);
+}
+
+/**
+ * Instantané relu depuis Firestore, ramené à la forme du modèle.
+ *
+ * @param {any} data
+ * @returns {any}
+ */
+export function decodeSnapshotFromFirestore(data) {
+  return mapLevelWalls(data, decodeWalls);
+}
+
+/**
  * Transport réseau : Realtime Database pour les événements, Firestore pour le document de
  * campagne durable. **Seul fichier du projet autorisé à importer `firebase/*`.**
  *
@@ -451,7 +589,7 @@ export class FirebaseTransport {
           const docRef = doc(this._firestore, 'campaigns', sessionId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            etat = docSnap.data();
+            etat = decodeSnapshotFromFirestore(docSnap.data());
           }
         } catch (err) {
           this._reportError(err, `lecture du snapshot "${sessionId}"`);
@@ -506,6 +644,12 @@ export class FirebaseTransport {
     }
     assertNoTransientAssetUrls(campaignData, 'snapshot');
 
+    // Document Firestore préparé — et vérifié — avant la première écriture, y compris
+    // quand Firestore est absent : un instantané que Firestore refuserait doit être refusé
+    // de la même façon en ligne et hors ligne, sinon le défaut n'apparaît qu'en séance.
+    const documentFirestore = encodeSnapshotForFirestore(campaignData);
+    assertNoNestedArrays(documentFirestore, 'snapshot');
+
     // Les URL HTTP(S) persistantes sont conservées dans le repli local.
     if (typeof localStorage !== 'undefined') {
       try {
@@ -518,7 +662,7 @@ export class FirebaseTransport {
     // Firestore sauvegarde le complet (avec imageUrl)
     if (this._firestore) {
       try {
-        await setDoc(doc(this._firestore, 'campaigns', this._sessionId), campaignData);
+        await setDoc(doc(this._firestore, 'campaigns', this._sessionId), documentFirestore);
       } catch (err) {
         this._reportError(err, `sauvegarde du snapshot "${this._sessionId}"`);
         throw err;
