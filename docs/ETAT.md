@@ -128,16 +128,74 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 - température et stabilité pendant une séance de 45 minutes puis quatre heures ;
 - limite de texture réelle et qualité du rééchantillonnage ;
 - reprise du Wake Lock et du plein écran sur Android réel ;
-- règles de sécurité du projet Firebase de production ;
-- **restriction de la clé d'API Google** (Cloud Console → Identifiants) : référents HTTP
-  limités au domaine Pages et à `127.0.0.1`, et restriction aux seules API utilisées. La clé
-  est commitée dans `firebase-config.js` et publique par nature — elle identifie le projet,
-  elle n'autorise rien — mais **non restreinte**, elle peut être présentée à d'autres API
-  Google activées sur le projet, avec le coût correspondant. C'est la seule conséquence réelle
-  de l'alerte « secret détecté » de GitHub, qui se déclenche sur le motif `AIzaSy` ;
+- **règles de sécurité du projet Firebase** — le point le plus important de cette liste, et le
+  seul qui protège les données. Voir la section dédiée plus bas, avec les règles à appliquer et
+  les deux pièges du mode test ;
+- restriction de la clé d'API Google (Cloud Console → Identifiants, « Browser key (auto created
+  by Firebase) ») : référents HTTP et API limitées. **Confort, pas urgence** — sans compte de
+  facturation, aucun coût n'est possible, les quotas du plan gratuit étant des plafonds durs.
+  Le seul gain est d'éviter qu'un tiers épuise le quota. C'est aussi la réponse à l'alerte
+  « secret détecté » de GitHub, qui se déclenche sur le motif `AIzaSy` de toute clé Google ;
 - purge de fin de séance selon l’usage réel.
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.
+
+## Règles de sécurité Firebase — les seules qui protègent réellement
+
+La clé d'API est publique par conception (`firebase-config.js`) : **ce sont les règles, et
+elles seules, qui empêchent un tiers de lire ou d'écrire une campagne.** Sans compte de
+facturation, il n'y a aucun risque de coût ; le risque est l'accès aux données et l'épuisement
+du quota gratuit.
+
+**Deux pièges du mode test**, à vérifier avant toute séance : il autorise lecture et écriture
+**sans authentification**, et il **expire au bout de 30 jours** — après quoi tout casse, y
+compris en pleine partie.
+
+Chemins réellement utilisés par `FirebaseTransport`, et rien d'autre :
+
+| Service | Chemin |
+|---|---|
+| Realtime Database | `session/{code}/events`, `session/{code}/presence/{clientId}` |
+| Firestore | `campaigns/{code}` |
+
+Realtime Database :
+
+```json
+{
+  "rules": {
+    "session": {
+      "$sessionId": {
+        "events":   { ".read": "auth != null", ".write": "auth != null" },
+        "presence": { ".read": "auth != null",
+                      "$clientId": { ".write": "auth != null" } }
+      }
+    }
+  }
+}
+```
+
+Firestore :
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /campaigns/{sessionId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+**Ce que ce jeu de règles protège, et ce qu'il ne protège pas.** Il ferme la porte à tout
+visiteur non authentifié — l'essentiel. Mais `auth != null` accepte **n'importe quel compte
+Google** : quelqu'un d'authentifié qui devinerait un code de session à 5 caractères pourrait
+lire et écrire. Sur 24 millions de combinaisons et sans moyen de découvrir les codes, c'est un
+risque théorique pour une table privée.
+
+Si un verrou réel est souhaité, il faut une liste blanche d'UID — celui du MJ et ceux des
+joueurs, qui écrivent aussi (`token.move`). C'est un réglage à faire une fois, au prix de
+devoir ajouter chaque nouveau joueur.
 
 ## Décision n°2 du §12 — latence Firebase : tranchée par architecture, pas par mesure
 

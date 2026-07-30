@@ -24,13 +24,14 @@
 // est gouverné par les règles de sécurité Firebase, et l'authentification par les fournisseurs
 // activés et les domaines autorisés.
 //
-// MAIS la clé n'est pas inerte pour autant, et c'est le point à ne pas balayer : une clé
-// Google **non restreinte** peut être présentée à d'autres API Google activées sur le projet,
-// avec un coût ou une consommation de quota à la clé. La contre-mesure ne relève pas de ce
-// fichier — elle est dans Google Cloud Console → Identifiants → cette clé :
-//   1. restriction d'application par référents HTTP (le domaine Pages, et 127.0.0.1) ;
-//   2. restriction d'API à celles réellement utilisées (Identity Toolkit, RTDB, Firestore).
-// Consigné dans les vérifications manuelles de docs/ETAT.md.
+// Ce que l'alerte ne dit pas, et qui compte : **la protection repose entièrement sur les règles
+// de sécurité du projet**. Elles sont consignées dans docs/ETAT.md, avec les chemins réellement
+// utilisés et les deux pièges du mode test — lequel autorise lecture et écriture sans
+// authentification, et expire au bout de 30 jours.
+//
+// Sans compte de facturation, aucun coût n'est possible : les quotas du plan gratuit sont des
+// plafonds durs. Restreindre la clé par référents HTTP (Cloud Console → Identifiants) reste
+// utile contre l'épuisement de quota, mais c'est un confort, pas une urgence.
 (function () {
   // Navigateur piloté : ne rien configurer.
   //
