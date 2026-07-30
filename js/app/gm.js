@@ -9,6 +9,7 @@ import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
+import { GM_SESSION_STORAGE_KEY } from '../core/constants.js';
 import { createGMPanel } from '../ui/gm/panel.js';
 import {
   createNetworkStatus,
@@ -44,13 +45,13 @@ function tokenAtCell(campaign, activeLevel, cell) {
 }
 
 function defaultGmSessionId() {
-  const existing = sessionStorage.getItem('rpg-gm-session-id');
+  const existing = sessionStorage.getItem(GM_SESSION_STORAGE_KEY);
   if (existing) return existing;
   // Un UUID était illisible et intypable : le MJ doit dicter ce code, ou le recopier à la
   // main sur la tablette, en n'ayant aucun moyen de le copier-coller d'un appareil à
   // l'autre. Cf. createSessionCode dans app/session.js.
   const created = createSessionCode();
-  sessionStorage.setItem('rpg-gm-session-id', created);
+  sessionStorage.setItem(GM_SESSION_STORAGE_KEY, created);
   return created;
 }
 
@@ -270,7 +271,7 @@ export async function bootstrapGMApp(options = {}) {
   }
 
   const gmPanel = panelContainer
-    ? createGMPanel(panelContainer, { transport: transport || undefined })
+    ? createGMPanel(panelContainer, { transport: transport || undefined, sessionId })
     : null;
 
   /**

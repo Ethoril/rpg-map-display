@@ -5,6 +5,7 @@ import { createSceneLibrary } from './sceneLibrary.js';
 import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
 import { VERSION } from '../../core/version.js';
+import { GM_SESSION_STORAGE_KEY } from '../../core/constants.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
@@ -16,6 +17,7 @@ import * as store from '../../state/store.js';
  * Options d'initialisation du panneau MJ.
  * @typedef {Object} GMPanelOptions
  * @property {Transport} [transport] Transport réseau optionnel pour la synchronisation
+ * @property {string} [sessionId] Code de session, affiché pour être dicté à la tablette
  */
 
 /**
@@ -30,7 +32,7 @@ export function createGMPanel(container, options = {}) {
     throw new Error('createGMPanel : conteneur HTML requis');
   }
 
-  const { transport } = options;
+  const { transport, sessionId = '' } = options;
   const listeners = new AbortController();
 
   container.className = 'gm-panel-root';
@@ -42,6 +44,16 @@ export function createGMPanel(container, options = {}) {
   container.style.fontFamily = 'system-ui, sans-serif';
 
   container.innerHTML = `
+    <!-- Barre de session : le code à dicter, et le seul geste qui permette d'en changer.
+         sessionStorage survivant à la restauration d'onglets, une session peut coller
+         après un redémarrage complet ; sans ce bouton il n'existait aucun moyen de la
+         quitter depuis l'interface. -->
+    <div class="gm-session-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; background: #232323; border-bottom: 1px solid #333;">
+      <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Session</span>
+      <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.2em; color: #4a90e2;">${sessionId || '—'}</code>
+      <button id="gm-leave-session" style="margin-left: auto; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
+    </div>
+
     <!-- Barre d'onglets du panneau MJ -->
     <div class="gm-tabs-header" style="display: flex; background: #2a2a2a; border-bottom: 1px solid #333;">
       <button class="gm-tab-btn" data-tab="scene-library" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">📂 Cartes</button>
@@ -280,6 +292,35 @@ export function createGMPanel(container, options = {}) {
     gridOpacityInput.value = String(activeLvl.grid.opacity ?? 0.25);
     gridOpacityVal.textContent = String(activeLvl.grid.opacity ?? 0.25);
   }
+
+  // --- Quitter la session ---
+  //
+  // Trois gestes, et surtout PAS de `resetStore()` : celui-ci notifierait les abonnés, donc
+  // déclencherait `saveToLocalStorage` avec une campagne nulle, laquelle **supprime**
+  // `rpg_campaign_<session>` (js/state/store.js). Quitter une session effacerait alors la
+  // campagne qu'on vient de quitter. La page est déchargée juste après de toute façon, et
+  // les données restent en place pour qui retape le code.
+  const leaveSessionBtn = /** @type {HTMLButtonElement} */ (
+    container.querySelector('#gm-leave-session')
+  );
+  leaveSessionBtn?.addEventListener(
+    'click',
+    () => {
+      const code = sessionId || 'en cours';
+      if (!window.confirm(`Quitter la session ${code} ?\n\nLa campagne reste enregistrée : retaper ce code y revient.`)) {
+        return;
+      }
+      try {
+        transport?.disconnect();
+      } catch (err) {
+        // Un transport déjà tombé ne doit pas empêcher de partir.
+        console.warn('Déconnexion du transport en quittant la session :', err);
+      }
+      sessionStorage.removeItem(GM_SESSION_STORAGE_KEY);
+      window.location.href = 'index.html';
+    },
+    { signal: listeners.signal }
+  );
 
   // --- Contrôle d'élévation du pion sélectionné ---
   const tokenElevationInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-elevation'));

@@ -256,6 +256,50 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(state.token?.imageUrl.startsWith('data:')).toBe(false);
   });
 
+  test('Quitter la session : efface le code mémorisé et ramène à l accueil', async ({ page }) => {
+    await page.goto('/gm.html?session=A7K2M');
+    await waitForApp(page);
+
+    // Le code est affiché dans la barre de session, pour être dicté à la tablette.
+    await expect(page.locator('#gm-session-code')).toHaveText('A7K2M');
+
+    await page.evaluate(() => {
+      window.sessionStorage.setItem('rpg-gm-session-id', 'A7K2M');
+    });
+
+    page.on('dialog', (dialog) => dialog.accept());
+    await Promise.all([
+      page.waitForURL((url) => url.pathname.endsWith('/index.html')),
+      page.click('#gm-leave-session'),
+    ]);
+
+    // Le code mémorisé a disparu : sans cela, revenir sur gm.html rejoindrait la même
+    // session, ce qui est précisément le symptôme que ce bouton corrige.
+    const memorise = await page.evaluate(() =>
+      window.sessionStorage.getItem('rpg-gm-session-id')
+    );
+    expect(memorise).toBeNull();
+  });
+
+  test('Quitter la session : refuser la confirmation ne change rien', async ({ page }) => {
+    await page.goto('/gm.html?session=B4XQ9');
+    await waitForApp(page);
+
+    await page.evaluate(() => {
+      window.sessionStorage.setItem('rpg-gm-session-id', 'B4XQ9');
+    });
+
+    page.on('dialog', (dialog) => dialog.dismiss());
+    await page.click('#gm-leave-session');
+
+    // Toujours sur la vue MJ, et le code toujours mémorisé.
+    expect(new URL(page.url()).pathname).toMatch(/gm\.html$/);
+    const memorise = await page.evaluate(() =>
+      window.sessionStorage.getItem('rpg-gm-session-id')
+    );
+    expect(memorise).toBe('B4XQ9');
+  });
+
   test('Contrôle d élévation MJ : désactivé sans sélection, actif avec pion sélectionné', async ({ page }) => {
     await setupGMView(page);
 

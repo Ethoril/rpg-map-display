@@ -29,3 +29,15 @@ export const DRAG_HOLD_MS = 150;
  * Évite de saturer le canal temps réel tout en assurant une fluidité perçue suffisante.
  */
 export const VIEW_PUBLISH_HZ = 10;
+
+/**
+ * Clé de `sessionStorage` mémorisant le code de session du MJ.
+ *
+ * Cette mémorisation est **voulue** : elle fait qu'un F5 accidentel reprend la même session,
+ * ce que le CdC §7 qualifie de scénario nominal. Mais `sessionStorage` survit à la
+ * restauration d'onglets des navigateurs, si bien qu'une session peut coller après un
+ * redémarrage complet — d'où le besoin d'un geste explicite pour la quitter.
+ *
+ * Domicile unique de la clé : elle est lue par `app/gm.js` et effacée par `ui/gm/panel.js`.
+ */
+export const GM_SESSION_STORAGE_KEY = 'rpg-gm-session-id';
