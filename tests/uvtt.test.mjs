@@ -75,3 +75,94 @@ test('parseUvtt refuse le type hex', () => {
   };
   assert.throws(() => parseUvtt(hexUvtt), /Grille hexagonale non supportée/);
 });
+
+// --- Universalité : ne jamais rien perdre en silence ------------------------------
+//
+// L'outil doit accepter n'importe quel UVTT « ou équivalent », quelle que soit sa source.
+// La difficulté n'est pas d'accepter plus de formes : c'est de ne jamais en écarter une
+// sans le dire. Une carte dont les 141 portes ont été jetées ne doit pas ressembler à une
+// carte sans porte.
+
+test('universalité : une géométrie absente est repliée mais signalée', () => {
+  const { level, warnings } = parseUvtt({ image: '' });
+
+  // Les replis restent : refuser reproduirait la perte de campagne d'ETAT.md.
+  assert.equal(level.widthCells, 40);
+  assert.equal(level.heightCells, 30);
+  assert.equal(level.pxPerCell, 140);
+
+  // Mais ils ne sont plus muets.
+  assert.ok(
+    warnings.some((w) => w.includes('pixels_per_grid')),
+    'la densité inventée doit être signalée'
+  );
+  assert.ok(
+    warnings.some((w) => w.includes('map_size')),
+    'les dimensions inventées doivent être signalées'
+  );
+});
+
+test('universalité : des portes de forme inconnue sont comptées, pas escamotées', () => {
+  const { level, warnings } = parseUvtt({
+    resolution: { map_size: { x: 10, y: 8 }, pixels_per_grid: 64 },
+    portals: [
+      // Forme reconnue.
+      { bounds: [{ x: 1, y: 1 }, { x: 2, y: 1 }] },
+      // Formes d'un exportateur imaginaire : rien ne doit disparaître en silence.
+      { position: { x: 3, y: 3 }, rotation: 0 },
+      { bounds: [{ x: 4, y: 4 }] },
+      { bounds: [{ x: 'a', y: 4 }, { x: 5, y: 4 }] },
+    ],
+    image: '',
+  });
+
+  assert.equal(level.portals.length, 1, 'seule la porte exploitable est retenue');
+  const avert = warnings.find((w) => w.includes('porte'));
+  assert.ok(avert, 'les portes écartées doivent être signalées');
+  assert.match(avert, /3 porte\(s\) ignorée\(s\) sur 4/);
+});
+
+test('universalité : lumières et murs inexploitables sont comptés', () => {
+  const { level, warnings } = parseUvtt({
+    resolution: { map_size: { x: 10, y: 8 }, pixels_per_grid: 64 },
+    line_of_sight: [
+      [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+      [{ x: 0, y: 0 }],
+      'pas une polyligne',
+      [{ x: 0, y: 0 }, { u: 1, v: 2 }],
+    ],
+    lights: [
+      { position: { x: 1, y: 1 }, range: 3 },
+      { at: { x: 2, y: 2 } },
+      { position: { x: 'trois', y: 1 } },
+    ],
+    image: '',
+  });
+
+  assert.equal(level.walls.length, 1);
+  assert.equal(level.lights.length, 1);
+  assert.match(
+    warnings.find((w) => w.includes('polyligne')) ?? '',
+    /3 polyligne\(s\) de mur ignorée\(s\) sur 4/
+  );
+  assert.ok(warnings.some((w) => w.includes('point(s) de mur ignoré')));
+  assert.match(
+    warnings.find((w) => w.includes('lumière')) ?? '',
+    /2 lumière\(s\) ignorée\(s\) sur 3/
+  );
+});
+
+test('universalité : un fichier entièrement exploitable n’émet aucun avertissement de perte', () => {
+  const { warnings } = parseUvtt({
+    resolution: { map_size: { x: 10, y: 8 }, pixels_per_grid: 64, map_origin: { x: 0, y: 0 } },
+    line_of_sight: [[{ x: 0, y: 0 }, { x: 1, y: 0 }]],
+    portals: [{ bounds: [{ x: 1, y: 1 }, { x: 2, y: 1 }] }],
+    lights: [{ position: { x: 1, y: 1 }, color: 'ffFFEBBF' }],
+    environment: { baked_lighting: false, ambient_light: 'ffffffff' },
+    image: '',
+  });
+
+  // Aucun faux positif : un avertissement qui crie pour rien finit ignoré.
+  const pertes = warnings.filter((w) => w.includes('ignoré') || w.includes('replié'));
+  assert.deepEqual(pertes, [], `avertissements inattendus : ${warnings.join(' | ')}`);
+});

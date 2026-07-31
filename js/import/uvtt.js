@@ -105,10 +105,31 @@ export function parseUvtt(jsonInput) {
   /** @type {string[]} */
   const warnings = [];
 
+  // Géométrie. Les replis restent en place — refuser un fichier reproduirait la perte de
+  // campagne documentée dans ETAT.md — mais ils ne doivent plus être **muets** : une carte
+  // venue d'un outil inconnu se retrouvait sinon avec 40x30 cases à 140 px/case inventées
+  // de toutes pièces, désalignées de sa propre image, sans un mot. C'est la forme la plus
+  // coûteuse de l'échec : atteignable, franchi, silencieux.
   const resolution = data.resolution || {};
-  const pxPerCell = resolution.pixels_per_grid ?? 140;
-  const widthCells = resolution.map_size?.x ?? 40;
-  const heightCells = resolution.map_size?.y ?? 30;
+  const ppgSource = resolution.pixels_per_grid;
+  const sizeSource = resolution.map_size;
+
+  const pxPerCell = typeof ppgSource === 'number' && ppgSource > 0 ? ppgSource : 140;
+  if (pxPerCell !== ppgSource) {
+    warnings.push(
+      `resolution.pixels_per_grid absent ou invalide (${JSON.stringify(ppgSource)}) : ` +
+        `replié sur ${pxPerCell} px/case. La grille ne s'alignera sur l'image que par chance.`
+    );
+  }
+
+  const widthCells = typeof sizeSource?.x === 'number' && sizeSource.x > 0 ? sizeSource.x : 40;
+  const heightCells = typeof sizeSource?.y === 'number' && sizeSource.y > 0 ? sizeSource.y : 30;
+  if (widthCells !== sizeSource?.x || heightCells !== sizeSource?.y) {
+    warnings.push(
+      `resolution.map_size absent ou invalide (${JSON.stringify(sizeSource)}) : ` +
+        `dimensions repliées sur ${widthCells}x${heightCells} cases, valeurs inventées.`
+    );
+  }
 
   const originX = resolution.map_origin?.x ?? 0;
   const originY = resolution.map_origin?.y ?? 0;
@@ -124,18 +145,43 @@ export function parseUvtt(jsonInput) {
     ...(Array.isArray(data.objects_line_of_sight) ? data.objects_line_of_sight : []),
   ];
 
+  // Tout rejet est **compté**. Un fichier d'un exportateur inconnu peut nommer ses points
+  // autrement : sans ce décompte, ses murs disparaissaient et la carte semblait simplement
+  // ne pas en avoir. Le silence est le pire mode de défaillance d'un import universel.
+  let polysRejetees = 0;
+  let pointsRejetes = 0;
+
   for (const poly of losList) {
-    if (!Array.isArray(poly)) continue;
+    if (!Array.isArray(poly)) {
+      polysRejetees++;
+      continue;
+    }
     /** @type {CellPoint[]} */
     const points = [];
     for (const pt of poly) {
       if (pt && typeof pt.x === 'number' && typeof pt.y === 'number') {
         points.push({ cellX: pt.x, cellY: pt.y });
+      } else {
+        pointsRejetes++;
       }
     }
     if (points.length >= 2) {
       walls.push(points);
+    } else {
+      polysRejetees++;
     }
+  }
+
+  if (polysRejetees > 0) {
+    warnings.push(
+      `${polysRejetees} polyligne(s) de mur ignorée(s) sur ${losList.length} : ` +
+        `moins de deux points exploitables (attendu des objets {x, y} numériques).`
+    );
+  }
+  if (pointsRejetes > 0) {
+    warnings.push(
+      `${pointsRejetes} point(s) de mur ignoré(s) : coordonnées x/y absentes ou non numériques.`
+    );
   }
 
   // Extraction des portails
@@ -143,10 +189,25 @@ export function parseUvtt(jsonInput) {
   const portals = [];
   if (Array.isArray(data.portals)) {
     let portalIdx = 1;
+    let portesRejetees = 0;
     for (const p of data.portals) {
-      if (!p || !Array.isArray(p.bounds) || p.bounds.length < 2) continue;
+      // Seule la forme `bounds: [a, b]` est reconnue. Un exportateur qui décrit ses portes
+      // autrement les perdait toutes en silence, et la carte s'affichait sans porte comme
+      // si elle n'en avait pas — indistinguable d'une carte réellement sans porte.
+      if (!p || !Array.isArray(p.bounds) || p.bounds.length < 2) {
+        portesRejetees++;
+        continue;
+      }
       const ptA = p.bounds[0];
       const ptB = p.bounds[1];
+      if (
+        !ptA || !ptB ||
+        typeof ptA.x !== 'number' || typeof ptA.y !== 'number' ||
+        typeof ptB.x !== 'number' || typeof ptB.y !== 'number'
+      ) {
+        portesRejetees++;
+        continue;
+      }
       portals.push({
         id: p.id || `portal-${portalIdx++}`,
         a: { cellX: ptA.x, cellY: ptA.y },
@@ -155,6 +216,12 @@ export function parseUvtt(jsonInput) {
         freestanding: p.freestanding ?? false,
       });
     }
+    if (portesRejetees > 0) {
+      warnings.push(
+        `${portesRejetees} porte(s) ignorée(s) sur ${data.portals.length} : ` +
+          `forme non reconnue (attendu bounds: [{x, y}, {x, y}]).`
+      );
+    }
   }
 
   // Extraction des lumières
@@ -162,8 +229,16 @@ export function parseUvtt(jsonInput) {
   const lights = [];
   if (Array.isArray(data.lights)) {
     let lightIdx = 1;
+    let lumieresRejetees = 0;
     for (const l of data.lights) {
-      if (!l || !l.position) continue;
+      if (
+        !l || !l.position ||
+        typeof l.position.x !== 'number' ||
+        typeof l.position.y !== 'number'
+      ) {
+        lumieresRejetees++;
+        continue;
+      }
       const lightId = l.id || `light-${lightIdx++}`;
       const parsedColor = parseUvttColor(l.color);
       if (parsedColor.warning) {
@@ -177,6 +252,12 @@ export function parseUvtt(jsonInput) {
         color: parsedColor.color,
         shadows: l.shadows ?? true,
       });
+    }
+    if (lumieresRejetees > 0) {
+      warnings.push(
+        `${lumieresRejetees} lumière(s) ignorée(s) sur ${data.lights.length} : ` +
+          `position absente ou non numérique (attendu position: {x, y}).`
+      );
     }
   }
 
