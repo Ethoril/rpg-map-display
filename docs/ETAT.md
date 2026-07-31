@@ -364,11 +364,53 @@ sans borne », le rayon du sweep deviendrait la carte entière. Mesuré sur `Tes
 **Un facteur 190**, et l'ensemble du résultat de performance ci-dessus s'effondre : 347 ms
 par geste, du même ordre que la latence du cast.
 
-> **Conclusion à porter dans les briefs L-03 et L-04 : il faut un plafond de vision dur,
+> **Conclusion portée dans les briefs L-03 et L-04 : il faut un plafond de vision dur,
 > quelle que soit la lumière.** Ce n'est pas une optimisation, c'est ce qui rend le fog
 > jouable — et c'est aussi souhaitable en jeu, personne ne veut que ses joueurs découvrent
-> tout le donjon depuis une salle éclairée. La valeur de ce plafond reste à trancher par le
-> mainteneur ; les mesures ci-dessus disent que 20 cases se paient encore très bien.
+> tout le donjon depuis une salle éclairée. **Plafond arrêté par le mainteneur le 31/07 :
+> 20 cases.**
+
+### Le plafond est une borne TECHNIQUE, pas une limite de jeu
+
+Distinction relevée par le mainteneur, et elle est juste : **un pion ne voit jamais 1338
+murs.** La ligne de vue est coupée bien avant. Mesuré depuis le centre de `Testbig150`, sans
+aucune borne de portée :
+
+| | |
+|---|---|
+| Segments sur la carte | 1338 |
+| Segments **réellement visibles** | **284** (21 %) |
+| Segments **traités par le sweep** | **1338** |
+
+Le sweep teste tout ce qui est **à portée**, sans savoir d'avance ce qui sera masqué — c'est
+précisément le calcul qui le détermine. Le coût suit donc l'encombrement, pas la visibilité.
+
+C'est le prix assumé de l'algorithme naïf retenu en L-02. **Le plafond de 20 cases corrige
+une faiblesse de l'implantation, pas une réalité du jeu**, et il faut l'écrire ainsi : le
+jour où les rayons seront accélérés, il redeviendra un pur choix de jeu.
+
+### La piste d'accélération, pour ne pas la redécouvrir de travers
+
+**Ne pas partir sur un balayage angulaire à ensemble actif.** C'est l'algorithme « propre »
+en O(n log n), mais l'ordre de son ensemble actif change pendant la rotation et sa
+maintenance est un nid à cas dégénérés — segments partageant une extrémité, colinéaires,
+événements au même angle. Ses bugs ne plantent pas : ils font **fuir la vision dans les
+angles**, soit exactement le critère 12, soit le défaut le plus coûteux à détecter.
+
+**La bonne piste est ailleurs.** Le coût quadratique ne vient pas de la logique de
+visibilité mais d'une chose bête : chaque rayon est testé contre tous les segments. Il
+suffit d'indexer les segments par case et de ne tester que celles que le rayon traverse —
+la logique de visibilité ne bouge pas d'une ligne.
+
+**Et c'est ce qui rend la piste sûre : le polygone produit doit être rigoureusement
+identique.** Le test s'écrit tout seul — comparer l'ancienne et la nouvelle implantation sur
+des centaines de configurations et exiger l'égalité. Aucun risque de fuite, la sémantique
+étant inchangée. Gain estimé, non mesuré : ×10 environ à portée bornée, ×5 à ×10 sans borne.
+
+**À ne pas faire avant L-04.** La marge actuelle est de 10 à 100×, et L-04 révélera la part
+réelle du sweep dans la boucle complète — sweep, union, rastérisation, rendu. Optimiser
+avant de connaître cette part, c'est optimiser à l'aveugle : la décision n°2 a déjà coûté
+cette leçon.
 
 ## Démarrage d’une séance
 

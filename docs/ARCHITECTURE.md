@@ -178,6 +178,9 @@ F:\rpg-map-display\
     ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
     │                              implantation du pipeline », et pourquoi on compare avec des
     │                              réglages mais publie avec les constantes
+    ├─ TRANCHE-L03-UNION-VISION.md [2] brief de la 3e tranche : union des PJ rendue côté MJ.
+    │                              L'union se fait par sous-chemins Canvas, aucune géométrie
+    │                              booléenne. Plafond de vision à 20 cases, borne technique
     ├─ TRANCHE-L02-SWEEP-VISIBILITE.md [2] brief de la 2e tranche : polygone de visibilité,
     │                              et la mesure du critère 13. Le tri par portée n'est pas une
     │                              optimisation, c'est ce qui rend la tranche faisable

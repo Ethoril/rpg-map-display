@@ -405,6 +405,14 @@ déplacement simultané de plusieurs pions au multi-touch — abandonné, jamais
 **Vision dynamique.** Union des champs de vision de tous les pions PJ de l'étage
 affiché, obstruée par les murs et les portes fermées.
 
+**Plafond de vision : 20 cases**, quelle que soit la lumière. Arrêté le 31/07/2026, et il
+faut savoir ce qu'il est : **une borne technique, pas une règle de jeu.** Le sweep teste
+tous les segments *à portée* sans savoir d'avance lesquels seront masqués — mesuré, 1338
+segments traités pour 284 réellement visibles. Sans borne, un pion en zone éclairée
+(`ambient.level = 1`) coûterait 347 ms pour six pions au lieu de 2 ms. Le jour où les rayons
+seront accélérés (`ETAT.md`, « piste d'accélération »), ce plafond redeviendra un pur choix
+de jeu. 20 cases couvrent très largement l'usage, et se paient encore sans effort.
+
 **Fog persistant.** Masque raster mono-canal par étage, à **8 px par case** — une carte
 de 40×30 cases fait 320×240 px, soit ~76 Ko brut et ~5 Ko en PNG. Le Mac y applique un
 OR à chaque recalcul et le persiste. À 5 Ko, diffusion du masque entier plutôt que
