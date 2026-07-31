@@ -407,7 +407,10 @@ test('une campagne contenant une data URL est refusée avant chargement ou sauve
 
 test('Une campagne héritée contenant un ARGB est chargée après conversion et pas refusée', () => {
   const camp = makeValidCampaign();
-  // @ts-ignore - intentionnel pour simuler une donnée héritée non conforme
+  // Couleurs volontairement au format ARGB hérité, non conforme au modèle : le point du
+  // test est que le chargement les convertisse au lieu de refuser la campagne. Aucun
+  // `@ts-ignore` n'est nécessaire ici — `color` est typé `string` — et il serait interdit
+  // (`CONVENTIONS.md` §8 n°16).
   camp.levels[0].lights.push({
     id: 'legacy-light',
     at: { cellX: 1, cellY: 1 },
@@ -416,7 +419,6 @@ test('Une campagne héritée contenant un ARGB est chargée après conversion et
     color: 'ffffffff',
     shadows: true,
   });
-  // @ts-ignore
   camp.levels[0].ambient.color = 'ffF7EAE4';
 
   assert.doesNotThrow(() => {
@@ -457,23 +459,22 @@ test('updateToken refuse les champs hors liste blanche (cell, levelId, id, marke
   loadCampaign(camp);
   const stateBefore = getState();
 
+  // Ces champs sont bien du type `Partial<Token>`, donc le typage les accepte : c'est le
+  // refus **à l'exécution** qui est vérifié, la liste blanche vivant dans le store et non
+  // dans le type. D'où aucune suppression de vérification, interdite par §8 n°16.
   assert.throws(() => {
-    // @ts-ignore
     updateToken('hero-1', { cell: { a: 9, b: 9 } });
   }, /champ non autorisé "cell"/);
 
   assert.throws(() => {
-    // @ts-ignore
     updateToken('hero-1', { levelId: 'et1' });
   }, /champ non autorisé "levelId"/);
 
   assert.throws(() => {
-    // @ts-ignore
     updateToken('hero-1', { id: 'autre-id' });
   }, /champ non autorisé "id"/);
 
   assert.throws(() => {
-    // @ts-ignore
     updateToken('hero-1', { markers: ['dead'] });
   }, /champ non autorisé "markers"/);
 
