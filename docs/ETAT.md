@@ -304,6 +304,72 @@ servait plus à rien puisqu'il produisait une entrée inutilisable. À noter pou
 l'amendement du 30/07. Un bouton sans test est un bouton dont personne ne saura qu'il a cessé
 de fonctionner.
 
+## Lot 2 — la vision est mesurée, et le verdict est large
+
+Relevé le 31 juillet 2026 **sur la tablette cible**, `diag.html` bouton 6bis, sur la
+géométrie réellement publiée — aucune extrapolation, aucun segment synthétique.
+
+`Testbig150`, la carte la plus dense du corpus (65 × 71 cases, 1396 segments) :
+
+| Portée | Segments à portée (méd/pire) | 1 sweep (méd/pire) | Geste 6 cases (pire) |
+|---|---|---|---|
+| 5 cases | 11 / 153 | 0,1 / 1,8 ms | 10,8 ms |
+| 10 cases | 68 / 279 | 0,4 / 5,6 ms | 33,6 ms |
+| **15 cases** | 175 / 313 | **2,4 / 6,9 ms** | **41,4 ms** |
+| 20 cases | 274 / 422 | 4,7 / 11,1 ms | 66,6 ms |
+
+`Manoir — RDC` est trivial partout : 1,1 ms au pire, même à portée 20.
+
+**Ce que ça établit.** Le coût suit le carré du nombre de segments **à portée** — exposant
+mesuré entre 1,5 et 1,9 — et ce nombre suit le carré de la portée. Il faudrait environ
+**trois fois la densité locale** ou **1,7 fois la portée** pour qu'un seul sweep approche le
+budget d'une image. Aucune limite de portée ni de taille de carte n'est à imposer : le coût
+est indépendant de la surface, seule la densité locale compte. Le CdC §9 porte l'amendement.
+
+> **Deux corrections d'estimations que j'avais faites, à ne pas reproduire.**
+>
+> **La tablette n'est pas plus lente que le poste de bureau** sur cette charge : 2,4 ms
+> contre 2,1 ms en médiane, même carte, même code. Toutes les extrapolations « ×3 à ×5 sur
+> tablette » de ce document étaient donc pessimistes d'un facteur 4 — dont celle qui
+> concluait qu'une carte à 3000 segments ne tiendrait pas. Elle tiendrait. Sur une boucle
+> numérique serrée, le Tab S9 FE tient tête à un Mac.
+>
+> **Le premier relevé était faux, et il s'est dénoncé tout seul** : la portée 5 y ressortait
+> plus lente que la portée 10 avec deux fois moins de segments à portée. Moins de travail et
+> plus de temps est impossible pour un même algorithme — c'était la chauffe du moteur
+> JavaScript, captée par un maximum. Retenir la leçon : **une mesure qui viole une monotonie
+> attendue est fausse, et il n'est pas nécessaire de la relancer pour le savoir.**
+
+### Question ouverte qui décide de tout le résultat ci-dessus : qu'est-ce qui borne la vision ?
+
+**Aujourd'hui, la portée n'est utilisée nulle part.** `visionBright` et `visionDim` existent
+sur `Token` depuis le lot 1a, sont validés, voyagent par la bibliothèque de pions et
+s'éditent dans l'outil — mais **aucun code ne les consomme**. `sweep()` reçoit une portée en
+pixels, et seul le banc de `diag.html` l'appelle.
+
+Le CdC les définit comme la **vision dans le noir** (§5.3, ligne 291), pas comme la portée de
+vue générale : un pion voit net jusqu'à `visionBright`, faiblement jusqu'à `visionDim`,
+`0 = aucune vision`. Ce qui laisse une question sans réponse : **dans une zone éclairée, que
+vaut la portée ?**
+
+Elle n'est pas théorique. `Testbig150` déclare `ambient.level = 1` — entièrement éclairée —
+et `manoir-rdc` déclare `0`, noir complet. Si « éclairé » signifiait « voir jusqu'aux murs
+sans borne », le rayon du sweep deviendrait la carte entière. Mesuré sur `Testbig150` :
+
+| Portée | Segments à portée | 1 sweep | 6 pions |
+|---|---|---|---|
+| 15 cases | 45 | 0,3 ms | 2 ms |
+| **non bornée** | **1338** | **57,9 ms** | **347 ms** |
+
+**Un facteur 190**, et l'ensemble du résultat de performance ci-dessus s'effondre : 347 ms
+par geste, du même ordre que la latence du cast.
+
+> **Conclusion à porter dans les briefs L-03 et L-04 : il faut un plafond de vision dur,
+> quelle que soit la lumière.** Ce n'est pas une optimisation, c'est ce qui rend le fog
+> jouable — et c'est aussi souhaitable en jeu, personne ne veut que ses joueurs découvrent
+> tout le donjon depuis une salle éclairée. La valeur de ce plafond reste à trancher par le
+> mainteneur ; les mesures ci-dessus disent que 20 cases se paient encore très bien.
+
 ## Démarrage d’une séance
 
 1. Servir le dépôt avec `pnpm run serve`.
@@ -509,7 +575,7 @@ Relevé pour éviter de confondre « le plateau est solide » et « le produit e
 |---|---|
 | **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
 | **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
-| **2 — Lignes de vue, portes & tactique** | **0 sur 13.** `js/vision/` n’existe pas ; aucun code de fog, de rendu de murs, d’éditeur de murs, de gabarits ni de marqueurs d’état. **Périmètre élargi le 29/07 au soir** : le fog porte désormais la fonction que les toits assuraient — masquer l’intérieur d’un bâtiment non visité (`ANALYSE-DD2VTT-GRILLES.md` §9) |
+| **2 — Lignes de vue, portes & tactique** | **1 sur 13, deux tranches livrées le 31/07.** L-01 ferme le **critère 8** : les arêtes bloquées sont calculées par croisement centre-à-centre, avec cache par étage. L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). Restent le fog, le rendu de murs, l’éditeur de murs, les gabarits et les marqueurs. **Périmètre élargi le 29/07 au soir** : le fog porte désormais la fonction que les toits assuraient — masquer l’intérieur d’un bâtiment non visité (`ANALYSE-DD2VTT-GRILLES.md` §9) |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | 0 sur 6. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |
