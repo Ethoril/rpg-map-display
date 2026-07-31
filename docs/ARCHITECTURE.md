@@ -173,6 +173,9 @@ F:\rpg-map-display\
     ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
     │                              implantation du pipeline », et pourquoi on compare avec des
     │                              réglages mais publie avec les constantes
+    ├─ TRANCHE-L01-ARETES-BLOQUEES.md [2] brief de la 1re tranche du lot 2 : test de
+    │                              croisement centre-à-centre plutôt qu'accrochage à la grille,
+    │                              mesures à l'appui. « Tranche L-01 » ≠ « chantier L »
     ├─ TRAVAIL-2907SOIR.md        [2] reprise du 29/07 au soir : état réel du lot 2 et
     │                              spécifications des trois chantiers restants
     └─ ETAT.md                    avancement, reprise, corrections du plan
