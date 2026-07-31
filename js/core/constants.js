@@ -46,3 +46,9 @@ export const VIEW_PUBLISH_HZ = 10;
  * Domicile unique de la clé : elle est lue par `app/gm.js` et effacée par `ui/gm/panel.js`.
  */
 export const GM_SESSION_STORAGE_KEY = 'rpg-gm-session-id';
+
+/**
+ * Plafond de la portée de vision des pions en cases (décision mainteneur 31/07/2026).
+ * Borne technique pour meuler le coût de balayage du sweep sans altérer l'expérience.
+ */
+export const VISION_MAX_RANGE_CELLS = 20;

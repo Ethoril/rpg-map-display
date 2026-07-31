@@ -17,6 +17,7 @@ import { loadCampaign, getState, getActiveLevel, resetStore } from '../state/sto
 import { saveFirebaseConfig } from './runtimeConfig.js';
 import { sweep, getLastEvalSegmentCount } from '../vision/sweep.js';
 import { gridFor } from '../grid/index.js';
+import { extractBlockedSegments } from '../import/blockedEdges.js';
 
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
@@ -418,45 +419,6 @@ async function diagnosticFirebase() {
 // Cette section supprime l'extrapolation : elle mesure sur la géométrie publiée.
 
 /**
- * Convertit les murs et portes fermées d'un étage en segments de coordonnées carte.
- *
- * La conversion passe **exclusivement** par `grid.mapFromCellPoint()`. Une première
- * version multipliait par le pas de grille de l'étage ici même, et le test n°1 l'a
- * refusée : l'arithmétique case ↔ pixel appartient au `GridAdapter`, seul endroit qui
- * saura rendre une grille hexagonale un jour. Le garde-fou a bien fait son travail.
- *
- * @param {any} level
- * @param {import('../grid/GridAdapter.js').GridAdapter} grid
- * @returns {import('../core/types.js').Segment[]}
- */
-function segmentsDeLEtage(level, grid) {
-  /** @type {import('../core/types.js').Segment[]} */
-  const segments = [];
-
-  for (const polyligne of level.walls ?? []) {
-    for (let i = 0; i + 1 < polyligne.length; i++) {
-      segments.push({
-        p1: grid.mapFromCellPoint(polyligne[i]),
-        p2: grid.mapFromCellPoint(polyligne[i + 1]),
-      });
-    }
-  }
-
-  // Une porte ouverte ne bloque pas la vue. Même règle qu'en L-01, exprimée
-  // « la porte n'est pas ouverte » pour survivre aux trois états de L-05.
-  for (const porte of level.portals ?? []) {
-    const ouverte = typeof porte.state === 'string' ? porte.state === 'open' : porte.closed === false;
-    if (ouverte) continue;
-    segments.push({
-      p1: grid.mapFromCellPoint(porte.a),
-      p2: grid.mapFromCellPoint(porte.b),
-    });
-  }
-
-  return segments;
-}
-
-/**
  * Longueur en pixels carte d'une distance exprimée en cases, obtenue par l'adaptateur.
  *
  * @param {import('../grid/GridAdapter.js').GridAdapter} grid
@@ -498,7 +460,7 @@ async function diagnosticSweepReel() {
     const scene = await rep.json();
     const level = scene.levels[0];
     const grid = gridFor(level);
-    const segments = segmentsDeLEtage(level, grid);
+    const segments = extractBlockedSegments(level, grid);
 
     lignes.push(
       `=== ${entree.name} — ${level.widthCells}×${level.heightCells} cases, ` +

@@ -7,9 +7,13 @@ import { BackgroundLayer } from '../render/layers/background.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
+import { FogLayer } from '../render/layers/fogLayer.js';
+
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
+import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { GM_SESSION_STORAGE_KEY } from '../core/constants.js';
+
 import { createGMPanel } from '../ui/gm/panel.js';
 import {
   createNetworkStatus,
@@ -84,6 +88,7 @@ export async function bootstrapGMApp(options = {}) {
   const gridLayer = new GridLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
+  const fogLayer = new FogLayer();
 
   /** @type {{tokenId: string, mapPos: MapPoint}|null} */
   let dragPreview = null;
@@ -157,7 +162,17 @@ export async function bootstrapGMApp(options = {}) {
         );
         animationActive = result.animationActive;
       },
+      fog: () =>
+        fogLayer.render(
+          stage.context,
+          grid,
+          activeLevel,
+          state.campaign?.tokens ?? [],
+          { role: 'gm', extractSegments: extractBlockedSegments }
+        ),
+
     });
+
     stage.context.restore();
     if (animationActive) requestRender();
   }

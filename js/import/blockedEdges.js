@@ -182,6 +182,65 @@ export function segmentsIntersect(A, B, C, D, eps = 1e-9) {
  */
 
 /**
+ * Extrait tous les segments d'obstacles (murs et portails non ouverts) d'un étage.
+ * Si un GridAdapter est fourni, les coordonnées sont converties en pixels carte ({ p1, p2 }).
+ * Sinon, elles restent en coordonnées de case ({ A, B }).
+ *
+ * @param {Level} level
+ * @param {GridAdapter} [grid]
+ * @returns {Array<any>}
+ */
+export function extractBlockedSegments(level, grid) {
+  if (!level) return [];
+
+  /** @type {Array<any>} */
+  const segments = [];
+
+  if (Array.isArray(level.walls)) {
+    for (const polyline of level.walls) {
+      if (!Array.isArray(polyline) || polyline.length < 2) continue;
+      for (let i = 0; i < polyline.length - 1; i++) {
+        const p1 = polyline[i];
+        const p2 = polyline[i + 1];
+        if (p1 && p2) {
+          if (grid) {
+            segments.push({
+              p1: grid.mapFromCellPoint(p1),
+              p2: grid.mapFromCellPoint(p2),
+            });
+          } else {
+            segments.push({
+              A: { x: p1.cellX, y: p1.cellY },
+              B: { x: p2.cellX, y: p2.cellY },
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(level.portals)) {
+    for (const portal of level.portals) {
+      if (portal && !isPortalOpen(portal)) {
+        if (grid) {
+          segments.push({
+            p1: grid.mapFromCellPoint(portal.a),
+            p2: grid.mapFromCellPoint(portal.b),
+          });
+        } else {
+          segments.push({
+            A: { x: portal.a.cellX, y: portal.a.cellY },
+            B: { x: portal.b.cellX, y: portal.b.cellY },
+          });
+        }
+      }
+    }
+  }
+
+  return segments;
+}
+
+/**
  * Calcul du masque d'arêtes de grille bloquées à partir de la géométrie de l'étage.
  * Utilise un cache interne basé sur l'identifiant et l'empreinte géométrique de l'étage.
  * Retourne TOUJOURS une copie défensive (`new Set`) pour empêcher toute corruption externe du cache.
@@ -205,42 +264,12 @@ export function computeBlockedEdges(level, grid) {
 
   const blocked = new Set();
 
+  const rawSegments = extractBlockedSegments(level);
   /** @type {Segment[]} */
-  const segments = [];
-  let segId = 0;
-
-  // 1. Extraire les segments de murs
-  if (Array.isArray(level.walls)) {
-    for (const polyline of level.walls) {
-      if (!Array.isArray(polyline) || polyline.length < 2) continue;
-      for (let i = 0; i < polyline.length - 1; i++) {
-        const p1 = polyline[i];
-        const p2 = polyline[i + 1];
-        if (p1 && p2) {
-          segments.push({
-            A: { x: p1.cellX, y: p1.cellY },
-            B: { x: p2.cellX, y: p2.cellY },
-            id: segId++,
-          });
-        }
-      }
-    }
-  }
-
-  // 2. Extraire les portails fermés / non ouverts
-  if (Array.isArray(level.portals)) {
-    for (const portal of level.portals) {
-      if (portal && !isPortalOpen(portal)) {
-        segments.push({
-          A: { x: portal.a.cellX, y: portal.a.cellY },
-          B: { x: portal.b.cellX, y: portal.b.cellY },
-          id: segId++,
-        });
-      }
-    }
-  }
+  const segments = rawSegments.map((seg, idx) => ({ ...seg, id: idx }));
 
   if (segments.length > 0) {
+
     const width = level.widthCells;
     const height = level.heightCells;
 
