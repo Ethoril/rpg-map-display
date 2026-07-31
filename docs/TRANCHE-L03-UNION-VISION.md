@@ -121,8 +121,16 @@ rejoint, elle n'en crée pas un second.
 
 - il doit laisser la carte **entièrement lisible dessous** — décor, murs, grille. Le MJ joue
   à travers, il ne subit pas un brouillard ;
-- il se pose **sur le décor**, sous les pions. Les pions du MJ restent pleinement visibles et
-  manipulables, quel que soit l'état de la zone ;
+- il se pose **au-dessus des pions**, dernière couche de la pile canonique. ⚠ **Correction
+  du 31/07 : une première rédaction de ce brief disait « sous les pions ». C'était faux**, et
+  contraire à une propriété délibérée — `ARCHITECTURE.md` §5 : « `fogLayer` **au-dessus** de
+  `tokens` : c'est ce qui garantit **mécaniquement** l'interdiction n°3 — un pion en zone non
+  visible est masqué par le fog, pas par une condition d'affichage qu'on peut oublier. »
+  L'ordre des couches est figé, et il porte une garantie de sécurité : ne pas le contourner.
+  Côté MJ le voile est léger, donc les pions restent parfaitement lisibles — et le fait qu'ils
+  soient voilés **est une information** : « tes joueurs ne voient pas ce pion », exactement ce
+  que le CdC §5.6 demande pour les PNJ cachés. Le voile n'affecte en rien la sélection ni le
+  glisser ;
 - l'opacité exacte se raffine à l'usage (CdC §5.7 : section « délibérément conçue
   progressivement »). Fixer une valeur lisible et passer à la suite — ne pas consacrer la
   tranche à l'ergonomie.
@@ -146,10 +154,30 @@ basculée. **Pas à chaque image**, et surtout pas dans une boucle d'animation.
 
 1. Deux PJ éloignés produisent **deux zones visibles disjointes** ; rapprochés, une seule
    zone connexe. C'est la preuve que l'union fonctionne.
-1bis. **Le voile porte sur ce qui n'est PAS vu.** Un point à portée directe d'un PJ est rendu
-   sans voile ; un point derrière un mur est voilé. Le test doit échouer si le sens est
-   inversé — c'est le piège nommé au §5, et il ne se voit pas dans un test qui se
-   contenterait de vérifier « quelque chose est dessiné ».
+1bis. **Le voile porte sur ce qui n'est PAS vu, et laisse la carte lisible dessous.** Test
+   par échantillonnage de pixels, sur un fond de couleur connue :
+   - un point **à portée directe** d'un PJ rend le fond **inchangé** ;
+   - un point **derrière un mur** rend un mélange du fond et du voile — ni le fond pur, ni
+     le voile pur, ni du transparent.
+
+   Ce test attrape d'un coup les trois défauts possibles : le sens inversé, le voile opaque
+   qui rendrait la carte injouable pour le MJ, et **le trou transparent** décrit au §5bis.
+   Un test qui se contenterait de vérifier « quelque chose est dessiné » n'en verrait aucun.
+
+## 5bis. Le piège du compositing, à traiter explicitement
+
+La recette du voile est : remplir toute la carte de la couleur de voile, puis **percer** les
+polygones de vision. Le perçage se fait en `globalCompositeOperation = 'destination-out'`.
+
+**Et c'est là que ça peut mal tourner.** `fogLayer` dessine en dernier, sur le contexte
+partagé de la scène. Appliquer `destination-out` **directement sur ce contexte** n'effacerait
+pas le voile : ça effacerait **tout ce qui est dessous** — fond, grille, pions — laissant un
+trou transparent par lequel on verrait la page.
+
+**Le voile se compose donc sur un canvas hors écran**, puis se dépose sur la scène en
+`source-over` normal. Le `destination-out` ne doit jamais toucher le contexte de la scène.
+
+C'est la seule vraie difficulté technique de la tranche. Le critère 1bis la vérifie.
 2. Un PNJ, un pion à `visionDim: 0` et un pion d'un autre étage **ne contribuent pas**.
 3. Un mur coupe la zone visible ; **ouvrir une porte l'étend des deux côtés**.
 4. Un pion réglé à 50 cases est ramené à 20 sans erreur, et la zone visible ne dépasse pas
@@ -157,6 +185,17 @@ basculée. **Pas à chaque image**, et surtout pas dans une boucle d'animation.
 5. Le recalcul se produit **uniquement** sur changement, jamais par image. Vérifié par un
    compteur d'appels, pas par un chronomètre — la CI est bruitée et ce projet a déjà payé
    trois budgets en horloge murale.
+
+   **La signature de mémoïsation doit inclure la position des pions.** C'est l'oubli le plus
+   probable et le plus visible : un pion qui se déplace sans que la vision suive. Elle doit
+   couvrir au minimum la géométrie de l'étage, l'état des portes, et pour chaque pion
+   contributeur son `cell`, son `levelId`, son `kind` et son `visionDim`. **Retirer n'importe
+   lequel de ces champs de la signature doit faire rougir un test** — c'est la leçon du cache
+   de L-01, où une clé incomplète rendait des données périmées en silence.
+
+   À savoir pour ne pas s'inquiéter à tort : l'aperçu de glisser MJ **ne mute pas le store**
+   (`tests/tokens.spec.mjs`), donc un glisser ne déclenche aucun recalcul avant le
+   `pointerup`. C'est voulu, ce n'est pas un défaut à corriger.
 6. Le helper d'extraction des segments est **partagé** : `blockedEdges.js`, `diag.js` et le
    nouveau code l'appellent tous. Aucune troisième copie.
 7. Rien n'est ajouté sous `js/ui/player/` ni `js/app/player.js`.
