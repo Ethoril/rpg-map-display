@@ -94,15 +94,47 @@ question est « une porte ouverte ne bloque pas » : la voir diverger coûterait
 
 ---
 
-## 5. Le rendu attendu
+## 5. Le rendu attendu — et le sens du voile, à ne pas inverser
 
-Le MJ n'est **jamais** masqué (CdC : « les zones hors vision sont masquées côté joueurs, pas
-côté MJ »). L-03 lui donne donc une **indication**, pas un masque : la zone actuellement vue
-par les PJ, en surimpression légère, par-dessus la carte et sous les pions.
+**Le MJ voit toujours toute la carte.** Jamais masqué, jamais amputé : « les zones hors
+vision sont masquées côté joueurs, **pas côté MJ** » (CdC, critères du lot 2). Il doit
+pouvoir mener sa partie dans les zones que ses joueurs ne voient pas.
 
-Le CdC parle de « visualisation en semi-transparence de tout ce qui est caché aux joueurs »
-(§5.7). L'ergonomie exacte se raffine à l'usage — fixer une surimpression lisible et passer à
-la suite, pas y consacrer la tranche.
+Ce qu'on lui donne, c'est de **percevoir la différence**. Et le CdC §5.6 fixe le sens :
+
+> « Visualisation en **semi-transparence de tout ce qui est masqué aux joueurs** (PNJ
+> cachés, zones non explorées, liaisons `gmOnly`). »
+
+**Donc on voile ce que les joueurs NE voient PAS, jamais ce qu'ils voient.** La lecture du
+MJ devient immédiate : *pleine opacité = mes joueurs voient ça ; voilé = ils ne le voient
+pas.*
+
+Ce n'est pas une convention inventée pour cette tranche — c'est **le langage visuel déjà en
+place** dans le projet, appliqué aux PNJ cachés et aux liaisons `gmOnly`. La vision le
+rejoint, elle n'en crée pas un second.
+
+> ⚠ **Le sens inverse est le piège naturel**, et la première rédaction de ce brief s'y était
+> laissée prendre : surligner la zone vue paraît intuitif, mais ça produit un projecteur
+> mobile au lieu d'une information, et ça contredit le reste de l'interface MJ.
+
+**Contraintes du voile :**
+
+- il doit laisser la carte **entièrement lisible dessous** — décor, murs, grille. Le MJ joue
+  à travers, il ne subit pas un brouillard ;
+- il se pose **sur le décor**, sous les pions. Les pions du MJ restent pleinement visibles et
+  manipulables, quel que soit l'état de la zone ;
+- l'opacité exacte se raffine à l'usage (CdC §5.7 : section « délibérément conçue
+  progressivement »). Fixer une valeur lisible et passer à la suite — ne pas consacrer la
+  tranche à l'ergonomie.
+
+**Deux états à L-03, trois à L-04.** Faute de mémoire d'exploration, cette tranche ne
+distingue que « vu maintenant » et « pas vu ». L-04 scindera le voile en deux niveaux —
+exploré-hors-vision et jamais exploré — pour refléter les trois états joueurs. **Écrire le
+rendu du voile de façon à accepter ce second niveau sans être réécrit.**
+
+**Rendu à la demande.** L'application n'a pas de boucle active au repos. Le recalcul se
+déclenche sur changement : pion déplacé, pion ajouté ou retiré, étage changé, porte
+basculée. **Pas à chaque image**, et surtout pas dans une boucle d'animation.
 
 **Rendu à la demande.** L'application n'a pas de boucle active au repos. Le recalcul se
 déclenche sur changement : pion déplacé, pion ajouté ou retiré, étage changé, porte
@@ -114,6 +146,10 @@ basculée. **Pas à chaque image**, et surtout pas dans une boucle d'animation.
 
 1. Deux PJ éloignés produisent **deux zones visibles disjointes** ; rapprochés, une seule
    zone connexe. C'est la preuve que l'union fonctionne.
+1bis. **Le voile porte sur ce qui n'est PAS vu.** Un point à portée directe d'un PJ est rendu
+   sans voile ; un point derrière un mur est voilé. Le test doit échouer si le sens est
+   inversé — c'est le piège nommé au §5, et il ne se voit pas dans un test qui se
+   contenterait de vérifier « quelque chose est dessiné ».
 2. Un PNJ, un pion à `visionDim: 0` et un pion d'un autre étage **ne contribuent pas**.
 3. Un mur coupe la zone visible ; **ouvrir une porte l'étend des deux côtés**.
 4. Un pion réglé à 50 cases est ramené à 20 sans erreur, et la zone visible ne dépasse pas
