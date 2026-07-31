@@ -178,6 +178,9 @@ F:\rpg-map-display\
     ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
     │                              implantation du pipeline », et pourquoi on compare avec des
     │                              réglages mais publie avec les constantes
+    ├─ TRANCHE-L02-SWEEP-VISIBILITE.md [2] brief de la 2e tranche : polygone de visibilité,
+    │                              et la mesure du critère 13. Le tri par portée n'est pas une
+    │                              optimisation, c'est ce qui rend la tranche faisable
     ├─ TRANCHE-L01-ARETES-BLOQUEES.md [2] brief de la 1re tranche du lot 2 : test de
     │                              croisement centre-à-centre plutôt qu'accrochage à la grille,
     │                              mesures à l'appui. « Tranche L-01 » ≠ « chantier L »
