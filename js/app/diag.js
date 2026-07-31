@@ -16,6 +16,7 @@ import { createCampaign, createLevel, createToken } from '../core/schema.js';
 import { loadCampaign, getState, getActiveLevel, resetStore } from '../state/store.js';
 import { saveFirebaseConfig } from './runtimeConfig.js';
 import { sweep, getLastEvalSegmentCount } from '../vision/sweep.js';
+import { gridFor } from '../grid/index.js';
 
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
@@ -407,6 +408,154 @@ async function diagnosticFirebase() {
   );
 }
 
+// --- 6bis. Sweep sur les cartes réellement publiées --------------------------
+//
+// La section 6 tire ses segments UNIFORMÉMENT au hasard. Les vraies cartes groupent
+// leurs murs le long des pièces, donc le banc synthétique surestime le nombre de
+// segments à portée — mesuré, d'un facteur ~2 sur la carte de test. Comme le coût est
+// presque quadratique en ce nombre, l'écart est bien plus grand encore sur le temps.
+//
+// Cette section supprime l'extrapolation : elle mesure sur la géométrie publiée.
+
+/**
+ * Convertit les murs et portes fermées d'un étage en segments de coordonnées carte.
+ *
+ * La conversion passe **exclusivement** par `grid.mapFromCellPoint()`. Une première
+ * version multipliait par le pas de grille de l'étage ici même, et le test n°1 l'a
+ * refusée : l'arithmétique case ↔ pixel appartient au `GridAdapter`, seul endroit qui
+ * saura rendre une grille hexagonale un jour. Le garde-fou a bien fait son travail.
+ *
+ * @param {any} level
+ * @param {import('../grid/GridAdapter.js').GridAdapter} grid
+ * @returns {import('../core/types.js').Segment[]}
+ */
+function segmentsDeLEtage(level, grid) {
+  /** @type {import('../core/types.js').Segment[]} */
+  const segments = [];
+
+  for (const polyligne of level.walls ?? []) {
+    for (let i = 0; i + 1 < polyligne.length; i++) {
+      segments.push({
+        p1: grid.mapFromCellPoint(polyligne[i]),
+        p2: grid.mapFromCellPoint(polyligne[i + 1]),
+      });
+    }
+  }
+
+  // Une porte ouverte ne bloque pas la vue. Même règle qu'en L-01, exprimée
+  // « la porte n'est pas ouverte » pour survivre aux trois états de L-05.
+  for (const porte of level.portals ?? []) {
+    const ouverte = typeof porte.state === 'string' ? porte.state === 'open' : porte.closed === false;
+    if (ouverte) continue;
+    segments.push({
+      p1: grid.mapFromCellPoint(porte.a),
+      p2: grid.mapFromCellPoint(porte.b),
+    });
+  }
+
+  return segments;
+}
+
+/**
+ * Longueur en pixels carte d'une distance exprimée en cases, obtenue par l'adaptateur.
+ *
+ * @param {import('../grid/GridAdapter.js').GridAdapter} grid
+ * @param {number} cases
+ * @returns {number}
+ */
+function longueurEnPx(grid, cases) {
+  const a = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+  const b = grid.mapFromCellPoint({ cellX: cases, cellY: 0 });
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+async function diagnosticSweepReel() {
+  ecrire('Mesure du sweep sur les cartes publiées — chargement du catalogue…');
+
+  const reponse = await fetch('maps/catalog.json');
+  if (!reponse.ok) throw new Error(`catalog.json : ${reponse.status}`);
+  const catalogue = await reponse.json();
+
+  const lignes = [
+    'Sweep sur les cartes RÉELLEMENT publiées (aucune extrapolation)',
+    '',
+  ];
+
+  for (const entree of catalogue.maps ?? []) {
+    const rep = await fetch(entree.sceneUrl);
+    if (!rep.ok) {
+      lignes.push(`${entree.name} : scène illisible (${rep.status})`);
+      continue;
+    }
+    const scene = await rep.json();
+    const level = scene.levels[0];
+    const grid = gridFor(level);
+    const segments = segmentsDeLEtage(level, grid);
+
+    lignes.push(
+      `=== ${entree.name} — ${level.widthCells}×${level.heightCells} cases, ` +
+        `${segments.length} segments, ${arrondi(longueurEnPx(grid, 1), 1)} px/case`
+    );
+    lignes.push('  portée | à portée (méd/pire) | 1 sweep (méd/pire) | geste 6 cases (pire)');
+
+    for (const porteeCases of [5, 10, 15, 20]) {
+      const maxRangePx = longueurEnPx(grid, porteeCases);
+      /** @type {number[]} */
+      const temps = [];
+      /** @type {number[]} */
+      const comptes = [];
+
+      // Balayage régulier de l'étage : la médiane seule masquerait les recoins encombrés,
+      // et c'est le pire cas qui décide du ressenti.
+      const pas = Math.max(1, Math.floor(Math.min(level.widthCells, level.heightCells) / 6));
+      for (let a = 1; a < level.widthCells - 1; a += pas) {
+        for (let b = 1; b < level.heightCells - 1; b += pas) {
+          // Centre de la case par l'adaptateur : aucun calcul de centre à la main.
+          const origin = grid.pointFromCell({ a, b });
+          sweep(origin, segments, maxRangePx); // chauffe
+          const t0 = performance.now();
+          sweep(origin, segments, maxRangePx);
+          temps.push(performance.now() - t0);
+          comptes.push(getLastEvalSegmentCount());
+        }
+      }
+
+      temps.sort((x, y) => x - y);
+      comptes.sort((x, y) => x - y);
+      const tMed = temps[Math.floor(temps.length / 2)];
+      const tPire = temps[temps.length - 1];
+      const cMed = comptes[Math.floor(comptes.length / 2)];
+      const cPire = comptes[comptes.length - 1];
+
+      lignes.push(
+        `  ${String(porteeCases).padStart(2)} cases | ${String(cMed).padStart(7)} / ${String(cPire).padStart(4)} ` +
+          `| ${String(arrondi(tMed, 2)).padStart(6)} / ${String(arrondi(tPire, 2)).padStart(6)} ms ` +
+          `| ${arrondi(tPire * 6, 1)} ms`
+      );
+    }
+    lignes.push(`  (${temoinPositions(level)} positions échantillonnées)`);
+    lignes.push('');
+  }
+
+  lignes.push('Le « geste 6 cases » reprend le pire cas : c\'est lui qui décide du ressenti.');
+  lignes.push('');
+  lignes.push('⚠ CE QUE CE BANC NE MESURE PAS : le rendu, la rastérisation du fog (L-04),');
+  lignes.push('  et les 150 à 400 ms ajoutées par le cast (CdC §3).');
+  lignes.push('→ VERDICT PERFORMANCE : à apprécier par le mainteneur (interdiction n°14).');
+
+  ecrire(lignes.join('\n'));
+}
+
+/** @param {any} level */
+function temoinPositions(level) {
+  const pas = Math.max(1, Math.floor(Math.min(level.widthCells, level.heightCells) / 6));
+  let n = 0;
+  for (let a = 1; a < level.widthCells - 1; a += pas) {
+    for (let b = 1; b < level.heightCells - 1; b += pas) n++;
+  }
+  return n;
+}
+
 // --- 6. Sweep & Critère 13 (visibilité 2D) -----------------------------------
 
 function diagnosticSweep() {
@@ -556,6 +705,7 @@ brancher('btn-fps', () => diagnosticImages(20000, 5000, 'Images par seconde (20 
 brancher('btn-thermique', () => diagnosticImages(300000, 30000, 'Tenue thermique (5 min)'));
 brancher('btn-firebase', diagnosticFirebase);
 brancher('btn-sweep', diagnosticSweep);
+brancher('btn-sweep-reel', diagnosticSweepReel);
 
 const champConfig = /** @type {HTMLInputElement} */ (document.getElementById('config'));
 if (localStorage.getItem(CLE_CONFIG)) champConfig.placeholder = 'Configuration déjà enregistrée sur cet appareil';

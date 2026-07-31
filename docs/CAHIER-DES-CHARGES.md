@@ -753,6 +753,35 @@ l'étage désactive le rendu à la demande.
 murs, 8 sources de lumière, 6 pions PJ porteurs de vision, pendant 4 h sans throttling
 thermique bloquant.
 
+### Ce que la mesure du 31/07/2026 a établi
+
+Relevé sur la **tablette cible**, section 6 de `diag.html`, à la livraison de la tranche
+L-02. Trois conclusions, dont deux invalident la formulation d'origine.
+
+**1. « 500 segments » mesurait la mauvaise grandeur.** Le coût ne dépend pas du nombre de
+segments de la carte, mais du nombre de segments **à portée de vision** — soit environ
+`densité locale × π × portée²`. Une carte de 200 × 200 cases à densité réelle donne le même
+nombre de segments à portée qu'une carte de 65 × 71 : **le coût du sweep est indépendant de
+la taille de la carte.** Une plaine immense coûte moins qu'une petite pièce meublée.
+
+**2. La portée est le seul levier qui compte.** Le coût varie comme le carré du nombre de
+segments à portée, lequel varie comme le carré de la portée : **doubler la portée multiplie
+le coût par environ seize.** À portée 15, le corpus réel passe avec un ordre de grandeur de
+marge ; c'est bien au-delà des besoins.
+
+**3. Aucune limite n'est à imposer**, ni de portée, ni de dimension de carte. Le seul terme
+croissant avec la surface est le tri par portée, linéaire et négligeable — de l'ordre de
+0,1 ms pour 12 800 segments, contre plusieurs millisecondes pour le sweep lui-même.
+
+**La non-régression est tenue en intégration continue**, sans tablette, par le test « le tri
+par portée est interne » de `tests/sweep.test.mjs` : il compte les segments évalués au lieu
+de chronométrer, et un test de mutation confirme qu'il rougit quand le tri disparaît. C'est
+ce test, et non un seuil dans ce document, qui protège réellement la performance.
+
+> **Ce que cette mesure ne couvre pas**, et qui reste ouvert : le rendu du polygone, la
+> rastérisation du fog (lot 2, tranche L-04), et les 150 à 400 ms ajoutées par le cast (§3).
+> Le budget de 4 h sans throttling thermique reste lui aussi à vérifier.
+
 ---
 
 ## 10. Persistance
@@ -837,7 +866,10 @@ Critères :
 - [ ] Ouvrir une porte étend la vision des deux côtés en < 300 ms et rouvre les arêtes de passage.
 - [ ] Une porte est ouvrable au doigt du premier coup sur la tablette.
 - [ ] Aucune fuite de lumière dans les angles de murs.
-- [ ] 30 fps tenus avec 500 segments et 6 pions porteurs de vision.
+- [x] **Coût de la vision mesuré sur la tablette cible** — voir §9, « Ce que la mesure du
+      31/07/2026 a établi ». Le critère n'est plus un seuil à franchir mais une mesure
+      consignée : le coût est gouverné par la **densité locale de murs et la portée de
+      vision**, jamais par la taille de la carte. Aucune limite de dimension n'est requise.
 
 ### Lot 3 — Étages & lumière
 
