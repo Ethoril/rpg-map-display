@@ -52,6 +52,13 @@ modèle d'éclairage est le lot 3. Pour cette tranche, prendre **`visionDim` seu
 Écrire dans le code que c'est une simplification assumée en attendant l'éclairage, et non un
 oubli. Un pion à `visionDim: 0` ne porte aucune vision et ne produit aucun polygone.
 
+> **Conséquence à connaître, relevée le 31/07.** Le mainteneur a des PJ qui voient dans le
+> noir à une distance propre — c'est le sens même de `visionBright` / `visionDim` au CdC §5.3,
+> et le champ existe depuis le lot 1a. Mais tant que l'éclairage du lot 3 n'existe pas, la
+> vision est un rayon plat : **un PJ réglé à 0 ne contribue à rien**. Ne pas prendre `0` pour
+> « pas de vision nocturne » — ici, `0` veut dire « aveugle ». La distinction ne deviendra
+> signifiante qu'avec l'éclairage.
+
 ---
 
 ## 3. Le partage d'autorité, à ne pas inverser

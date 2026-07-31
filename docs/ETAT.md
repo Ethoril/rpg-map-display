@@ -389,6 +389,29 @@ C'est le prix assumé de l'algorithme naïf retenu en L-02. **Le plafond de 20 c
 une faiblesse de l'implantation, pas une réalité du jeu**, et il faut l'écrire ainsi : le
 jour où les rayons seront accélérés, il redeviendra un pur choix de jeu.
 
+### Vision dans le noir par pion — besoin confirmé, champ déjà là, piège d'ici le lot 3
+
+Besoin exprimé par le mainteneur le 31/07 : **certains PJ voient dans le noir, à une distance
+propre** — 5 cases en première intention. C'est un vrai besoin de sa table.
+
+**Le modèle le couvre déjà.** `visionBright` / `visionDim` existent sur `Token` depuis le lot
+1a et sont définis par le CdC §5.3 comme « rayon de vision par pion **(vision dans le noir)** »,
+en cases, `0 = aucune vision`. Ils sont validés, voyagent par la bibliothèque de pions et
+s'éditent dans l'outil. Rien à ajouter au schéma.
+
+Ce qui manque est **la couche d'éclairage du lot 3**, qui donnera un sens à « dans le noir » :
+`ambient.level` de l'étage, `emitsLight` des pions, `lights` de la carte. Sans elle, la
+distinction clair/pénombre n'a rien sur quoi s'appuyer.
+
+> ⚠ **Piège d'ici là, à ne pas déclencher en séance.** Pendant le lot 2, la vision est un
+> rayon plat : `visionDim` sert de portée à tout le monde, faute d'éclairage. Donc **un PJ
+> réglé à 0 ne contribue à rien du tout** — il ne verrait rien et n'ajouterait rien à l'union.
+>
+> Autrement dit : **ne pas régler à 0 les PJ dépourvus de vision nocturne** en attendant le
+> lot 3. Leur donner une valeur ordinaire ; la distinction ne deviendra signifiante qu'avec
+> l'éclairage, et c'est à ce moment-là que `visionBright` à 5 prendra son sens de « voit dans
+> le noir jusqu'à 5 cases ».
+
 ### La piste d'accélération, pour ne pas la redécouvrir de travers
 
 **Ne pas partir sur un balayage angulaire à ensemble actif.** C'est l'algorithme « propre »
