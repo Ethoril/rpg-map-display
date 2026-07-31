@@ -15,6 +15,7 @@ import { MAX_TEXTURE_FALLBACK, RENDER_RESOLUTION_CAP } from '../core/constants.j
 import { createCampaign, createLevel, createToken } from '../core/schema.js';
 import { loadCampaign, getState, getActiveLevel, resetStore } from '../state/store.js';
 import { saveFirebaseConfig } from './runtimeConfig.js';
+import { sweep, getLastEvalSegmentCount } from '../vision/sweep.js';
 
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
@@ -406,6 +407,132 @@ async function diagnosticFirebase() {
   );
 }
 
+// --- 6. Sweep & Critère 13 (visibilité 2D) -----------------------------------
+
+function diagnosticSweep() {
+  ecrire('Mesure du polygone de visibilité 2D (sweep) — en cours…');
+
+  const CELL_PX = 140;
+  const mapWidthPx = 7000; // 50 cases
+  const mapHeightPx = 7000; // 50 cases
+
+  const segmentCounts = [500, 1000, 1500, 2000, 3000];
+  const rangesCells = [5, 10, 15, 20];
+
+  // 5 positions d'origine réparties sur la carte
+  const origins = [
+    { x: 3500, y: 3500 },
+    { x: 1400, y: 1400 },
+    { x: 5600, y: 1400 },
+    { x: 1400, y: 5600 },
+    { x: 5600, y: 5600 },
+  ];
+
+  const lines = [
+    '6. Sweep & Critère 13 (visibilité 2D)',
+    `Configuration : échelle = ${CELL_PX} px/case, repère carte 50 × 50 cases (${mapWidthPx} × ${mapHeightPx} px)`,
+    'Médiane relevée sur 5 origines distantes.',
+    '',
+    '| Segments | Portée (cases) | Portée (px) | Segments à portée | 1 sweep (ms) | 6 pions (ms) | Geste 6 cases (ms) |',
+    '|---|---|---|---|---|---|---|',
+  ];
+
+  /** @param {number} seed */
+  function mulberry32(seed) {
+    return function () {
+      let t = (seed += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  for (const segCount of segmentCounts) {
+    const rng = mulberry32(segCount);
+    /** @type {import('../core/types.js').Segment[]} */
+    const segments = [];
+    for (let i = 0; i < segCount; i++) {
+      const x1 = rng() * mapWidthPx;
+      const y1 = rng() * mapHeightPx;
+      const len = 70 + rng() * 210;
+      const angle = rng() * Math.PI * 2;
+      segments.push({
+        p1: { x: x1, y: y1 },
+        p2: { x: x1 + Math.cos(angle) * len, y: y1 + Math.sin(angle) * len },
+      });
+    }
+
+    for (const rangeCells of rangesCells) {
+      const maxRangePx = rangeCells * CELL_PX;
+
+      /** @type {number[]} */
+      const timesOneSweep = [];
+      /** @type {number[]} */
+      const inRangeCounts = [];
+      /** @type {number[]} */
+      const pathTimes = [];
+
+      for (const origin of origins) {
+        const N = 10;
+        const t0 = performance.now();
+        for (let k = 0; k < N; k++) {
+          sweep(origin, segments, maxRangePx);
+        }
+        const t1 = performance.now();
+        timesOneSweep.push((t1 - t0) / N);
+        inRangeCounts.push(getLastEvalSegmentCount());
+
+        const pathT0 = performance.now();
+        for (let step = 0; step < 6; step++) {
+          const stepOrigin = {
+            x: origin.x + step * CELL_PX,
+            y: origin.y + step * CELL_PX,
+          };
+          sweep(stepOrigin, segments, maxRangePx);
+        }
+        const pathT1 = performance.now();
+        pathTimes.push(pathT1 - pathT0);
+      }
+
+      timesOneSweep.sort((a, b) => a - b);
+      inRangeCounts.sort((a, b) => a - b);
+      pathTimes.sort((a, b) => a - b);
+
+      const medianSweep = timesOneSweep[Math.floor(timesOneSweep.length / 2)];
+      const medianInRange = inRangeCounts[Math.floor(inRangeCounts.length / 2)];
+      const medianPath = pathTimes[Math.floor(pathTimes.length / 2)];
+      const sixTokens = medianSweep * 6;
+
+      lines.push(
+        `| ${segCount} | ${rangeCells} cases | ${maxRangePx} px | ${medianInRange} | ${arrondi(
+          medianSweep,
+          2
+        )} ms | ${arrondi(sixTokens, 2)} ms | ${arrondi(medianPath, 2)} ms |`
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('--- Équivalence taille de carte selon la densité des murs ---');
+  lines.push('- Densité « manoir-rdc » (0,079 segment/case) :');
+  lines.push('  • 500 segments   ≈ carte 80 × 80 cases');
+  lines.push('  • 1500 segments  ≈ carte 138 × 138 cases');
+  lines.push('  • 3000 segments  ≈ carte 195 × 195 cases');
+  lines.push('- Densité « Dungeon Alchemist » (0,320 segment/case) :');
+  lines.push('  • 500 segments   ≈ carte 40 × 40 cases');
+  lines.push('  • 1500 segments  ≈ carte 68 × 68 cases');
+  lines.push('  • 3000 segments  ≈ carte 97 × 97 cases');
+  lines.push('');
+  lines.push('⚠ CE QUE CE BANC NE MESURE PAS (À GARDER À L\'ESPRIT) :');
+  lines.push('1. Le rendu Canvas 2D du polygone de vision.');
+  lines.push('2. La rastérisation du masque de fog (L-04).');
+  lines.push('3. Les 150 à 400 ms de latence d\'affichage ajoutées par le cast (CdC §3).');
+  lines.push('');
+  lines.push('→ VERDICT PERFORMANCE : À vérifier par le mainteneur sur la tablette physique (interdiction n°14).');
+
+  ecrire(lines.join('\n'));
+}
+
 // --- Câblage ----------------------------------------------------------------
 
 /** @param {string} id @param {() => void | Promise<void>} action */
@@ -428,6 +555,7 @@ brancher('btn-store', diagnosticStore);
 brancher('btn-fps', () => diagnosticImages(20000, 5000, 'Images par seconde (20 s)'));
 brancher('btn-thermique', () => diagnosticImages(300000, 30000, 'Tenue thermique (5 min)'));
 brancher('btn-firebase', diagnosticFirebase);
+brancher('btn-sweep', diagnosticSweep);
 
 const champConfig = /** @type {HTMLInputElement} */ (document.getElementById('config'));
 if (localStorage.getItem(CLE_CONFIG)) champConfig.placeholder = 'Configuration déjà enregistrée sur cet appareil';

@@ -19,6 +19,11 @@
  */
 
 /**
+ * Segment de géométrie en coordonnées carte (pixels).
+ * @typedef {{ p1: MapPoint, p2: MapPoint }} Segment
+ */
+
+/**
  * @typedef {Object} GridConfig
  * @property {GridType} type
  * @property {HexOrientation} [hexOrientation]
