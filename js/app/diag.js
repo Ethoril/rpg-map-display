@@ -478,8 +478,16 @@ async function diagnosticSweepReel() {
 
   const lignes = [
     'Sweep sur les cartes RÉELLEMENT publiées (aucune extrapolation)',
+    'Médiane de 3 mesures par position, après 3 passes de chauffe.',
     '',
   ];
+
+  // Chauffe globale : la toute première carte payait les optimisations du moteur, ce qui
+  // faisait ressortir sa première portée comme la plus lente. On l'absorbe ici.
+  {
+    const bidon = [{ p1: { x: 0, y: 0 }, p2: { x: 100, y: 100 } }];
+    for (let i = 0; i < 50; i++) sweep({ x: 50, y: 50 }, bidon, 500);
+  }
 
   for (const entree of catalogue.maps ?? []) {
     const rep = await fetch(entree.sceneUrl);
@@ -512,10 +520,25 @@ async function diagnosticSweepReel() {
         for (let b = 1; b < level.heightCells - 1; b += pas) {
           // Centre de la case par l'adaptateur : aucun calcul de centre à la main.
           const origin = grid.pointFromCell({ a, b });
-          sweep(origin, segments, maxRangePx); // chauffe
-          const t0 = performance.now();
-          sweep(origin, segments, maxRangePx);
-          temps.push(performance.now() - t0);
+
+          // Une seule passe de chauffe ne suffisait pas, et le défaut était trompeur :
+          // le relevé du 31/07 sur tablette donnait la portée 5 — mesurée en premier —
+          // PLUS lente que la portée 10, avec pourtant deux fois moins de segments à
+          // portée. Moins de travail et plus de temps : c'était la chauffe du moteur
+          // captée par un `max`, pas un coût. Trois passes, puis la MÉDIANE de trois
+          // mesures par position : le bruit disparaît sans masquer la position la plus
+          // encombrée, qui reste le pire cas cherché.
+          for (let c = 0; c < 3; c++) sweep(origin, segments, maxRangePx);
+
+          /** @type {number[]} */
+          const mesures = [];
+          for (let m = 0; m < 3; m++) {
+            const t0 = performance.now();
+            sweep(origin, segments, maxRangePx);
+            mesures.push(performance.now() - t0);
+          }
+          mesures.sort((x, y) => x - y);
+          temps.push(mesures[1]);
           comptes.push(getLastEvalSegmentCount());
         }
       }
@@ -538,6 +561,8 @@ async function diagnosticSweepReel() {
   }
 
   lignes.push('Le « geste 6 cases » reprend le pire cas : c\'est lui qui décide du ressenti.');
+  lignes.push('La colonne « pire » est un maximum sur 49 positions : elle reste bruitée par');
+  lignes.push('construction. Se fier à la médiane pour comparer deux portées entre elles.');
   lignes.push('');
   lignes.push('⚠ CE QUE CE BANC NE MESURE PAS : le rendu, la rastérisation du fog (L-04),');
   lignes.push('  et les 150 à 400 ms ajoutées par le cast (CdC §3).');
