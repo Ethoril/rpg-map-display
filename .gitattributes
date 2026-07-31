@@ -1,1 +1,6 @@
 * text=auto eol=lf
+
+# Les fichiers de commandes Windows gardent des fins de ligne CRLF. `cmd.exe` interprète
+# de travers certaines constructions d'un .cmd en LF — un lanceur qui échoue au double-clic
+# sans expliquer pourquoi serait pire que pas de lanceur du tout.
+*.cmd text eol=crlf

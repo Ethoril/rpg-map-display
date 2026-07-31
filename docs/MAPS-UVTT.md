@@ -76,9 +76,44 @@ Le mainteneur ne doit pas :
 - saisir une URL ;
 - réimporter la carte depuis son ordinateur pendant une séance.
 
-GitHub Pages héberge les sources et les artefacts placés dans `maps/` avec le reste du site.
-Le catalogue permet à l’application de connaître leur liste, car un site statique ne peut
-pas parcourir directement le contenu d’un répertoire.
+GitHub Pages héberge les artefacts placés dans `maps/` avec le reste du site. Le catalogue
+permet à l’application de connaître leur liste, car un site statique ne peut pas parcourir
+directement le contenu d’un répertoire. Les **sources** d’export, elles, ne sont plus
+commitées : elles ne sont jamais téléchargées à l’exécution, et elles pèsent lourd.
+
+### Les deux façons de préparer
+
+| Geste | Ce que ça fait |
+|---|---|
+| **double-clic sur `outil-cartes.cmd`** | démarre l'outil local et ouvre la page. Tout se pilote ensuite dans l'interface |
+| `pnpm maps:prepare` | passe complète, sans interface. Utile en script ou en CI |
+
+Le double-clic est le geste normal. `pnpm maps:tool` fait la même chose depuis un terminal,
+pour qui préfère.
+
+**Pourquoi un lanceur, et pas simplement la page ?** Un navigateur n'a pas le droit de démarrer
+un processus sur la machine — barrière de sécurité, pas manque du projet. Or la préparation
+d'image vit en Node et n'a qu'une implantation. Le lanceur réduit donc cette contrainte à un
+double-clic, et le serveur ouvre la page lui-même. Fermer la fenêtre noire arrête l'outil ; un
+second double-clic pendant que l'outil tourne rouvre simplement la page.
+
+L’outil local (chantier L) sert à **décider** avant de committer : il fabrique une carte à la
+fois, montre le résultat, et met deux réglages côte à côte. Trois choses à savoir :
+
+- ses variantes vont dans `maps/.preview/`, jamais dans `maps/generated/` ;
+- **il ne publie jamais un réglage particulier.** Le bouton « Publier » relance la passe
+  complète avec les constantes du dépôt. Un réglage publié au coup par coup serait écrasé sans
+  un mot au prochain `maps:prepare` — le réglage retenu se fixe dans `scripts/resample.mjs` ;
+- il n’existe que sur la machine du mainteneur. La page est déployée avec le site, mais elle
+  y est inerte et le dit.
+
+Depuis le chantier L, les deux commandes **ne réencodent que ce qui a changé** : une passe sans
+modification est passée de 74 s à 0,1 s. Le cache tient compte de la source, des réglages **et
+du code du pipeline** — une correction de `resample.mjs` invalide donc tout, ce qui évite de
+servir des artefacts périmés avec un air d’être à jour.
+
+> **Consigne d’export, la seule à retenir : 140 px/case ou plus.** En dessous, la chaîne ne
+> peut que rendre ce que la source contient, et elle le signale.
 
 ## Limite fonctionnelle à ne pas masquer
 

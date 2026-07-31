@@ -298,3 +298,105 @@ test('U-00 collision bout-en-bout : minimal.uvtt et minimal.dd2vtt refusés avan
   assert.ok(!fs.existsSync(`${catalogPath}.tmp`), 'aucun .tmp ne doit subsister');
 });
 
+
+// --- Chantier L : saut incrémental -------------------------------------------------
+//
+// La garde qui compte ici n'est pas « ça va plus vite », c'est « ça ne saute jamais à
+// tort ». Un cache qui affirme qu'une carte est à jour alors que la recette a changé
+// produit une divergence muette, visible des semaines plus tard et seulement à l'œil.
+
+test('L : une seconde passe sans changement réutilise au lieu de refabriquer', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'alpha');
+
+  const premiere = await prepareMaps({ mapsDir });
+  assert.equal(premiere.preparedCount, 1);
+  assert.equal(premiere.skippedCount, 0);
+
+  const imagePath = path.join(mapsDir, 'generated', 'alpha.webp');
+  const empreinte = fs.statSync(imagePath).mtimeMs;
+
+  const seconde = await prepareMaps({ mapsDir });
+  assert.equal(seconde.preparedCount, 0, 'rien ne doit être refabriqué');
+  assert.equal(seconde.skippedCount, 1);
+  assert.equal(seconde.mapsCount, 1, 'le catalogue reste complet malgré le saut');
+  assert.equal(
+    fs.statSync(imagePath).mtimeMs,
+    empreinte,
+    'le WebP ne doit pas avoir été réécrit'
+  );
+});
+
+test('L : changer la qualité ou le plafond invalide le cache', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'alpha');
+
+  await prepareMaps({ mapsDir });
+
+  // La source n'a pas bougé d'un octet : seule la recette change. Un cache indexé sur
+  // `sourceHash` seul sauterait la carte ici, et c'est exactement le défaut à empêcher.
+  const autreQualite = await prepareMaps({ mapsDir, quality: 60 });
+  assert.equal(autreQualite.preparedCount, 1, 'une qualité différente doit refabriquer');
+  assert.equal(autreQualite.skippedCount, 0);
+
+  const autrePlafond = await prepareMaps({ mapsDir, quality: 60, maxTexturePx: 512 });
+  assert.equal(autrePlafond.preparedCount, 1, 'un plafond différent doit refabriquer');
+
+  // Et la même recette que la passe précédente redevient réutilisable.
+  const identique = await prepareMaps({ mapsDir, quality: 60, maxTexturePx: 512 });
+  assert.equal(identique.skippedCount, 1);
+});
+
+test('L : un artefact effacé force la refabrication malgré un sidecar intact', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'alpha');
+  await prepareMaps({ mapsDir });
+
+  // Le sidecar survit à la disparition des fichiers. S'y fier seul publierait un
+  // catalogue qui référence une image absente.
+  fs.rmSync(path.join(mapsDir, 'generated', 'alpha.webp'));
+
+  const apres = await prepareMaps({ mapsDir });
+  assert.equal(apres.preparedCount, 1, 'l’artefact manquant doit être reconstruit');
+  assert.ok(fs.existsSync(path.join(mapsDir, 'generated', 'alpha.webp')));
+});
+
+test('L : force refabrique tout, et le sidecar reste hors du catalogue', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'alpha');
+  await prepareMaps({ mapsDir });
+
+  const forcee = await prepareMaps({ mapsDir, force: true });
+  assert.equal(forcee.preparedCount, 1);
+  assert.equal(forcee.skippedCount, 0);
+
+  // Le sidecar est caché, donc invisible au relevé d'orphelins, et absent du catalogue
+  // publié — c'est une métadonnée de fabrication, pas une donnée de l'application.
+  assert.ok(fs.existsSync(path.join(mapsDir, 'generated', '.recipes.json')));
+  const catalogue = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  assert.equal(catalogue.maps.length, 1);
+  assert.ok(!JSON.stringify(catalogue).includes('recipe'));
+  assert.ok(
+    !forcee.warnings.some((/** @type {string} */ w) => w.includes('.recipes.json')),
+    'le sidecar ne doit jamais être signalé comme orphelin'
+  );
+});
+
+test('L : modifier le code du pipeline invalide le cache, à constantes identiques', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'alpha');
+  await prepareMaps({ mapsDir });
+
+  const sidecar = path.join(mapsDir, 'generated', '.recipes.json');
+  const recettes = JSON.parse(fs.readFileSync(sidecar, 'utf-8'));
+  assert.ok(recettes.alpha.recipe.pipelineHash, 'la recette doit porter une empreinte de code');
+
+  // Simule une correction du pipeline sans changement de constante — le cas réel du
+  // 30/07, où floor → round a déplacé une dimension de sortie d'un pixel.
+  recettes.alpha.recipe.pipelineHash = 'codeprecedent000';
+  fs.writeFileSync(sidecar, JSON.stringify(recettes, null, 2), 'utf-8');
+
+  const apres = await prepareMaps({ mapsDir });
+  assert.equal(apres.preparedCount, 1, 'un pipeline différent doit refabriquer');
+  assert.equal(apres.skippedCount, 0);
+});

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Préparation des cartes — rpg-map-display</title>
+  <!--
+    Import map identique à gm.html, bien qu'aucune de ces entrées ne serve ici :
+    check-deps.mjs l'exige de toute page de la racine chargeant un module, et la raison
+    est bonne — les versions n'ont qu'un seul domicile.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js"
+    }
+  }
+  </script>
+  <style>
+    :root { color-scheme: dark light; }
+    body { margin: 0; padding: 1rem; font: 15px/1.5 system-ui, sans-serif; max-width: 1100px; }
+    h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
+    h2 { font-size: .95rem; margin: 1.5rem 0 .5rem; }
+    p.aide { margin: 0 0 1rem; opacity: .75; }
+    button { font: inherit; padding: .55rem .9rem; margin: 0 .4rem .4rem 0; min-height: 40px; }
+    button:disabled { opacity: .45; }
+    label { display: inline-block; margin: 0 1rem .5rem 0; }
+    select, input { font: inherit; padding: .3rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid; border-color: color-mix(in srgb, currentColor 25%, transparent); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .alerte { border: 2px solid crimson; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; }
+    .alerte code { font-weight: bold; }
+    .cache { display: none; }
+    #variantes { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+    .variante { border: 1px solid currentColor; border-radius: 4px; padding: .6rem; flex: 1 1 320px; }
+    .variante h3 { font-size: .9rem; margin: 0 0 .4rem; }
+    .variante dl { display: grid; grid-template-columns: auto 1fr; gap: 0 .6rem; margin: 0 0 .5rem; font-size: .85rem; }
+    .variante dt { opacity: .7; }
+    .variante dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .apercu { width: 100%; aspect-ratio: 1; object-fit: none; object-position: center;
+              border: 1px solid currentColor; background: #222; display: block; }
+    .apercu.entier { object-fit: contain; }
+    .avert { font-size: .85rem; opacity: .85; margin: .4rem 0 0; }
+    #journal { white-space: pre-wrap; word-break: break-word; border: 1px solid currentColor;
+               padding: .6rem; border-radius: 4px; min-height: 3rem; font-size: .85rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Préparation des cartes</h1>
+  <p class="aide">
+    Outil <strong>local</strong> : il écrit dans le dépôt de cette machine. Il ne fait pas
+    partie de l'application — cf. <code>docs/CHANTIER-L-OUTIL-CARTES.md</code>.
+    Fermer la fenêtre noire lancée par <code>outil-cartes.cmd</code> arrête l'outil.
+  </p>
+
+  <div id="hors-ligne" class="alerte cache">
+    <p style="margin:0 0 .5rem">
+      <strong>Serveur local absent.</strong> Cette page ne sait rien faire sans lui : la
+      préparation d'image vit en Node, à un seul endroit, et le navigateur ne la réimplémente
+      pas — un navigateur n'a pas le droit de lancer un processus sur la machine.
+    </p>
+    <p style="margin:0">
+      <strong>Double-cliquer <code>outil-cartes.cmd</code></strong> à la racine du dépôt : la
+      page s'ouvrira d'elle-même. Si tu lis ceci sur le site publié, l'outil n'existe que sur
+      la machine du mainteneur — c'est voulu.
+    </p>
+  </div>
+
+  <div id="outil" class="cache">
+    <h2>1. Choisir une carte</h2>
+    <label>Source <select id="source"></select></label>
+    <table id="details"><tbody></tbody></table>
+
+    <h2>2. Comparer des réglages</h2>
+    <p class="aide">
+      Les variantes sont écrites dans <code>maps/.preview/</code>, jamais dans
+      <code>maps/generated/</code>. Elles servent à <em>décider</em> : le réglage retenu se
+      fixe ensuite dans les constantes de <code>scripts/resample.mjs</code>, où il vaut pour
+      tout le dépôt et se relit dans le diff.
+    </p>
+    <p class="aide">
+      Rien n'est prédit ici : la sortie s'obtient en la fabriquant. Le navigateur ne
+      rééchantillonne aucune image — le pipeline n'a qu'une implantation, en Node.
+    </p>
+    <label>Densité cible <input id="ppc" type="number" min="8" max="400" step="1" value="140" style="width:5.5rem"></label>
+    <label>Plafond <input id="cap" type="number" min="512" max="16384" step="256" value="8192" style="width:6rem"></label>
+    <label>Qualité <input id="qual" type="number" min="1" max="100" step="5" value="90" style="width:4.5rem"></label>
+    <button id="btn-preview">Fabriquer cette variante</button>
+    <button id="btn-vider" disabled>Vider les variantes</button>
+
+    <div id="variantes"></div>
+
+    <h2>3. Publier</h2>
+    <p class="aide">
+      Relance la passe transactionnelle complète <strong>avec les constantes du dépôt</strong>,
+      et ne réencode que ce qui a changé. Aucun réglage de la section 2 n'est publié : un
+      réglage posé au coup par coup serait écrasé sans un mot au prochain
+      <code>pnpm maps:prepare</code>.
+    </p>
+    <button id="btn-publish">Publier le catalogue</button>
+    <label><input id="force" type="checkbox"> tout refabriquer, sans réutiliser</label>
+  </div>
+
+  <pre id="journal">Chargement…</pre>
+
+  <script type="module" src="js/app/prepare.js"></script>
+</body>
+</html>

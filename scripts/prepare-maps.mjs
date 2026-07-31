@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, validateCampaign } from '../js/core/schema.js';
-import { resample } from './resample.mjs';
+import { resample, MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,17 +59,22 @@ export function displayNameFromSlug(slug) {
  * @param {string} uvttPath - chemin absolu au fichier .uvtt
  * @param {string} outputDir - dossier cible pour les fichiers générés
  * @param {number} [targetPxPerCell=140] - pixels par case pour le resampling
+ * @param {{ maxTexturePx?: number, quality?: number }} [options] - réglages de fabrication.
+ *   **Réservés à la comparaison** de l'outil local : la publication passe toujours par les
+ *   constantes du dépôt (`docs/CHANTIER-L-OUTIL-CARTES.md` §3.3).
  * @returns {Promise<{
  *   mapId: string,
  *   name: string,
  *   sourceHash: string,
  *   sceneFile: string,
  *   imageFile: string,
+ *   width: number,
+ *   height: number,
  *   catalogEntry: any,
  *   warnings: string[]
  * }>}
  */
-export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
+export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, options = {}) {
   if (!fs.existsSync(uvttPath)) {
     throw new Error(`Fichier UVTT introuvable : ${uvttPath}`);
   }
@@ -97,6 +102,8 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
     widthCells: level.widthCells,
     heightCells: level.heightCells,
     outputPath: webpPath,
+    maxTexturePx: options.maxTexturePx,
+    quality: options.quality,
   });
 
   const originX = uvttData.resolution?.map_origin?.x ?? 0;
@@ -166,6 +173,10 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140) {
     sourceHash,
     sceneFile: scenePath,
     imageFile: webpPath,
+    // Dimensions **réelles** de l'image écrite. Les recalculer depuis `pxPerCell`, qui est
+    // fractionnaire dès que le plafond mord, donne des hauteurs à virgule : 4096,15 px.
+    width: resampleResult.width,
+    height: resampleResult.height,
     catalogEntry,
     warnings: allWarnings,
   };
@@ -213,6 +224,101 @@ export function planSources(fileNames) {
     file,
     slug: path.basename(file, path.extname(file)),
   }));
+}
+
+/**
+ * Chemin du sidecar qui mémorise **comment** chaque carte a été fabriquée.
+ *
+ * Sidecar et non entrée de catalogue : `catalog.json` est publié sur le web, et des
+ * métadonnées de fabrication n'y ont rien à faire. Le point initial le fait ignorer par
+ * `findOrphanArtifacts`, qui filtre déjà les fichiers cachés.
+ *
+ * @param {string} mapsDir
+ */
+function recipesPath(mapsDir) {
+  return path.join(mapsDir, 'generated', '.recipes.json');
+}
+
+/**
+ * Empreinte du **code** qui fabrique les artefacts, calculée une fois par processus.
+ *
+ * Sans elle, le cache serait faux dès qu'on corrige le pipeline sans toucher aux
+ * constantes — et ce n'est pas une hypothèse : le 30/07, remplacer un `floor` par un
+ * `round` borné a changé les dimensions de sortie de 4679 à 4680 px, à constantes
+ * rigoureusement identiques. Un cache aveugle au code aurait affirmé « rien à faire ».
+ *
+ * Les deux fichiers comptent : `resample.mjs` détermine l'image, `prepare-maps.mjs` le
+ * document de scène. Bumper une version à la main serait une consigne, pas un mécanisme.
+ */
+const PIPELINE_HASH = (() => {
+  const hash = crypto.createHash('sha256');
+  for (const f of ['resample.mjs', 'prepare-maps.mjs']) {
+    hash.update(fs.readFileSync(path.join(__dirname, f)));
+  }
+  return hash.digest('hex').slice(0, 16);
+})();
+
+/**
+ * Recette d'une carte : ce qui doit être identique pour pouvoir sauter sa préparation.
+ *
+ * **`sourceHash` seul ne suffit pas**, et c'est le piège que cette fonction existe pour
+ * fermer : changer le plafond, la qualité ou le code ne change pas un octet du `.dd2vtt`.
+ * Un cache indexé sur la seule source sauterait la carte en affirmant qu'elle est à jour,
+ * et l'écart ne se verrait qu'à l'œil, bien plus tard.
+ *
+ * @param {string} sourceHash
+ * @param {number} targetPxPerCell
+ * @param {{ maxTexturePx?: number, quality?: number }} options
+ */
+function recipeOf(sourceHash, targetPxPerCell, options) {
+  return {
+    sourceHash,
+    targetPxPerCell,
+    maxTexturePx: options.maxTexturePx ?? MAX_PREPARED_TEXTURE_PX,
+    quality: options.quality ?? WEBP_QUALITY,
+    pipelineHash: PIPELINE_HASH,
+  };
+}
+
+/** @param {string} mapsDir */
+function readRecipes(mapsDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(recipesPath(mapsDir), 'utf-8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    // Sidecar absent ou illisible : on repart de zéro. Il n'est qu'un cache, jamais une
+    // source de vérité — le perdre coûte du temps, jamais une carte.
+    return {};
+  }
+}
+
+/**
+ * Le travail déjà fait est-il réutilisable tel quel ?
+ *
+ * Exige la recette **et** la présence effective des deux artefacts : un sidecar qui survit à
+ * un `rm` sur `generated/` doit provoquer une reconstruction, pas un catalogue qui référence
+ * des fichiers absents.
+ *
+ * @param {any} known entrée du sidecar
+ * @param {ReturnType<typeof recipeOf>} recipe
+ * @param {string} mapsDir
+ */
+function isReusable(known, recipe, mapsDir) {
+  if (!known || !known.recipe || !known.catalogEntry) return false;
+  const sameRecipe = /** @type {(keyof typeof recipe)[]} */ ([
+    'sourceHash',
+    'targetPxPerCell',
+    'maxTexturePx',
+    'quality',
+    'pipelineHash',
+  ]).every((k) => known.recipe[k] === recipe[k]);
+  if (!sameRecipe) return false;
+
+  // Chemins dérivés du dossier réel et du seul nom de fichier : les URL du catalogue
+  // portent un préfixe `maps/` en dur, que les tests (dossier temporaire) ne respectent pas.
+  return [known.catalogEntry.sceneUrl, known.catalogEntry.imageUrl].every((url) =>
+    fs.existsSync(path.join(mapsDir, 'generated', path.basename(url)))
+  );
 }
 
 /**
@@ -279,13 +385,23 @@ function publishCatalog(catalogPath, catalog) {
  * (U-02, plan §6.9). Les artefacts déjà produits par les cartes valides sont
  * conservés et signalés comme orphelins, jamais supprimés.
  *
+ * Incrémental : une carte dont la **recette** est inchangée et dont les artefacts sont
+ * toujours là n'est pas réencodée, son entrée de catalogue étant relue du sidecar. Le
+ * catalogue publié est identique à celui qu'aurait produit une passe complète — c'est le
+ * temps qui change, pas le résultat. `force` court-circuite le cache.
+ *
  * @param {{
  *   mapsDir?: string,
  *   targetPxPerCell?: number,
- *   dryRun?: boolean
+ *   dryRun?: boolean,
+ *   force?: boolean,
+ *   maxTexturePx?: number,
+ *   quality?: number
  * }} [options={}]
  * @returns {Promise<{
  *   mapsCount: number,
+ *   preparedCount: number,
+ *   skippedCount: number,
  *   totalWalls: number,
  *   totalPortals: number,
  *   totalLights: number,
@@ -297,6 +413,8 @@ export async function prepareMaps(options = {}) {
   const mapsDir = options.mapsDir || path.join(rootDir, 'maps');
   const targetPxPerCell = options.targetPxPerCell || 140;
   const dryRun = options.dryRun || false;
+  const force = options.force || false;
+  const fabrication = { maxTexturePx: options.maxTexturePx, quality: options.quality };
 
   if (!fs.existsSync(mapsDir)) {
     fs.mkdirSync(mapsDir, { recursive: true });
@@ -311,6 +429,8 @@ export async function prepareMaps(options = {}) {
     );
     return {
       mapsCount: 0,
+      preparedCount: 0,
+      skippedCount: 0,
       totalWalls: 0,
       totalPortals: 0,
       totalLights: 0,
@@ -327,20 +447,48 @@ export async function prepareMaps(options = {}) {
   let totalPortals = 0;
   let totalLights = 0;
 
+  const knownRecipes = force ? {} : readRecipes(mapsDir);
+  /** @type {Record<string, any>} */
+  const nextRecipes = {};
+  let preparedCount = 0;
+  let skippedCount = 0;
+
   // Toutes les cartes sont tentées, même après une première défaillance : le
   // mainteneur voit l'ensemble des causes en une seule passe. Rien n'est publié
   // pour autant, la décision se prend après la boucle.
   const failures = [];
-  for (const { file } of sources) {
+  for (const { file, slug } of sources) {
     const uvttPath = path.join(mapsDir, file);
     try {
-      const result = await prepareMap(uvttPath, mapsDir, targetPxPerCell);
+      const sourceHash = crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(uvttPath, 'utf-8'))
+        .digest('hex');
+      const recipe = recipeOf(sourceHash, targetPxPerCell, fabrication);
+      const known = knownRecipes[slug];
+
+      // Réutiliser : lire et hacher 22 Mo coûte une fraction de seconde, réencoder
+      // 60 MP en coûte soixante. C'est tout l'écart entre deux minutes et deux secondes.
+      if (isReusable(known, recipe, mapsDir)) {
+        catalogEntries.push(known.catalogEntry);
+        nextRecipes[slug] = known;
+        totalWalls += known.catalogEntry.features.walls;
+        totalPortals += known.catalogEntry.features.portals;
+        totalLights += known.catalogEntry.features.lights;
+        skippedCount++;
+        console.log(`· ${slug} inchangée, réutilisée`);
+        continue;
+      }
+
+      const result = await prepareMap(uvttPath, mapsDir, targetPxPerCell, fabrication);
       catalogEntries.push(result.catalogEntry);
       allWarnings.push(...result.warnings);
+      nextRecipes[slug] = { recipe, catalogEntry: result.catalogEntry };
 
       totalWalls += result.catalogEntry.features.walls;
       totalPortals += result.catalogEntry.features.portals;
       totalLights += result.catalogEntry.features.lights;
+      preparedCount++;
 
       console.log(`✓ ${result.mapId} préparée`);
     } catch (err) {
@@ -369,10 +517,15 @@ export async function prepareMaps(options = {}) {
 
   if (!dryRun) {
     publishCatalog(path.join(mapsDir, 'catalog.json'), catalog);
+    // Le sidecar n'est écrit **qu'après** la publication réussie. L'inverse laisserait un
+    // cache affirmant qu'un travail est fait alors que le catalogue ne le référence pas.
+    fs.writeFileSync(recipesPath(mapsDir), JSON.stringify(nextRecipes, null, 2), 'utf-8');
   }
 
   return {
     mapsCount: catalogEntries.length,
+    preparedCount,
+    skippedCount,
     totalWalls,
     totalPortals,
     totalLights,
@@ -385,7 +538,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   prepareMaps()
     .then((result) => {
       console.log(
-        `\n✓ ${result.mapsCount} carte(s) préparée(s), ${result.totalWalls} murs, ${result.totalPortals} portes, ${result.totalLights} lumières`
+        `\n✓ ${result.mapsCount} carte(s) au catalogue ` +
+          `(${result.preparedCount} préparée(s), ${result.skippedCount} réutilisée(s)), ` +
+          `${result.totalWalls} murs, ${result.totalPortals} portes, ${result.totalLights} lumières`
       );
       if (result.warnings.length > 0) {
         console.log('\nAvertissements :');

@@ -20,6 +20,16 @@ fixtures/real/*
 #   les sources — comme fixtures/real/, et pour la même raison.
 maps/*.dd2vtt
 maps/*.df2vtt
+
+# Variantes du comparateur de l'outil local : jetables par construction, et publiées avec
+# le reste du dépôt si on les commitait. Elles servent à décider d'un réglage, jamais à le
+# porter — la décision se fixe dans les constantes de scripts/resample.mjs.
+maps/.preview/
+
+# Cache de fabrication des cartes. Jamais une source de vérité : le perdre coûte une passe
+# complète, jamais une carte. Hors de git à dessein — un cache commité peut entrer en
+# conflit à la fusion, et son seul gain serait d'épargner une minute sur un clone neuf.
+maps/generated/.recipes.json
 .DS_Store
 *.log
 .claude/

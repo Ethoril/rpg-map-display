@@ -44,7 +44,7 @@ const JPEG_DECODE_OPTIONS = {
  * Un cran plus bas (q80, 3,01 Mio) reste possible, mais les aplats et les dégradés
  * d'eau sont le premier endroit où ça se verrait — à juger sur la tablette, pas ici.
  */
-const WEBP_QUALITY = 90;
+export const WEBP_QUALITY = 90;
 
 // Patch fetch pour le chargement des modules WASM dans Node.js pour file://
 const originalFetch = globalThis.fetch;
@@ -70,6 +70,11 @@ if (originalFetch) {
  * @param {number} [options.widthCells] Largeur de la carte en cases
  * @param {number} [options.heightCells] Hauteur de la carte en cases
  * @param {string} [options.outputPath] Chemin optionnel pour enregistrer le fichier WebP
+ * @param {number} [options.maxTexturePx] Plafond de dimension. **Réservé à la comparaison**
+ *   de l'outil local : la publication utilise toujours `MAX_PREPARED_TEXTURE_PX`. Un réglage
+ *   qu'on peut publier au coup par coup est un réglage qu'un `maps:prepare` ultérieur
+ *   écraserait en silence — cf. `docs/CHANTIER-L-OUTIL-CARTES.md` §3.3.
+ * @param {number} [options.quality] Qualité WebP, même réserve que `maxTexturePx`.
  * @returns {Promise<{ buffer: Buffer, width: number, height: number, pxPerCell: number, warnings: string[] }>}
  */
 export async function resample(input, targetPxPerCell = 140, options = {}) {
@@ -144,10 +149,8 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
   // dérivait d'autant. Un seul `floor`, donc.
 
   // 1. Limite de texture des appareils du parc.
-  const capScale = Math.min(
-    1,
-    MAX_PREPARED_TEXTURE_PX / Math.max(targetWidth, targetHeight)
-  );
+  const maxTexturePx = options.maxTexturePx ?? MAX_PREPARED_TEXTURE_PX;
+  const capScale = Math.min(1, maxTexturePx / Math.max(targetWidth, targetHeight));
 
   // 2. Garde-fou anti-agrandissement : la sortie ne dépasse jamais la source.
   //
@@ -173,7 +176,7 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
 
   if (capScale < 1) {
     warnings.push(
-      `Image rééchantillonnée (${targetWidth}x${targetHeight}) dépasse la limite de texture (${MAX_PREPARED_TEXTURE_PX}px). Redimensionnement à ${Math.floor(targetWidth * capScale)}x${Math.floor(targetHeight * capScale)}.`
+      `Image rééchantillonnée (${targetWidth}x${targetHeight}) dépasse la limite de texture (${maxTexturePx}px). Redimensionnement à ${Math.floor(targetWidth * capScale)}x${Math.floor(targetHeight * capScale)}.`
     );
   }
 
@@ -198,7 +201,9 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
   img.resize({ w: finalWidth, h: finalHeight });
 
   const format = webpFormat();
-  const outputBuffer = await format.encode(img.bitmap, { quality: WEBP_QUALITY });
+  const outputBuffer = await format.encode(img.bitmap, {
+    quality: options.quality ?? WEBP_QUALITY,
+  });
 
   if (options.outputPath) {
     const dir = path.dirname(options.outputPath);

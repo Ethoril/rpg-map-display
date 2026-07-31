@@ -31,6 +31,14 @@ F:\rpg-map-display\
 ├─ diag.html                      [1a] diagnostic matériel — limites GPU, fps, thermique,
 │                                      coût du store, latence Firebase. Hors application :
 │                                      ni vue MJ, ni vue joueurs. Import map IDENTIQUE
+├─ outil-cartes.cmd               [L]  lanceur Windows de l'outil de cartes, prévu pour le
+│                                      double-clic : démarre le serveur et ouvre la page.
+│                                      CRLF et ASCII pur imposés (cf. .gitattributes)
+├─ prepare.html                   [L]  outil LOCAL de préparation des cartes. Hors
+│                                      application, et inerte sans scripts/prepare-server.mjs
+│                                      — elle le détecte et le dit. Import map IDENTIQUE bien
+│                                      qu'inutile ici : check-deps l'exige de toute page de la
+│                                      racine chargeant un module
 ├─ playwright.config.mjs          [1a] tests navigateur : testMatch *.spec.mjs, webServer
 ├─ pnpm-workspace.yaml            [1a] allowBuilds deterministes pour pnpm
 ├─ .gitattributes                 [1a] * text=auto eol=lf
@@ -120,7 +128,10 @@ F:\rpg-map-display\
 │       ├─ networkEvents.js       [1a] application idempotente des NetEvent au store
 │       ├─ gm.js                  [1a] point d'entrée vue MJ
 │       ├─ player.js              [1a] point d'entrée vue joueurs (+ verrous mobiles, bouton plein écran)
-│       └─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
+│       ├─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
+│       └─ prepare.js             [L]  point d'entrée de prepare.html. Ne parle qu'à l'API
+│                                      locale : il ne décode ni ne rééchantillonne aucune
+│                                      image, le pipeline n'ayant qu'une implantation, en Node
 │
 ├─ scripts/
 │   ├─ import-uvtt.mjs            [1a] CLI Node : .uvtt → maps/ + document de scène
@@ -128,7 +139,12 @@ F:\rpg-map-display\
 │   ├─ resample.mjs               [1a] rééchantillonnage d'image (Node)
 │   ├─ make-fixture.mjs           [1a] génère les fixtures de test
 │   ├─ stamp-version.mjs          [1a] écrit js/core/version.js
-│   ├─ serve.mjs                  [1a] serveur statique sans dépendance (tests + dev local)
+│   ├─ serve.mjs                  [1a] serveur statique sans dépendance (tests + dev local).
+│                                      N'écrit JAMAIS : c'est le serveur des tests Playwright,
+│                                      lui ajouter une surface d'écriture l'ajouterait aux tests
+│   ├─ prepare-server.mjs         [L]  serveur LOCAL de l'outil de cartes (127.0.0.1 seul) :
+│                                      sert prepare.html et expose l'API qui appelle
+│                                      prepareMap(). Distinct de serve.mjs à dessein
 │   └─ check-deps.mjs             [1a] vérifie les URLs de l'import map (HEAD 200 + registre
 │                                      + cohérence avec les devDependencies + import maps
 │                                      IDENTIQUES entre toutes les pages de la racine)
@@ -154,6 +170,9 @@ F:\rpg-map-display\
     ├─ PLAN-LOT2.md               [2] découpage du lot 2 en tranches, décisions arrêtées
     │                              (portes à trois états, autorité vision/fog) et amendements
     │                              du CdC à faire
+    ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
+    │                              implantation du pipeline », et pourquoi on compare avec des
+    │                              réglages mais publie avec les constantes
     ├─ TRAVAIL-2907SOIR.md        [2] reprise du 29/07 au soir : état réel du lot 2 et
     │                              spécifications des trois chantiers restants
     └─ ETAT.md                    avancement, reprise, corrections du plan

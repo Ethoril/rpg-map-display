@@ -10,6 +10,7 @@
     "verify": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
     "serve": "node scripts/serve.mjs",
     "maps:prepare": "node scripts/prepare-maps.mjs",
+    "maps:tool": "node scripts/prepare-server.mjs",
     "typecheck": "tsc --noEmit -p jsconfig.json",
     "stamp": "node scripts/stamp-version.mjs",
     "check-deps": "node scripts/check-deps.mjs"
