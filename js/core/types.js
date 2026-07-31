@@ -46,6 +46,7 @@
  * @property {CellPoint} a
  * @property {CellPoint} b
  * @property {boolean} closed
+ * @property {'open' | 'closed' | 'locked'} [state]
  * @property {boolean} freestanding
  */
 

@@ -109,6 +109,18 @@ accommode sans cas particulier.
 
 ## 5. Le cache par étage
 
+> **Amendé à la livraison, le 31 juillet 2026.** Ce brief demandait le cache dans
+> `js/state/store.js`. Il a été livré dans `js/import/blockedEdges.js`, indexé sur
+> `levelId` **+ une empreinte géométrique de l'étage**, et **cette déviation est retenue** :
+> l'empreinte fait que le cache s'auto-invalide à tout changement de mur ou d'état de porte,
+> ce qui est plus solide que l'invalidation manuelle au `portal.toggle` prescrite ici. C'est
+> la leçon de l'empreinte de pipeline du chantier L, appliquée au bon endroit.
+>
+> **`import/*` reste « de la logique pure » au sens du manifeste** — aucune I/O, aucun DOM.
+> Une mémoïsation déterministe indexée sur le contenu ne contredit pas ce contrat : ne pas
+> la prendre pour une violation. Mesuré à la livraison : gain ×117 sur `manoir-rdc`, ×24 sur
+> la carte de test, pour un coût d'empreinte de 0,16 à 1,08 ms.
+
 Il vit dans le store (`js/state/store.js`), une entrée par `levelId`.
 
 **Correction au plan, à connaître.** `PLAN-LOT2.md` §4 justifie le cache en affirmant que

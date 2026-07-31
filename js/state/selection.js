@@ -40,7 +40,7 @@ export function setSelectionState(token, level) {
   const grid = gridFor(level);
   const terrainCostMap = terrainCostRecordToMap(level.terrainCost);
 
-  // Masque d'arêtes bloquées obtenu par la fonction dédiée, vide au lot 1a. Le branchement
+  // Masque d'arêtes bloquées obtenu par la fonction dédiée. Le branchement
   // existe DÈS MAINTENANT : c'est la raison d'être du stub de T-08. Recréer un `new Set()`
   // ici rendrait l'implémentation du lot 2 sans effet sur les déplacements, et le symptôme
   // apparaîtrait très loin de sa cause.

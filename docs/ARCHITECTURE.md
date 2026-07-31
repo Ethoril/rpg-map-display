@@ -79,7 +79,12 @@ F:\rpg-map-display\
 │   │   ├─ catalog.js             [2]  chargeur et validateur de catalogue pur
 │   │   ├─ tokenCatalog.js        [1b] chargeur et validateur du catalogue de pions, pur
 │   │   ├─ imageCalibrate.js      [1a] image simple → grille (source B)
-│   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>
+│   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>, par croisement
+│                                      centre-à-centre. Porte une MÉMOÏSATION par étage,
+│                                      indexée sur levelId + empreinte géométrique : c'est
+│                                      déterministe et sans I/O, donc compatible avec la
+│                                      pureté exigée de import/* — ne pas la lire comme une
+│                                      violation (cf. TRANCHE-L01 §5)
 │   │
 │   ├─ movement/
 │   │   ├─ reachable.js           [1a] Dijkstra pondéré → Map<cellKey, coût>
