@@ -131,6 +131,43 @@ effectivement à portée** — c'est cette dernière qui explique les deux autre
 cartes jusqu'à 100×100 » répond à la question réelle. Densités mesurées à reprendre :
 `manoir-rdc` 0,079 segment/case, export Dungeon Alchemist **0,320** — quatre fois plus.
 
+### Mesurer le geste, pas seulement la fonction
+
+**Amendé le 31/07 après une question du mainteneur** — « est-ce que j'aurai un vrai banc
+d'essai sur la tablette ? » — qui a mis en évidence une faiblesse de cette section.
+
+Un micro-banc qui chronomètre `sweep()` isolément mesure une **fonction**, pas une
+**expérience**. Or deux faits du projet rendent le chiffre « images par seconde » peu
+parlant :
+
+- l'application fait du **rendu à la demande, sans boucle active au repos** (`ETAT.md`). Il
+  n'y a pas de cadence à tenir quand rien ne bouge ;
+- le **critère 7** exigera de recalculer le sweep **sur chaque case du chemin**, faute de quoi
+  traverser un couloir ne révélerait que l'arrivée.
+
+La grandeur perçue à table est donc **le délai entre le tap et la révélation complète**, pour
+un déplacement ordinaire. La section doit rendre les deux :
+
+1. **Le coût unitaire** — un sweep, selon la grille segments × portée du tableau ci-dessus.
+   C'est la brique, utile pour comprendre d'où vient le coût.
+2. **Le coût du geste** — un pion parcourant un chemin de 6 cases, sweep recalculé à chaque
+   case, rendu comme un **délai total en millisecondes**. C'est le chiffre que le mainteneur
+   doit lire en premier.
+
+### Ce que ce banc ne prouvera PAS, et qu'il doit dire lui-même
+
+Il mesure le processeur sur le sweep. Il **n'inclut pas** le rendu, ni la rastérisation du fog
+(qui n'existera qu'à L-04), ni les **150 à 400 ms que le cast ajoute** de son côté (CdC §3).
+
+Il borne donc la **part du sweep** dans le budget ; il ne certifie pas une fluidité. La page
+doit l'écrire noir sur blanc.
+
+C'est la leçon de la décision n°2, à ne pas repayer : une sonde y avait rendu p50 4,7 ms pour
+une latence Firebase, chiffre **inférieur au temps de trajet physique** — elle chronométrait la
+boucle locale du SDK, pas un aller-retour. Le verdict automatique qu'elle affichait a dû être
+retiré. **Une mesure qui ne mesure pas la bonne grandeur coûte plus cher que pas de mesure**,
+parce qu'elle ferme la question.
+
 ### Interdiction n°14, à respecter à la lettre
 
 `CONVENTIONS.md` : *« Ne jamais cocher un critère de performance. 30 fps […] exigent la
@@ -160,8 +197,12 @@ qui la prendra avec la courbe en main.
 6. Un mur **oblique** occulte comme un mur aligné : rien dans le code ne doit privilégier les
    axes.
 7. `js/vision/sweep.js` n'importe **que** `core/*`. Le test d'architecture n°6 le vérifie déjà.
-8. La section de `diag.html` rend la grille du §4 et affiche « à vérifier sur la tablette ».
-9. `pnpm run verify` vert, suite unitaire toujours sous 10 s.
+8. La section de `diag.html` rend la grille du §4, **le délai d'un déplacement de 6 cases**,
+   et affiche explicitement ce qu'elle ne mesure pas (rendu, fog, cast) ainsi que « à
+   vérifier sur la tablette ».
+9. La section est utilisable **au doigt** : boutons d'au moins 44 px, sortie lisible sans
+   zoom, aucune saisie au clavier. Elle sera lue sur la tablette, pas sur le Mac.
+10. `pnpm run verify` vert, suite unitaire toujours sous 10 s.
 
 ## 6. Ne pas faire
 
