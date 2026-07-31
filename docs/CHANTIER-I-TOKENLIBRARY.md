@@ -81,6 +81,26 @@ ouverte n°7 du CdC §12 (jeu de marqueurs d'état), que le document repousse ex
 
 ---
 
+> ## ⚠ Amendé par le chantier M, le 31 juillet 2026
+>
+> **La décision n°2 ci-dessous — « la bibliothèque est en lecture seule » — ne tient plus.**
+> Sa justification était « aucune écriture de fichier depuis le navigateur, c'est impossible
+> sans chaîne d'upload, hors périmètre ». Le chantier L a livré un serveur local qui écrit
+> dans le dépôt : la prémisse est tombée.
+>
+> La bibliothèque se remplit désormais depuis `prepare.html`, qui écrit l'image **et**
+> l'entrée. Éditer et supprimer n'importe quelle entrée est possible, entrées de
+> démonstration comprises.
+>
+> **La décision n°1 tient toujours**, et c'est elle qui a guidé l'implantation : source de
+> vérité = catalogue commité, **pas LocalStorage**, parce que le mainteneur travaille depuis
+> plusieurs machines. On écrit le fichier commité, pour que la bibliothèque voyage par git.
+>
+> **L'action « copier l'entrée JSON » de la décision n°2 a été retirée.** Elle produisait une
+> entrée pointant sur un fichier absent, et l'amendement du 30/07 — image de pion embarquée
+> en `data:` — l'a rendue définitivement inutilisable, le catalogue refusant les `data:`.
+> Détail dans `ETAT.md` § « Chantier M ».
+
 ## 3. Décisions arrêtées par le mainteneur
 
 1. **La source de vérité est un catalogue commité : `maps/tokens/catalog.json`**, sur le

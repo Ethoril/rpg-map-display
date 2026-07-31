@@ -28,6 +28,11 @@ import {
 } from './prepare-maps.mjs';
 import { MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
 import { parseUvtt } from '../js/import/uvtt.js';
+import {
+  validateTokenCatalog,
+  upsertTokenEntry,
+  removeTokenEntry,
+} from '../js/import/tokenCatalog.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -266,6 +271,188 @@ async function apiPreview(body) {
   };
 }
 
+// --- Bibliothèque de pions ---------------------------------------------------------
+//
+// Le chantier I avait tranché « lecture seule, écrire depuis le navigateur est impossible
+// sans chaîne d'upload ». Cette prémisse est tombée : ce serveur écrit dans le dépôt.
+//
+// La décision de refuser LocalStorage, elle, tient toujours et guide l'implantation : on
+// écrit le **fichier commité**, pour que la bibliothèque voyage par git d'une machine à
+// l'autre. Une bibliothèque de navigateur ne l'aurait pas fait.
+
+const tokensDir = path.join(mapsDir, 'tokens');
+const tokenCatalogPath = path.join(tokensDir, 'catalog.json');
+
+/** Plafond d'une image de pion sur disque. Un pion de 200 px pèse trois kilo-octets. */
+const TOKEN_FILE_MAX_BYTES = 256 * 1024;
+
+/** Formats acceptés pour une image de pion, et extension de fichier associée. */
+const TOKEN_IMAGE_TYPES = new Map([
+  ['image/webp', '.webp'],
+  ['image/png', '.png'],
+  ['image/jpeg', '.jpg'],
+]);
+
+function readTokenCatalog() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(tokenCatalogPath, 'utf-8'));
+    return { catalog: parsed, errors: validateTokenCatalog(parsed) };
+  } catch (err) {
+    // Catalogue absent : c'est une bibliothèque vide, pas une erreur. Corrompu : on le dit
+    // sans l'écraser, pour ne pas détruire un fichier que le mainteneur peut réparer.
+    if (/** @type {any} */ (err)?.code === 'ENOENT') {
+      return { catalog: { version: 1, tokens: [] }, errors: [] };
+    }
+    throw new Error(
+      `maps/tokens/catalog.json illisible : ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+/**
+ * Écrit le catalogue de pions par `rename`, comme celui des cartes.
+ *
+ * @param {unknown} catalog
+ */
+function writeTokenCatalog(catalog) {
+  fs.mkdirSync(tokensDir, { recursive: true });
+  const temp = `${tokenCatalogPath}.tmp`;
+  fs.writeFileSync(temp, `${JSON.stringify(catalog, null, 2)}\n`, 'utf-8');
+  try {
+    fs.renameSync(temp, tokenCatalogPath);
+  } catch (err) {
+    fs.rmSync(temp, { force: true });
+    throw err;
+  }
+}
+
+/** GET /api/tokens — la bibliothèque telle qu'elle est sur le disque. */
+function apiTokens() {
+  const { catalog, errors } = readTokenCatalog();
+  return {
+    tokens: Array.isArray(catalog.tokens) ? catalog.tokens : [],
+    errors,
+    limits: { maxBytes: TOKEN_FILE_MAX_BYTES, types: [...TOKEN_IMAGE_TYPES.keys()] },
+  };
+}
+
+/**
+ * Un identifiant de pion doit pouvoir servir de nom de fichier, tel quel.
+ *
+ * **Refuser plutôt qu'assainir.** Un `path.basename('../../evil')` rendrait `evil` : le
+ * fichier resterait bien dans `tokens/`, mais l'entrée garderait l'identifiant tordu
+ * pendant que le fichier en porterait un autre. Réécrire en silence l'intention de
+ * l'appelant est le défaut que ce projet paie à répétition ; un refus explicite coûte un
+ * message et ne laisse aucune incohérence derrière lui.
+ *
+ * @param {string} id
+ */
+function assertTokenId(id) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+    throw new Error(
+      `Identifiant de pion "${id}" refusé : minuscules, chiffres et tirets seulement, ` +
+        `en commençant par un caractère alphanumérique. Il sert aussi de nom de fichier.`
+    );
+  }
+}
+
+/**
+ * Décode et contrôle l'image d'un pion **sans rien écrire**.
+ *
+ * La séparation entre contrôle et écriture n'est pas cosmétique : la première version
+ * écrivait l'image avant de valider l'entrée, donc une entrée refusée laissait son fichier
+ * derrière elle. Ici, l'appelant valide le catalogue complet avant d'appeler `commit()`.
+ *
+ * @param {string} id
+ * @param {string} dataUrl image en `data:` produite par le générateur de pions
+ * @returns {{ imageUrl: string, commit: () => void }}
+ */
+function prepareTokenImage(id, dataUrl) {
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl);
+  if (!m) throw new Error('Image de pion : data: URL en base64 attendue');
+
+  const ext = TOKEN_IMAGE_TYPES.get(m[1]);
+  if (!ext) {
+    throw new Error(
+      `Image de pion : type "${m[1]}" refusé (acceptés : ${[...TOKEN_IMAGE_TYPES.keys()].join(', ')})`
+    );
+  }
+
+  const bytes = Buffer.from(m[2], 'base64');
+  if (bytes.length > TOKEN_FILE_MAX_BYTES) {
+    throw new Error(
+      `Image de pion : ${(bytes.length / 1024).toFixed(0)} Kio dépasse le plafond de ` +
+        `${TOKEN_FILE_MAX_BYTES / 1024} Kio. Un pion de 200 px en pèse trois.`
+    );
+  }
+
+  const fileName = `${id}${ext}`;
+  return {
+    imageUrl: `maps/tokens/${fileName}`,
+    commit: () => {
+      fs.mkdirSync(tokensDir, { recursive: true });
+      fs.writeFileSync(path.join(tokensDir, fileName), bytes);
+    },
+  };
+}
+
+/**
+ * POST /api/tokens/save — insère ou remplace une entrée, image comprise.
+ *
+ * @param {any} body
+ */
+function apiTokenSave(body) {
+  const entry = body?.entry;
+  if (!entry || typeof entry !== 'object') throw new Error('Entrée de pion manquante');
+  if (!entry.id || typeof entry.id !== 'string') throw new Error('Identifiant de pion manquant');
+  assertTokenId(entry.id);
+
+  const { catalog } = readTokenCatalog();
+
+  // L'image n'est contrôlée que si la page en fournit une neuve. Éditer les métadonnées
+  // d'une entrée existante ne doit pas exiger de reposter son image.
+  const fourni = typeof body.imageDataUrl === 'string' && body.imageDataUrl.startsWith('data:');
+  const image = fourni ? prepareTokenImage(entry.id, body.imageDataUrl) : null;
+  const imageUrl = image ? image.imageUrl : entry.imageUrl;
+
+  const { catalog: next, errors, replaced } = upsertTokenEntry(catalog, { ...entry, imageUrl });
+  if (errors.length > 0) {
+    // Rien n'est écrit sur une entrée invalide — ni catalogue, ni image. Le catalogue
+    // précédent reste intact, et aucun fichier orphelin ne subsiste.
+    throw new Error(`Entrée refusée : ${errors.join(' ; ')}`);
+  }
+
+  // Ordre voulu : l'image d'abord, le catalogue ensuite. Un catalogue qui référencerait
+  // une image encore absente serait pire que l'inverse.
+  image?.commit();
+  writeTokenCatalog(next);
+  return { tokens: next.tokens, replaced, imageUrl };
+}
+
+/**
+ * POST /api/tokens/delete — retire une entrée, y compris une entrée de démonstration.
+ *
+ * @param {any} body
+ */
+function apiTokenDelete(body) {
+  const id = String(body?.id ?? '');
+  if (!id) throw new Error('Identifiant de pion manquant');
+
+  const { catalog } = readTokenCatalog();
+  const { catalog: next, errors, removed } = removeTokenEntry(catalog, id);
+  if (!removed) throw new Error(`Aucun pion "${id}" dans la bibliothèque`);
+  if (errors.length > 0) throw new Error(`Catalogue refusé : ${errors.join(' ; ')}`);
+
+  writeTokenCatalog(next);
+
+  // L'image survit délibérément : une campagne enregistrée peut encore la référencer.
+  return {
+    tokens: next.tokens,
+    removed,
+    orphan: removed.imageUrl,
+  };
+}
+
 /**
  * POST /api/publish — passe transactionnelle complète, **avec les constantes du dépôt**.
  *
@@ -294,6 +481,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && route === '/api/publish') {
       return sendJson(res, 200, await apiPublish(await readJsonBody(req)));
+    }
+    if (req.method === 'GET' && route === '/api/tokens') {
+      return sendJson(res, 200, apiTokens());
+    }
+    if (req.method === 'POST' && route === '/api/tokens/save') {
+      return sendJson(res, 200, apiTokenSave(await readJsonBody(req)));
+    }
+    if (req.method === 'POST' && route === '/api/tokens/delete') {
+      return sendJson(res, 200, apiTokenDelete(await readJsonBody(req)));
     }
   } catch (err) {
     // L'erreur remonte telle quelle à la page : c'est un outil de mainteneur, masquer la

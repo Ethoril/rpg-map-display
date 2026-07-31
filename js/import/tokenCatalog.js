@@ -122,6 +122,58 @@ export function validateTokenCatalog(obj) {
 }
 
 /**
+ * Insère ou remplace une entrée, et **valide le catalogue résultant**.
+ *
+ * Pure : rend un nouveau catalogue, ne touche pas à l'entrée reçue. L'écriture sur disque
+ * appartient à l'appelant (`scripts/prepare-server.mjs`), la forme au présent module.
+ *
+ * Valider **après** fusion et non l'entrée seule est délibéré : c'est le seul moyen
+ * d'attraper une collision d'identifiant, qui n'existe que par rapport aux autres. Même
+ * raisonnement que `validateCampaign`, qui juge la campagne et non la mutation.
+ *
+ * @param {TokenCatalog} catalog
+ * @param {TokenLibraryEntry} entry
+ * @returns {{ catalog: TokenCatalog, errors: string[], replaced: boolean }}
+ */
+export function upsertTokenEntry(catalog, entry) {
+  const tokens = Array.isArray(catalog?.tokens) ? [...catalog.tokens] : [];
+  const at = tokens.findIndex((t) => t && t.id === entry?.id);
+  const replaced = at !== -1;
+
+  if (replaced) {
+    tokens[at] = { ...entry };
+  } else {
+    tokens.push({ ...entry });
+  }
+
+  const next = { version: 1, tokens };
+  return { catalog: next, errors: validateTokenCatalog(next), replaced };
+}
+
+/**
+ * Retire une entrée par identifiant.
+ *
+ * L'image reste sur le disque, et ce n'est pas un oubli : une campagne enregistrée côté
+ * navigateur ou un instantané de session peuvent encore référencer `maps/tokens/<x>.webp`.
+ * Même règle que `findOrphanArtifacts` pour les cartes — signaler, jamais supprimer.
+ *
+ * @param {TokenCatalog} catalog
+ * @param {string} id
+ * @returns {{ catalog: TokenCatalog, errors: string[], removed: TokenLibraryEntry | null }}
+ */
+export function removeTokenEntry(catalog, id) {
+  const tokens = Array.isArray(catalog?.tokens) ? [...catalog.tokens] : [];
+  const at = tokens.findIndex((t) => t && t.id === id);
+  if (at === -1) {
+    return { catalog: { version: 1, tokens }, errors: [], removed: null };
+  }
+
+  const [removed] = tokens.splice(at, 1);
+  const next = { version: 1, tokens };
+  return { catalog: next, errors: validateTokenCatalog(next), removed };
+}
+
+/**
  * Options pour la projection d'une entrée de bibliothèque vers un Token.
  * @typedef {Object} TokenProjectionOptions
  * @property {string} levelId - Identifiant de l'étage actif

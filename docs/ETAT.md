@@ -250,6 +250,60 @@ sortir le CLI en code non nul et laisse le catalogue précédent intact, octet p
 Les artefacts de `maps/generated/` devenus orphelins sont signalés, jamais supprimés : une
 campagne enregistrée côté navigateur peut encore les référencer.
 
+## Chantier M — la bibliothèque de pions persiste enfin, et pourquoi elle ne le faisait pas
+
+Relevé le 31 juillet 2026 par le mainteneur, en deux symptômes : « quand j'ouvre une nouvelle
+session ma bibliothèque de pions est vide de mes créations alors que l'éclaireur goblinoïde
+est bien là », et « je ne peux pas éditer/supprimer l'éclaireur dans la bibliothèque ».
+
+**Une seule cause, et ce n'était pas un bug.** Le chantier I §3.2 avait arrêté que la
+bibliothèque est **en lecture seule** : catalogue commité, pas de LocalStorage — « le
+mainteneur travaille depuis plusieurs machines, une bibliothèque locale au navigateur serait
+perdue au changement de poste » — et pas d'écriture depuis le navigateur, « impossible sans
+chaîne d'upload, hors périmètre ». Les pions générés partaient donc dans la **campagne**, qui
+est propre à la session. L'éclaireur survivait parce qu'il est un fichier du dépôt.
+
+**Mais le mécanisme de compensation était devenu inopérant, et c'est le vrai défaut.** Le
+bouton « Copier l'entrée JSON » produit `imageUrl: "maps/tokens/<slug>.webp"` — un fichier
+qui n'existe pas, puisque le générateur ne dépose le WebP que dans le dossier de
+téléchargement. Or l'amendement du 30/07 a résolu ce problème pour la table en embarquant
+l'image en `data:` bornée… et le catalogue de pions **refuse les `data:`**
+(`js/import/tokenCatalog.js`). Les deux mécanismes étaient donc devenus incompatibles : un
+pion généré s'affichait bien, mais ne pouvait plus **jamais** entrer dans la bibliothèque.
+Le CdC §5.7 exige la « persistance de ce que produit le générateur » : ce n'était pas tenu,
+et `ETAT.md` l'annonçait pourtant comme complet. Même classe d'erreur que le « U-00 à U-06
+complète » de la semaine précédente.
+
+**Ce qui change.** La prémisse « écrire depuis le navigateur est impossible » est tombée avec
+le chantier L : le serveur local écrit dans le dépôt. L'outil gagne donc une section
+bibliothèque de pions, qui écrit le WebP dans `maps/tokens/` **et** l'entrée dans
+`catalog.json`, d'un seul geste. Éditer et supprimer n'importe quelle entrée devient possible,
+y compris les entrées de démonstration.
+
+**La décision de refuser LocalStorage tient toujours**, et c'est elle qui a guidé
+l'implantation : on écrit le fichier commité, pour que la bibliothèque voyage par git d'une
+machine à l'autre. Une bibliothèque de navigateur ne l'aurait pas fait.
+
+Parcours : générer le pion dans la vue MJ → « Télécharger pion » → choisir le fichier obtenu
+dans l'outil. Le recadrage reste au générateur, il n'est pas réimplémenté.
+
+**Deux défauts trouvés en éprouvant les gardes, et corrigés :**
+
+- un identifiant tentant un chemin (`../../evil`) était **silencieusement assaini** en
+  `evil` : le fichier restait bien dans `tokens/`, mais l'entrée gardait l'identifiant tordu
+  pendant que le fichier en portait un autre. Un identifiant de pion sert aussi de nom de
+  fichier, il est donc désormais **refusé** s'il n'est pas un slug, plutôt que réécrit ;
+- une entrée refusée **écrivait quand même son image**, l'écriture précédant la validation.
+  Contrôle et écriture sont séparés : rien n'est écrit tant que le catalogue complet n'est pas
+  valide, et l'image est commitée avant le catalogue — un catalogue qui référencerait une
+  image absente serait pire que l'inverse.
+
+**Le bouton « Copier l'entrée JSON » a été retiré**, sur décision du mainteneur : il ne
+servait plus à rien puisqu'il produisait une entrée inutilisable. À noter pour la leçon —
+**aucun test ne l'exerçait**, ce qui explique qu'il ait pu devenir inopérant en silence après
+l'amendement du 30/07. Un bouton sans test est un bouton dont personne ne saura qu'il a cessé
+de fonctionner.
+
 ## Démarrage d’une séance
 
 1. Servir le dépôt avec `pnpm run serve`.
@@ -454,7 +508,7 @@ Relevé pour éviter de confondre « le plateau est solide » et « le produit e
 | Lot du CdC §11 | État |
 |---|---|
 | **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
-| **1b — La prépa MJ** | **Code complet, 4 critères sur 4.** Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantier I), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
+| **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
 | **2 — Lignes de vue, portes & tactique** | **0 sur 13.** `js/vision/` n’existe pas ; aucun code de fog, de rendu de murs, d’éditeur de murs, de gabarits ni de marqueurs d’état. **Périmètre élargi le 29/07 au soir** : le fog porte désormais la fonction que les toits assuraient — masquer l’intérieur d’un bâtiment non visité (`ANALYSE-DD2VTT-GRILLES.md` §9) |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | 0 sur 6. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |

@@ -82,7 +82,6 @@ export function createTokenMaker(container, options) {
       <div class="token-maker-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
         <button id="btn-generate-token" style="flex: 1; min-width: 110px; padding: 0.5rem;" disabled>Générer pion</button>
         <button id="btn-download-token" style="flex: 1; min-width: 110px; padding: 0.5rem;" disabled>Télécharger pion</button>
-        <button id="btn-copy-json" style="flex: 1; min-width: 110px; padding: 0.5rem;">Copier l'entrée JSON</button>
       </div>
     </div>
   `;
@@ -109,7 +108,6 @@ export function createTokenMaker(container, options) {
 
   const btnGenerate = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-generate-token'));
   const btnDownload = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-download-token'));
-  const btnCopyJson = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-copy-json'));
 
   // --- État interne ---
   /** @type {HTMLImageElement|null} */
@@ -558,48 +556,17 @@ export function createTokenMaker(container, options) {
     downloadToken();
   });
 
-  // --- Copie de l'entrée JSON pour la bibliothèque ---
-  function copyTokenLibraryEntryJson() {
-    const label = labelInput.value.trim() || 'Pion';
-    const slug = label
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '') || 'token';
-
-    const explicitUrl = canonicalUrlInput.value.trim();
-    const canonicalUrl = explicitUrl || `maps/tokens/${slug}.webp`;
-
-    /** @type {import('../../core/types.js').TokenLibraryEntry} */
-    const entry = {
-      id: slug,
-      name: label,
-      imageUrl: canonicalUrl,
-      kind: /** @type {'pc'|'npc'} */ (kindSelect.value === 'npc' ? 'npc' : 'pc'),
-      sizeCells: Math.max(1, parseInt(sizeCellsInput.value, 10) || 1),
-      speedCells: Math.max(1, parseInt(speedCellsInput.value, 10) || 3),
-      visionBright: 5,
-      visionDim: 10,
-      emitsLight: null,
-      borderColor: colorInput.value || '#ff0000',
-    };
-
-    const jsonStr = JSON.stringify(entry, null, 2);
-
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      void navigator.clipboard.writeText(jsonStr);
-    }
-
-    status.style.color = '#2ecc71';
-    status.textContent = `Entrée TokenLibraryEntry copiée ("${entry.id}")`;
-
-    return entry;
-  }
-
-  btnCopyJson.addEventListener('click', () => {
-    copyTokenLibraryEntryJson();
-  });
+  // L'action « Copier l'entrée JSON » a été retirée au chantier M.
+  //
+  // Elle produisait une entrée portant `imageUrl: "maps/tokens/<slug>.webp"`, un fichier
+  // qui n'existait pas : le générateur ne dépose le WebP que dans le dossier de
+  // téléchargement du MJ. Le correctif du 30/07 a embarqué l'image dans le pion pour
+  // régler le cas de la table — mais le catalogue de pions refuse les `data:`, donc
+  // l'entrée copiée restait inutilisable. Les deux mécanismes s'excluaient.
+  //
+  // La bibliothèque se remplit désormais par l'outil local, qui écrit l'image ET
+  // l'entrée : « Télécharger pion » ici, puis choisir le fichier dans `prepare.html`.
+  // Aucun test n'exerçait ce bouton — d'où son passage à l'inopérant en silence.
 
   // Rendu initial (vide)
   drawPreview();
@@ -609,7 +576,6 @@ export function createTokenMaker(container, options) {
     loadImageFile,
     generateToken,
     downloadToken,
-    copyTokenLibraryEntryJson,
     getCurrentToken: () => currentToken,
     getCurrentDataUrl: () => currentDataUrl,
     /**

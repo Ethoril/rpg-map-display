@@ -214,6 +214,162 @@ btnPublish.addEventListener('click', () =>
 
 selSource.addEventListener('change', afficherDetails);
 
+// --- Bibliothèque de pions ---------------------------------------------------------
+
+const tokensListe = /** @type {HTMLElement} */ (document.querySelector('#tokens-liste tbody'));
+const champs = {
+  id: /** @type {HTMLInputElement} */ (document.getElementById('tk-id')),
+  name: /** @type {HTMLInputElement} */ (document.getElementById('tk-name')),
+  kind: /** @type {HTMLSelectElement} */ (document.getElementById('tk-kind')),
+  size: /** @type {HTMLInputElement} */ (document.getElementById('tk-size')),
+  speed: /** @type {HTMLInputElement} */ (document.getElementById('tk-speed')),
+  vb: /** @type {HTMLInputElement} */ (document.getElementById('tk-vb')),
+  vd: /** @type {HTMLInputElement} */ (document.getElementById('tk-vd')),
+  color: /** @type {HTMLInputElement} */ (document.getElementById('tk-color')),
+  image: /** @type {HTMLInputElement} */ (document.getElementById('tk-image')),
+};
+const btnTokenSave = /** @type {HTMLButtonElement} */ (document.getElementById('btn-token-save'));
+const btnTokenReset = /** @type {HTMLButtonElement} */ (document.getElementById('btn-token-reset'));
+
+/** `imageUrl` de l'entrée en cours d'édition, conservée si aucune image neuve n'est fournie. */
+let imageUrlCourante = '';
+
+/** @param {any[]} tokens */
+function afficherTokens(tokens) {
+  tokensListe.replaceChildren();
+  if (tokens.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.textContent = 'Bibliothèque vide. Le formulaire ci-dessous la remplit.';
+    td.style.opacity = '.7';
+    tr.appendChild(td);
+    tokensListe.appendChild(tr);
+    return;
+  }
+
+  for (const t of tokens) {
+    const tr = document.createElement('tr');
+
+    const tdImg = document.createElement('td');
+    const img = document.createElement('img');
+    // Cache court-circuité : après remplacement d'une image, le navigateur resservirait
+    // l'ancienne sous la même URL et l'édition semblerait sans effet.
+    img.src = `/${t.imageUrl}?v=${encodeURIComponent(t.imageUrl)}-${tokens.length}`;
+    img.alt = t.name;
+    tdImg.appendChild(img);
+
+    const tdInfo = document.createElement('td');
+    tdInfo.innerHTML =
+      `<strong>${t.name}</strong><br><span style="opacity:.7;font-size:.85em">` +
+      `${t.id} · ${t.kind === 'pc' ? 'PJ' : 'PNJ'} · taille ${t.sizeCells} · ` +
+      `vitesse ${t.speedCells} · vision ${t.visionBright}/${t.visionDim}</span>`;
+
+    const tdActions = document.createElement('td');
+    tdActions.style.whiteSpace = 'nowrap';
+
+    const bEdit = document.createElement('button');
+    bEdit.textContent = 'Éditer';
+    bEdit.addEventListener('click', () => remplirFormulaire(t));
+
+    const bDel = document.createElement('button');
+    bDel.textContent = 'Supprimer';
+    bDel.addEventListener('click', () =>
+      pendant(bDel, async () => {
+        const r = await api('/api/tokens/delete', { id: t.id });
+        afficherTokens(r.tokens);
+        dire(
+          `✓ « ${r.removed.name} » retiré de la bibliothèque.\n` +
+            `Son image ${r.orphan} est conservée : une campagne enregistrée peut encore la référencer.`
+        );
+      })
+    );
+
+    tdActions.append(bEdit, bDel);
+    tr.append(tdImg, tdInfo, tdActions);
+    tokensListe.appendChild(tr);
+  }
+}
+
+/** @param {any} t */
+function remplirFormulaire(t) {
+  champs.id.value = t.id;
+  champs.name.value = t.name;
+  champs.kind.value = t.kind;
+  champs.size.value = String(t.sizeCells);
+  champs.speed.value = String(t.speedCells);
+  champs.vb.value = String(t.visionBright);
+  champs.vd.value = String(t.visionDim);
+  champs.color.value = t.borderColor;
+  champs.image.value = '';
+  imageUrlCourante = t.imageUrl;
+  dire(`Édition de « ${t.name} ». Sans nouvelle image, celle en place est conservée.`);
+}
+
+function viderFormulaire() {
+  champs.id.value = '';
+  champs.name.value = '';
+  champs.kind.value = 'npc';
+  champs.size.value = '1';
+  champs.speed.value = '3';
+  champs.vb.value = '5';
+  champs.vd.value = '10';
+  champs.color.value = '#e74c3c';
+  champs.image.value = '';
+  imageUrlCourante = '';
+}
+
+/** @param {File} file */
+function lireFichier(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(`Lecture impossible de ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+btnTokenReset.addEventListener('click', () => {
+  viderFormulaire();
+  dire('Formulaire vidé — la prochaine sauvegarde créera une entrée.');
+});
+
+btnTokenSave.addEventListener('click', () =>
+  pendant(btnTokenSave, async () => {
+    const fichier = champs.image.files?.[0];
+    const imageDataUrl = fichier ? await lireFichier(fichier) : undefined;
+
+    // Une création sans image n'a rien à afficher. Le dire ici évite un aller-retour et
+    // un message d'erreur du serveur là où la cause est évidente côté page.
+    if (!imageDataUrl && !imageUrlCourante) {
+      dire('✗ Aucune image : choisir un fichier, ou éditer une entrée qui en a déjà une.');
+      return;
+    }
+
+    const entry = {
+      id: champs.id.value.trim(),
+      name: champs.name.value.trim(),
+      imageUrl: imageUrlCourante,
+      kind: champs.kind.value === 'pc' ? 'pc' : 'npc',
+      sizeCells: Number(champs.size.value) || 1,
+      speedCells: Number(champs.speed.value) || 3,
+      visionBright: Number(champs.vb.value),
+      visionDim: Number(champs.vd.value),
+      emitsLight: null,
+      borderColor: champs.color.value,
+    };
+
+    const r = await api('/api/tokens/save', { entry, imageDataUrl });
+    afficherTokens(r.tokens);
+    imageUrlCourante = r.imageUrl;
+    champs.image.value = '';
+    dire(
+      `✓ « ${entry.name} » ${r.replaced ? 'mis à jour' : 'ajouté'} dans la bibliothèque ` +
+        `(${r.imageUrl}). Commiter maps/tokens/ pour le retrouver sur une autre machine.`
+    );
+  })
+);
+
 /** Démarrage : sans API, la page le dit au lieu d'échouer en silence. */
 (async () => {
   try {
@@ -229,6 +385,12 @@ selSource.addEventListener('change', afficherDetails);
 
     outil.classList.remove('cache');
     afficherDetails();
+
+    const biblio = await api('/api/tokens');
+    afficherTokens(biblio.tokens);
+    if (biblio.errors.length > 0) {
+      dire(`⚠ Catalogue de pions invalide : ${biblio.errors.join(' ; ')}`);
+    }
 
     const illisibles = data.illisibles.length
       ? `\n⚠ Sources illisibles : ${data.illisibles.map((/** @type {any} */ i) => `${i.file} (${i.error})`).join(', ')}`

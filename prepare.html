@@ -47,6 +47,11 @@
     .avert { font-size: .85rem; opacity: .85; margin: .4rem 0 0; }
     #journal { white-space: pre-wrap; word-break: break-word; border: 1px solid currentColor;
                padding: .6rem; border-radius: 4px; min-height: 3rem; font-size: .85rem; margin-top: 1rem; }
+    #tokens-liste img { width: 40px; height: 40px; object-fit: cover; border-radius: 50%; display: block; }
+    #tokens-liste td { vertical-align: middle; }
+    #tokens-liste button { min-height: 32px; padding: .3rem .55rem; margin: 0 .25rem 0 0; }
+    #token-form { border: 1px solid; border-color: color-mix(in srgb, currentColor 30%, transparent);
+                  border-radius: 4px; padding: .75rem; }
   </style>
 </head>
 <body>
@@ -103,6 +108,43 @@
     </p>
     <button id="btn-publish">Publier le catalogue</button>
     <label><input id="force" type="checkbox"> tout refabriquer, sans réutiliser</label>
+
+    <h2>4. Bibliothèque de pions</h2>
+    <p class="aide">
+      Écrit dans <code>maps/tokens/</code> et <code>maps/tokens/catalog.json</code> — donc
+      dans le dépôt, donc <strong>persistant d'une séance à l'autre et d'une machine à
+      l'autre</strong> après commit. C'est ce que le générateur de <code>gm.html</code> ne
+      pouvait pas faire : ses pions n'existent que dans la campagne en cours.
+    </p>
+    <p class="aide">
+      Pour ajouter une création : la générer dans la vue MJ, cliquer
+      <em>Télécharger pion</em>, puis choisir le fichier obtenu ci-dessous. Le recadrage
+      reste au générateur — il n'est pas refait ici.
+    </p>
+
+    <table id="tokens-liste"><tbody></tbody></table>
+
+    <h3 style="font-size:.9rem; margin:1.25rem 0 .5rem">Ajouter ou modifier</h3>
+    <div id="token-form">
+      <label>Identifiant <input id="tk-id" type="text" size="16" placeholder="gobelin-archer"></label>
+      <label>Nom <input id="tk-name" type="text" size="20" placeholder="Gobelin archer"></label>
+      <label>Type
+        <select id="tk-kind">
+          <option value="npc">PNJ</option>
+          <option value="pc">PJ</option>
+        </select>
+      </label>
+      <label>Taille <input id="tk-size" type="number" min="1" max="8" step="1" value="1" style="width:4rem"></label>
+      <label>Vitesse <input id="tk-speed" type="number" min="1" max="30" step="1" value="3" style="width:4rem"></label>
+      <label>Vision claire <input id="tk-vb" type="number" min="0" max="60" step="1" value="5" style="width:4rem"></label>
+      <label>Vision faible <input id="tk-vd" type="number" min="0" max="60" step="1" value="10" style="width:4rem"></label>
+      <label>Bordure <input id="tk-color" type="color" value="#e74c3c"></label>
+      <label>Image <input id="tk-image" type="file" accept="image/webp,image/png,image/jpeg"></label>
+      <div>
+        <button id="btn-token-save">Enregistrer dans la bibliothèque</button>
+        <button id="btn-token-reset">Vider le formulaire</button>
+      </div>
+    </div>
   </div>
 
   <pre id="journal">Chargement…</pre>
