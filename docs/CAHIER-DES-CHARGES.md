@@ -613,7 +613,7 @@ compiler** plutôt que simplement déconseillé.
 /session/{sid}/tokens/{tokenId}   → { x, y, levelId, grab: { by, at } }
 /session/{sid}/portals/{portalId} → { closed }
 /session/{sid}/view               → { levelId, camera: { x, y, zoom }, locked }
-/session/{sid}/vision             → { levelId, polygon: [...], rev }
+/session/{sid}/vision             → { levelId, png: 'base64…', rev }
 /session/{sid}/fog/{levelId}      → { png: 'base64…', rev }
 /session/{sid}/pings/{pushId}     → { x, y, levelId, at }
 /session/{sid}/presence/{cid}     → { role, at, build, label }
@@ -621,6 +621,21 @@ compiler** plutôt que simplement déconseillé.
 
 Séparation volontaire : `/tokens` et `/view` sont écrits en haute fréquence, `/fog` et
 `/vision` par le Mac seul, `/pings` en append éphémère.
+
+> **Amendement du 01/08/2026 — `/vision` porte un masque, plus un polygone.** Mesuré avant
+> d'écrire la tranche L-04 : l'union des champs de vision de six PJ pèse **38 à 180 Kio** de
+> JSON en polygones sur la géométrie publiée, contre **11,7 Kio** pour le même contenu en
+> masque raster. Le polygone était intenable sur le fil, et il aurait de surcroît obligé les
+> tablettes à rasteriser — donc à calculer, ce que le §4 leur interdit. `/vision` et `/fog`
+> portent désormais la **même** représentation : un PNG mono-canal à 8 px par case, en base64
+> brut. Ils gardent des cycles de vie distincts — `/fog` est cumulatif et persisté, `/vision`
+> est éphémère et se recalcule au redémarrage.
+>
+> **La charge est stockée en base64 brut, sans préfixe `data:`.** Avec le préfixe, elle
+> tomberait sous `assertNoTransientAssetUrls`, qui refuse toute chaîne `data:` au-delà de
+> `TOKEN_IMAGE_MAX_BYTES` (24 Kio) sur **chaque** événement. Sans lui, plus rien ne la borne :
+> `vision/fog.js` porte donc son propre plafond, `FOG_MAX_ENCODED_BYTES`. Voir
+> `TRANCHE-L04-FOG-PERSISTANT.md` §6.
 
 ---
 
@@ -797,10 +812,17 @@ ce test, et non un seuil dans ce document, qui protège réellement la performan
 | Donnée | Support | Fréquence |
 |---|---|---|
 | Documents de scène | Firestore | à l'édition |
-| Masques de fog | Firestore (PNG base64, ~5 Ko/étage) | throttlé, et en fin de séance |
+| Masques de fog | Firestore (PNG base64 **mono-canal**, ~12 Ko/étage) | throttlé, et en fin de séance |
 | Positions de pions | RTDB (autoritatif live) + snapshot Firestore | snapshot throttlé |
 | Images de carte | Dépôt GitHub Pages | à l'import |
 | Repli hors-ligne | LocalStorage | continu |
+
+> **Amendement du 01/08/2026 — le masque pèse ~12 Ko, pas ~5 Ko.** L'estimation d'origine
+> n'avait jamais été mesurée. Relevé sur la géométrie publiée (`testbig150`, 65 × 71 cases,
+> masque 8 px/case presque plein) : **11,7 Kio** de base64 en PNG **mono-canal**, encodé en
+> 6 ms. Un canvas ne sachant produire que du RGBA, `toDataURL` en donnerait 26,8 Kio — d'où
+> l'encodeur mono-canal écrit à la main dans `vision/fog.js`, que le manifeste prévoyait déjà.
+> L'ordre de grandeur reste sans danger : 1 Hz, et le plafond Firestore est de 1 Mio.
 
 `schemaVersion` dans chaque document, avec migration explicite. Le format va changer
 entre les lots — prévoir le chemin de migration dès le lot 1.

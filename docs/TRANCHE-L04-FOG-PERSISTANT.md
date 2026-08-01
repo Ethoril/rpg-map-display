@@ -85,6 +85,16 @@ redeviendrait noire et le critère 9 n'aurait aucun sens.
 persister créerait un second état à maintenir cohérent avec le premier. `explored` seul est
 de la mémoire ; `visible` est une projection.
 
+**Où ils vivent, et surtout où ils ne vivent pas.** CdC §6 : `explored` va dans
+`/session/{sid}/fog/{levelId}`, `visible` dans `/session/{sid}/vision`. Les deux portent la
+**même** représentation — PNG mono-canal 8 px/case, base64 brut — et diffèrent par leur cycle
+de vie, pas par leur format.
+
+⚠ **Ni l'un ni l'autre n'entre dans le document de campagne.** Ne pas ajouter de champ `fog`
+au type `Level`, ne pas l'autoriser dans `validateCampaign`. La ligne 622 du CdC parle d'une
+« séparation volontaire », et l'instantané de campagne est justement le document qui porte le
+plafond de 1 Mio et l'historique de perte de campagne après F5 (`ETAT.md`).
+
 ---
 
 ## 5. Le piège principal : la rasterisation. Mesuré à 425×.
@@ -159,11 +169,16 @@ Chromium :
 L'alternative à 4 px/case via `toDataURL` produisait une charge identique (11,6 Kio) pour
 deux fois moins de finesse de bord — le gain était nul.
 
-### Amendement requis au CdC
+### Les deux amendements au CdC, faits le 01/08/2026
 
-La ligne 800 estime les masques à « ~5 Ko/étage ». **C'est faux, mesuré à 11,7 Kio.** À
-corriger en « ~12 Ko/étage ». Ça reste sans danger — 1 Hz, et le plafond Firestore est de
-1 Mio — mais le chiffre servira de référence à quelqu'un un jour.
+- **`~5 Ko/étage` → `~12 Ko/étage`** (§10, persistance). L'estimation n'avait jamais été
+  mesurée ; elle vaut 11,7 Kio.
+- **`/session/{sid}/vision` porte un masque, plus un polygone** (§6, canal temps réel). Le
+  polygone pesait 38 à 180 Kio sur le fil, et aurait obligé les tablettes à rasteriser —
+  donc à calculer, ce que le §3 leur interdit.
+
+Les deux portent leur justification dans le CdC. **Le CdC fait donc foi, ce brief ne le
+contredit plus.**
 
 ### Le fog échappe à la garde, donc il doit porter la sienne
 
