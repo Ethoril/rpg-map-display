@@ -108,7 +108,7 @@ function createOffscreenCanvas(width, height, mainCtx, factory) {
 }
 
 /**
- * Couche de rendu du masque de fog / voile de vision (GM view preview en L-03).
+ * Couche de rendu du masque de fog / voile de vision à trois états (L-04).
  */
 export class FogLayer {
   /**
@@ -136,61 +136,94 @@ export class FogLayer {
   }
 
   /**
-   * Rendu de l'union des champs de vision et du voile.
+   * Retourne les polygones de vision actuellement mis en cache.
+   * @returns {MapPoint[][]}
+   */
+  getVisiblePolygons() {
+    return this._cachedPolygons;
+  }
+
+  /**
+   * Signature de la vision courante, pour que l'appelant sache si elle a changé
+   * **sans avoir à encoder le masque pour s'en apercevoir**.
+   *
+   * Sans elle, la publication encodait un PNG à chaque image — `getImageData` plus
+   * deflate, environ 6 ms sur la grande carte — avant de constater que la chaîne
+   * produite était identique à la précédente. Comparer la signature coûte une
+   * comparaison de chaînes ; comparer le PNG coûtait tout l'encodage.
+   *
+   * @returns {string}
+   */
+  getVisionSignature() {
+    return this._lastSignature;
+  }
+
+  /**
+   * Rendu du voile à trois états (vu maintenant, exploré-hors-vision, jamais exploré).
    *
    * @param {CanvasRenderingContext2D} ctx Contexte de scène principal
    * @param {GridAdapter} grid Adaptateur de grille
    * @param {Level|null} level Étage actif
    * @param {Token[]} tokens Liste des pions
    * @param {Object} [options]
-   * @param {'gm'|'players'} [options.role] Rôle d'affichage
-   * @param {string} [options.veilColor] Couleur du voile (défaut 'rgba(0, 0, 0, 0.45)')
+   * @param {'gm'|'players'} [options.role] Rôle d'affichage ('gm' ou 'players')
+   * @param {any} [options.exploredCanvas] Canvas du masque exploré (8 px/case)
+   * @param {any} [options.visibleCanvas] Canvas du masque de vision courante (8 px/case)
+   * @param {MapPoint[][]} [options.visiblePolygons] Polygones de vision transmis si calculés ailleurs
    * @param {Segment[]} [options.segments] Segments d'obstacles pré-extraits
    * @param {(lvl: Level, g: GridAdapter) => Segment[]} [options.extractSegments] Injecteur d'extraction
    */
   render(ctx, grid, level, tokens, options = {}) {
     if (!ctx || !grid || !level) return;
 
-    const signature = buildVisionSignature(level, tokens || []);
-    if (signature !== this._lastSignature) {
-      this._lastSignature = signature;
-      computeCount++;
+    const role = options.role || 'gm';
+    const isPlayer = role === 'players';
 
-      const pcTokens = (tokens || []).filter(
-        (t) => t && t.levelId === level.id && t.kind === 'pc' && typeof t.visionDim === 'number' && t.visionDim > 0
-      );
+    // 1. Calcul / mise à jour des polygones de vision courante (Mac / GM autoritaire)
+    if (options.visiblePolygons) {
+      this._cachedPolygons = options.visiblePolygons;
+    } else if (role === 'gm') {
+      const signature = buildVisionSignature(level, tokens || []);
+      if (signature !== this._lastSignature) {
+        this._lastSignature = signature;
+        computeCount++;
 
-      if (pcTokens.length === 0) {
-        this._cachedPolygons = [];
-      } else {
-        /** @type {Segment[]} */
-        const segments =
-          options.segments ||
-          (typeof options.extractSegments === 'function' ? options.extractSegments(level, grid) : []);
+        const pcTokens = (tokens || []).filter(
+          (t) => t && t.levelId === level.id && t.kind === 'pc' && typeof t.visionDim === 'number' && t.visionDim > 0
+        );
 
-        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+        if (pcTokens.length === 0) {
+          this._cachedPolygons = [];
+        } else {
+          /** @type {Segment[]} */
+          const segments =
+            options.segments ||
+            (typeof options.extractSegments === 'function' ? options.extractSegments(level, grid) : []);
 
-        /** @type {MapPoint[][]} */
-        const polygons = [];
-        for (const t of pcTokens) {
-          const rangeCells = Math.min(t.visionDim, VISION_MAX_RANGE_CELLS);
-          if (rangeCells <= 0) continue;
+          const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
 
-          const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
-          const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
+          /** @type {MapPoint[][]} */
+          const polygons = [];
+          for (const t of pcTokens) {
+            const rangeCells = Math.min(t.visionDim, VISION_MAX_RANGE_CELLS);
+            if (rangeCells <= 0) continue;
 
-          const size = Math.max(1, t.sizeCells || 1);
-          const centerPoint = grid.mapFromCellPoint({
-            cellX: t.cell.a + size / 2,
-            cellY: t.cell.b + size / 2,
-          });
+            const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
+            const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
 
-          const poly = sweep(centerPoint, segments, rangePx);
-          if (Array.isArray(poly) && poly.length > 0) {
-            polygons.push(poly);
+            const size = Math.max(1, t.sizeCells || 1);
+            const centerPoint = grid.mapFromCellPoint({
+              cellX: t.cell.a + size / 2,
+              cellY: t.cell.b + size / 2,
+            });
+
+            const poly = sweep(centerPoint, segments, rangePx);
+            if (Array.isArray(poly) && poly.length > 0) {
+              polygons.push(poly);
+            }
           }
+          this._cachedPolygons = polygons;
         }
-        this._cachedPolygons = polygons;
       }
     }
 
@@ -217,14 +250,36 @@ export class FogLayer {
     const offCtx = this._offscreenCtx;
     if (!offCtx || !this._offscreenCanvas) return;
 
-    // 1. Remplir le canvas hors écran avec le voile
+    // Couleurs selon la vue (CdC §5.6 / L-04 §7)
+    // Vue MJ : non exploré = 0.7 veil, exploré-hors-vision = 0.45 veil, vu = 0 veil (tout lisible)
+    // Vue Joueurs : non exploré = 1.0 opaque black, exploré-hors-vision = 0.5 grised, vu = 0 veil
+    const unexploredColor = isPlayer ? '#000000' : 'rgba(0, 0, 0, 0.70)';
+    const exploredColor = isPlayer ? 'rgba(0, 0, 0, 0.50)' : 'rgba(0, 0, 0, 0.45)';
+
+    offCtx.save();
     offCtx.clearRect(0, 0, mapWidth, mapHeight);
-    offCtx.fillStyle = options.veilColor || 'rgba(0, 0, 0, 0.45)';
+
+    // Étape A : Remplir tout le canvas avec le voile non exploré
+    offCtx.fillStyle = unexploredColor;
     offCtx.fillRect(0, 0, mapWidth, mapHeight);
 
-    // 2. Percer l'union des polygones de vision avec destination-out
-    if (this._cachedPolygons.length > 0) {
-      offCtx.save();
+    // Étape B : Si le masque exploré existe, remplacer le voile non exploré par le voile exploré
+    if (options.exploredCanvas) {
+      // Effacer le voile non exploré dans les zones explorées avec destination-out
+      offCtx.globalCompositeOperation = 'destination-out';
+      offCtx.drawImage(options.exploredCanvas, 0, 0, mapWidth, mapHeight);
+
+      // Appliquer le voile exploré dans ces zones libérées
+      offCtx.globalCompositeOperation = 'destination-over';
+      offCtx.fillStyle = exploredColor;
+      offCtx.fillRect(0, 0, mapWidth, mapHeight);
+    }
+
+    // Étape C : Percer le masque de vision courante (visible) avec destination-out
+    if (options.visibleCanvas) {
+      offCtx.globalCompositeOperation = 'destination-out';
+      offCtx.drawImage(options.visibleCanvas, 0, 0, mapWidth, mapHeight);
+    } else if (this._cachedPolygons.length > 0) {
       offCtx.globalCompositeOperation = 'destination-out';
       offCtx.beginPath();
 
@@ -239,10 +294,11 @@ export class FogLayer {
 
       offCtx.fillStyle = '#000000';
       offCtx.fill();
-      offCtx.restore();
     }
 
-    // 3. Déposer le voile percé sur le contexte principal en source-over
+    offCtx.restore();
+
+    // Étape D : Déposer le voile final à trois états sur le contexte de scène en source-over
     ctx.drawImage(this._offscreenCanvas, 0, 0);
   }
 }

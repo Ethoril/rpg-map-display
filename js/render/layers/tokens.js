@@ -25,7 +25,12 @@ export const TOKEN_MOVE_STEP_MS = 160;
  *   isGM?: boolean,
  *   activeLevelId: string,
  *   now?: number,
- *   dragPreview?: { tokenId: string, mapPos: import('../../core/types.js').MapPoint }|null
+ *   dragPreview?: { tokenId: string, mapPos: import('../../core/types.js').MapPoint }|null,
+ *   visiblePolygons?: import('../../core/types.js').MapPoint[][],
+ *   visibleCanvas?: any,
+ *   activeLevelWidthCells?: number,
+ *   activeLevelHeightCells?: number,
+ *   createOffscreenCanvas?: (w: number, h: number) => any
  * }} RenderOptions
  */
 
@@ -183,7 +188,42 @@ export class TokensLayer {
         !(isPlayerView && token.hidden)
     );
 
-    ctx.save();
+    // Côté joueurs (L-04 §7) : les pions se composent sur un canvas hors écran auquel
+    // on applique le masque `visible` en `destination-in` pour qu'aucun pion
+    // n'apparaisse en zone explorée-hors-vision.
+    const usePlayerMask = isPlayerView && (options.visibleCanvas || (Array.isArray(options.visiblePolygons) && options.visiblePolygons.length > 0));
+    let targetCtx = ctx;
+    let offscreenCanvas = null;
+
+    let mapWidth = ctx.canvas?.width || 800;
+    let mapHeight = ctx.canvas?.height || 600;
+
+    if (usePlayerMask && options.activeLevelWidthCells && options.activeLevelHeightCells) {
+      const bottomRight = grid.mapFromCellPoint({
+        cellX: options.activeLevelWidthCells,
+        cellY: options.activeLevelHeightCells,
+      });
+      mapWidth = Math.ceil(bottomRight.x);
+      mapHeight = Math.ceil(bottomRight.y);
+    }
+
+    if (usePlayerMask) {
+      if (typeof options.createOffscreenCanvas === 'function') {
+        offscreenCanvas = options.createOffscreenCanvas(mapWidth, mapHeight);
+      } else if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+        offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = mapWidth;
+        offscreenCanvas.height = mapHeight;
+      }
+      if (offscreenCanvas) {
+        const offCtx = offscreenCanvas.getContext ? offscreenCanvas.getContext('2d') : offscreenCanvas._ctx;
+        if (offCtx) {
+          targetCtx = offCtx;
+        }
+      }
+    }
+
+    targetCtx.save();
     for (const token of visibleTokens) {
       if (!token.cell) continue;
       let position = tokenPosition(token, now);
@@ -198,11 +238,37 @@ export class TokensLayer {
       }
       result.animationActive ||= position.active;
       result.renderedTokenIds.push(token.id);
-      this._drawToken(ctx, grid, token, position, selectedTokenId === token.id);
+      this._drawToken(targetCtx, grid, token, position, selectedTokenId === token.id);
     }
-    ctx.restore();
+    targetCtx.restore();
+
+    if (usePlayerMask && offscreenCanvas && targetCtx !== ctx) {
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = 'destination-in';
+
+      if (options.visibleCanvas) {
+        targetCtx.drawImage(options.visibleCanvas, 0, 0, mapWidth, mapHeight);
+      } else if (Array.isArray(options.visiblePolygons)) {
+        targetCtx.beginPath();
+        for (const poly of options.visiblePolygons) {
+          if (!poly || poly.length === 0) continue;
+          targetCtx.moveTo(poly[0].x, poly[0].y);
+          for (let i = 1; i < poly.length; i++) {
+            targetCtx.lineTo(poly[i].x, poly[i].y);
+          }
+          targetCtx.closePath();
+        }
+        targetCtx.fillStyle = '#000000';
+        targetCtx.fill();
+      }
+
+      targetCtx.restore();
+      ctx.drawImage(offscreenCanvas, 0, 0);
+    }
+
     return result;
   }
+
 
   /**
    * @param {CanvasRenderingContext2D} ctx

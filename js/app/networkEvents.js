@@ -166,6 +166,17 @@ export function applyNetworkEvent(event) {
       store.setActiveHandout(null);
       return true;
     }
+    case 'fog.update': {
+      if (!payload.levelId || typeof payload.levelId !== 'string') return false;
+      store.setSessionFog(payload.levelId, typeof payload.png === 'string' ? payload.png : null);
+      return true;
+    }
+    case 'vision.update': {
+      if (!payload.levelId || typeof payload.levelId !== 'string') return false;
+      store.setSessionVision(payload.levelId, typeof payload.png === 'string' ? payload.png : null);
+      return true;
+    }
+
     default:
       return false;
   }

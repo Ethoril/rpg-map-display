@@ -12,9 +12,11 @@ import { FogLayer } from '../render/layers/fogLayer.js';
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
-import { GM_SESSION_STORAGE_KEY } from '../core/constants.js';
+import { GM_SESSION_STORAGE_KEY, VISION_MAX_RANGE_CELLS } from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
+import { ExploredFog } from '../vision/fog.js';
+
 import {
   createNetworkStatus,
   connectSession,
@@ -90,11 +92,193 @@ export async function bootstrapGMApp(options = {}) {
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
 
+  /** @type {Map<string, ExploredFog>} */
+  const exploredFogMap = new Map();
+  /** @type {Map<string, number>} */
+  const lastFogPublishTime = new Map();
+  /** @type {Map<string, any>} */
+  const fogPublishTrailing = new Map();
+
+  /**
+   * Masque exploré de l'étage, créé à la demande et restauré depuis la session.
+   *
+   * Domicile unique de cette création : le rendu **et** la révélation le long d'un
+   * déplacement en ont besoin, et deux fabriques divergeraient — chacune tiendrait son
+   * propre masque, et l'une des deux publierait un fog amputé.
+   *
+   * @param {import('../core/types.js').Level|null} level
+   * @returns {ExploredFog|null}
+   */
+  function getExploredFog(level) {
+    if (!level) return null;
+    let fog = exploredFogMap.get(level.id);
+    if (!fog || fog.widthCells !== level.widthCells || fog.heightCells !== level.heightCells) {
+      fog = new ExploredFog(level.widthCells, level.heightCells);
+      exploredFogMap.set(level.id, fog);
+      const savedFog = store.getSessionFog(level.id);
+      if (savedFog) void fog.importPng(savedFog);
+    }
+    return fog;
+  }
+
+  /**
+   * Publication du masque exploré au réseau, throttlée à 1 Hz (CdC §7).
+   *
+   * ⚠ Le throttle porte une **traîne**. Sans elle, la dernière révélation d'une rafale
+   * resterait indéfiniment non publiée : le rendu ne rappelle cette fonction que sur
+   * changement, donc si plus rien ne bouge après un déplacement throttlé, les tablettes
+   * gardent un fog en retard d'un mouvement — sans que rien ne le signale.
+   *
+   * @param {string} levelId
+   * @param {ExploredFog} exploredFog
+   */
+  function scheduleFogPublish(levelId, exploredFog) {
+    const now = Date.now();
+    const lastTime = lastFogPublishTime.get(levelId) || 0;
+    const reste = 1000 - (now - lastTime);
+
+    if (reste > 0) {
+      if (!fogPublishTrailing.has(levelId)) {
+        fogPublishTrailing.set(
+          levelId,
+          setTimeout(() => {
+            fogPublishTrailing.delete(levelId);
+            scheduleFogPublish(levelId, exploredFog);
+          }, reste)
+        );
+      }
+      return;
+    }
+
+    lastFogPublishTime.set(levelId, now);
+    void exploredFog.exportPng().then((png) => {
+      if (!png) return;
+      store.setSessionFog(levelId, png);
+      transport?.publish({
+        type: 'fog.update',
+        payload: { levelId, png },
+        at: Date.now(),
+        by: 'gm',
+      });
+    });
+  }
+
+  /** @type {Map<string, ExploredFog>} */
+  const visibleFogMap = new Map();
+  /** @type {Map<string, string>} */
+  const lastVisibleSignatureMap = new Map();
+
+  /**
+   * Publication en temps réel du masque de vision courante (visible).
+   *
+   * ⚠ La comparaison se fait sur la **signature**, donc AVANT l'encodage. Une première
+   * version appelait `exportPng()` à chaque image puis comparait la chaîne obtenue :
+   * `getImageData` et deflate — environ 6 ms sur la grande carte — tournaient à chaque
+   * image pendant l'animation d'un déplacement, pour presque toujours conclure « rien
+   * n'a changé ». C'est aussi un `getImageData` sur le chemin de déplacement, que le
+   * critère 8 interdit. `scheduleFogPublish`, juste au-dessus, avait déjà le bon
+   * réflexe : filtrer avant de payer.
+   *
+   * Contrairement au masque exploré, `visible` n'est **pas** throttlé : le critère 10
+   * exige qu'ouvrir une porte étende la vision en moins de 300 ms.
+   *
+   * @param {string} levelId
+   * @param {ExploredFog} visibleFog
+   * @param {string} signature Signature de la vision courante
+   */
+  function publishVisibleVision(levelId, visibleFog, signature) {
+    if (lastVisibleSignatureMap.get(levelId) === signature) return;
+    lastVisibleSignatureMap.set(levelId, signature);
+
+    void visibleFog.exportPng().then((png) => {
+      store.setSessionVision(levelId, png);
+      transport?.publish({
+        type: 'vision.update',
+        payload: { levelId, png },
+        at: Date.now(),
+        by: 'gm',
+      });
+    });
+  }
+
+  /**
+   * Cases traversées par un déplacement, extrémités comprises.
+   *
+   * Le MJ franchit les murs — privilège assumé et documenté (`PLAN-LOT2.md`) — donc le
+   * trajet est la droite entre les deux cases, pas un chemin calculé. C'est aussi ce que
+   * `token.move` publie déjà.
+   *
+   * @param {import('../core/types.js').Cell} from
+   * @param {import('../core/types.js').Cell} to
+   * @returns {import('../core/types.js').Cell[]}
+   */
+  function cellsAlongPath(from, to) {
+    const da = to.a - from.a;
+    const db = to.b - from.b;
+    const pas = Math.max(Math.abs(da), Math.abs(db));
+    if (pas === 0) return [{ a: from.a, b: from.b }];
+
+    /** @type {import('../core/types.js').Cell[]} */
+    const cases = [];
+    for (let i = 0; i <= pas; i++) {
+      cases.push({
+        a: from.a + Math.round((da * i) / pas),
+        b: from.b + Math.round((db * i) / pas),
+      });
+    }
+    return cases;
+  }
+
+  /**
+   * Révèle le fog exploré sur **toute** la trajectoire d'un pion porteur de vision.
+   *
+   * Critère 7 : sans cette passe, traverser un couloir ne révélerait que le départ et
+   * l'arrivée, et le milieu resterait noir. Le rendu, lui, ne connaît que la position
+   * courante — il ne peut pas rattraper les cases déjà quittées.
+   *
+   * @param {import('../core/types.js').Level} level
+   * @param {import('../core/types.js').Token} token
+   * @param {import('../core/types.js').Cell} from
+   * @param {import('../core/types.js').Cell} to
+   * @returns {number} Nombre de cases balayées, 0 si le pion ne porte pas de vision
+   */
+  function revealAlongMove(level, token, from, to) {
+    if (!level || !token || token.kind !== 'pc') return 0;
+    const rangeCells = Math.min(token.visionDim ?? 0, VISION_MAX_RANGE_CELLS);
+    if (rangeCells <= 0) return 0;
+
+    const grid = gridFor(level);
+    const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+    const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+    const gridScale = Math.abs(origin1.x - origin0.x);
+    const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
+    const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
+
+    const size = Math.max(1, token.sizeCells || 1);
+    const origins = cellsAlongPath(from, to).map((cell) =>
+      grid.mapFromCellPoint({ cellX: cell.a + size / 2, cellY: cell.b + size / 2 })
+    );
+
+    const exploredFog = getExploredFog(level);
+    if (!exploredFog) return 0;
+
+    const balayees = exploredFog.revealPath(
+      origins,
+      extractBlockedSegments(level, grid),
+      rangePx,
+      origin0,
+      gridScale
+    );
+    scheduleFogPublish(level.id, exploredFog);
+    return balayees;
+  }
+
   /** @type {{tokenId: string, mapPos: MapPoint}|null} */
   let dragPreview = null;
   /** @type {string|null} */
   let lastActiveLevelId = null;
   let restoredCamera = false;
+
 
   function fitActiveLevel() {
     const activeLevel = store.getActiveLevel();
@@ -162,16 +346,54 @@ export async function bootstrapGMApp(options = {}) {
         );
         animationActive = result.animationActive;
       },
-      fog: () =>
+      fog: () => {
+        const exploredFog = getExploredFog(activeLevel);
+        if (!exploredFog) return;
+
         fogLayer.render(
           stage.context,
           grid,
           activeLevel,
           state.campaign?.tokens ?? [],
-          { role: 'gm', extractSegments: extractBlockedSegments }
-        ),
+          {
+            role: 'gm',
+            extractSegments: extractBlockedSegments,
+            exploredCanvas: exploredFog.canvas,
+          }
+        );
 
+        const polygons = fogLayer.getVisiblePolygons();
+        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+        const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+        const gridScale = Math.abs(origin1.x - origin0.x);
+
+        if (polygons.length > 0) {
+          exploredFog.reveal(polygons, origin0, gridScale);
+          scheduleFogPublish(activeLevel.id, exploredFog);
+        }
+
+        // La vision courante ne se recompose et ne se republie que si elle a CHANGÉ.
+        // Sans ce filtre, l'animation d'un déplacement encodait un PNG par image.
+        const signature = fogLayer.getVisionSignature();
+        if (lastVisibleSignatureMap.get(activeLevel.id) !== signature) {
+          let visibleFog = visibleFogMap.get(activeLevel.id);
+          if (
+            !visibleFog ||
+            visibleFog.widthCells !== activeLevel.widthCells ||
+            visibleFog.heightCells !== activeLevel.heightCells
+          ) {
+            visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
+            visibleFogMap.set(activeLevel.id, visibleFog);
+          }
+          visibleFog.clear();
+          if (polygons.length > 0) {
+            visibleFog.reveal(polygons, origin0, gridScale);
+          }
+          publishVisibleVision(activeLevel.id, visibleFog, signature);
+        }
+      },
     });
+
 
     stage.context.restore();
     if (animationActive) requestRender();
@@ -364,6 +586,12 @@ export async function bootstrapGMApp(options = {}) {
         path: [from, targetCell],
         startedAt,
       });
+
+      // Critère 7 : le fog se révèle sur TOUTE la trajectoire, pas seulement à l'arrivée.
+      // Le rendu ne connaît que la position courante et ne peut pas rattraper les cases
+      // déjà quittées — c'est donc ici, au moment du déplacement, que ça se joue.
+      revealAlongMove(state.activeLevel, token, from, targetCell);
+
       transport?.publish({
         type: 'token.move',
         payload: { tokenId: token.id, from, to: targetCell, path: [from, targetCell], startedAt },

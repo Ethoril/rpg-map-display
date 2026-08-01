@@ -769,3 +769,83 @@ export function setActiveHandout(handout) {
 
   notifySubscribers();
 }
+
+/** @type {Map<string, string>} */
+const sessionFogMap = new Map();
+/** @type {Map<string, string>} */
+const sessionVisionMap = new Map();
+
+/**
+ * Recupere le masque exploré pour un étage.
+ * @param {string} levelId
+ * @returns {string|null} Base64 PNG brut ou null
+ */
+export function getSessionFog(levelId) {
+  if (!levelId) return null;
+  if (sessionFogMap.has(levelId)) {
+    return sessionFogMap.get(levelId) ?? null;
+  }
+  if (currentSessionId) {
+    try {
+      const storage = getStorage();
+      const saved = storage.getItem(`rpg_fog_${currentSessionId}_${levelId}`);
+      if (saved) {
+        sessionFogMap.set(levelId, saved);
+        return saved;
+      }
+    } catch {
+      // Ignorer l'erreur de storage
+    }
+  }
+  return null;
+}
+
+/**
+ * Enregistre le masque exploré pour un étage.
+ * @param {string} levelId
+ * @param {string|null} png Base64 PNG brut
+ */
+export function setSessionFog(levelId, png) {
+  if (!levelId) return;
+  if (!png) {
+    sessionFogMap.delete(levelId);
+    if (currentSessionId) {
+      try {
+        getStorage().removeItem(`rpg_fog_${currentSessionId}_${levelId}`);
+      } catch {}
+    }
+  } else {
+    sessionFogMap.set(levelId, png);
+    if (currentSessionId) {
+      try {
+        getStorage().setItem(`rpg_fog_${currentSessionId}_${levelId}`, png);
+      } catch {}
+    }
+  }
+  notifySubscribers();
+}
+
+/**
+ * Recupere le masque de vision courante (visible) pour un étage.
+ * @param {string} levelId
+ * @returns {string|null}
+ */
+export function getSessionVision(levelId) {
+  return levelId ? sessionVisionMap.get(levelId) ?? null : null;
+}
+
+/**
+ * Enregistre le masque de vision courante (visible) pour un étage.
+ * @param {string} levelId
+ * @param {string|null} png
+ */
+export function setSessionVision(levelId, png) {
+  if (!levelId) return;
+  if (!png) {
+    sessionVisionMap.delete(levelId);
+  } else {
+    sessionVisionMap.set(levelId, png);
+  }
+  notifySubscribers();
+}
+

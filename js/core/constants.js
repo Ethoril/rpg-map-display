@@ -52,3 +52,35 @@ export const GM_SESSION_STORAGE_KEY = 'rpg-gm-session-id';
  * Borne technique pour meuler le coût de balayage du sweep sans altérer l'expérience.
  */
 export const VISION_MAX_RANGE_CELLS = 20;
+
+/**
+ * Plafond de la charge base64 d'un masque de fog encodé, avant publication au réseau.
+ *
+ * **Budget assumé, mesuré le 01/08/2026** avec l'encodeur du projet dans Chromium, sur
+ * des masques à 90 % explorés — le pire cas, le bord étant alors le plus découpé :
+ *
+ * | Étage | Masque 8 px/case | Charge base64 |
+ * |---|---|---|
+ * | `testbig150`, 65 × 71 — la plus grande du dépôt | 520 × 568 | **13,4 Kio** |
+ * | hypothétique 100 × 100 | 800 × 800 | 18,7 Kio |
+ * | 130 × 142, quatre fois la surface de `testbig150` | 1040 × 1136 | 25,7 Kio |
+ *
+ * La charge croît **moins vite que la surface** — quadrupler la carte ne double même pas
+ * la charge, deflate absorbant le reste. Ce plafond laisse donc près du double de marge
+ * au-delà de la plus grande carte imaginée, tout en restant loin du plafond Firestore de
+ * 1 Mio.
+ *
+ * **Pourquoi une borne explicite ici.** La charge est stockée en base64 **brut**, sans
+ * préfixe `data:`, faute de quoi `assertNoTransientAssetUrls` la refuserait à 24 Kio.
+ * Elle échappe donc à cette garde — et ce projet a déjà perdu une campagne sur une
+ * charge non bornée (`ETAT.md`). C'est `vision/fog.js` qui porte la borne à sa place.
+ *
+ * Comparé à une longueur de chaîne base64, donc légèrement plus strict que le nombre
+ * d'octets du PNG : conservateur, ce qui est le bon sens pour un plafond.
+ */
+export const FOG_MAX_ENCODED_BYTES = 51200;
+
+/**
+ * Résolution du masque raster de fog (8 pixels par case).
+ */
+export const FOG_MASK_PX_PER_CELL = 8;

@@ -7,6 +7,8 @@ import { BackgroundLayer } from '../render/layers/background.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
+import { FogLayer } from '../render/layers/fogLayer.js';
+import { decodeFogPng } from '../vision/fog.js';
 import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
@@ -223,8 +225,58 @@ export async function bootstrapPlayerApp(options = {}) {
   const gridLayer = new GridLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
+  const fogLayer = new FogLayer();
+
+  /** @type {Map<string, { png: string, canvas: any }>} */
+  const playerExploredCanvasMap = new Map();
+
+  /**
+   * @param {import('../core/types.js').Level|null} level
+   */
+  function getPlayerExploredCanvas(level) {
+    if (!level) return null;
+    const png = store.getSessionFog(level.id);
+    if (!png) return null;
+
+    const existing = playerExploredCanvasMap.get(level.id);
+    if (existing && existing.png === png) {
+      return existing.canvas;
+    }
+
+    void decodeFogPng(png, level.widthCells, level.heightCells).then((canvas) => {
+      playerExploredCanvasMap.set(level.id, { png, canvas });
+      requestRender();
+    });
+
+    return existing ? existing.canvas : null;
+  }
+
+  /** @type {Map<string, { png: string, canvas: any }>} */
+  const playerVisibleCanvasMap = new Map();
+
+  /**
+   * @param {import('../core/types.js').Level|null} level
+   */
+  function getPlayerVisibleCanvas(level) {
+    if (!level) return null;
+    const png = store.getSessionVision(level.id);
+    if (!png) return null;
+
+    const existing = playerVisibleCanvasMap.get(level.id);
+    if (existing && existing.png === png) {
+      return existing.canvas;
+    }
+
+    void decodeFogPng(png, level.widthCells, level.heightCells).then((canvas) => {
+      playerVisibleCanvasMap.set(level.id, { png, canvas });
+      requestRender();
+    });
+
+    return existing ? existing.canvas : null;
+  }
 
   const urlParams = new URLSearchParams(window.location.search);
+
   // Même normalisation que côté MJ : le code est recopié à la main sur la tablette, la
   // casse ne doit pas décider silencieusement d'une autre session.
   const sessionId =
@@ -306,6 +358,7 @@ export async function bootstrapPlayerApp(options = {}) {
           reachableCells: state.reachableCells,
         }),
       tokens: () => {
+        const visibleCanvas = getPlayerVisibleCanvas(activeLevel);
         const result = tokensLayer.render(
           stage.context,
           grid,
@@ -314,12 +367,28 @@ export async function bootstrapPlayerApp(options = {}) {
           {
             role: 'players',
             activeLevelId: activeLevel.id,
+            activeLevelWidthCells: activeLevel.widthCells,
+            activeLevelHeightCells: activeLevel.heightCells,
+            visibleCanvas,
             now: Date.now(),
           }
         );
         animationActive = result.animationActive;
       },
+      fog: () =>
+        fogLayer.render(
+          stage.context,
+          grid,
+          activeLevel,
+          state.campaign?.tokens ?? [],
+          {
+            role: 'players',
+            exploredCanvas: getPlayerExploredCanvas(activeLevel),
+            visibleCanvas: getPlayerVisibleCanvas(activeLevel),
+          }
+        ),
     });
+
     stage.context.restore();
     if (animationActive) requestRender();
   }

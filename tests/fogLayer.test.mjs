@@ -482,6 +482,33 @@ test('Critère 5 : la signature couvre l axe b, l état des portes et la géomé
   assert.equal(getVisionComputeCount(), 5, 'Changer la géométrie des murs déclenche un recalcul');
 });
 
+test('La signature de vision distingue deux visions différentes — c est elle qui évite un encodage PNG par image', () => {
+  const level = createLevel({ id: 'rdc', widthCells: 10, heightCells: 10, pxPerCell: 10 });
+  const grid = gridFor(level);
+  const pc = createToken({ id: 'pj', levelId: 'rdc', kind: 'pc', cell: { a: 2, b: 2 }, visionDim: 5 });
+
+  const { ctx } = createMockCanvas(100, 100);
+  const fogLayer = createTestFogLayer();
+
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+  const s1 = fogLayer.getVisionSignature();
+  assert.ok(s1.length > 0, 'Une vision existante doit produire une signature non vide');
+
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+  assert.equal(fogLayer.getVisionSignature(), s1, 'Une vision inchangée garde la même signature');
+
+  // `gm.js` s'appuie sur ce changement pour republier le masque `visible`. Si la
+  // signature restait constante, la vision courante des joueurs se figerait après la
+  // première publication — sans que rien ne le signale.
+  const deplace = { ...pc, cell: { a: 7, b: 2 } };
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [deplace], defaultOptions());
+  assert.notEqual(
+    fogLayer.getVisionSignature(),
+    s1,
+    'Déplacer un pion doit changer la signature, sinon la vision publiée ne serait jamais rafraîchie'
+  );
+});
+
 test('Critère 6 : Helper extractBlockedSegments est partagé', () => {
   const level = createLevel({
     id: 'rdc',
