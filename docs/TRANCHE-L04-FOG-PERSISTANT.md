@@ -242,14 +242,102 @@ jamais toucher le contexte de la scène**, où il effacerait le fond et la grill
 
 ---
 
+## 7bis. Deux défauts trouvés à l'usage, le 02/08/2026
+
+Livrée, la tranche a tenu ses critères. Deux choses qu'aucun d'eux ne regardait ont sauté
+à la première vraie partie. Elles sont corrigées ; le rappel sert à ne pas les réintroduire.
+
+### L'autorité de vision ne doit pas dépendre de `requestAnimationFrame`
+
+**Symptôme.** Côté joueurs, le fog ne bougeait qu'au F5 ou au changement de fenêtre —
+alors même que c'était le joueur qui déplaçait son pion.
+
+**Cause.** Le §3 confie au MJ l'autorité de vision. Ce travail vivait dans `renderAll`,
+donc dans la boucle de rendu à la demande, donc dans `requestAnimationFrame` — que le
+navigateur **suspend** dès que la fenêtre MJ est cachée, occultée par une autre fenêtre ou
+minimisée. Le MJ recevait bien le `token.move` du joueur et mutait bien son store, mais ne
+recalculait plus rien : il ne publiait donc plus ni `vision.update` ni `fog.update`, et
+toutes les tablettes gardaient un fog figé jusqu'au retour de la fenêtre au premier plan.
+
+**Mesuré par mutation** (`tests/fogRealtime.spec.mjs`) : page MJ privée de
+`requestAnimationFrame`, zéro `vision.update` publié après un déplacement joueur ; frames
+rendues, publication immédiate. Avec des frames, l'ancien code passait — c'est pourquoi le
+test prive délibérément la page MJ de frames, et pourquoi aucun critère de la tranche ne
+pouvait attraper ce défaut.
+
+**Règle.** Le calcul et la publication de la vision vivent dans `syncVision()`, appelée sur
+**mutation du store**. `renderAll` ne fait plus que dessiner. La mémoïsation par signature
+reste ce qui rend l'appel bon marché quand rien n'a bougé — et elle est aussi ce qui
+**empêche le rebouclage** : publier écrit dans le store, le store notifie, la notification
+rappelle `syncVision`. Sans le filtre sur changement réel, le MJ diffusait 13 Kio par
+seconde, indéfiniment, partie à l'arrêt.
+
+### `destination-over` additionne les deux voiles, il ne les remplace pas
+
+**Symptôme.** En vue MJ, la zone jamais explorée était trop opaque pour qu'on y lise la
+carte, alors que la constante annonçait 0,70.
+
+**Cause.** L'étape B pose le voile exploré **sous** ce qui reste de l'étape A. Là où
+l'étape A n'a rien effacé — c'est-à-dire dans le non-exploré — les deux voiles
+s'additionnent : `1-(1-0,70)(1-0,45) = 0,835`. L'affichage était donc plus sombre d'un
+tiers que ce que le code disait, et personne ne pouvait s'en apercevoir en lisant les
+constantes.
+
+**Le mock de `fogLayer.test.mjs` ne pouvait pas le voir** : son `drawImage` ignore
+`globalCompositeOperation`, donc il ne modélise ni l'étape B ni l'étape C. La mesure
+appartient au navigateur (`tests/fogVeil.spec.mjs`), qui lit les trois états sur un fond
+clair connu et les compare aux constantes déclarées.
+
+**Règle.** L'étape A ne peint que le **complément** — `(U-E)/(1-E)` — pour que la
+composition vaille exactement `U`. Les valeurs de `core/constants.js` disent alors la
+vérité de ce qui s'affiche, ce qui est la condition pour pouvoir les régler.
+
+### Le trajet se révèle pour le joueur, pas pour le glisser du MJ
+
+**Symptôme.** Un couloir traversé par un joueur restait noir en son milieu ; un pion posé
+d'un bout à l'autre de la carte par le MJ, lui, ouvrait derrière lui une traînée de fog
+que personne n'avait parcourue. Les deux moitiés du même défaut, et son exact inverse.
+
+**Cause.** `revealAlongMove` n'était appelée que depuis le glisser du MJ. Le déplacement
+lancé par la table arrive par le réseau et ne passait pas par là : seule la case d'arrivée
+était révélée, par `syncVision`.
+
+**Le partage est celui du CdC** (ligne 384 : « chaque case du chemin **validé** »). Un
+joueur *marche* son trajet — chemin calculé par Dijkstra, murs respectés — et tout ce
+qu'il a aperçu en chemin lui reste acquis. Le MJ franchit les murs et pose un pion où il
+veut : son glisser n'est pas un trajet validé, et il n'a rien à révéler d'autre que ce qui
+se voit depuis la case d'arrivée.
+
+**Le trajet révélé est le chemin publié**, pas la droite entre les deux cases : c'est le
+vrai parcours marché. La droite ne sert plus que de repli, pour un `token.move` qui
+arriverait sans chemin.
+
+**Les deux moitiés cassent indépendamment** (`tests/fogTrajet.spec.mjs`) : ne vérifier que
+la révélation du trajet joueur laisserait le glisser MJ continuer d'ouvrir ses couloirs
+fantômes. La mesure porte sur le **masque publié**, décodé côté joueurs, et non sur les
+pixels rendus — à l'écran, le voile, la grille et le fond se superposent, et une mesure de
+couleur dirait autant du décor que du fog.
+
+### Et le réglage lui-même : les trois états se règlent ensemble
+
+Baisser la seule opacité du non-exploré vers celle de l'exploré les rendrait
+indiscernables — l'information « ils n'ont pas encore vu ça » disparaîtrait au moment même
+où l'on croit la rendre plus lisible. Vue MJ : **0,50 / 0,25 / 0**, écart net de 0,25 entre
+états voisins. Vue joueurs : inchangée, et **non réglable** — l'opacité pleine du
+non-exploré est ce qui masque mécaniquement les pions (§7).
+
+---
+
 ## 8. Critères d'acceptation
 
 Écrits pour être **falsifiables**. Sur les trois tranches précédentes, huit faux verts sont
 passés, aucun visible à la lecture. Chaque critère indique donc ce qu'un test faible ne
 verrait pas.
 
-1. **Critère 7 — le couloir entier.** Un pion traverse un couloir de dix cases d'un bout à
-   l'autre : **tout le couloir** est exploré, pas seulement l'arrivée ni seulement le départ.
+1. **Critère 7 — le couloir entier.** Un pion **déplacé par un joueur** traverse un couloir
+   de dix cases d'un bout à l'autre : **tout le couloir** est exploré, pas seulement
+   l'arrivée ni seulement le départ. Le même trajet **glissé par le MJ** ne révèle que
+   l'arrivée (§7bis).
    *Ce qu'un test faible manquerait :* vérifier que l'arrivée est révélée — c'est vrai même
    si l'on ne rasterise que la dernière case. Échantillonner **une case du milieu**, que ni
    le départ ni l'arrivée ne voient.
@@ -310,6 +398,11 @@ verrait pas.
 - **Ne pas** préfixer la charge par `data:` — et ne pas pour autant la laisser sans borne.
 - **Ne pas** ajouter de dépendance : `CompressionStream` est natif, `STACK.md` ne bouge pas.
 - **Ne pas** calculer la vision côté joueurs (§3), ni y appeler `sweep()`.
+- **Ne pas** remettre le calcul ni la publication de la vision dans la boucle de rendu
+  (§7bis) : une fenêtre MJ en arrière-plan n'a plus de frame, et fige le fog de la table.
+- **Ne pas** régler l'opacité d'un seul des trois états de la vue MJ (§7bis).
+- **Ne pas** révéler le trajet depuis le glisser du MJ (§7bis) : il franchit les murs, son
+  geste n'est pas un chemin validé.
 - **Ne pas** obtenir le critère 6 par une condition d'affichage par pion (§7).
 - **Ne pas** invalider le masque exploré sur mouvement (§8, critère 9).
 - **Ne pas** toucher `sweep.js` : L-02 est close, la piste d'accélération est pour après L-04.

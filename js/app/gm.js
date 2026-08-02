@@ -115,8 +115,21 @@ export async function bootstrapGMApp(options = {}) {
     if (!fog || fog.widthCells !== level.widthCells || fog.heightCells !== level.heightCells) {
       fog = new ExploredFog(level.widthCells, level.heightCells);
       exploredFogMap.set(level.id, fog);
+      // Le masque qui vient de naître est vierge : la vision courante doit y être
+      // reversée, ce que `syncVision` ne fait que sur changement de signature.
+      fogLayer.invalidate();
+
       const savedFog = store.getSessionFog(level.id);
-      if (savedFog) void fog.importPng(savedFog);
+      if (savedFog) {
+        // ⚠ `importPng` efface puis redessine : tout ce qui a été révélé entre la
+        // création du masque et l'atterrissage de l'import serait perdu **en silence**.
+        // On resynchronise donc derrière lui, plutôt que de parier sur l'ordonnancement.
+        void fog.importPng(savedFog).then(() => {
+          fogLayer.invalidate();
+          syncVision();
+          requestRender();
+        });
+      }
     }
     return fog;
   }
@@ -125,7 +138,7 @@ export async function bootstrapGMApp(options = {}) {
    * Publication du masque exploré au réseau, throttlée à 1 Hz (CdC §7).
    *
    * ⚠ Le throttle porte une **traîne**. Sans elle, la dernière révélation d'une rafale
-   * resterait indéfiniment non publiée : le rendu ne rappelle cette fonction que sur
+   * resterait indéfiniment non publiée : l'appelant ne rappelle cette fonction que sur
    * changement, donc si plus rien ne bouge après un déplacement throttlé, les tablettes
    * gardent un fog en retard d'un mouvement — sans que rien ne le signale.
    *
@@ -202,11 +215,69 @@ export async function bootstrapGMApp(options = {}) {
   }
 
   /**
+   * Passe d'autorité du fog : recalcule la vision, la verse dans le masque exploré,
+   * et publie les deux masques aux tablettes.
+   *
+   * ⚠ **Elle ne vit pas dans la boucle de rendu, et ne doit pas y retourner.** Le MJ est
+   * l'autorité de vision de toute la session ; tant que ce travail était fait depuis
+   * `renderAll`, il dépendait de `requestAnimationFrame`, que le navigateur suspend dès
+   * que la fenêtre MJ est cachée, occultée par une autre fenêtre ou minimisée. Le MJ
+   * cessait alors de publier : les tablettes gardaient un fog figé, et il ne se
+   * débloquait qu'au retour de la fenêtre au premier plan ou à un F5 — exactement le
+   * défaut observé le 2 août 2026. Mesuré par mutation : MJ privé de frames, zéro
+   * `vision.update` publié ; frames rendues, publication immédiate.
+   *
+   * La révélation et les publications sont conditionnées au **changement réel** de la
+   * vision. Les appeler inconditionnellement rebouclerait : publier écrit dans le store,
+   * le store notifie, la notification rappelle cette fonction — et le MJ diffusait alors
+   * un masque de 13 Kio par seconde, indéfiniment, même partie à l'arrêt.
+   */
+  function syncVision() {
+    const state = store.getState();
+    const activeLevel = state.activeLevel;
+    if (!activeLevel) return;
+
+    const grid = gridFor(activeLevel);
+    const exploredFog = getExploredFog(activeLevel);
+    if (!exploredFog) return;
+
+    const change = fogLayer.updateVision(grid, activeLevel, state.campaign?.tokens ?? [], {
+      extractSegments: extractBlockedSegments,
+    });
+    if (!change) return;
+
+    const polygons = fogLayer.getVisiblePolygons();
+    const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+    const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+    const gridScale = Math.abs(origin1.x - origin0.x);
+
+    if (polygons.length > 0) {
+      exploredFog.reveal(polygons, origin0, gridScale);
+      scheduleFogPublish(activeLevel.id, exploredFog);
+    }
+
+    let visibleFog = visibleFogMap.get(activeLevel.id);
+    if (
+      !visibleFog ||
+      visibleFog.widthCells !== activeLevel.widthCells ||
+      visibleFog.heightCells !== activeLevel.heightCells
+    ) {
+      visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
+      visibleFogMap.set(activeLevel.id, visibleFog);
+    }
+    visibleFog.clear();
+    if (polygons.length > 0) {
+      visibleFog.reveal(polygons, origin0, gridScale);
+    }
+    publishVisibleVision(activeLevel.id, visibleFog, fogLayer.getVisionSignature());
+  }
+
+  /**
    * Cases traversées par un déplacement, extrémités comprises.
    *
-   * Le MJ franchit les murs — privilège assumé et documenté (`PLAN-LOT2.md`) — donc le
-   * trajet est la droite entre les deux cases, pas un chemin calculé. C'est aussi ce que
-   * `token.move` publie déjà.
+   * Repli utilisé quand un `token.move` arrive **sans** chemin : la droite entre les deux
+   * cases. Le chemin publié par la vue joueurs, lui, est le vrai trajet marché — c'est
+   * celui-là qu'il faut révéler, et il est préféré dès qu'il est là.
    *
    * @param {import('../core/types.js').Cell} from
    * @param {import('../core/types.js').Cell} to
@@ -233,17 +304,25 @@ export async function bootstrapGMApp(options = {}) {
    * Révèle le fog exploré sur **toute** la trajectoire d'un pion porteur de vision.
    *
    * Critère 7 : sans cette passe, traverser un couloir ne révélerait que le départ et
-   * l'arrivée, et le milieu resterait noir. Le rendu, lui, ne connaît que la position
+   * l'arrivée, et le milieu resterait noir. `syncVision`, lui, ne connaît que la position
    * courante — il ne peut pas rattraper les cases déjà quittées.
+   *
+   * ⚠ **Elle appartient au déplacement joueur, pas au glisser du MJ.** Un joueur *marche*
+   * son trajet : chaque case traversée est vécue, et ce qu'il a aperçu en chemin lui reste
+   * acquis. Le MJ, lui, franchit les murs et pose un pion où il veut — privilège assumé
+   * (`PLAN-LOT2.md`) — donc son glisser n'est pas un trajet marché, et n'a rien à révéler
+   * d'autre que ce qui se voit depuis la case d'arrivée. Le code faisait exactement
+   * l'inverse jusqu'au 02/08/2026 : le glisser MJ ouvrait un couloir de fog que personne
+   * n'avait parcouru, et le déplacement du joueur n'en ouvrait aucun.
    *
    * @param {import('../core/types.js').Level} level
    * @param {import('../core/types.js').Token} token
-   * @param {import('../core/types.js').Cell} from
-   * @param {import('../core/types.js').Cell} to
+   * @param {import('../core/types.js').Cell[]} cells Cases traversées, extrémités comprises
    * @returns {number} Nombre de cases balayées, 0 si le pion ne porte pas de vision
    */
-  function revealAlongMove(level, token, from, to) {
+  function revealAlongMove(level, token, cells) {
     if (!level || !token || token.kind !== 'pc') return 0;
+    if (!Array.isArray(cells) || cells.length === 0) return 0;
     const rangeCells = Math.min(token.visionDim ?? 0, VISION_MAX_RANGE_CELLS);
     if (rangeCells <= 0) return 0;
 
@@ -255,7 +334,7 @@ export async function bootstrapGMApp(options = {}) {
     const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
 
     const size = Math.max(1, token.sizeCells || 1);
-    const origins = cellsAlongPath(from, to).map((cell) =>
+    const origins = cells.map((cell) =>
       grid.mapFromCellPoint({ cellX: cell.a + size / 2, cellY: cell.b + size / 2 })
     );
 
@@ -346,6 +425,10 @@ export async function bootstrapGMApp(options = {}) {
         );
         animationActive = result.animationActive;
       },
+      // Rendu pur : ni révélation, ni publication ici. Elles appartiennent à
+      // `syncVision`, qui doit tourner même quand le navigateur ne donne plus de frame
+      // à cette fenêtre. `fogLayer` recalcule au besoin, et sa mémoïsation par
+      // signature fait que ce recalcul n'a normalement plus rien à faire.
       fog: () => {
         const exploredFog = getExploredFog(activeLevel);
         if (!exploredFog) return;
@@ -361,36 +444,6 @@ export async function bootstrapGMApp(options = {}) {
             exploredCanvas: exploredFog.canvas,
           }
         );
-
-        const polygons = fogLayer.getVisiblePolygons();
-        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-        const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-        const gridScale = Math.abs(origin1.x - origin0.x);
-
-        if (polygons.length > 0) {
-          exploredFog.reveal(polygons, origin0, gridScale);
-          scheduleFogPublish(activeLevel.id, exploredFog);
-        }
-
-        // La vision courante ne se recompose et ne se republie que si elle a CHANGÉ.
-        // Sans ce filtre, l'animation d'un déplacement encodait un PNG par image.
-        const signature = fogLayer.getVisionSignature();
-        if (lastVisibleSignatureMap.get(activeLevel.id) !== signature) {
-          let visibleFog = visibleFogMap.get(activeLevel.id);
-          if (
-            !visibleFog ||
-            visibleFog.widthCells !== activeLevel.widthCells ||
-            visibleFog.heightCells !== activeLevel.heightCells
-          ) {
-            visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
-            visibleFogMap.set(activeLevel.id, visibleFog);
-          }
-          visibleFog.clear();
-          if (polygons.length > 0) {
-            visibleFog.reveal(polygons, origin0, gridScale);
-          }
-          publishVisibleVision(activeLevel.id, visibleFog, signature);
-        }
       },
     });
 
@@ -466,7 +519,11 @@ export async function bootstrapGMApp(options = {}) {
     }, 250);
   }
 
+  // Toute mutation du store est une occasion, pour l'autorité de vision, de constater
+  // qu'elle a changé — déplacement de pion venu du réseau compris. C'est ce qui rend la
+  // publication indépendante des frames que le navigateur veut bien accorder.
   const unsubscribeStore = store.subscribe(() => {
+    syncVision();
     requestRender();
     scheduleSnapshot();
   });
@@ -476,11 +533,41 @@ export async function bootstrapGMApp(options = {}) {
   if (transport) {
     unsubscribeEvents = transport.subscribe((event) => {
       if (transportExtended.isOwnEvent?.(event)) return;
+
+      // Position d'avant, lue AVANT que l'événement ne la remplace. Le payload porte
+      // normalement `from`, mais s'y fier seul laisserait le trajet non révélé sur un
+      // client qui l'omet — et rien ne le signalerait.
+      const payload = /** @type {any} */ (event.payload) || {};
+      const avant =
+        event.type === 'token.move'
+          ? store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId)?.cell ?? null
+          : null;
+
       applyingRemote = true;
+      let mute = false;
       try {
-        applyNetworkEvent(event);
+        mute = applyNetworkEvent(event);
       } finally {
         applyingRemote = false;
+      }
+
+      // Un déplacement venu de la table est un trajet **marché** : tout ce qui a été
+      // aperçu en chemin reste acquis (critère 7). C'est ici, et nulle part ailleurs,
+      // que le MJ — seule autorité de vision — peut le savoir : la mutation ne lui
+      // laisse que la case d'arrivée.
+      if (mute && event.type === 'token.move') {
+        const level = store.getActiveLevel();
+        const token = store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId) ?? null;
+        if (level && token && token.levelId === level.id) {
+          const depart = payload.from ?? avant;
+          const trajet =
+            Array.isArray(payload.path) && payload.path.length > 0
+              ? payload.path
+              : depart
+                ? cellsAlongPath(depart, token.cell)
+                : [];
+          revealAlongMove(level, token, trajet);
+        }
       }
     });
     try {
@@ -587,10 +674,10 @@ export async function bootstrapGMApp(options = {}) {
         startedAt,
       });
 
-      // Critère 7 : le fog se révèle sur TOUTE la trajectoire, pas seulement à l'arrivée.
-      // Le rendu ne connaît que la position courante et ne peut pas rattraper les cases
-      // déjà quittées — c'est donc ici, au moment du déplacement, que ça se joue.
-      revealAlongMove(state.activeLevel, token, from, targetCell);
+      // Pas de révélation le long du trajet ici : le MJ franchit les murs et pose son
+      // pion où il veut, ce glisser n'est pas un trajet marché. `syncVision`, déclenché
+      // par la mutation ci-dessus, révèle ce qui se voit depuis la case d'arrivée — et
+      // c'est tout ce qui doit l'être.
 
       transport?.publish({
         type: 'token.move',
@@ -619,6 +706,9 @@ export async function bootstrapGMApp(options = {}) {
     requestRender();
   };
   window.addEventListener('resize', onResize);
+  // Première passe d'autorité explicite : une fenêtre MJ ouverte déjà en arrière-plan
+  // n'obtiendrait aucune frame, et n'aurait donc jamais publié l'état initial du fog.
+  syncVision();
   requestRender();
 
   const destroy = () => {

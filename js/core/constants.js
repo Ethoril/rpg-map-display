@@ -84,3 +84,30 @@ export const FOG_MAX_ENCODED_BYTES = 51200;
  * Résolution du masque raster de fog (8 pixels par case).
  */
 export const FOG_MASK_PX_PER_CELL = 8;
+
+/**
+ * Opacités du voile de fog dans la **vue MJ**, par état de la case.
+ *
+ * La vue MJ est une carte de travail : le MJ doit *savoir* qu'une zone n'est pas
+ * découverte sans cesser de la lire. Les deux valeurs se règlent donc **ensemble**.
+ * Baisser la seule opacité du non-exploré vers celle de l'exploré rendrait les deux
+ * états indiscernables — l'information « ils n'ont pas encore vu ça » disparaîtrait
+ * au moment même où on croit la rendre plus lisible. Garder un écart net entre les
+ * trois états (non exploré, exploré hors vision, vu) est la contrainte, pas le
+ * niveau absolu de l'un d'eux.
+ *
+ * « Vu maintenant » vaut 0 : aucun voile, et donc aucune constante.
+ */
+export const FOG_VEIL_GM_UNEXPLORED = 0.5;
+export const FOG_VEIL_GM_EXPLORED = 0.25;
+
+/**
+ * Opacités du voile dans la **vue joueurs**.
+ *
+ * Contrairement aux précédentes, celles-ci ne se règlent pas au goût : l'opacité pleine
+ * du non-exploré est ce qui masque **mécaniquement** les pions qui s'y trouvent, la
+ * couche de fog étant dessinée au-dessus des pions (L-04 §7). L'abaisser laisserait
+ * transparaître un PNJ embusqué dans une zone que les joueurs n'ont jamais vue.
+ */
+export const FOG_VEIL_PLAYER_UNEXPLORED = 1;
+export const FOG_VEIL_PLAYER_EXPLORED = 0.5;

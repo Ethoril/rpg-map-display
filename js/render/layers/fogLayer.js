@@ -1,6 +1,12 @@
 // @ts-check
 
-import { VISION_MAX_RANGE_CELLS } from '../../core/constants.js';
+import {
+  FOG_VEIL_GM_EXPLORED,
+  FOG_VEIL_GM_UNEXPLORED,
+  FOG_VEIL_PLAYER_EXPLORED,
+  FOG_VEIL_PLAYER_UNEXPLORED,
+  VISION_MAX_RANGE_CELLS,
+} from '../../core/constants.js';
 import { sweep } from '../../vision/sweep.js';
 
 /** @typedef {import('../../core/types.js').Level} Level */
@@ -159,6 +165,75 @@ export class FogLayer {
   }
 
   /**
+   * Recalcule la vision courante si elle a changé, **sans rien dessiner**.
+   *
+   * ⚠ Ce calcul ne doit surtout pas rester prisonnier du rendu. Côté MJ il est
+   * autoritaire : c'est lui qui alimente le masque publié aux tablettes. Tant qu'il ne
+   * vivait que dans `render()`, un onglet MJ caché, occulté ou minimisé — le navigateur
+   * suspend alors `requestAnimationFrame` — cessait de recalculer la vision, et le fog
+   * de toutes les tablettes restait figé jusqu'au retour de la fenêtre au premier plan.
+   * Mesuré : privé de frames, le MJ ne publiait plus aucun `vision.update`.
+   *
+   * La mémoïsation par signature est conservée : appeler cette méthode à chaque mutation
+   * du store coûte une construction de chaîne quand rien de visuel n'a bougé.
+   *
+   * @param {GridAdapter} grid
+   * @param {Level|null} level
+   * @param {Token[]} tokens
+   * @param {Object} [options]
+   * @param {Segment[]} [options.segments]
+   * @param {(lvl: Level, g: GridAdapter) => Segment[]} [options.extractSegments]
+   * @returns {boolean} true si la vision a réellement été recalculée
+   */
+  updateVision(grid, level, tokens, options = {}) {
+    if (!grid || !level) return false;
+
+    const signature = buildVisionSignature(level, tokens || []);
+    if (signature === this._lastSignature) return false;
+    this._lastSignature = signature;
+    computeCount++;
+
+    const pcTokens = (tokens || []).filter(
+      (t) => t && t.levelId === level.id && t.kind === 'pc' && typeof t.visionDim === 'number' && t.visionDim > 0
+    );
+
+    if (pcTokens.length === 0) {
+      this._cachedPolygons = [];
+      return true;
+    }
+
+    /** @type {Segment[]} */
+    const segments =
+      options.segments ||
+      (typeof options.extractSegments === 'function' ? options.extractSegments(level, grid) : []);
+
+    const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+
+    /** @type {MapPoint[][]} */
+    const polygons = [];
+    for (const t of pcTokens) {
+      const rangeCells = Math.min(t.visionDim, VISION_MAX_RANGE_CELLS);
+      if (rangeCells <= 0) continue;
+
+      const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
+      const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
+
+      const size = Math.max(1, t.sizeCells || 1);
+      const centerPoint = grid.mapFromCellPoint({
+        cellX: t.cell.a + size / 2,
+        cellY: t.cell.b + size / 2,
+      });
+
+      const poly = sweep(centerPoint, segments, rangePx);
+      if (Array.isArray(poly) && poly.length > 0) {
+        polygons.push(poly);
+      }
+    }
+    this._cachedPolygons = polygons;
+    return true;
+  }
+
+  /**
    * Rendu du voile à trois états (vu maintenant, exploré-hors-vision, jamais exploré).
    *
    * @param {CanvasRenderingContext2D} ctx Contexte de scène principal
@@ -179,52 +254,12 @@ export class FogLayer {
     const role = options.role || 'gm';
     const isPlayer = role === 'players';
 
-    // 1. Calcul / mise à jour des polygones de vision courante (Mac / GM autoritaire)
+    // 1. Calcul / mise à jour des polygones de vision courante (Mac / GM autoritaire).
+    // Le calcul lui-même vit dans `updateVision`, que le MJ appelle aussi hors rendu.
     if (options.visiblePolygons) {
       this._cachedPolygons = options.visiblePolygons;
     } else if (role === 'gm') {
-      const signature = buildVisionSignature(level, tokens || []);
-      if (signature !== this._lastSignature) {
-        this._lastSignature = signature;
-        computeCount++;
-
-        const pcTokens = (tokens || []).filter(
-          (t) => t && t.levelId === level.id && t.kind === 'pc' && typeof t.visionDim === 'number' && t.visionDim > 0
-        );
-
-        if (pcTokens.length === 0) {
-          this._cachedPolygons = [];
-        } else {
-          /** @type {Segment[]} */
-          const segments =
-            options.segments ||
-            (typeof options.extractSegments === 'function' ? options.extractSegments(level, grid) : []);
-
-          const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-
-          /** @type {MapPoint[][]} */
-          const polygons = [];
-          for (const t of pcTokens) {
-            const rangeCells = Math.min(t.visionDim, VISION_MAX_RANGE_CELLS);
-            if (rangeCells <= 0) continue;
-
-            const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
-            const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
-
-            const size = Math.max(1, t.sizeCells || 1);
-            const centerPoint = grid.mapFromCellPoint({
-              cellX: t.cell.a + size / 2,
-              cellY: t.cell.b + size / 2,
-            });
-
-            const poly = sweep(centerPoint, segments, rangePx);
-            if (Array.isArray(poly) && poly.length > 0) {
-              polygons.push(poly);
-            }
-          }
-          this._cachedPolygons = polygons;
-        }
-      }
+      this.updateVision(grid, level, tokens, options);
     }
 
     const bottomRight = grid.mapFromCellPoint({
@@ -250,17 +285,32 @@ export class FogLayer {
     const offCtx = this._offscreenCtx;
     if (!offCtx || !this._offscreenCanvas) return;
 
-    // Couleurs selon la vue (CdC §5.6 / L-04 §7)
-    // Vue MJ : non exploré = 0.7 veil, exploré-hors-vision = 0.45 veil, vu = 0 veil (tout lisible)
-    // Vue Joueurs : non exploré = 1.0 opaque black, exploré-hors-vision = 0.5 grised, vu = 0 veil
-    const unexploredColor = isPlayer ? '#000000' : 'rgba(0, 0, 0, 0.70)';
-    const exploredColor = isPlayer ? 'rgba(0, 0, 0, 0.50)' : 'rgba(0, 0, 0, 0.45)';
+    // Opacités visées selon la vue (CdC §5.6 / L-04 §7). Elles se règlent dans
+    // `core/constants.js`, où le lien entre elles est documenté — vue MJ : trois états
+    // qui doivent rester discernables ; vue joueurs : opacité pleine qui masque les pions.
+    const veilUnexplored = isPlayer ? FOG_VEIL_PLAYER_UNEXPLORED : FOG_VEIL_GM_UNEXPLORED;
+    const veilExplored = isPlayer ? FOG_VEIL_PLAYER_EXPLORED : FOG_VEIL_GM_EXPLORED;
+
+    // ⚠ L'étape B pose le voile exploré **sous** ce qui reste de l'étape A
+    // (`destination-over`). Dans les zones jamais explorées, où l'étape A n'a rien
+    // effacé, les deux voiles s'additionnent donc au lieu de se remplacer : peindre
+    // l'étape A directement à l'opacité visée affichait `1-(1-U)(1-E)`. C'est ce qui
+    // rendait la vue MJ bien plus opaque que ses propres valeurs ne le disaient —
+    // 0,70 et 0,45 donnaient un voile réel de 0,835, et la zone non découverte était
+    // illisible. On ne peint ici que le **complément**, pour que la somme vaille U.
+    //
+    // Sans masque exploré, l'étape B n'a pas lieu : la valeur visée se peint telle
+    // quelle. Et côté joueurs, U vaut 1 : le complément vaut 1 aussi, rien ne change.
+    const unexploredAlpha =
+      options.exploredCanvas && veilExplored < 1
+        ? Math.max(0, (veilUnexplored - veilExplored) / (1 - veilExplored))
+        : veilUnexplored;
 
     offCtx.save();
     offCtx.clearRect(0, 0, mapWidth, mapHeight);
 
     // Étape A : Remplir tout le canvas avec le voile non exploré
-    offCtx.fillStyle = unexploredColor;
+    offCtx.fillStyle = `rgba(0, 0, 0, ${unexploredAlpha})`;
     offCtx.fillRect(0, 0, mapWidth, mapHeight);
 
     // Étape B : Si le masque exploré existe, remplacer le voile non exploré par le voile exploré
@@ -271,7 +321,7 @@ export class FogLayer {
 
       // Appliquer le voile exploré dans ces zones libérées
       offCtx.globalCompositeOperation = 'destination-over';
-      offCtx.fillStyle = exploredColor;
+      offCtx.fillStyle = `rgba(0, 0, 0, ${veilExplored})`;
       offCtx.fillRect(0, 0, mapWidth, mapHeight);
     }
 
