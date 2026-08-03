@@ -245,8 +245,8 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    **pan de la carte**. C'est la violation la plus probable, parce que le drag paraît être
    le geste « naturel » d'un VTT. Il ne l'est pas ici.
 2. **Ne jamais ajouter d'élément d'interface à la vue joueurs** : ni barre d'outils, ni
-   menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, les pions, le fog, le
-   sélecteur d'étage et les gabarits s'affichent.
+   menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, l'indicateur d'état des portes,
+   les pions, le fog, le sélecteur d'étage et les gabarits s'affichent.
 
    > **Quatre dérogations, et quatre seulement** (cf. `STACK.md` §5bis) :
    > - **Overlay de version au chargement** — 4 s puis disparition totale,

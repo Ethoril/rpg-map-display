@@ -126,6 +126,7 @@ test('Porte ouverte ne bloque pas, la même porte fermée/verrouillée bloque', 
         id: 'door-1',
         a: { cellX: 1, cellY: 0 },
         b: { cellX: 1, cellY: 1 },
+        state: /** @type {'open'} */ ('open'),
         closed: false,
         freestanding: false,
       },
@@ -141,7 +142,7 @@ test('Porte ouverte ne bloque pas, la même porte fermée/verrouillée bloque', 
   // 2. Même porte fermée (closed: true)
   const levelClosed = createLevel({
     ...levelData,
-    portals: [{ ...levelData.portals[0], closed: true }],
+    portals: [{ ...levelData.portals[0], state: 'closed', closed: true }],
   });
   const gridClosed = gridFor(levelClosed);
   const edgesClosed = computeBlockedEdges(levelClosed, gridClosed);

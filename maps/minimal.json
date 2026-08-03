@@ -57,6 +57,7 @@
             "cellX": 5.5,
             "cellY": 2
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         }

@@ -8,6 +8,7 @@ import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
+import { PortalsLayer } from '../render/layers/portals.js';
 import { decodeFogPng } from '../vision/fog.js';
 import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
@@ -223,6 +224,7 @@ export async function bootstrapPlayerApp(options = {}) {
 
   const backgroundLayer = new BackgroundLayer({ invalidate: requestRender });
   const gridLayer = new GridLayer();
+  const portalsLayer = new PortalsLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
@@ -352,6 +354,7 @@ export async function bootstrapPlayerApp(options = {}) {
           role: 'players',
         }),
       grid: () => gridLayer.render(stage.context, grid),
+      portals: () => portalsLayer.render(stage.context, grid, activeLevel),
       moveZone: () =>
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,

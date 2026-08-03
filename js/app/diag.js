@@ -98,6 +98,7 @@ function diagnosticStore() {
       id: `porte-${i}`,
       a: { cellX: i % LARGEUR, cellY: i % HAUTEUR },
       b: { cellX: (i % LARGEUR) + 1, cellY: i % HAUTEUR },
+      state: 'closed',
       closed: true,
       freestanding: false,
     });

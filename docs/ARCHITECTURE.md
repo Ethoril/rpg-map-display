@@ -101,6 +101,7 @@ F:\rpg-map-display\
 │   │   └─ layers/
 │   │       ├─ background.js      [1a] image de fond
 │   │       ├─ gridLayer.js       [1a] délègue le tracé à GridAdapter.renderGrid
+│   │       ├─ portals.js         [2]  indicateur d'état des trois états
 │   │       ├─ moveZone.js        [1a] cases atteignables — NON interactif
 │   │       ├─ tokens.js          [1a] pions, badges élévation/marqueurs
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu

@@ -38,7 +38,7 @@ export function resetBlockedEdgesComputeCount() {
  * Supporte `portal.closed` (booléen) et le futur `portal.state` ('open' | 'closed' | 'locked').
  * Une porte n'est ouverte que si state === 'open' ou (!state && closed === false).
  *
- * @param {Portal} portal
+ * @param {Portal | {closed?: boolean, state?: string}} portal
  * @returns {boolean}
  */
 export function isPortalOpen(portal) {

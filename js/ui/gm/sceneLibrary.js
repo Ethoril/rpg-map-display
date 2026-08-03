@@ -1,6 +1,6 @@
 // @ts-check
 import { loadCatalog } from '../../import/catalog.js';
-import { validateCampaign } from '../../core/schema.js';
+import { validateCampaign, normalizeCampaign } from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
 /**
@@ -91,16 +91,17 @@ export async function createSceneLibrary(container, options = {}) {
       }
 
       const sceneData = await response.json();
+      const normalizedData = normalizeCampaign(sceneData);
 
       // Valider AVANT toute mutation du store (plan §7.2)
-      const errors = validateCampaign(sceneData);
+      const errors = validateCampaign(normalizedData);
       if (errors.length > 0) {
         throw new Error(`scène invalide — ${errors.join(' ; ')}`);
       }
 
       // Vérifier la cohérence scène/catalogue (plan §7.3). Un écart signale des
       // artefacts non régénérés : on le signale au lieu de l'écraser en silence.
-      const sceneImageUrl = sceneData.levels?.[0]?.imageUrl;
+      const sceneImageUrl = normalizedData.levels?.[0]?.imageUrl;
       if (sceneImageUrl !== mapEntry.imageUrl) {
         throw new Error(
           `incohérence d'artefacts — la scène référence "${sceneImageUrl}" ` +
@@ -110,9 +111,9 @@ export async function createSceneLibrary(container, options = {}) {
       }
 
       if (mode === 'load') {
-        store.loadCampaign(sceneData);
+        store.loadCampaign(normalizedData);
       } else {
-        for (const level of sceneData.levels) {
+        for (const level of normalizedData.levels) {
           store.addLevel(level);
         }
       }

@@ -212,6 +212,7 @@ export function parseUvtt(jsonInput) {
         id: p.id || `portal-${portalIdx++}`,
         a: { cellX: ptA.x, cellY: ptA.y },
         b: { cellX: ptB.x, cellY: ptB.y },
+        state: p.closed === false ? 'open' : 'closed',
         closed: p.closed ?? true,
         freestanding: p.freestanding ?? false,
       });

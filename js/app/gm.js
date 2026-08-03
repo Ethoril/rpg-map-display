@@ -8,6 +8,7 @@ import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
+import { PortalsLayer } from '../render/layers/portals.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
@@ -88,6 +89,7 @@ export async function bootstrapGMApp(options = {}) {
 
   const backgroundLayer = new BackgroundLayer({ invalidate: requestRender });
   const gridLayer = new GridLayer();
+  const portalsLayer = new PortalsLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
@@ -405,6 +407,7 @@ export async function bootstrapGMApp(options = {}) {
       background: () =>
         backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, { role: 'gm' }),
       grid: () => gridLayer.render(stage.context, grid),
+      portals: () => portalsLayer.render(stage.context, grid, activeLevel),
       moveZone: () =>
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
@@ -640,7 +643,59 @@ export async function bootstrapGMApp(options = {}) {
       const grid = gridFor(state.activeLevel);
       const cell = grid.cellFromPoint(intention.mapPos);
       const token = tokenAtCell(state.campaign, state.activeLevel, cell);
-      store.selectToken(token?.id ?? null);
+      if (token) {
+        store.selectToken(token.id);
+        return;
+      }
+
+      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos);
+      if (hitPortal) {
+        /** @type {'open'|'closed'|null} */
+        let targetState = null;
+        if (hitPortal.state === 'closed') {
+          targetState = 'open';
+        } else if (hitPortal.state === 'open') {
+          targetState = 'closed';
+        }
+        if (targetState) {
+          store.setPortalState(state.activeLevel.id, hitPortal.id, targetState);
+          transport?.publish({
+            type: 'portal.toggle',
+            payload: {
+              levelId: state.activeLevel.id,
+              portalId: hitPortal.id,
+              state: targetState,
+            },
+            at: Date.now(),
+            by: 'gm',
+          });
+        }
+        return;
+      }
+
+      store.selectToken(null);
+      return;
+    }
+
+    if (intention.type === 'longPress') {
+      const state = store.getState();
+      if (!state.activeLevel) return;
+      const grid = gridFor(state.activeLevel);
+      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos);
+      if (hitPortal) {
+        const targetState = hitPortal.state === 'locked' ? 'closed' : 'locked';
+        store.setPortalState(state.activeLevel.id, hitPortal.id, targetState);
+        transport?.publish({
+          type: 'portal.toggle',
+          payload: {
+            levelId: state.activeLevel.id,
+            portalId: hitPortal.id,
+            state: targetState,
+          },
+          at: Date.now(),
+          by: 'gm',
+        });
+      }
       return;
     }
 
@@ -754,4 +809,62 @@ if (typeof document !== 'undefined' && document.readyState !== 'loading') {
   autoStart();
 } else if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', autoStart, { once: true });
+}
+
+/**
+ * Calcule la distance euclidienne entre un point et un segment en pixels carte.
+ * @param {{x: number, y: number}} pt
+ * @param {{x: number, y: number}} a
+ * @param {{x: number, y: number}} b
+ * @returns {number}
+ */
+function distancePointToSegment(pt, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    return Math.hypot(pt.x - a.x, pt.y - a.y);
+  }
+  let t = ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = a.x + t * dx;
+  const projY = a.y + t * dy;
+  return Math.hypot(pt.x - projX, pt.y - projY);
+}
+
+/**
+ * Recherche le portail le plus proche sous le tap dans la capsule de 0.5 case.
+ *
+ * @param {import('../grid/GridAdapter.js').GridAdapter} grid
+ * @param {import('../core/types.js').Level} activeLevel
+ * @param {{x: number, y: number}} mapPos
+ * @returns {import('../core/types.js').Portal|null}
+ */
+function findHitPortal(grid, activeLevel, mapPos) {
+  if (!activeLevel.portals || activeLevel.portals.length === 0) return null;
+
+  const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+  const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  const gridScale = Math.abs(origin1.x - origin0.x);
+  const maxDist = 0.5 * gridScale;
+
+  /** @type {{portal: import('../core/types.js').Portal, dist: number}|null} */
+  let best = null;
+
+  for (const portal of activeLevel.portals) {
+    const pA = grid.mapFromCellPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
+    const pB = grid.mapFromCellPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
+    const dist = distancePointToSegment(mapPos, pA, pB);
+    if (dist < maxDist) {
+      if (
+        !best ||
+        dist < best.dist - 1e-6 ||
+        (Math.abs(dist - best.dist) <= 1e-6 && portal.id < best.portal.id)
+      ) {
+        best = { portal, dist };
+      }
+    }
+  }
+
+  return best ? best.portal : null;
 }

@@ -4,6 +4,8 @@ import {
   validateCampaign,
   createCampaign,
   normalizeCampaignColors,
+  normalizeCampaign,
+  normalizeLevel,
   isPersistableAssetUrl,
   assertPersistableAssetUrl,
 } from '../core/schema.js';
@@ -215,7 +217,7 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     // Normaliser avant de valider : un instantané hérité est converti, pas
     // refusé. La copie évite de muter l'objet de l'appelant — un payload réseau
     // ou un document gelé.
-    const normalise = normalizeCampaignColors(campaignCandidate);
+    const normalise = normalizeCampaign(campaignCandidate);
     const errors = validateCampaign(normalise);
     if (errors.length > 0) {
       throw new Error(`Snapshot invalide : ${errors.join(' ; ')}`);
@@ -302,7 +304,7 @@ export function loadCampaign(campaignData) {
   // Normaliser d'abord : un document hérité doit être converti, jamais refusé.
   // La normalisation rend une copie, donc `campaignData` reste intact — y compris
   // s'il est gelé.
-  const normalise = normalizeCampaignColors(campaignData);
+  const normalise = normalizeCampaign(campaignData);
 
   try {
     assertValidCampaign(normalise, 'Chargement de la campagne');
@@ -473,20 +475,21 @@ export function addToken(tokenData) {
 export function addLevel(levelData) {
   /** @type {Campaign} */
   let candidate;
+  const levelNormalized = normalizeLevel(structuredClone(levelData));
   if (!campaign) {
-    candidate = createCampaign({ levels: [structuredClone(levelData)] });
+    candidate = createCampaign({ levels: [levelNormalized] });
   } else {
     candidate = structuredClone(campaign);
-    const idx = candidate.levels.findIndex((l) => l.id === levelData.id);
+    const idx = candidate.levels.findIndex((l) => l.id === levelNormalized.id);
     if (idx !== -1) {
-      candidate.levels[idx] = structuredClone(levelData);
+      candidate.levels[idx] = levelNormalized;
     } else {
-      candidate.levels.push(structuredClone(levelData));
+      candidate.levels.push(levelNormalized);
     }
   }
   assertValidCampaign(candidate, `Ajout de l'étage "${levelData?.id || 'inconnu'}"`);
   campaign = candidate;
-  activeLevelId = levelData.id;
+  activeLevelId = levelNormalized.id;
   notifySubscribers();
 }
 
@@ -536,6 +539,50 @@ export function updateLevel(levelId, levelUpdates) {
   };
   assertValidCampaign(candidate, `Mise à jour de l'étage "${levelId}"`);
   campaign = candidate;
+  notifySubscribers();
+}
+
+/**
+ * Modifie l'état d'un portail sur un étage.
+ *
+ * @param {string} levelId
+ * @param {string} portalId
+ * @param {'open'|'closed'|'locked'} state
+ * @returns {void}
+ */
+export function setPortalState(levelId, portalId, state) {
+  if (state !== 'open' && state !== 'closed' && state !== 'locked') {
+    throw new Error(`État de portail invalide : "${state}"`);
+  }
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+  const portal = level.portals.find((p) => p.id === portalId);
+  if (!portal) {
+    throw new Error(`Portail inconnu : "${portalId}" sur l'étage "${levelId}"`);
+  }
+
+  portal.state = state;
+
+  assertValidCampaign(candidate, `Bascule du portail "${portalId}"`);
+  campaign = candidate;
+
+  // Si un pion est sélectionné et qu'il appartient à l'étage muté, rafraîchir ses cases atteignables
+  const selectedId = getSelectedTokenId();
+  if (selectedId) {
+    const token = campaign.tokens.find((t) => t.id === selectedId);
+    if (token && token.levelId === levelId) {
+      const targetLevel = candidate.levels.find((l) => l.id === levelId) || null;
+      setSelectionState(token, targetLevel);
+    }
+  }
+
   notifySubscribers();
 }
 

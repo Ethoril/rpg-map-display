@@ -4,6 +4,7 @@ import { RENDER_RESOLUTION_CAP } from '../core/constants.js';
 export const CANVAS_LAYER_ORDER = Object.freeze([
   'background',
   'grid',
+  'portals',
   'moveZone',
   'templates',
   'tokens',

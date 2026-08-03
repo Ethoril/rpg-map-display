@@ -176,6 +176,38 @@ export function applyNetworkEvent(event) {
       store.setSessionVision(payload.levelId, typeof payload.png === 'string' ? payload.png : null);
       return true;
     }
+    case 'portal.toggle': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !payload.portalId || typeof payload.portalId !== 'string' ||
+        (payload.state !== 'open' && payload.state !== 'closed' && payload.state !== 'locked')
+      ) {
+        console.error('Événement "portal.toggle" refusé : payload malformé');
+        return false;
+      }
+      const level = campaign?.levels.find((l) => l.id === payload.levelId);
+      if (!level) {
+        console.error(`Événement "portal.toggle" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      const portal = level.portals.find((p) => p.id === payload.portalId);
+      if (!portal) {
+        console.error(`Événement "portal.toggle" refusé : portail inconnu "${payload.portalId}"`);
+        return false;
+      }
+      if (portal.state === payload.state) {
+        return false;
+      }
+      try {
+        store.setPortalState(payload.levelId, payload.portalId, payload.state);
+      } catch (err) {
+        console.error(
+          `Événement "portal.toggle" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
 
     default:
       return false;

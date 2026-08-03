@@ -540,7 +540,8 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
                color: '#000000', opacity: 0.25, visible: true },
     terrainCost: null,                  // optionnel : Record<cellKey, coût> (défaut 1)
     walls:   [ [CellPoint, CellPoint, …], … ],   // polylignes
-    portals: [{ id, a: CellPoint, b: CellPoint, closed: true, freestanding: false }],
+    portals: [{ id, a: CellPoint, b: CellPoint, state: 'closed', freestanding: false }],
+                                        // state: 'open'|'closed'|'locked' (§7, amendement 03/08)
     lights:  [{ id, at: CellPoint, range, intensity, color, shadows: true }],
     ambient: { color: '#ffffff', level: 1.0, baked: false }
   }],
@@ -577,6 +578,27 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 }
 ```
 
+> **Amendement du 03/08/2026 — une porte a trois états, et un seul champ pour les porter.**
+> `closed: boolean` devient `state: 'open'|'closed'|'locked'`. Une porte **fermée** s'ouvre par
+> les joueurs ; une porte **verrouillée** doit être déverrouillée par le MJ avant qu'ils
+> puissent l'ouvrir (§7, règle d'autorisation par transition).
+>
+> **Un champ unique plutôt qu'un `locked` à côté de `closed`** : la seconde forme rend
+> représentable `{closed: false, locked: true}`, qui ne veut rien dire. Un état unique rend
+> l'état illégal **impossible à écrire**, ce qui vaut mieux qu'un contrôle qui l'attrape.
+>
+> **Les 182 portails déjà commités** — 40 dans `manoir-rdc`, 141 dans `testbig150`, 1 dans
+> `minimal`, tous au format booléen — sont **normalisés à la lecture, jamais refusés** :
+> `closed: true → 'closed'`, `closed: false → 'open'` (83 portails dans ce second cas). C'est le
+> traitement retenu au chantier G pour les couleurs ARGB, et pour la même raison : refuser
+> reproduirait la « disparition après F5 » qu'`ETAT.md` documente comme cause historique d'une
+> perte de campagne. `closed` reste toléré en lecture, n'est plus jamais écrit, et n'est plus lu
+> après normalisation.
+>
+> Pour le calcul des arêtes bloquées comme pour le sweep, `closed` et `locked` sont
+> **indiscernables** : les deux bloquent passage et vision. Seules l'interface et l'autorisation
+> les distinguent. Détail dans `docs/TRANCHE-L05-PORTES.md` §4.
+
 ### Bibliothèques (documents séparés, §5.7)
 
 ```js
@@ -610,19 +632,35 @@ compiler** plutôt que simplement déconseillé.
 ### Canal temps réel (RTDB)
 
 ```
-/session/{sid}/tokens/{tokenId}   → { x, y, levelId, grab: { by, at } }
-/session/{sid}/portals/{portalId} → { closed }
-/session/{sid}/view               → { levelId, camera: { x, y, zoom }, locked }
-/session/{sid}/vision             → { levelId, png: 'base64…', rev }
-/session/{sid}/fog/{levelId}      → { png: 'base64…', rev }
-/session/{sid}/pings/{pushId}     → { x, y, levelId, at }
+/session/{sid}/events             → flux d'événements en append (§7), tous domaines confondus
 /session/{sid}/presence/{cid}     → { role, at, build, label }
 ```
 
-Séparation volontaire : `/tokens` et `/view` sont écrits en haute fréquence, `/fog` et
-`/vision` par le Mac seul, `/pings` en append éphémère.
+Plus, hors RTDB, un unique document Firestore `campaigns/{sid}` portant **toute** la campagne,
+réécrit par `saveSnapshot` à chaque mutation.
 
-> **Amendement du 01/08/2026 — `/vision` porte un masque, plus un polygone.** Mesuré avant
+> **Amendement du 03/08/2026 — ce tableau décrivait une disposition qui n'a jamais été
+> construite.** Il listait sept chemins par domaine — `/tokens`, `/portals`, `/view`,
+> `/vision`, `/fog`, `/pings`, `/presence`. Vérifié dans `js/transport/FirebaseTransport.js` :
+> **deux existent**, `session/{sid}/events` et `session/{sid}/presence/{cid}`, et le premier
+> n'était pas documenté alors qu'il porte tout le trafic.
+>
+> **Ce n'est pas une dérive, c'est une simplification qui a bien tourné.** Un flux d'événements
+> unique donne l'ordre total et le rejeu gratuitement, là où sept branches par domaine
+> auraient demandé de réconcilier sept horloges. Le modèle discret du §5.3bis, qui supprime
+> toute écriture haute fréquence, a retiré la seule raison qu'il y avait de séparer `/tokens`
+> et `/view` du reste.
+>
+> **Conséquence à ne pas manquer : l'état de jeu ne vit pas dans un espace de session.** Il
+> vit dans la campagne, et les événements en portent les transitions — c'est vrai de la
+> position d'un pion depuis le lot 1a, et c'est ce qui rend la persistance d'une porte ouverte
+> gratuite (`TRANCHE-L05-PORTES.md` §5.1). Un futur besoin d'état de session partagé se
+> décide, il ne se déduit pas de ce tableau.
+
+> **Amendement du 01/08/2026 — `/vision` porte un masque, plus un polygone.** Ce qui suit
+> décrit la **représentation** de la charge, qui reste exacte ; l'amendement du 03/08 ci-dessus
+> corrige seulement l'endroit — les deux masques voyagent dans les événements `vision.update`
+> et `fog.update` du flux `/events`, non sur des chemins dédiés. Mesuré avant
 > d'écrire la tranche L-04 : l'union des champs de vision de six PJ pèse **38 à 180 Kio** de
 > JSON en polygones sur la géométrie publiée, contre **11,7 Kio** pour le même contenu en
 > masque raster. Le polygone était intenable sur le fil, et il aurait de surcroît obligé les
@@ -648,7 +686,7 @@ Séparation volontaire : `/tokens` et `/view` sont écrits en haute fréquence, 
 | `token.move` | MJ, joueurs | **ponctuel** — `{id, from, to, path, startedAt}` |
 | `token.levelChange` | MJ, joueurs (liaison) | ponctuel |
 | `token.create` / `update` / `delete` | MJ | ponctuel |
-| `portal.toggle` | MJ, joueurs si autorisé | ponctuel |
+| `portal.toggle` | MJ, joueurs si autorisé | ponctuel — `{levelId, portalId, state}`, état **absolu** |
 | `view.change` | tablette | throttlé 10 Hz |
 | `level.select` | MJ, tablette | ponctuel |
 | `vision.update` | **Mac seul** | après chaque mouvement, throttlé |
@@ -681,6 +719,28 @@ vacillement des torches : **aucune synchro nécessaire**.
 **Reconnexion.** À chaque `connect`, le client reçoit un **snapshot complet** avant tout
 delta. Pas de reprise sur deltas seuls. Une session doit survivre à un F5 accidentel sur
 la tablette en cours de partie — c'est le scénario nominal, pas le cas limite.
+
+**`portal.toggle` porte l'état cible, malgré son nom** (amendement du 03/08/2026). Le nom vient
+de ce document et `CONVENTIONS.md` §4 interdit d'en inventer un autre. Mais avec les trois états
+du §6, « basculer » n'a plus de sens — basculer depuis `locked` mènerait où ? Le payload porte
+donc `{levelId, portalId, state}`, valeur absolue, ce qu'exige aussi l'idempotence. `levelId` y
+figure et ne se déduit pas de l'étage affiché : le MJ et la tablette peuvent regarder deux
+étages différents.
+
+**L'autorisation porte sur la transition, pas sur l'acteur.** « MJ, joueurs si autorisé »
+suffisait à deux états ; à trois, la règle est plus fine :
+
+| Transition | MJ | Joueurs |
+|---|---|---|
+| `closed` ↔ `open` | oui | **oui** |
+| `locked` → `closed` | oui | non |
+| `closed`/`open` → `locked` | oui | non |
+
+Elle s'applique **à l'émission**, là où l'intention naît, jamais à l'application d'un événement
+reçu : un client qui refuserait d'appliquer un verrouillage émis par le MJ divergerait de la
+table, en silence. Et **c'est une règle de jeu, pas une frontière de sécurité** — elle est
+appliquée côté client, et un `by: 'players'` n'est pas une preuve d'identité. La vraie frontière
+reste la liste blanche d'adresses des règles Firebase (`ETAT.md`).
 
 ---
 
@@ -939,8 +999,9 @@ Critères :
 1. **Limite de texture réelle** de la Tab S9 FE (§3) → conditionne la résolution des cartes.
 2. **Latence Firebase mesurée** à table : si le p95 dépasse ~250 ms, basculer
    `LocalSocketTransport`. À mesurer au lot 1, avant de construire dessus.
-3. **Portes ouvrables par les joueurs** ou MJ uniquement ? Le modèle le permet
-   (`portal.toggle` autorisé aux deux), le défaut reste à trancher.
+3. ~~**Portes ouvrables par les joueurs** ou MJ uniquement ?~~ **Tranchée le 03/08/2026 : les
+   deux, avec une règle par transition.** Les joueurs ouvrent et ferment (`closed` ↔ `open`) ;
+   verrouiller et déverrouiller sont réservés au MJ. Voir §7 et `TRANCHE-L05-PORTES.md` §6.3.
 4. **Ambiance globale ou par étage ?** Le §6 la place par étage ; une cave sombre sous un
    rez éclairé plaide pour ce choix, à confirmer.
 5. **D'où viennent les cartes hexagonales ?** Aucun outil UVTT n'en produit. Soit tu les

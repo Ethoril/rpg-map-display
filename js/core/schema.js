@@ -182,6 +182,64 @@ export function normalizeCampaignColors(campaign) {
 }
 
 /**
+ * Normalise la structure d'un étage (portails en particulier).
+ * Mute l'étage en place et le retourne.
+ *
+ * @param {any} level
+ * @returns {any}
+ */
+export function normalizeLevel(level) {
+  if (!level || typeof level !== 'object') return level;
+
+  if (Array.isArray(level.portals)) {
+    const levelId = level.id || 'inconnu';
+    for (const portal of level.portals) {
+      if (!portal || typeof portal !== 'object') continue;
+      if (
+        portal.state === 'open' ||
+        portal.state === 'closed' ||
+        portal.state === 'locked'
+      ) {
+        continue;
+      }
+
+      if (portal.closed === true) {
+        portal.state = 'closed';
+      } else if (portal.closed === false) {
+        portal.state = 'open';
+      } else {
+        portal.state = 'closed';
+        console.warn(
+          `[schema] Étage "${levelId}" portail "${portal.id || 'inconnu'}" : ` +
+            `state invalide ou manquant (${portal.state}), 'closed' appliqué par défaut.`
+        );
+      }
+    }
+  }
+
+  return level;
+}
+
+/**
+ * Normalise la campagne entière (couleurs PUIS portails).
+ * Rend une copie normalisée du document.
+ *
+ * @param {any} campaign
+ * @returns {any}
+ */
+export function normalizeCampaign(campaign) {
+  if (!campaign || typeof campaign !== 'object') return campaign;
+
+  const res = normalizeCampaignColors(campaign);
+  if (Array.isArray(res.levels)) {
+    for (const level of res.levels) {
+      normalizeLevel(level);
+    }
+  }
+  return res;
+}
+
+/**
  * Fabrique d'une instance de campagne avec valeurs par défaut (CdC §6).
  *
  * @param {Partial<Campaign>} [overrides]
@@ -568,6 +626,26 @@ export function validateCampaign(campaign) {
         // Validation de la couleur d'ambiance
         if (!isValidHexColor(level.ambient.color)) {
           errors.push(`Étage "${levelId || 'inconnu'}" : éclairage ambiant a une couleur invalide "${level.ambient.color}" (format #RRGGBB attendu)`);
+        }
+        // Validation des portails de l'étage
+        for (const portal of level.portals) {
+          const portalId = portal?.id || 'inconnu';
+          if (
+            !portal ||
+            typeof portal !== 'object' ||
+            typeof portal.id !== 'string' ||
+            portal.id.trim() === '' ||
+            !portal.a ||
+            !Number.isFinite(portal.a.cellX) ||
+            !Number.isFinite(portal.a.cellY) ||
+            !portal.b ||
+            !Number.isFinite(portal.b.cellX) ||
+            !Number.isFinite(portal.b.cellY) ||
+            (portal.state !== 'open' && portal.state !== 'closed' && portal.state !== 'locked') ||
+            typeof portal.freestanding !== 'boolean'
+          ) {
+            errors.push(`Étage "${levelId || 'inconnu'}" : portail "${portalId}" invalide`);
+          }
         }
       }
       if (!Array.isArray(level.animatedOverlays)) {

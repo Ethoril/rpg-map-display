@@ -50,8 +50,8 @@
  * @property {string} id
  * @property {CellPoint} a
  * @property {CellPoint} b
- * @property {boolean} closed
- * @property {'open' | 'closed' | 'locked'} [state]
+ * @property {'open' | 'closed' | 'locked'} state
+ * @property {boolean} [closed] HÉRITAGE — lu par la normalisation, jamais écrit.
  * @property {boolean} freestanding
  */
 

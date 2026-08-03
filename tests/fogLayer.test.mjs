@@ -331,7 +331,7 @@ test('Critère 3 : Une porte ouverte étend la vision', () => {
     heightCells: 10,
     pxPerCell: 10,
     portals: [
-      { id: 'p1', a: { cellX: 5, cellY: 0 }, b: { cellX: 5, cellY: 10 }, closed: true, freestanding: false },
+      { id: 'p1', a: { cellX: 5, cellY: 0 }, b: { cellX: 5, cellY: 10 }, state: 'closed', closed: true, freestanding: false },
     ],
   });
   const gridFerme = gridFor(levelFerme);
