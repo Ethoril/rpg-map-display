@@ -479,6 +479,34 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 
 Ces points ne doivent pas être déclarés réussis à partir d’un test desktop.
 
+## Trois points relevés au contrôle du lot 2, sciemment non traités
+
+Consignés le 3 août 2026 à la clôture de L-05, L-06 et L-07. Aucun n'est un défaut ouvert :
+chacun est un choix assumé ou une dette bornée, et chacun se perdrait s'il n'était écrit — il
+ne vit dans aucun test et dans aucun commentaire de code.
+
+**1. `getImageData` sans `willReadFrequently`.** Chromium émet un avertissement de performance
+au démarrage de la vue MJ : c'est l'encodeur de fog qui relit son canvas à chaque publication
+(`js/vision/fog.js`, le seul `getImageData` du module, délibérément placé à la publication et
+non sur le chemin de déplacement — critère 8). Antérieur à L-06, sans effet fonctionnel. À
+regarder **le jour où le fog coûtera trop cher sur la tablette**, pas avant : y toucher
+maintenant serait optimiser sans mesure, ce que l'interdiction n°14 proscrit dans l'autre sens.
+
+**2. Deux `syncVision()` au démarrage de `js/app/gm.js`.** Lignes 643 et 848 après L-06. Le
+second est un no-op — la signature de vision n'a pas changé, les deux branches sont sautées —
+et c'est lui qui porte sa raison en commentaire depuis L-04 : « une fenêtre MJ ouverte déjà en
+arrière-plan n'obtiendrait aucune frame ». Une seule devrait survivre, et c'est celle-là. Ne
+pas supprimer l'autre sans relire le bloc d'initialisation qui l'entoure : c'est lui qui a
+révélé la zone morte temporelle de `gmPanel` au contrôle de L-06.
+
+**3. Le test de vision de L-07 assure un changement, pas une direction.**
+`tests/wallEditor.spec.mjs` vérifie que le masque de vision publié **diffère** après l'ajout
+d'un mur, non qu'il **diminue**. La garde est réelle — éprouvée par mutation : privée des murs,
+`extractBlockedSegments` fait échouer ce test — mais un hypothétique bug qui *augmenterait* la
+zone visible passerait. Pinner la direction demanderait de décoder le masque et de compter les
+pixels ; le faire par la longueur du base64 serait fragile, la taille d'un PNG dépendant de la
+complexité du contour autant que de l'aire. Le choix est assumé, pas ignoré.
+
 ## Images Google Drive : le lien de partage n'est pas une image
 
 Constaté le 30 juillet 2026 : un handout dont l'URL venait de Drive s'affichait en cadre noir
