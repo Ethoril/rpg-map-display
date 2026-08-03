@@ -691,7 +691,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `level.select` | MJ, tablette | ponctuel |
 | `vision.update` | **Mac seul** | après chaque mouvement, throttlé |
 | `fog.update` | **Mac seul** | throttlé 1 Hz ou à la révélation |
-| `fog.reset` / `fog.paint` | MJ | ponctuel |
+| `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
 | `ping` | tous | ponctuel |
 | `ambient.set` | MJ | throttlé |
 | `handout.show` / `handout.hide` | MJ | ponctuel |
@@ -1003,7 +1003,7 @@ Critères :
 - [ ] Les cases atteignables en hexagone sont à coût uniforme 1 et respectent les murs.
 - [ ] Mesurer une distance sans quitter le Zero-UI.
 - [ ] Un ping est visible sur les trois postes en < 500 ms.
-- [ ] Undo restaure l'état fog précédent.
+- [x] Undo restaure l'état fog précédent.
 
 ### Spike à planifier tôt (lot 2 ou 3, avant de concevoir autour)
 

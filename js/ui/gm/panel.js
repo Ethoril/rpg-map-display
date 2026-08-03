@@ -4,6 +4,7 @@ import { createTokenMaker } from './tokenMaker.js';
 import { createSceneLibrary } from './sceneLibrary.js';
 import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
+import { createFogTools } from './fogTools.js';
 import { VERSION } from '../../core/version.js';
 import { GM_SESSION_STORAGE_KEY } from '../../core/constants.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
@@ -18,6 +19,9 @@ import * as store from '../../state/store.js';
  * @typedef {Object} GMPanelOptions
  * @property {Transport} [transport] Transport réseau optionnel pour la synchronisation
  * @property {string} [sessionId] Code de session, affiché pour être dicté à la tablette
+ * @property {(levelId: string) => import('../../vision/fog.js').ExploredFog|null} [getExploredFog]
+ * @property {() => void} [scheduleFogPublish]
+ * @property {() => void} [requestRender]
  */
 
 /**
@@ -25,14 +29,20 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, destroy: () => void}}
+ * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
     throw new Error('createGMPanel : conteneur HTML requis');
   }
 
-  const { transport, sessionId = '' } = options;
+  const {
+    transport,
+    sessionId = '',
+    getExploredFog = () => null,
+    scheduleFogPublish = () => {},
+    requestRender = () => {},
+  } = options;
   const listeners = new AbortController();
 
   container.className = 'gm-panel-root';
@@ -61,6 +71,7 @@ export function createGMPanel(container, options = {}) {
       <button class="gm-tab-btn" data-tab="import-image" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Image</button>
       <button class="gm-tab-btn" data-tab="token-maker" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Pions</button>
       <button class="gm-tab-btn" data-tab="handouts" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Handouts</button>
+      <button class="gm-tab-btn" data-tab="fog-tools" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🌫️ Fog</button>
       <button class="gm-tab-btn" data-tab="grid-settings" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Grille</button>
     </div>
 
@@ -68,6 +79,10 @@ export function createGMPanel(container, options = {}) {
     <div class="gm-tabs-content" style="flex: 1; overflow-y: auto; padding: 1rem;">
       <div id="tab-content-scene-library" class="gm-tab-pane" style="display: none;">
         <div id="scene-library-mount"></div>
+      </div>
+
+      <div id="tab-content-fog-tools" class="gm-tab-pane" style="display: none;">
+        <div id="fog-tools-mount"></div>
       </div>
 
       <div id="tab-content-import-uvtt" class="gm-tab-pane" style="display: block;">
@@ -206,6 +221,7 @@ export function createGMPanel(container, options = {}) {
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
   const handoutsMount = /** @type {HTMLElement} */ (container.querySelector('#handouts-mount'));
+  const fogToolsMount = /** @type {HTMLElement} */ (container.querySelector('#fog-tools-mount'));
 
   // Panneaux d'import UVTT et Image — sections de DIAGNOSTIC uniquement.
   //
@@ -217,6 +233,16 @@ export function createGMPanel(container, options = {}) {
 
   // Initialisation du composant Handouts
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
+
+  // Initialisation du composant FogTools
+  const fogTools = fogToolsMount
+    ? createFogTools(fogToolsMount, {
+        getActiveLevelId: () => store.getActiveLevelId(),
+        getExploredFog,
+        scheduleFogPublish,
+        requestRender,
+      })
+    : null;
 
   // Initialisation de la bibliothèque de pions
   /** @type {{destroy: () => void} | null} */
@@ -635,6 +661,7 @@ export function createGMPanel(container, options = {}) {
 
   return {
     tokenMaker,
+    fogTools,
     destroy: () => {
       listeners.abort();
       unsubscribeStore();

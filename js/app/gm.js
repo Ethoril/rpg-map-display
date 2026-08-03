@@ -102,16 +102,18 @@ export async function bootstrapGMApp(options = {}) {
   const fogPublishTrailing = new Map();
 
   /**
-   * Masque exploré de l'étage, créé à la demande et restauré depuis la session.
+   * Obtient ou crée l'instance `ExploredFog` pour un étage donné (Level ou levelId string).
+   * Domicile unique de cette création : toute réécriture directe d'un masque exploré
+   * en dehors de cette fonction ferait dériver l'état en mémoire.
    *
-   * Domicile unique de cette création : le rendu **et** la révélation le long d'un
-   * déplacement en ont besoin, et deux fabriques divergeraient — chacune tiendrait son
-   * propre masque, et l'une des deux publierait un fog amputé.
-   *
-   * @param {import('../core/types.js').Level|null} level
+   * @param {import('../core/types.js').Level|string|null} levelOrId
    * @returns {ExploredFog|null}
    */
-  function getExploredFog(level) {
+  function getExploredFog(levelOrId) {
+    if (!levelOrId) return null;
+    const level = typeof levelOrId === 'string'
+      ? (store.getCampaign()?.levels.find((l) => l.id === levelOrId) ?? null)
+      : levelOrId;
     if (!level) return null;
     let fog = exploredFogMap.get(level.id);
     if (!fog || fog.widthCells !== level.widthCells || fog.heightCells !== level.heightCells) {
@@ -137,31 +139,34 @@ export async function bootstrapGMApp(options = {}) {
   }
 
   /**
-   * Publication du masque exploré au réseau, throttlée à 1 Hz (CdC §7).
+   * Publication du masque exploré au réseau, throttlée à 1 Hz (CdC §7) sauf si immediate est vrai.
    *
-   * ⚠ Le throttle porte une **traîne**. Sans elle, la dernière révélation d'une rafale
-   * resterait indéfiniment non publiée : l'appelant ne rappelle cette fonction que sur
-   * changement, donc si plus rien ne bouge après un déplacement throttlé, les tablettes
-   * gardent un fog en retard d'un mouvement — sans que rien ne le signale.
+   * ⚠ **Traîne (trailing call)** : un déplacement rapide qui s'arrête verrait son
+   * dernier état bloqué par le throttle sans ce rappel différé. Le timer envoie le
+   * dernier état calculé dès que la fenêtre d'une seconde se libère.
    *
    * @param {string} levelId
    * @param {ExploredFog} exploredFog
+   * @param {boolean} [immediate=false]
    */
-  function scheduleFogPublish(levelId, exploredFog) {
+  function scheduleFogPublish(levelId, exploredFog, immediate = false) {
     const now = Date.now();
     const lastTime = lastFogPublishTime.get(levelId) || 0;
     const reste = 1000 - (now - lastTime);
 
-    if (reste > 0) {
-      if (!fogPublishTrailing.has(levelId)) {
-        fogPublishTrailing.set(
-          levelId,
-          setTimeout(() => {
-            fogPublishTrailing.delete(levelId);
-            scheduleFogPublish(levelId, exploredFog);
-          }, reste)
-        );
-      }
+    if (fogPublishTrailing.has(levelId)) {
+      clearTimeout(fogPublishTrailing.get(levelId));
+      fogPublishTrailing.delete(levelId);
+    }
+
+    if (!immediate && reste > 0) {
+      fogPublishTrailing.set(
+        levelId,
+        setTimeout(() => {
+          fogPublishTrailing.delete(levelId);
+          scheduleFogPublish(levelId, exploredFog);
+        }, reste)
+      );
       return;
     }
 
@@ -202,6 +207,7 @@ export async function bootstrapGMApp(options = {}) {
    * @param {string} signature Signature de la vision courante
    */
   function publishVisibleVision(levelId, visibleFog, signature) {
+    if (!transport) return;
     if (lastVisibleSignatureMap.get(levelId) === signature) return;
     lastVisibleSignatureMap.set(levelId, signature);
 
@@ -229,10 +235,11 @@ export async function bootstrapGMApp(options = {}) {
    * défaut observé le 2 août 2026. Mesuré par mutation : MJ privé de frames, zéro
    * `vision.update` publié ; frames rendues, publication immédiate.
    *
-   * La révélation et les publications sont conditionnées au **changement réel** de la
-   * vision. Les appeler inconditionnellement rebouclerait : publier écrit dans le store,
-   * le store notifie, la notification rappelle cette fonction — et le MJ diffusait alors
-   * un masque de 13 Kio par seconde, indéfiniment, même partie à l'arrêt.
+   * Garde anti-rebouclage : la révélation du masque exploré est conditionnée au changement réel
+   * de la vision (change && polygons.length > 0), et la publication de la vision visible au changement
+   * de sa signature (lastVisibleSignatureMap). Les appeler inconditionnellement rebouclerait :
+   * publier écrit dans le store, le store notifie, la notification rappelle cette fonction — et le
+   * MJ diffusait alors un masque de 13 Kio par seconde, indéfiniment, même partie à l'arrêt.
    */
   function syncVision() {
     const state = store.getState();
@@ -246,32 +253,36 @@ export async function bootstrapGMApp(options = {}) {
     const change = fogLayer.updateVision(grid, activeLevel, state.campaign?.tokens ?? [], {
       extractSegments: extractBlockedSegments,
     });
-    if (!change) return;
 
     const polygons = fogLayer.getVisiblePolygons();
     const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
     const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
     const gridScale = Math.abs(origin1.x - origin0.x);
 
-    if (polygons.length > 0) {
+    if (change && polygons.length > 0) {
       exploredFog.reveal(polygons, origin0, gridScale);
+      // Amendement A1 & A2 : la vision s'est versée dans le masque, vider l'undo de cet étage
+      gmPanel?.fogTools?.clearUndoStack(activeLevel.id);
       scheduleFogPublish(activeLevel.id, exploredFog);
     }
 
-    let visibleFog = visibleFogMap.get(activeLevel.id);
-    if (
-      !visibleFog ||
-      visibleFog.widthCells !== activeLevel.widthCells ||
-      visibleFog.heightCells !== activeLevel.heightCells
-    ) {
-      visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
-      visibleFogMap.set(activeLevel.id, visibleFog);
+    const currentSig = fogLayer.getVisionSignature();
+    if (transport && lastVisibleSignatureMap.get(activeLevel.id) !== currentSig) {
+      let visibleFog = visibleFogMap.get(activeLevel.id);
+      if (
+        !visibleFog ||
+        visibleFog.widthCells !== activeLevel.widthCells ||
+        visibleFog.heightCells !== activeLevel.heightCells
+      ) {
+        visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
+        visibleFogMap.set(activeLevel.id, visibleFog);
+      }
+      visibleFog.clear();
+      if (polygons.length > 0) {
+        visibleFog.reveal(polygons, origin0, gridScale);
+      }
+      publishVisibleVision(activeLevel.id, visibleFog, currentSig);
     }
-    visibleFog.clear();
-    if (polygons.length > 0) {
-      visibleFog.reveal(polygons, origin0, gridScale);
-    }
-    publishVisibleVision(activeLevel.id, visibleFog, fogLayer.getVisionSignature());
   }
 
   /**
@@ -350,7 +361,11 @@ export async function bootstrapGMApp(options = {}) {
       origin0,
       gridScale
     );
-    scheduleFogPublish(level.id, exploredFog);
+    if (balayees > 0) {
+      // Amendement A1 & A2 : trajet marché par pion, vider l'undo pour cet étage
+      gmPanel?.fogTools?.clearUndoStack(level.id);
+      scheduleFogPublish(level.id, exploredFog);
+    }
     return balayees;
   }
 
@@ -493,6 +508,8 @@ export async function bootstrapGMApp(options = {}) {
   const networkStatus = createNetworkStatus('gm', sessionId);
   /** @type {Transport|null} */
   let transport = null;
+  /** @type {ReturnType<typeof createGMPanel>|null} */
+  let gmPanel = null;
   try {
     transport = await connectSession({
       injectedTransport: options.transport || null,
@@ -597,14 +614,74 @@ export async function bootstrapGMApp(options = {}) {
     if (persistenceError) networkStatus.update('error', persistenceError);
   }
 
-  const gmPanel = panelContainer
-    ? createGMPanel(panelContainer, { transport: transport || undefined, sessionId })
+  gmPanel = panelContainer
+    ? createGMPanel(panelContainer, {
+        transport: transport || undefined,
+        sessionId,
+        getExploredFog: (levelId) => getExploredFog(levelId || store.getActiveLevelId() || ''),
+        scheduleFogPublish: (immediate = true) => {
+          const activeLvl = store.getActiveLevel();
+          if (activeLvl) {
+            const fog = getExploredFog(activeLvl);
+            if (fog) scheduleFogPublish(activeLvl.id, fog, immediate);
+          }
+        },
+        requestRender: () => requestRender(),
+      })
     : null;
+
+  if (!store.getActiveLevelId()) {
+    const firstLvl = store.getCampaign()?.levels[0];
+    if (firstLvl) store.selectLevel(firstLvl.id);
+  }
+
+  const initLevel = store.getActiveLevel();
+  if (initLevel) {
+    const initFog = getExploredFog(initLevel);
+    if (initFog) scheduleFogPublish(initLevel.id, initFog, true);
+  }
+  syncVision();
 
   /**
    * @param {import('../input/gestures.js').InputIntention} intention
    */
   function handleIntention(intention) {
+    if (intention.type === 'brushStroke') {
+      const activeTool = gmPanel?.fogTools?.getActiveTool() ?? 'none';
+      if (activeTool === 'none') return;
+
+      const activeLevel = store.getActiveLevel();
+      if (!activeLevel) return;
+      const fog = getExploredFog(activeLevel);
+      if (!fog) return;
+
+      const grid = gridFor(activeLevel);
+      const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+      const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+      const gridScale = Math.abs(origin1.x - origin0.x);
+
+      const radiusCells = gmPanel?.fogTools?.getBrushRadiusCells() ?? 1;
+      const radiusPx = radiusCells * gridScale;
+
+      if (intention.phase === 'start') {
+        gmPanel?.fogTools?.pushUndoState();
+      }
+
+      if (activeTool === 'reveal') {
+        fog.paintDisc(intention.mapPos, radiusPx, origin0, gridScale);
+      } else if (activeTool === 'hide') {
+        fog.eraseDisc(intention.mapPos, radiusPx, origin0, gridScale);
+      }
+
+      // Amendment A3: requestRender() à chaque coup de pinceau (start/move/end)
+      requestRender();
+
+      if (intention.phase === 'end') {
+        scheduleFogPublish(activeLevel.id, fog);
+      }
+      return;
+    }
+
     if (intention.type === 'panBy') {
       camera.setPan(
         camera.x - intention.deltaX / camera.zoom,
@@ -746,7 +823,12 @@ export async function bootstrapGMApp(options = {}) {
   const pointerInput = new PointerInput(canvas, camera, {
     role: 'gm',
     onIntention: handleIntention,
+    canStartBrush: (_screenPos, _mapPos) => {
+      if (!gmPanel || !gmPanel.fogTools) return false;
+      return gmPanel.fogTools.getActiveTool() !== 'none';
+    },
     canStartTokenDrag: (_screenPos, mapPos) => {
+      if (gmPanel?.fogTools?.getActiveTool() !== 'none') return null;
       const state = store.getState();
       if (!state.activeLevel) return null;
       const cell = gridFor(state.activeLevel).cellFromPoint(mapPos);

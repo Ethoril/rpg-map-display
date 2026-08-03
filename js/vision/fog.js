@@ -106,6 +106,10 @@ export async function encodeFogPng(canvas) {
 
   // Le SEUL `getImageData` du module, et il est à la publication — jamais sur le chemin
   // de déplacement, où il coûterait le budget entier (critère 8).
+  // ⚠ CAPTURE SYNCHRONE (A4) : Cette lecture est faite de façon synchrone AVANT le premier
+  // `await` (compression Deflate à la l.131). exportPng() peut donc être appelé de façon
+  // asynchrone immédiatement avant une mutation synchrone du canvas, les pixels étant capturés
+  // instantanément avant la mutation. Ne pas déplacer cette lecture sous un await.
   const imgData = ctx.getImageData(0, 0, width, height);
   const rgba = imgData.data;
 
@@ -311,6 +315,7 @@ export class ExploredFog {
     this.heightCells = heightCells;
     this.maskWidth = widthCells * FOG_MASK_PX_PER_CELL;
     this.maskHeight = heightCells * FOG_MASK_PX_PER_CELL;
+    this.createCanvas = createCanvas;
 
     if (typeof createCanvas === 'function') {
       this.canvas = createCanvas(this.maskWidth, this.maskHeight);
@@ -423,10 +428,70 @@ export class ExploredFog {
    */
   async importPng(b64Png) {
     if (!b64Png || !this.ctx) return;
-    const decoded = await decodeFogPng(b64Png, this.widthCells, this.heightCells);
+    const decoded = await decodeFogPng(b64Png, this.widthCells, this.heightCells, this.createCanvas);
     if (decoded && this.ctx && typeof this.ctx.drawImage === 'function') {
       this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
       this.ctx.drawImage(decoded, 0, 0);
     }
+  }
+
+  /**
+   * Révèle l'ensemble du masque exploré (toute la carte devient explorée).
+   */
+  revealAll() {
+    if (this.ctx) {
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+      this.ctx.fillRect(0, 0, this.maskWidth, this.maskHeight);
+      this.ctx.restore();
+    }
+  }
+
+  /**
+   * Peint un disque de vision dans le masque exploré.
+   *
+   * @param {MapPoint} center Centre en pixels carte
+   * @param {number} radiusPx Rayon du disque en pixels carte
+   * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
+   * @param {number} gridScale Échelle de la grille (pixels carte par case)
+   */
+  paintDisc(center, radiusPx, mapOrigin, gridScale) {
+    if (!this.ctx || !center || !mapOrigin) return;
+    const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+    const mx = (center.x - mapOrigin.x) * scale;
+    const my = (center.y - mapOrigin.y) * scale;
+    const r = radiusPx * scale;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    this.ctx.beginPath();
+    this.ctx.arc(mx, my, Math.max(0, r), 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.restore();
+  }
+
+  /**
+   * Efface un disque du masque exploré (canal alpha remis à zéro).
+   * Utilise `destination-out` pour retirer l'exploration sans peindre de noir opaque.
+   *
+   * @param {MapPoint} center Centre en pixels carte
+   * @param {number} radiusPx Rayon du disque en pixels carte
+   * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
+   * @param {number} gridScale Échelle de la grille (pixels carte par case)
+   */
+  eraseDisc(center, radiusPx, mapOrigin, gridScale) {
+    if (!this.ctx || !center || !mapOrigin) return;
+    const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+    const mx = (center.x - mapOrigin.x) * scale;
+    const my = (center.y - mapOrigin.y) * scale;
+    const r = radiusPx * scale;
+
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'destination-out';
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    this.ctx.beginPath();
+    this.ctx.arc(mx, my, Math.max(0, r), 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.restore();
   }
 }

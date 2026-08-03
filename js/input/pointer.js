@@ -26,6 +26,8 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  * @property {number} [longPressMs=500] Seuil pour l'appui long (ms)
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartTokenDrag]
  *   Hit-test injecté par la vue MJ. L'input ne connaît jamais le store.
+ * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => boolean} [canStartBrush]
+ *   Prédicat injecté par la vue MJ indiquant si un pinceau est armé.
  */
 
 /**
@@ -47,6 +49,7 @@ export class PointerInput {
     this.dragDistanceThreshold = options.dragDistanceThreshold ?? 5;
     this.longPressMs = options.longPressMs ?? 500;
     this.canStartTokenDrag = options.canStartTokenDrag ?? (() => null);
+    this.canStartBrush = options.canStartBrush ?? (() => false);
 
     /** @type {Map<number, { screenPos: ScreenPoint, timeStamp: number }>} */
     this.activePointers = new Map();
@@ -63,7 +66,7 @@ export class PointerInput {
     /** @type {boolean} */
     this.longPressTriggered = false;
 
-    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'longPress'} */
+    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'longPress'|'brushing'} */
     this.mode = 'idle';
     /** @type {string|null} */
     this.dragTokenId = null;
@@ -223,30 +226,50 @@ export class PointerInput {
       this.startScreenPos = screenPos;
       this.lastScreenPos = screenPos;
       this.startTime = timeStamp;
-      this.mode = 'tapCandidate';
-      this.dragTokenId =
-        this.role === 'gm'
-          ? this.canStartTokenDrag(screenPos, this.camera.screenToMap(screenPos))
-          : null;
-      this.longPressTriggered = false;
 
-      // Planification du timer d'appui long
-      this.clearLongPressTimer();
-      this.longPressTimer = setTimeout(() => {
-        if (this.activePointers.size === 1 && this.startScreenPos) {
-          this.longPressTriggered = true;
-          this.mode = 'longPress';
-          const mapPos = this.camera.screenToMap(this.startScreenPos);
-          this.emit({
-            type: 'longPress',
-            screenPos: this.startScreenPos,
-            mapPos,
-          });
-        }
-      }, this.longPressMs);
+      const mapPos = this.camera.screenToMap(screenPos);
+      if (this.canStartBrush(screenPos, mapPos)) {
+        this.mode = 'brushing';
+        this.emit({
+          type: 'brushStroke',
+          screenPos,
+          mapPos,
+          phase: 'start',
+        });
+      } else {
+        this.mode = 'tapCandidate';
+        this.dragTokenId =
+          this.role === 'gm'
+            ? this.canStartTokenDrag(screenPos, mapPos)
+            : null;
+        this.longPressTriggered = false;
+
+        // Planification du timer d'appui long
+        this.clearLongPressTimer();
+        this.longPressTimer = setTimeout(() => {
+          if (this.activePointers.size === 1 && this.startScreenPos) {
+            this.longPressTriggered = true;
+            this.mode = 'longPress';
+            const mPos = this.camera.screenToMap(this.startScreenPos);
+            this.emit({
+              type: 'longPress',
+              screenPos: this.startScreenPos,
+              mapPos: mPos,
+            });
+          }
+        }, this.longPressMs);
+      }
     } else if (this.activePointers.size === 2) {
       // Annulation d'appui long et bascule en mode pinch/pan à 2 doigts
       this.clearLongPressTimer();
+      if (this.mode === 'brushing' && this.startScreenPos) {
+        this.emit({
+          type: 'brushStroke',
+          screenPos: this.startScreenPos,
+          mapPos: this.camera.screenToMap(this.startScreenPos),
+          phase: 'end',
+        });
+      }
       this.mode = 'pinching';
       this.dragTokenId = null;
 
@@ -279,6 +302,17 @@ export class PointerInput {
       }
 
       if (this.mode === 'longPress') return;
+
+      if (this.mode === 'brushing') {
+        const mapPos = this.camera.screenToMap(screenPos);
+        this.emit({
+          type: 'brushStroke',
+          screenPos,
+          mapPos,
+          phase: 'move',
+        });
+        return;
+      }
 
       const dx = screenPos.screenX - this.lastScreenPos.screenX;
       const dy = screenPos.screenY - this.lastScreenPos.screenY;
@@ -373,7 +407,15 @@ export class PointerInput {
       const dist = distanceBetween(this.startScreenPos, screenPos);
       const duration = timeStamp - this.startTime;
 
-      if (this.mode === 'gmTokenDrag' && this.dragTokenId) {
+      if (this.mode === 'brushing') {
+        const mapPos = this.camera.screenToMap(screenPos);
+        this.emit({
+          type: 'brushStroke',
+          screenPos,
+          mapPos,
+          phase: 'end',
+        });
+      } else if (this.mode === 'gmTokenDrag' && this.dragTokenId) {
         const mapPos = this.camera.screenToMap(screenPos);
         this.emit({
           type: 'dragToken',
@@ -414,6 +456,14 @@ export class PointerInput {
    */
   handlePointerCancel(e) {
     this.clearLongPressTimer();
+    if (this.mode === 'brushing' && this.startScreenPos) {
+      this.emit({
+        type: 'brushStroke',
+        screenPos: this.startScreenPos,
+        mapPos: this.camera.screenToMap(this.startScreenPos),
+        phase: 'end',
+      });
+    }
     this.activePointers.delete(e.pointerId);
 
     if (this.activePointers.size === 0) {

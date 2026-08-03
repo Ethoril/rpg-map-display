@@ -44,7 +44,15 @@
  */
 
 /**
- * @typedef {TapIntention | PanIntention | DragTokenIntention | PinchZoomIntention | LongPressIntention} InputIntention
+ * @typedef {Object} BrushStrokeIntention
+ * @property {'brushStroke'} type
+ * @property {ScreenPoint} screenPos Position courante sur l'écran
+ * @property {MapPoint} mapPos Même position sur la carte
+ * @property {'start'|'move'|'end'} phase Phase du coup de pinceau
+ */
+
+/**
+ * @typedef {TapIntention | PanIntention | DragTokenIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
  */
 
 /**
