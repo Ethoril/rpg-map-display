@@ -118,9 +118,17 @@ export function saveToLocalStorage(sessionId) {
   const targetSessionId = sessionId || currentSessionId;
   const storage = getStorage();
   if (!targetSessionId || !storage) return;
+
+  // Un état interne invalide est un **bug**, pas une panne d'environnement (`CONVENTIONS.md`
+  // §6 : invariant violé → lever). La validation sort donc du `try` : à l'intérieur, elle se
+  // faisait rhabiller en « Erreur écriture LocalStorage », ce qui envoyait chercher un quota
+  // là où c'est une mutation qui a laissé passer une campagne invalide.
+  if (campaign) {
+    assertValidCampaign(campaign, 'Sauvegarde de la campagne');
+  }
+
   try {
     if (campaign) {
-      assertValidCampaign(campaign, 'Sauvegarde de la campagne');
       storage.setItem(`rpg_campaign_${targetSessionId}`, JSON.stringify(campaign));
     } else {
       storage.removeItem(`rpg_campaign_${targetSessionId}`);
@@ -269,7 +277,24 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
  */
 function notifySubscribers() {
   if (currentSessionId) {
-    saveToLocalStorage(currentSessionId);
+    // La sauvegarde automatique est une **commodité**, pas une clause du contrat de mutation.
+    // Quand on arrive ici, la mutation est déjà appliquée : laisser l'exception remonter
+    // laisserait le store muté, les abonnés jamais prévenus, donc aucun rendu et — depuis
+    // L-04 — la publication du fog interrompue en plein `.then()`. Un `localStorage` plein
+    // sur le Mac cesserait alors d'alimenter les tablettes : la panne locale deviendrait une
+    // panne de table. Refuser de notifier ne défait pas la mutation, ça ne fait qu'ajouter
+    // une seconde avarie à la première.
+    //
+    // L'erreur n'est pas avalée pour autant : elle est journalisée, et `saveToLocalStorage`
+    // l'a déjà consignée dans `lastPersistenceError`, que `getLastPersistenceError()` expose
+    // et que `app/gm.js` remonte dans l'état réseau.
+    try {
+      saveToLocalStorage(currentSessionId);
+    } catch (err) {
+      console.warn(
+        `Sauvegarde automatique impossible : ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
   for (const listener of Array.from(subscribers)) {
     try {
@@ -823,6 +848,34 @@ const sessionFogMap = new Map();
 const sessionVisionMap = new Map();
 
 /**
+ * Consigne une panne de stockage du masque de fog, au lieu de l'avaler.
+ *
+ * `CONVENTIONS.md` §6 interdit un `catch` qui avale une erreur et continue. Les trois que
+ * cette fonction remplace le faisaient : un quota dépassé, ou un `localStorage` refusé en
+ * navigation privée, perdait le fog **en silence** — précisément la panne que le §6 existe
+ * pour rendre bruyante. `getStorage()` ne rendant jamais `null` (il replie sur une carte
+ * mémoire), ces `catch` ne pouvaient attraper qu'une vraie défaillance du stockage.
+ *
+ * L'erreur passe par `lastPersistenceError`, canal que `getLastPersistenceError()` expose et
+ * que `app/gm.js` remonte déjà dans l'état réseau : le mécanisme existait, seul le fog ne
+ * l'empruntait pas.
+ *
+ * @param {string} operation Libellé pour le message : « lecture », « écriture », « purge »
+ * @param {string} levelId
+ * @param {unknown} err
+ * @returns {void}
+ */
+function recordMaskStorageError(operation, levelId, err) {
+  lastPersistenceError = new Error(
+    `Erreur ${operation} LocalStorage du masque de l'étage "${levelId}" : ${
+      err instanceof Error ? err.message : String(err)
+    }`,
+    { cause: err }
+  );
+  console.warn(lastPersistenceError.message);
+}
+
+/**
  * Recupere le masque exploré pour un étage.
  * @param {string} levelId
  * @returns {string|null} Base64 PNG brut ou null
@@ -833,18 +886,57 @@ export function getSessionFog(levelId) {
     return sessionFogMap.get(levelId) ?? null;
   }
   if (currentSessionId) {
-    try {
-      const storage = getStorage();
-      const saved = storage.getItem(`rpg_fog_${currentSessionId}_${levelId}`);
-      if (saved) {
-        sessionFogMap.set(levelId, saved);
-        return saved;
-      }
-    } catch {
-      // Ignorer l'erreur de storage
+    const saved = readFogFromStorage(currentSessionId, levelId);
+    if (saved) {
+      sessionFogMap.set(levelId, saved);
+      return saved;
     }
   }
   return null;
+}
+
+/**
+ * Lit le masque d'un étage depuis le stockage. Une panne rend `null` — l'absence de copie
+ * sauvegardée est un état légitime, la séance se poursuit sur la carte mémoire.
+ *
+ * @param {string} sessionId
+ * @param {string} levelId
+ * @returns {string|null}
+ */
+function readFogFromStorage(sessionId, levelId) {
+  try {
+    return getStorage().getItem(`rpg_fog_${sessionId}_${levelId}`);
+  } catch (err) {
+    recordMaskStorageError('lecture', levelId, err);
+    return null;
+  }
+}
+
+/**
+ * Reporte le masque d'un étage dans le stockage, ou l'en retire si `png` est `null`.
+ *
+ * **Ne lève pas, et c'est délibéré.** `setSessionFog` est appelée depuis le `.then()` de la
+ * publication du MJ (`app/gm.js`, `scheduleFogPublish`) et depuis `applyNetworkEvent` : une
+ * exception y interromprait le `transport.publish` qui suit. Un stockage plein sur le Mac
+ * cesserait alors d'alimenter les tablettes — panne bien plus grave que la perte d'une copie
+ * locale. La carte mémoire porte la vérité de la séance en cours ; `localStorage` n'en est
+ * que le report d'un démarrage au suivant.
+ *
+ * @param {string} sessionId
+ * @param {string} levelId
+ * @param {string|null} png
+ * @returns {void}
+ */
+function writeFogToStorage(sessionId, levelId, png) {
+  try {
+    if (png === null) {
+      getStorage().removeItem(`rpg_fog_${sessionId}_${levelId}`);
+    } else {
+      getStorage().setItem(`rpg_fog_${sessionId}_${levelId}`, png);
+    }
+  } catch (err) {
+    recordMaskStorageError(png === null ? 'purge' : 'écriture', levelId, err);
+  }
 }
 
 /**
@@ -857,16 +949,12 @@ export function setSessionFog(levelId, png) {
   if (!png) {
     sessionFogMap.delete(levelId);
     if (currentSessionId) {
-      try {
-        getStorage().removeItem(`rpg_fog_${currentSessionId}_${levelId}`);
-      } catch {}
+      writeFogToStorage(currentSessionId, levelId, null);
     }
   } else {
     sessionFogMap.set(levelId, png);
     if (currentSessionId) {
-      try {
-        getStorage().setItem(`rpg_fog_${currentSessionId}_${levelId}`, png);
-      } catch {}
+      writeFogToStorage(currentSessionId, levelId, png);
     }
   }
   notifySubscribers();

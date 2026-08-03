@@ -24,6 +24,9 @@ import {
   updateLevel,
   updateToken,
   removeToken,
+  setSessionFog,
+  getSessionFog,
+  getLastPersistenceError,
 } from '../js/state/store.js';
 
 import { setSelectionState } from '../js/state/selection.js';
@@ -562,6 +565,71 @@ test('removeToken supprime le pion, désélectionne, et refuse un identifiant in
   assert.throws(() => removeToken('hero-1'), /Pion inconnu/);
   assert.throws(() => removeToken('jamais-existé'), /Pion inconnu/);
   assert.deepStrictEqual(getState(), stateBefore);
+});
+
+test('une panne de stockage du masque de fog est consignée, jamais avalée (CONVENTIONS §6)', () => {
+  const descripteurOrigine = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const warnOrigine = console.warn;
+  /** @type {string[]} */
+  const avertissements = [];
+
+  setSessionId('sess-fog-quota');
+
+  // Stockage qui refuse tout, comme un quota dépassé ou une navigation privée. C'est le seul
+  // cas que les `catch` d'avant pouvaient attraper, `getStorage()` ne rendant jamais `null`.
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem() {
+        throw new Error('SecurityError simulee');
+      },
+      setItem() {
+        throw new Error('QuotaExceededError simulee');
+      },
+      removeItem() {
+        throw new Error('QuotaExceededError simulee');
+      },
+    },
+  });
+  console.warn = (/** @type {any[]} */ ...args) => {
+    avertissements.push(args.join(' '));
+  };
+
+  try {
+    // Écriture : la séance continue sur la carte mémoire — publier aux tablettes ne doit
+    // jamais dépendre du stockage local — mais la panne est consignée et journalisée.
+    assert.doesNotThrow(() => setSessionFog('etage-ecriture', 'QQAA'));
+    assert.equal(getSessionFog('etage-ecriture'), 'QQAA');
+
+    // Lecture : cet étage n'est pas en mémoire, donc le stockage est réellement interrogé.
+    assert.equal(getSessionFog('etage-lecture'), null);
+
+    assert.ok(getLastPersistenceError(), 'la panne doit être consignée pour la vue MJ');
+
+    // Consignée ET bruyante : c'est ce que le §6 exige, et ce que les `catch` vides
+    // supprimaient. On vérifie le **contenu** des journaux et non leur nombre : la
+    // sauvegarde automatique de `notifySubscribers` échoue elle aussi sous ce stockage, et
+    // `lastPersistenceError` n'a qu'une case — le dernier écrit gagne. C'est le journal, pas
+    // cette case, qui prouve qu'aucune des deux pannes n'est passée sous silence.
+    assert.ok(
+      avertissements.some((m) => /écriture/.test(m) && /etage-ecriture/.test(m)),
+      `panne d'écriture non journalisée. Journaux : ${JSON.stringify(avertissements)}`
+    );
+    assert.ok(
+      avertissements.some((m) => /lecture/.test(m) && /etage-lecture/.test(m)),
+      `panne de lecture non journalisée. Journaux : ${JSON.stringify(avertissements)}`
+    );
+  } finally {
+    console.warn = warnOrigine;
+    if (descripteurOrigine) {
+      Object.defineProperty(globalThis, 'localStorage', descripteurOrigine);
+    } else {
+      delete (/** @type {any} */ (globalThis).localStorage);
+    }
+    // `resetStore()` ne remet pas l'identifiant de session à zéro : sans cette ligne, un test
+    // ajouté après celui-ci hériterait d'une sauvegarde automatique active.
+    setSessionId(null);
+  }
 });
 
 
