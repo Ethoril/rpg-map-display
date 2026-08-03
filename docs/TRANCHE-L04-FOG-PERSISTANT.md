@@ -46,6 +46,9 @@ est d'ailleurs déjà clos par la mesure du 31/07.
    c'était vrai.
 3. **La publication et la persistance** — `fog.update`, Mac seul, et le document Firestore
    qui survit au redémarrage.
+   > Prévision non tenue, relevée le 03/08/2026 : la persistance s'est faite en
+   > `localStorage` par poste, pas en Firestore. Le critère 9 tient, mais par republication
+   > depuis le Mac. Voir CdC §10, amendement du 03/08.
 4. **Le masquage côté joueurs** — la première fois de ce lot que `js/ui/player/` et
    `js/app/player.js` sont touchés.
 

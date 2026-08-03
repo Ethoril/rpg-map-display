@@ -1,12 +1,6 @@
 // @ts-check
 
 /**
- * Résolution du masque raster de fog (8×8 pixels par case carte).
- * Permet un compromis optimal entre précision visuelle et taille du bitmap.
- */
-export const FOG_PX_PER_CELL = 8;
-
-/**
  * Taille maximale de texture de secours (en pixels) si la limite WebGL du GPU ne peut être interrogée.
  * Garantit la compatibilité sur les appareils mobiles et tablettes modestes.
  *
@@ -81,7 +75,18 @@ export const VISION_MAX_RANGE_CELLS = 20;
 export const FOG_MAX_ENCODED_BYTES = 51200;
 
 /**
- * Résolution du masque raster de fog (8 pixels par case).
+ * Résolution du masque raster de fog : 8 × 8 pixels de masque par case carte.
+ *
+ * Compromis entre finesse du bord révélé et taille de la charge publiée — c'est le facteur
+ * qui gouverne `FOG_MAX_ENCODED_BYTES` juste au-dessus, dont le tableau donne les charges
+ * mesurées à cette résolution. Changer l'un oblige à remesurer l'autre.
+ *
+ * ⚠ **Domicile unique, et il l'est redevenu le 03/08/2026.** Une constante `FOG_PX_PER_CELL`
+ * de même valeur existait depuis le lot 1a et n'était plus importée par personne, tandis que
+ * la documentation normative — `CONVENTIONS.md` §3, `ARCHITECTURE.md` §1 — ne nommait qu'elle.
+ * Le code lisait donc une constante non documentée et les documents en réglaient une morte :
+ * le premier ajustement de résolution aurait été écrit au mauvais endroit et n'aurait rien
+ * produit. Ne pas réintroduire l'ancien nom.
  */
 export const FOG_MASK_PX_PER_CELL = 8;
 

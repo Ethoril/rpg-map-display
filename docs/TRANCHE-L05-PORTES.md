@@ -730,3 +730,10 @@ La documentation normative décrit donc une constante que le code n'utilise plus
 réellement utilisée n'est décrite nulle part. Deux domiciles pour un réglage divergeront au
 premier ajustement. À reprendre dans une passe dédiée : soit retirer `FOG_PX_PER_CELL` et
 corriger les quatre renvois, soit renommer en sens inverse — mais une seule doit survivre.
+
+> **Traitée le 03/08/2026, après la livraison de L-05.** `FOG_PX_PER_CELL` retirée, les quatre
+> renvois corrigés. La passe a trouvé plus large que prévu : le §3 de `CONVENTIONS.md` se
+> trompait aussi sur le stockage en mémoire (un canvas et son canal alpha, pas un `Uint8Array`),
+> sur le canal de persistance (`localStorage`, pas Firestore) et sur l'origine du masque, qu'il
+> déclarait sans décalage. Une section « structure figée » fausse en quatre points sur huit
+> lignes ne se corrige pas d'un seul renvoi.

@@ -872,7 +872,7 @@ ce test, et non un seuil dans ce document, qui protège réellement la performan
 | Donnée | Support | Fréquence |
 |---|---|---|
 | Documents de scène | Firestore | à l'édition |
-| Masques de fog | Firestore (PNG base64 **mono-canal**, ~12 Ko/étage) | throttlé, et en fin de séance |
+| Masques de fog | RTDB, événements `fog.update` + LocalStorage **par poste** (PNG base64 **mono-canal**, ~12 Ko/étage) | throttlé 1 Hz |
 | Positions de pions | RTDB (autoritatif live) + snapshot Firestore | snapshot throttlé |
 | Images de carte | Dépôt GitHub Pages | à l'import |
 | Repli hors-ligne | LocalStorage | continu |
@@ -882,7 +882,25 @@ ce test, et non un seuil dans ce document, qui protège réellement la performan
 > masque 8 px/case presque plein) : **11,7 Kio** de base64 en PNG **mono-canal**, encodé en
 > 6 ms. Un canvas ne sachant produire que du RGBA, `toDataURL` en donnerait 26,8 Kio — d'où
 > l'encodeur mono-canal écrit à la main dans `vision/fog.js`, que le manifeste prévoyait déjà.
-> L'ordre de grandeur reste sans danger : 1 Hz, et le plafond Firestore est de 1 Mio.
+> L'ordre de grandeur reste sans danger : 1 Hz, et loin du plafond que le projet s'est donné.
+
+> **Amendement du 03/08/2026 — le fog n'atteint pas Firestore.** La ligne annonçait « Firestore,
+> throttlé et en fin de séance ». Vérifié dans le code : le masque ne va **pas** dans le document
+> de campagne, seul contenu Firestore du projet (`campaigns/{sid}`). Il voyage en événements
+> `fog.update` sur la RTDB, et chaque poste le conserve dans son propre `localStorage`, clé
+> `rpg_fog_{sessionId}_{levelId}`.
+>
+> **Ce que cela change pour le critère 9**, « le fog survit à un redémarrage complet » : il y
+> survit **par poste**, et non par le serveur. Le MJ retrouve le sien dans son stockage local ;
+> un poste au stockage vide, ou une tablette qui rejoint en cours de séance, ne reçoit rien
+> jusqu'à la première publication — que le MJ émet de toute façon au démarrage, `syncVision`
+> étant appelée à l'initialisation. Le critère tient donc, mais par republication et non par
+> lecture d'un état serveur. Vider le stockage du **Mac** perd le fog exploré de la séance :
+> c'est le seul poste dont la copie fasse autorité.
+>
+> Le plafond qui protège la charge n'est pas celui de Firestore mais `FOG_MAX_ENCODED_BYTES`
+> (50 Kio), porté par `vision/fog.js` — la charge étant en base64 brut, elle échappe à
+> `assertNoTransientAssetUrls`. Voir `CONVENTIONS.md` §3.
 
 `schemaVersion` dans chaque document, avec migration explicite. Le format va changer
 entre les lots — prévoir le chemin de migration dès le lot 1.

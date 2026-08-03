@@ -112,6 +112,9 @@ dans le rapport.
 **Contrat :** `FOG_PX_PER_CELL = 8`, `MAX_TEXTURE_FALLBACK = 4096`,
 `RENDER_RESOLUTION_CAP = 1.5`, `DRAG_HOLD_MS = 150`, `VIEW_PUBLISH_HZ = 10`.
 Chaque constante commentée en français avec sa justification.
+> Contrat d'origine conservé tel quel. `FOG_PX_PER_CELL` a été **renommée
+> `FOG_MASK_PX_PER_CELL`** à la tranche L-04 ; le nom ci-dessus n'existe plus dans le code.
+> Voir `CONVENTIONS.md` §3.
 **Vérification :** `tsc` propre.
 **Dépend de :** T-01
 

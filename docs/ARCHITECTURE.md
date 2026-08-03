@@ -53,7 +53,7 @@ F:\rpg-map-display\
 ├─ js/
 │   ├─ core/
 │   │   ├─ types.js               [1a] tous les @typedef partagés — AUCUN code exécutable
-│   │   ├─ constants.js           [1a] FOG_PX_PER_CELL, seuils, limites
+│   │   ├─ constants.js           [1a] FOG_MASK_PX_PER_CELL, seuils, limites
 │   │   ├─ cellKey.js             [1a] cellKey, parseCellKey, edgeKey
 │   │   ├─ version.js             [1a] ⚙ GÉNÉRÉ par scripts/stamp-version.mjs
 │   │   └─ schema.js              [1a] fabriques + validation du document de campagne

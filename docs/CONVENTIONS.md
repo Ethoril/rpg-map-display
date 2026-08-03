@@ -140,20 +140,35 @@ est franchissable.
 ## 3. Masque de fog — structure figée
 
 ```js
-FOG_PX_PER_CELL = 8                      // js/core/constants.js
+FOG_MASK_PX_PER_CELL = 8                 // js/core/constants.js
 ```
 
 - Dimensions : `widthCells * 8` × `heightCells * 8` pixels.
-- Origine : alignée sur la case `{a:0, b:0}`, sans décalage.
-- Un canal, un octet par pixel : `0` = non exploré, `255` = exploré.
-- Stockage en mémoire : `Uint8Array` de longueur `width * height`.
-- Indexation : `index = row * width + col`. **Toujours cette formule**, jamais l'inverse.
-- Persistance : PNG en niveaux de gris, encodé base64 dans Firestore.
 - Un masque **par étage**, jamais global.
+- Un canal utile : `0` = non exploré, `255` = exploré.
+- **Stockage en mémoire : un canvas hors écran, l'exploration dans le canal alpha.** Pas un
+  `Uint8Array` : l'union de deux polygones devient alors un `fill()` natif, et la mesure de
+  L-04 a tranché — 0,12 ms par case de chemin contre 51 ms en boucle de pixels JS.
+- **Publication : PNG mono-canal**, écrit à la main depuis le canal alpha, deflate, puis
+  base64 **brut** — sans préfixe `data:`, faute de quoi `assertNoTransientAssetUrls` le
+  refuserait au-delà de 24 Kio. Il voyage dans les événements `fog.update` et `vision.update`,
+  jamais dans le document de campagne.
+- **Persistance : `localStorage`**, clé `rpg_fog_{sessionId}_{levelId}`. Le fog n'est **pas**
+  dans Firestore, qui ne porte que l'instantané de campagne. Le masque exploré est cumulatif
+  et persisté ; le masque de vision courante est éphémère et se recalcule au redémarrage.
+- Indexation d'un tampon plat : `index = row * width + col`. **Toujours cette formule**,
+  jamais l'inverse.
 
 Le masque est en espace *pixel de masque*, pas en espace carte ni cellule. Le facteur de
-conversion est `pxPerCell / FOG_PX_PER_CELL`. Cette conversion vit dans `js/vision/fog.js`
-et nulle part ailleurs.
+conversion vaut `FOG_MASK_PX_PER_CELL / gridScale`, où `gridScale` est le nombre de pixels
+carte par case. Il s'écrit ainsi et non en `pxPerCell` parce que `js/vision/*` n'a le droit
+d'importer que `core/*` (`ARCHITECTURE.md` §2) : l'appelant fournit l'échelle et l'origine,
+toutes deux obtenues par `grid.mapFromCellPoint()`. Cette conversion vit dans
+`js/vision/fog.js` et nulle part ailleurs.
+
+⚠ **L'origine du masque ne correspond pas forcément au point (0, 0) de la carte** : un étage
+peut porter un décalage. Prendre `grid.mapFromCellPoint({ cellX: 0, cellY: 0 })`, ne jamais la
+supposer nulle.
 
 ---
 
