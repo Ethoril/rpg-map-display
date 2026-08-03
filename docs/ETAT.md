@@ -633,23 +633,25 @@ décroche, ça se verra sans instrumentation.
 
 ## Suite produit
 
-Avancement mesuré contre les lots du cahier des charges §11, au 30 juillet 2026.
+Avancement mesuré contre les lots du cahier des charges §11, au 3 août 2026.
 Relevé pour éviter de confondre « le plateau est solide » et « le produit est proche ».
 
 | Lot du CdC §11 | État |
 |---|---|
 | **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
 | **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
-| **2 — Lignes de vue, portes & tactique** | **6 sur 13, quatre tranches livrées.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). Restent les portes à trois états, les outils fog MJ, l’éditeur de murs, les gabarits et les marqueurs |
+| **2 — Lignes de vue, portes & tactique** | **6 sur 13 validés, cinq tranches livrées.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’une demi-case ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée. **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. Restent les outils fog MJ, l’éditeur de murs, les gabarits et les marqueurs |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | 0 sur 6. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |
 | §12 Questions ouvertes | 8, dont plusieurs conditionnent des choix de conception du lot 2 |
 
 Le substrat est en place : plateau, grille, pions, gestes, transport, persistance, import.
-Le lot 2 est le plus gros du projet et il consommera une géométrie que la chaîne se contente
-aujourd’hui de **transporter** — 131 murs et 40 portes arrivent intacts dans le store et
-aucun sous-système ne les lit encore.
+Le lot 2 est le plus gros du projet, et la géométrie que la chaîne se contentait de
+**transporter** est désormais **lue** : les 131 murs et 40 portes de `manoir-rdc` bloquent le
+passage (L-01), obstruent la vision (L-02, L-03), alimentent le fog (L-04) et s’ouvrent au
+doigt (L-05). Ce qui reste du lot ne consomme plus cette géométrie, il l’**édite** —
+pinceaux de fog, éditeur de murs, gabarits, marqueurs.
 
 Toute optimisation GPU future devra passer par un nouveau contrat de renderer et des
 mesures tablette ; elle ne justifie pas de restaurer l’ancienne implantation.
