@@ -247,13 +247,26 @@ function recipesPath(mapsDir) {
  * `round` borné a changé les dimensions de sortie de 4679 à 4680 px, à constantes
  * rigoureusement identiques. Un cache aveugle au code aurait affirmé « rien à faire ».
  *
- * Les deux fichiers comptent : `resample.mjs` détermine l'image, `prepare-maps.mjs` le
- * document de scène. Bumper une version à la main serait une consigne, pas un mécanisme.
+ * Les trois fichiers comptent : `resample.mjs` détermine l'image, `prepare-maps.mjs` et
+ * `js/import/uvtt.js` déterminent ensemble le document de scène. Bumper une version à la
+ * main serait une consigne, pas un mécanisme.
+ *
+ * ⚠ **`uvtt.js` a été ajouté le 03/08/2026, et son absence était un trou réel.** C'est lui
+ * qui convertit la géométrie UVTT vers le modèle : la tranche L-05 l'a modifié pour émettre
+ * `state` sur les portails, et le cache aurait sauté toutes les cartes en les déclarant à
+ * jour. Le document de scène n'aurait jamais acquis le champ. Sans effet visible cette
+ * fois-ci — la normalisation à la lecture rattrape les documents hérités — mais le prochain
+ * changement de sémantique du parseur ne se serait pas propagé davantage, et rien ne
+ * l'aurait signalé. C'est exactement le défaut que cette empreinte existe pour fermer.
  */
 const PIPELINE_HASH = (() => {
   const hash = crypto.createHash('sha256');
-  for (const f of ['resample.mjs', 'prepare-maps.mjs']) {
-    hash.update(fs.readFileSync(path.join(__dirname, f)));
+  for (const f of [
+    path.join(__dirname, 'resample.mjs'),
+    path.join(__dirname, 'prepare-maps.mjs'),
+    path.join(__dirname, '..', 'js', 'import', 'uvtt.js'),
+  ]) {
+    hash.update(fs.readFileSync(f));
   }
   return hash.digest('hex').slice(0, 16);
 })();
