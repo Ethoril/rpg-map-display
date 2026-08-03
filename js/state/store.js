@@ -21,6 +21,7 @@ import {
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Cell} Cell */
 /** @typedef {import('../core/types.js').Handout} Handout */
+/** @typedef {import('../core/types.js').CellPoint} CellPoint */
 
 /** @type {Campaign | null} */
 let campaign = null;
@@ -609,6 +610,102 @@ export function setPortalState(levelId, portalId, state) {
   }
 
   notifySubscribers();
+}
+
+/**
+ * Ajoute une polyligne de mur sur un étage.
+ *
+ * @param {string} levelId
+ * @param {CellPoint[]} wall
+ * @returns {void}
+ */
+export function addWall(levelId, wall) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!Array.isArray(wall) || wall.length < 2) {
+    throw new Error('Un mur doit être une polyligne d\'au moins 2 sommets');
+  }
+  for (let i = 0; i < wall.length; i++) {
+    const pt = wall[i];
+    if (
+      !pt ||
+      typeof pt !== 'object' ||
+      typeof pt.cellX !== 'number' ||
+      !Number.isFinite(pt.cellX) ||
+      typeof pt.cellY !== 'number' ||
+      !Number.isFinite(pt.cellY)
+    ) {
+      throw new Error(`Sommet de mur invalide à l'index ${i}`);
+    }
+  }
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+
+  level.walls.push(structuredClone(wall));
+
+  assertValidCampaign(candidate, `Ajout d'un mur sur l'étage "${levelId}"`);
+  campaign = candidate;
+
+  // Si un pion est sélectionné et qu'il appartient à l'étage muté, rafraîchir ses cases atteignables
+  const selectedId = getSelectedTokenId();
+  if (selectedId) {
+    const token = campaign.tokens.find((t) => t.id === selectedId);
+    if (token && token.levelId === levelId) {
+      const targetLevel = candidate.levels.find((l) => l.id === levelId) || null;
+      setSelectionState(token, targetLevel);
+    }
+  }
+
+  notifySubscribers();
+}
+
+/**
+ * Supprime une polyligne de mur sur un étage (comparaison par valeur exacte).
+ * Idempotent : ne fait rien si le mur est déjà absent.
+ *
+ * @param {string} levelId
+ * @param {CellPoint[]} wall
+ * @returns {boolean} True si un mur a été retiré, false sinon.
+ */
+export function removeWall(levelId, wall) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!Array.isArray(wall)) return false;
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level) return false;
+
+  const idx = level.walls.findIndex((w) => {
+    if (!Array.isArray(w) || w.length !== wall.length) return false;
+    return w.every((pt, i) => pt.cellX === wall[i].cellX && pt.cellY === wall[i].cellY);
+  });
+
+  if (idx === -1) return false;
+
+  level.walls.splice(idx, 1);
+
+  assertValidCampaign(candidate, `Suppression d'un mur sur l'étage "${levelId}"`);
+  campaign = candidate;
+
+  // Si un pion est sélectionné et qu'il appartient à l'étage muté, rafraîchir ses cases atteignables
+  const selectedId = getSelectedTokenId();
+  if (selectedId) {
+    const token = campaign.tokens.find((t) => t.id === selectedId);
+    if (token && token.levelId === levelId) {
+      const targetLevel = candidate.levels.find((l) => l.id === levelId) || null;
+      setSelectionState(token, targetLevel);
+    }
+  }
+
+  notifySubscribers();
+  return true;
 }
 
 /**

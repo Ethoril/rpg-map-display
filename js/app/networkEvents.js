@@ -208,6 +208,49 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    case 'wall.add': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !Array.isArray(payload.wall) || payload.wall.length < 2
+      ) {
+        console.error('Événement "wall.add" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((l) => l.id === payload.levelId)) {
+        console.error(`Événement "wall.add" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      try {
+        store.addWall(payload.levelId, payload.wall);
+      } catch (err) {
+        console.error(
+          `Événement "wall.add" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'wall.remove': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !Array.isArray(payload.wall)
+      ) {
+        console.error('Événement "wall.remove" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((l) => l.id === payload.levelId)) {
+        console.error(`Événement "wall.remove" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      try {
+        return store.removeWall(payload.levelId, payload.wall);
+      } catch (err) {
+        console.error(
+          `Événement "wall.remove" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+    }
 
     default:
       return false;

@@ -9,6 +9,7 @@ import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
+import { WallsLayer } from '../render/layers/walls.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
@@ -16,6 +17,7 @@ import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { GM_SESSION_STORAGE_KEY, VISION_MAX_RANGE_CELLS } from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
+import { snapWallVertex, findWallAt } from '../ui/gm/wallEditor.js';
 import { ExploredFog } from '../vision/fog.js';
 
 import {
@@ -89,6 +91,7 @@ export async function bootstrapGMApp(options = {}) {
 
   const backgroundLayer = new BackgroundLayer({ invalidate: requestRender });
   const gridLayer = new GridLayer();
+  const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -422,6 +425,10 @@ export async function bootstrapGMApp(options = {}) {
       background: () =>
         backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, { role: 'gm' }),
       grid: () => gridLayer.render(stage.context, grid),
+      walls: () => {
+        const draft = gmPanel?.wallEditor?.isArmed() ? gmPanel.wallEditor.getDraft() : null;
+        wallsLayer.render(stage.context, grid, activeLevel, draft);
+      },
       portals: () => portalsLayer.render(stage.context, grid, activeLevel),
       moveZone: () =>
         moveZoneLayer.render(stage.context, grid, {
@@ -627,6 +634,26 @@ export async function bootstrapGMApp(options = {}) {
           }
         },
         requestRender: () => requestRender(),
+        onAddWall: (levelId, wall) => {
+          if (transport) {
+            transport.publish({
+              type: 'wall.add',
+              payload: { levelId, wall },
+              at: Date.now(),
+              by: 'gm',
+            });
+          }
+        },
+        onRemoveWall: (levelId, wall) => {
+          if (transport) {
+            transport.publish({
+              type: 'wall.remove',
+              payload: { levelId, wall },
+              at: Date.now(),
+              by: 'gm',
+            });
+          }
+        },
       })
     : null;
 
@@ -717,6 +744,34 @@ export async function bootstrapGMApp(options = {}) {
     if (intention.type === 'tap') {
       const state = store.getState();
       if (!state.activeLevel) return;
+
+      if (gmPanel?.wallEditor?.isArmed()) {
+        const grid = gridFor(state.activeLevel);
+        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+        const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+        const gridScale = Math.abs(origin1.x - origin0.x);
+
+        const subMode = gmPanel.wallEditor.getSubMode();
+        if (subMode === 'tracer') {
+          const snapPt = snapWallVertex(intention.mapPos, state.activeLevel, { x: 0, y: 0 }, gridScale);
+          gmPanel.wallEditor.addVertex(snapPt);
+        } else if (subMode === 'supprimer') {
+          const targetWall = findWallAt(intention.mapPos, state.activeLevel, { x: 0, y: 0 }, gridScale);
+          if (targetWall) {
+            const removed = store.removeWall(state.activeLevel.id, targetWall);
+            if (removed && transport) {
+              transport.publish({
+                type: 'wall.remove',
+                payload: { levelId: state.activeLevel.id, wall: targetWall },
+                at: Date.now(),
+                by: 'gm',
+              });
+            }
+          }
+        }
+        return;
+      }
+
       const grid = gridFor(state.activeLevel);
       const cell = grid.cellFromPoint(intention.mapPos);
       const token = tokenAtCell(state.campaign, state.activeLevel, cell);
@@ -824,10 +879,12 @@ export async function bootstrapGMApp(options = {}) {
     role: 'gm',
     onIntention: handleIntention,
     canStartBrush: (_screenPos, _mapPos) => {
+      if (gmPanel?.wallEditor?.isArmed()) return false;
       if (!gmPanel || !gmPanel.fogTools) return false;
       return gmPanel.fogTools.getActiveTool() !== 'none';
     },
     canStartTokenDrag: (_screenPos, mapPos) => {
+      if (gmPanel?.wallEditor?.isArmed()) return null;
       if (gmPanel?.fogTools?.getActiveTool() !== 'none') return null;
       const state = store.getState();
       if (!state.activeLevel) return null;

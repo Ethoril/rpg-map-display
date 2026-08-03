@@ -616,6 +616,28 @@ export function validateCampaign(campaign) {
       ) {
         errors.push(`Étage "${levelId || 'inconnu'}" : structure d'étage incomplète`);
       } else {
+        // Validation des polylignes de murs
+        for (let wIdx = 0; wIdx < level.walls.length; wIdx++) {
+          const wall = level.walls[wIdx];
+          if (!Array.isArray(wall) || wall.length < 2) {
+            errors.push(`Étage "${levelId || 'inconnu'}" : mur à l'index ${wIdx} doit être une polyligne d'au moins 2 sommets`);
+          } else {
+            for (let pIdx = 0; pIdx < wall.length; pIdx++) {
+              const pt = wall[pIdx];
+              if (
+                !pt ||
+                typeof pt !== 'object' ||
+                typeof pt.cellX !== 'number' ||
+                !Number.isFinite(pt.cellX) ||
+                typeof pt.cellY !== 'number' ||
+                !Number.isFinite(pt.cellY)
+              ) {
+                errors.push(`Étage "${levelId || 'inconnu'}" : mur à l'index ${wIdx} a un sommet invalide à l'index ${pIdx}`);
+              }
+            }
+          }
+        }
+
         // Validation des couleurs de lumière
         for (const light of level.lights) {
           if (!light || !isValidHexColor(light.color)) {

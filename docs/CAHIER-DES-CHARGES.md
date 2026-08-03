@@ -490,6 +490,8 @@ sur un étage. Deux usages :
 Toute modification invalide les arêtes de grille concernées dans le masque bloqué
 (§5.3bis).
 
+*Note (Tranche L-07)* : Déplacer un mur est reporté (exigerait un mode de glisser dans `js/input/`). L'édition de portails attend deux noms d'événements — `portal.add` et `portal.remove` — qui n'existent pas au §7 et ne s'inventent pas sans décision du mainteneur.
+
 ### 5.8 Révélation d'image aux joueurs
 
 Le MJ choisit une image (portrait, lettre, rune, plan trouvé) ; elle s'affiche **en plein
@@ -962,8 +964,8 @@ murs : **éditeur minimal de murs** (§5.7), **gabarits de zone d'effet** (§5.9
 **marqueurs d'état** (§5.3).
 
 Critères :
-- [ ] Un segment de mur manquant s'ajoute à la main et corrige immédiatement la vision.
-- [ ] Un étage importé en image simple reçoit des murs et gagne des lignes de vue.
+- [x] Un segment de mur manquant s'ajoute à la main et corrige immédiatement la vision.
+- [x] Un étage importé en image simple reçoit des murs et gagne des lignes de vue.
 - [ ] Un gabarit circulaire surligne les cases affectées **en respectant les murs**.
 - [ ] Les marqueurs d'un pion sont lisibles sur les trois écrans.
 - [ ] Les zones hors vision sont masquées côté joueurs, pas côté MJ.

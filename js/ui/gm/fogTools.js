@@ -11,6 +11,7 @@
  * @property {(levelId: string) => ExploredFog|null} getExploredFog Renvoie l'instance ExploredFog d'un étage
  * @property {() => void} scheduleFogPublish Déclenche la publication du masque de l'étage courant
  * @property {() => void} requestRender Demande un rendu d'une frame Canvas
+ * @property {(tool: 'none'|'reveal'|'hide') => void} [onToolChange] Callback lorsque l'outil actif change
  */
 
 /**
@@ -245,11 +246,13 @@ export function createFogTools(container, options) {
 
   btnToolReveal.addEventListener('click', () => {
     activeTool = activeTool === 'reveal' ? 'none' : 'reveal';
+    options.onToolChange?.(activeTool);
     updateUI();
   });
 
   btnToolHide.addEventListener('click', () => {
     activeTool = activeTool === 'hide' ? 'none' : 'hide';
+    options.onToolChange?.(activeTool);
     updateUI();
   });
 
@@ -277,6 +280,10 @@ export function createFogTools(container, options) {
     pushUndoState,
     clearUndoStack,
     undo,
+    disarm: () => {
+      activeTool = 'none';
+      updateUI();
+    },
     updateUI,
   };
 }

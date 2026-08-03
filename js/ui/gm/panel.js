@@ -5,6 +5,7 @@ import { createSceneLibrary } from './sceneLibrary.js';
 import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
 import { createFogTools } from './fogTools.js';
+import { createWallEditor } from './wallEditor.js';
 import { VERSION } from '../../core/version.js';
 import { GM_SESSION_STORAGE_KEY } from '../../core/constants.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
@@ -22,6 +23,8 @@ import * as store from '../../state/store.js';
  * @property {(levelId: string) => import('../../vision/fog.js').ExploredFog|null} [getExploredFog]
  * @property {() => void} [scheduleFogPublish]
  * @property {() => void} [requestRender]
+ * @property {(levelId: string, wall: import('../../core/types.js').CellPoint[]) => void} [onAddWall]
+ * @property {(levelId: string, wall: import('../../core/types.js').CellPoint[]) => void} [onRemoveWall]
  */
 
 /**
@@ -29,7 +32,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, destroy: () => void}}
+ * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -72,6 +75,7 @@ export function createGMPanel(container, options = {}) {
       <button class="gm-tab-btn" data-tab="token-maker" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Pions</button>
       <button class="gm-tab-btn" data-tab="handouts" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Handouts</button>
       <button class="gm-tab-btn" data-tab="fog-tools" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🌫️ Fog</button>
+      <button class="gm-tab-btn" data-tab="wall-editor" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🧱 Murs</button>
       <button class="gm-tab-btn" data-tab="grid-settings" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Grille</button>
     </div>
 
@@ -83,6 +87,10 @@ export function createGMPanel(container, options = {}) {
 
       <div id="tab-content-fog-tools" class="gm-tab-pane" style="display: none;">
         <div id="fog-tools-mount"></div>
+      </div>
+
+      <div id="tab-content-wall-editor" class="gm-tab-pane" style="display: none;">
+        <div id="wall-editor-mount"></div>
       </div>
 
       <div id="tab-content-import-uvtt" class="gm-tab-pane" style="display: block;">
@@ -234,6 +242,11 @@ export function createGMPanel(container, options = {}) {
   // Initialisation du composant Handouts
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
+  const wallEditorMount = /** @type {HTMLElement} */ (container.querySelector('#wall-editor-mount'));
+
+  /** @type {ReturnType<typeof createWallEditor>|null} */
+  let wallEditor = null;
+
   // Initialisation du composant FogTools
   const fogTools = fogToolsMount
     ? createFogTools(fogToolsMount, {
@@ -241,8 +254,37 @@ export function createGMPanel(container, options = {}) {
         getExploredFog,
         scheduleFogPublish,
         requestRender,
+        onToolChange: (tool) => {
+          if (tool !== 'none' && wallEditor) {
+            wallEditor.setArmed(false);
+          }
+        },
       })
     : null;
+
+  // Initialisation du composant WallEditor
+  if (wallEditorMount) {
+    wallEditor = createWallEditor(wallEditorMount, {
+      getActiveLevelId: () => store.getActiveLevelId(),
+      onAddWall: (levelId, wall) => {
+        store.addWall(levelId, wall);
+        options.onAddWall?.(levelId, wall);
+      },
+      onRemoveWall: (levelId, wall) => {
+        const removed = store.removeWall(levelId, wall);
+        if (removed) {
+          options.onRemoveWall?.(levelId, wall);
+        }
+        return removed;
+      },
+      onArmChange: (armed) => {
+        if (armed && fogTools) {
+          fogTools.disarm();
+        }
+      },
+      requestRender,
+    });
+  }
 
   // Initialisation de la bibliothèque de pions
   /** @type {{destroy: () => void} | null} */
@@ -662,6 +704,7 @@ export function createGMPanel(container, options = {}) {
   return {
     tokenMaker,
     fogTools,
+    wallEditor,
     destroy: () => {
       listeners.abort();
       unsubscribeStore();
