@@ -1,15 +1,30 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 30 juillet 2026 — **le lot 1b du CdC est complet côté code.**
-> Chantiers H (révélation d'image), I (bibliothèque de pions), J (page d'accueil et vue MJ
-> sur `gm.html`) et K (badge d'élévation) livrés, après la bibliothèque UVTT (U-00 à U-06 de
-> `PLAN-BIBLIOTHEQUE-UVTT.md`). Ne reste ouvert, sur les lots 1a et 1b, que des **mesures
-> matérielles** — voir « Ce qui reste à vérifier manuellement ».
+> Dernière mise à jour : 4 août 2026 — **le lot 2 du CdC est à 9 critères sur 13, et tout son
+> code est écrit.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
+> L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
+> de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet. **Aucun des trois critères
+> restants n'attend du développement** : les 10 et 11 attendent la Tab S9 FE, le 4 (marqueurs,
+> L-09) attend une partie jouée.
+>
+> Les lots 1a et 1b sont complets côté code — chantiers H (révélation d'image), I et M
+> (bibliothèque de pions), J (page d'accueil et vue MJ sur `gm.html`), K (badge d'élévation) et
+> L (outil local de préparation des cartes), après la bibliothèque UVTT (U-00 à U-06 de
+> `PLAN-BIBLIOTHEQUE-UVTT.md`). Ne reste ouvert, sur ces deux lots, que des **mesures
+> matérielles** — voir « Ce qui reste à vérifier manuellement ». Deux critères de L-05, le 10 et
+> le 11, sont dans le même cas : le mécanisme est vérifié en machine, les seuils attendent la
+> Tab S9 FE.
+>
+> **C'est la table « Suite produit », en fin de document, qui fait foi sur l'avancement** ; ce
+> chapeau ne la résume que pour la reprise. En cas de désaccord entre les deux, croire la table
+> et corriger le chapeau — il a déjà annoncé « lot 2 pas commencé » trois jours après le début
+> du lot 2.
 >
 > ⚠️ **Attention à la numérotation.** Le « lot 2 » de `PLAN-BIBLIOTHEQUE-UVTT.md` désigne la
 > bibliothèque UVTT et n'a rien à voir avec le **Lot 2 du cahier des charges §11** (lignes
-> de vue, portes, fog, éditeur de murs, gabarits, marqueurs), qui n'est **pas commencé**.
-> Ne pas confondre les deux : la bibliothèque est une tranche du Lot 1b du CdC.
+> de vue, portes, fog, éditeur de murs, gabarits, marqueurs). Ne pas confondre les deux : la
+> bibliothèque est une tranche du Lot 1b du CdC. De même, le « chantier L » est l'outil de
+> préparation des cartes, tandis que `L-01`…`L-10` sont les tranches du Lot 2.
 >
 > Les mesures physiques sur tablette et les scénarios Firebase réels restent à valider dans
 > leur environnement.
@@ -47,21 +62,42 @@ pnpm run check-deps
 dont dépend le déploiement GitHub Pages. Lancer seulement `test:unit` a déjà
 laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 
-Résultat de la passe d’intégration du 30 juillet 2026 (fin du lot 1b du CdC) :
+Depuis le 4 août 2026, `test:e2e` ne lance que le projet `chromium` : les trois scénarios de
+geste réel vivent dans le projet `manuel`, **hors de la porte**, à lancer par
+`pnpm run test:manuel` (voir « Ce qui reste à vérifier manuellement »). Un `verify` vert ne dit
+donc plus rien de ces trois-là.
+
+Résultat de la passe d’intégration du 4 août 2026 (après L-08 et le correctif de désarmement
+des outils MJ), mesuré sur le poste Windows de reprise :
 
 - typage : vert ;
-- tests unitaires : **103 réussis**, **aucun ignoré** — le corpus réel de `fixtures/real/`
-  est présent, et `realUvtt.test.mjs` le parse au lieu de s'auto-ignorer ;
-- tests navigateur : **64 réussis**, 2 Firebase ignorés faute de configuration externe ;
+- tests unitaires : **227 tests, 226 réussis, 1 ignoré** en 5 s ;
+- tests navigateur : **100 réussis**, 2 Firebase ignorés faute de configuration externe, en 41 s ;
 - `pnpm run check-deps` : vert, import maps identiques entre `gm.html`, `player.html` et
-  `diag.html` ;
+  `diag.html`. Il avertit que `firebase` est figée en 12.16.0 alors que npm publie 12.17.0 :
+  c'est le comportement voulu, `STACK.md` épinglant les versions ;
 - les scénarios couvrent rendu, imports, bibliothèque de cartes, bibliothèque de pions,
   pions, gestes, élévation, révélation d'image, page d'accueil, plusieurs pages,
-  reconnexion et remplacement de scène synchronisé.
+  reconnexion, remplacement de scène synchronisé, et depuis le lot 2 : arêtes bloquées, fog
+  (temps réel, voile, trajet, outils MJ), portails, éditeur de murs, gabarits de zone d'effet
+  et mécanisme de désarmement des outils MJ.
 
-La suite unitaire est passée d’environ 30 s à moins de 2 s : la préparation de cartes est
+> **L'unique test unitaire ignoré dépend de la machine, pas du code.** C'est
+> `realUvtt.test.mjs`, qui s'auto-ignore quand `fixtures/real/` est vide — et ce dossier est
+> **exclu du dépôt par `.gitignore`** (seul son `.gitkeep` voyage), les exports réels du
+> mainteneur n'ayant pas à être publiés. La passe du 30 juillet annonçait « aucun ignoré » parce
+> qu'elle a été lancée sur le Mac, où le corpus est déposé. Sur tout autre poste, le parsing des
+> UVTT réels n'est donc **validé qu'en théorie** : y déposer un export avant de conclure quoi
+> que ce soit sur l'import (`docs/FIXTURES.md` §1).
+
+Historique, pour situer : la passe du 30 juillet 2026 (fin du lot 1b) donnait 103 tests
+unitaires et 64 navigateur. Le lot 2 a donc doublé la couverture.
+
+La suite unitaire était passée d’environ 30 s à moins de 2 s : la préparation de cartes est
 désormais exercée sur `fixtures/synthetic/minimal.uvtt` dans un dossier temporaire, et
-`maps/` n’est plus muté par les tests.
+`maps/` n’est plus muté par les tests. Elle est remontée à ~5 s depuis, sciemment : les
+fixtures synthétiques portent maintenant une vraie image plutôt qu’un pixel unique (voir
+« Conséquence sur les fixtures » plus bas), et le lot 2 a doublé le nombre de tests.
 
 **Instabilité de `tests/input.spec.mjs` — résolue, en deux temps.** Le fichier échouait par
 intermittence sous charge, 2 fois sur 8 exécutions de `verify`, sur des tests variables. Il
