@@ -68,15 +68,27 @@ pnpm run check-deps
 dont dépend le déploiement GitHub Pages. Lancer seulement `test:unit` a déjà
 laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 
-> ⚠ **Intermittence observée le 4 août 2026 au soir, non diagnostiquée.**
-> `tests/fogTrajet.spec.mjs:178` — « un déplacement joueur révèle tout le trajet, y compris son
-> milieu » — a **échoué une fois sur deux exécutions** de la suite complète, puis passé deux
-> fois sur deux en isolement. Constaté sur un arbre dont les seules modifications étaient
-> documentaires et l'ajout d'icônes : **ce n'est donc pas une régression de code**, et rien de
-> plus n'est établi. Ce qui n'est pas su : si l'instabilité vient du test, de l'ordre
-> d'exécution, ou d'une vraie course dans la propagation du fog — la troisième hypothèse serait
-> la seule grave, et c'est celle qu'il faut écarter en premier. À ne pas confondre avec les
-> trois scénarios sortis de la porte ci-dessous, dont la cause est trouvée.
+> ✅ **Intermittence de `fogTrajet.spec.mjs` — diagnostiquée et corrigée le 5 août 2026.**
+> Défaut du test, pas de l'application. Les deux cases arrivent dans **deux publications de fog
+> distinctes** : la vision de la case d'arrivée part dès le commit du déplacement (relevé entre
+> 336 ms et 2,4 s), le trajet marché ne suit qu'à la fin de l'animation, `TOKEN_MOVE_STEP_MS`
+> × 24 pas, soit 3 840 ms (relevé entre 3,3 s et 4,4 s). Le `poll` portait sur l'arrivée et une
+> assertion **sèche** suivait sur le milieu : satisfaite par la première publication, elle
+> lisait un masque où le trajet n'existait pas encore. Sur machine au repos les deux
+> publications se coalescent, d'où un test vert ; sous la charge des workers parallèles l'écart
+> de 3,5 s s'ouvre.
+>
+> Reproduit à volonté par `--repeat-each=8 --workers=6` : **2 échecs sur 16** avant correction,
+> **16 sur 16** après. La grave hypothèse est écartée par la mesure : le milieu finit **toujours**
+> par être révélé et le masque exploré ne régresse **jamais** — vérifié sur 10 s de relevé
+> continu.
+>
+> ⚠ **Le même diagnostic a révélé un faux vert dans la seconde moitié du fichier**, plus gênant
+> que le flake : le glisser MJ y vérifiait l'**absence** du couloir à un instant où aucune
+> publication de trajet n'avait pu partir. L'assertion passait donc quoi qu'il arrive, y compris
+> si l'application avait révélé le couloir à tort. Elle attend désormais la fenêtre d'animation,
+> dérivée de la constante et non choisie. L'absence est réelle — sonde à l'appui, le couloir
+> reste noir sur 10 s — elle est maintenant aussi **prouvée**.
 
 Depuis le 4 août 2026, `test:e2e` ne lance que le projet `chromium` : les trois scénarios de
 geste réel vivent dans le projet `manuel`, **hors de la porte**, à lancer par

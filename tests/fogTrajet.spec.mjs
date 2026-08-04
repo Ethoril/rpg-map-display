@@ -173,9 +173,23 @@ test('Un déplacement joueur révèle tout le trajet, y compris son milieu', asy
   );
 
   await expect.poll(() => alphaCase(player, CELL_ARRIVEE), { timeout: 8000 }).toBeGreaterThan(0);
+
   // Le milieu est à douze cases de chaque extrémité, pour une vision de deux : il n'est
   // révélé que si le trajet lui-même l'a été.
-  expect(await alphaCase(player, CELL_MILIEU)).toBeGreaterThan(0);
+  //
+  // ⚠ `poll` et non une assertion sèche, et ce n'est pas une précaution de style : les deux
+  // cases arrivent dans DEUX publications distinctes, mesuré le 05/08/2026. La vision de la
+  // case d'arrivée part dès le commit du déplacement (relevé entre 336 ms et 2,4 s), le
+  // trajet marché ne suit qu'à la fin de l'animation — `TOKEN_MOVE_STEP_MS` × 24 pas, soit
+  // 3 840 ms (relevé entre 3,3 s et 4,4 s). Le `poll` ci-dessus est donc satisfait par la
+  // première, bien avant que la seconde n'existe.
+  //
+  // Sur une machine au repos les deux publications se coalescent et l'assertion sèche
+  // passait ; sous la charge des workers parallèles l'écart de 3,5 s s'ouvre et elle lisait
+  // l'état intermédiaire. 2 échecs sur 16 en `--repeat-each=8 --workers=6`. La convergence,
+  // elle, n'a jamais manqué : le milieu finit toujours par être révélé, et le masque ne
+  // régresse jamais — ce n'était donc pas un défaut de l'application.
+  await expect.poll(() => alphaCase(player, CELL_MILIEU), { timeout: 8000 }).toBeGreaterThan(0);
 
   expect(erreurs).toEqual([]);
   await context.close();
@@ -202,7 +216,20 @@ test('Un glisser MJ ne révèle que la case d arrivée, pas la ligne parcourue',
   );
 
   await expect.poll(() => alphaCase(player, CELL_ARRIVEE), { timeout: 8000 }).toBeGreaterThan(0);
+
   // Le MJ a franchi la carte d'un geste ; personne n'a marché ce couloir.
+  //
+  // ⚠ L'attente n'est pas superflue, elle est ce qui rend l'assertion capable d'échouer.
+  // Vérifier une **absence** juste après le `poll` ci-dessus la vérifiait à un instant où
+  // aucune publication de trajet n'a encore pu partir — mesuré le 05/08/2026, celle du
+  // déplacement joueur n'arrive qu'après `TOKEN_MOVE_STEP_MS` × 24 pas. L'assertion passait
+  // donc quoi qu'il arrive, y compris si l'application révélait le couloir à tort : un test
+  // qui ne peut pas échouer ne vérifie rien.
+  //
+  // La fenêtre est dérivée de la constante d'animation, pas choisie : 24 pas × 160 ms, plus
+  // une marge. Sonde à l'appui, le couloir reste noir sur 10 s de relevé — l'absence est
+  // réelle, elle est désormais aussi prouvée.
+  await player.waitForTimeout(24 * 160 + 1200);
   expect(await alphaCase(player, CELL_MILIEU)).toBe(0);
 
   expect(erreurs).toEqual([]);
