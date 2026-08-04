@@ -98,6 +98,11 @@ F:\rpg-map-display\
 │   │   ├─ stage.js               [1a] contexte Canvas 2D + ordre des couches
 │   │   ├─ camera.js              [1a] SEUL fichier convertissant carte ⇄ écran
 │   │   ├─ frame.js               [1a] boucle à la demande (coalescence rAF)
+│   │   ├─ statusBadges.js        [2]  paliers d'affichage des marqueurs, mise en page de la
+│   │   │                              rangée, cache de rastérisation des 14 icônes. Séparé de
+│   │   │                              `tokens.js` parce que le choix du palier et la
+│   │   │                              troncature sont de l'arithmétique pure, donc
+│   │   │                              vérifiables sous node:test — cf. TRANCHE-L09 §5.1
 │   │   └─ layers/
 │   │       ├─ background.js      [1a] image de fond
 │   │       ├─ gridLayer.js       [1a] délègue le tracé à GridAdapter.renderGrid
@@ -186,6 +191,10 @@ F:\rpg-map-display\
     ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
     │                              implantation du pipeline », et pourquoi on compare avec des
     │                              réglages mais publie avec les constantes
+    ├─ TRANCHE-L09-MARQUEURS.md   [2] brief de la 9e tranche : marqueurs d'état. Trois paliers
+    │                              d'affichage sur le diamètre du pion à l'écran — jamais sur le
+    │                              zoom. Contient la mesure qui montre les garde-fous de badge
+    │                              actuels écrits dans le mauvais espace
     ├─ TRANCHE-L03-UNION-VISION.md [2] brief de la 3e tranche : union des PJ rendue côté MJ.
     │                              L'union se fait par sous-chemins Canvas, aucune géométrie
     │                              booléenne. Plafond de vision à 20 cases, borne technique

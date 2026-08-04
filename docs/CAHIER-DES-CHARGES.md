@@ -294,8 +294,18 @@ MJ. Les PNJ ont un état Visible / Masqué (préparation d'embuscades).
 - `playerMovable`, `locked` — droits de manipulation par pion
 - `elevation` — altitude numérique (vol, escalade, fosse). Simple badge affiché sur le
   pion, sans aucune incidence sur la géométrie ni sur la vision.
-- `markers` — tableau d'identifiants d'états (empoisonné, à terre, concentré…). **Le jeu
-  de marqueurs reste à définir** ; seul le champ est figé maintenant.
+- `markers` — tableau d'identifiants d'états. **Le jeu de marqueurs est clos depuis le
+  04/08/2026** : quatorze valeurs, dont `poisoned`, `prone` et `unconscious`, énumérées par
+  `assets/icons/status/SOURCES.md`, qui fait autorité. Le nom de fichier de l'icône **est**
+  l'identifiant, et le schéma refuse tout le reste. Voir §12 Q7 et
+  `TRANCHE-L09-MARQUEURS.md`.
+  > La rédaction initiale citait « concentré » en exemple. **Il n'est pas des quatorze** :
+  > l'arbitrage de la liste, promis « après une séance réelle », a été rendu sur les états que
+  > le mainteneur voit effectivement à sa table, et la concentration n'en fait pas partie. Un
+  > quinzième état rouvrirait Q7, ce n'est donc pas une omission à réparer au fil de l'eau.
+  >
+  > Un marqueur reste **un affichage et rien d'autre** : aucun n'altère la vision, le
+  > déplacement ou un gabarit. Le jeu reste dans la tête du MJ.
 
 ### 5.3bis Modèle de déplacement — style jeu de plateau
 
@@ -1032,6 +1042,14 @@ Critères :
    conditionne l'ampleur réelle du lot 4.
 6. **Forme des grandes créatures en hexagone** (`sizeCells > 1`) : pas de convention
    établie. À trancher avant d'implémenter `HexGrid`.
-7. **Jeu de marqueurs d'état** (§5.3) : liste et icônes à définir. Le champ `markers` est
-   figé, son contenu non. À arbitrer après une séance réelle, pas avant.
+7. ~~**Jeu de marqueurs d'état** (§5.3) : liste et icônes à définir.~~ **Tranchée le
+   04/08/2026 : quatorze états, liste close.** À terre, assourdi, aveuglé, brisé, empêtré,
+   empoisonné, en flammes, hémorragique, inconscient, sonné, surpris, frénésie, peur, terreur.
+   Les identifiants et leurs icônes sont dans `assets/icons/status/SOURCES.md`, qui fait
+   autorité ; le nom de fichier est l'identifiant. Voir `TRANCHE-L09-MARQUEURS.md`.
+   > La question demandait d'attendre « une séance réelle ». Elle a été tranchée avant, par le
+   > mainteneur, sur les états qu'il voit à sa table — ce qui était l'objet de l'attente. Ce
+   > que la séance dira encore : l'**ordre de troncature** quand un pion porte plus de trois
+   > marqueurs, et le **seuil de 14 px** au-delà duquel une icône vaut mieux qu'un point
+   > coloré. Deux constantes, pas deux décisions de conception.
 8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2.** Le modèle l'autorisera plus tard sans refonte, mais rien ne l'implémente côté vue joueurs au lot 2. Voir `TRANCHE-L08-GABARITS.md` §10.

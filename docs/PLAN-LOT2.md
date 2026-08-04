@@ -123,7 +123,7 @@ visibilité est un problème géométrique, pas un problème de grille.
 | **L-06** | `fogTools.js` : tout révéler/masquer, pinceaux, undo | L-04 | — |
 | **L-07** | `wallEditor.js` | L-01 | **1, 2** |
 | **L-08** | `templates.js` : gabarits, MJ seul | L-02 | **3** |
-| **L-09** | Marqueurs d'état | Q7 tranchée | **4** |
+| **L-09** | Marqueurs d'état | ~~Q7 tranchée~~ — **levée le 04/08** | **4** (à la table) |
 | **L-10** | Tenue 30 fps, 500 segments, 6 pions | mesure tablette | **13** |
 
 ### Notes par tranche
@@ -199,6 +199,16 @@ font délibérément, avec justification écrite, pas au fil de l'eau.
 
 ## 7. Ce qui reste ouvert
 
-**Q7 — le jeu de marqueurs d'état.** Le CdC la repousse « après une séance réelle, pas avant ».
-L-09 attend donc une partie jouée, pas une décision de conception. C'est la seule tranche du lot
-qui dépende d'un événement extérieur au code.
+**Q7 — le jeu de marqueurs d'état. Tranchée le 04/08/2026, plus rien n'est ouvert ici.**
+
+Le CdC la repoussait « après une séance réelle, pas avant », et L-09 était de ce fait la seule
+tranche du lot à dépendre d'un événement extérieur au code. Le mainteneur a arbitré avant la
+séance, sur les quatorze états qu'il voit effectivement à sa table — ce qui était précisément
+l'objet de l'attente, la séance ne servant qu'à connaître cette liste. **L-09 peut donc être
+écrite** : brief dans `TRANCHE-L09-MARQUEURS.md`.
+
+Ce que la séance dira encore, et qu'il ne faut pas confondre avec la question tranchée : deux
+**constantes**, l'ordre de troncature au-delà de trois marqueurs et le seuil de 14 px du
+passage de l'icône au point coloré. Le **critère 4** reste donc décoché après L-09 — « lisibles
+sur les trois écrans » se constate sur les trois écrans — au même titre que les critères 10
+et 11, et pour la même raison : l'interdiction n°14.
