@@ -1,5 +1,18 @@
 # DIAGNOSTIC — le glisser réel des gabarits, rouge en CI et vert partout ailleurs
 
+> ## ✅ RÉSOLU le 4 août 2026 — lire le §11 d'abord
+>
+> **`camera.mapToScreen` rend des coordonnées relatives au canvas, `page.mouse` en attend du
+> viewport.** Le panneau des gabarits déborde horizontalement sur le runner, `#board` se retrouve à
+> `left: -66`, et le test pressait 66 px à côté. La case visée n'avait pas de pion,
+> `canStartTokenDrag` rendait `null`, et le glisser devenait un **pan**.
+>
+> Défaut du test, et de lui seul. Aucune ligne de `js/` n'est en cause. Corrigé au commit
+> `bd07f44`, avec preuve par mutation des deux côtés.
+>
+> Ce qui précède le §11 reste tel qu'écrit, y compris ce qui s'est révélé faux : c'est la trace de
+> la démarche, et deux de ses erreurs sont plus instructives que la cause elle-même.
+
 > Écrit le 4 août 2026. **Ce brief ne corrige rien.** Il installe de quoi observer, parce que
 > quatre diagnostics ont été réfutés par la mesure et que le cinquième ne peut pas se deviner.
 >
@@ -489,3 +502,117 @@ trois fichiers du contrat, et l'attente de 700 ms n'y subsiste qu'en commentaire
 
 **Reste entièrement ouvert : la cause.** Rien de ce qui précède ne diagnostique quoi que ce soit —
 le job doit d'abord tourner sur un runner. Le prochain pas est le §7.
+
+---
+
+## 10. Le run 75, mal lu
+
+Le job a été rapporté « entièrement vert ». **Il ne l'était pas** : deux étapes sur quatre avaient
+échoué. Les conclusions d'étape de l'API affichaient toutes `success`.
+
+**L'amendement A3 était faux sur un point de fait.** `continue-on-error: true` sur une étape ne
+laisse pas sa conclusion à `failure` : il la **réécrit en `success`**. Tout le discriminateur du
+§4.1 reposait sur la lecture de ces conclusions, donc sur rien.
+
+Ce qui l'a rattrapé : le check-run `geste-diagnostic` portait **deux annotations `[failure]`**
+« Process completed with exit code 1 » quand l'API des jobs n'annonçait que du vert. Les
+annotations, elles, ne sont pas réécrites.
+
+**Conséquence méthodologique, et elle vaut au-delà de ce test.**
+`GET /repos/{o}/{r}/check-runs/{id}/annotations` répond **200 sans authentification** sur un dépôt
+public, et rend le texte. Or une commande de workflow `::notice title=…::` écrite sur la sortie
+standard devient une annotation titrée. **N'importe quelle mesure prise en CI peut donc remonter
+sans qu'un humain télécharge un artefact**, là où les journaux répondent 403 et les artefacts 401.
+C'est ce canal qui a livré la cause au tour suivant, et il est désormais dans le test.
+
+## 11. La cause
+
+Établie sur le run du commit `3189387`, par les annotations, à trois scénarios comparés sur le même
+runner :
+
+| scénario | `rectCanvas.left` | `mapPos.x` | résultat du prédicat | intentions |
+|---|---|---|---|---|
+| pinceau de fog | `0` | `630,00` | `hero-disarm-1` | `dragToken` ×6 |
+| éditeur de murs | `0` | `630,00` | `hero-disarm-1` | `dragToken` ×6 |
+| **gabarits** | **`-66`** | **`886,67`** | **`null`** | **`panBy` ×5** |
+
+Caméra identique aux trois — `x: 1400, y: 1400, zoom: 0,257` —, point pressé identique — `(262,
+162)` —, `outilActif: "none"` et `gabaritArme: false` aux trois. Une seule variable diffère, et
+c'est la position du canvas.
+
+**La chaîne, de bout en bout :**
+
+1. Le panneau des gabarits déborde horizontalement sur le runner. Pas sur Windows : les métriques de
+   police diffèrent, et le débordement n'y a pas lieu. C'est **toute** l'explication du « vert en
+   local, rouge en CI », et elle ne devait rien au parallélisme ni à la charge.
+2. Cliquer `#tpl-toggle-arm` le fait défiler dans la vue. Le document part de 66 px vers la droite.
+3. `#board` se retrouve à `left: -66`.
+4. Le test calculait son point de pression avec `camera.mapToScreen()`, **relatif au canvas**, et le
+   passait à `page.mouse.move()`, **qui attend du viewport**. Les deux ne coïncident que si le canvas
+   commence en `(0, 0)`.
+5. Il pressait donc 66 px à côté. `screenToMap` rendait `x = 886,67` au lieu de `630`.
+6. `cellFromPoint` donnait une case sans pion, `tokenAtCell` rendait `null`, `canStartTokenDrag`
+   rendait `null`.
+7. `handlePointerMove` ne trouvait plus de `dragTokenId` et tombait dans la branche de pan : cinq
+   `panBy`, aucun `dragToken`, pion immobile — et un état par ailleurs parfaitement normal.
+
+**L'application est innocente.** `getScreenPoint` fait `clientX - rect.left`, ce qui reste juste quel
+que soit le défilement. Le défaut était dans le test, et dans lui seul.
+
+### 11.1 Ce n'était aucun des cinq chemins du §2
+
+Le §2 énumérait cinq façons d'abandonner un glisser après le `pointerdown`. La vraie cause est un
+**sixième chemin**, et il n'est pas un abandon : le glisser n'est pas interrompu, il est
+**requalifié en pan**. `dragTokenId` valant `null` dès le `pointerdown`, `handlePointerMove` n'a
+jamais eu de raison d'entrer dans la branche du pion.
+
+Il n'était pas observable par le journal de la §4.2 : `canStartTokenDrag` est **injecté** par la vue
+MJ, et le journal n'en voyait que l'effet. Il a fallu envelopper le prédicat lui-même.
+
+### 11.2 Les deux erreurs qui ont coûté quatre tours
+
+**Une sonde qui ne mesurait pas ce que son nom annonçait.** `caseSousLePoint` calculait
+`cellFromPoint(pointFromCell(pion.cell))` — un aller-retour depuis la case du pion, **jamais depuis
+le point réellement pressé**. Elle rendait donc toujours la bonne case, quel que soit l'endroit
+pressé. C'est elle qui a fait écrire, dans l'en-tête du test comme dans ce brief, que « le hit-test
+trouve bien la case du pion sous le point de pression » — et cette phrase a envoyé quatre
+diagnostics chercher **après** le `pointerdown`, alors que le défaut était **dedans**. Une sonde
+fausse ferme une question ; son absence l'aurait laissée ouverte.
+
+**Une réfutation juste sur le principe, fausse sur l'axe.** La quatrième hypothèse — « défilement du
+panneau décalant le canvas » — était **la bonne**. Elle a été réfutée en mesurant `scrollY`,
+`scrollHeight` et `clientHeight` : le défilement vertical. Le décalage était horizontal. Réfuter une
+hypothèse sur une mesure voisine de la bonne coûte plus cher que ne pas l'avoir formulée.
+
+### 11.3 Le correctif
+
+Conversion explicite — `x: rect.left + p.screenX` — et surtout **précondition exprimée** : une
+assertion compare, juste avant de presser, la case que l'application trouvera sous le point de
+viewport, par son propre calcul (`screenToMap` puis `cellFromPoint`), à la case de départ.
+
+Preuve par mutation, des deux côtés, en reproduisant le décalage du runner sur Windows par une marge
+négative de 66 px :
+
+| condition | verdict |
+|---|---|
+| décalage `-66` **avec** la conversion | 3 verts ; point pressé à `x = 196`, `mapPos.x` revient à `630` |
+| décalage `-66` **sans** la conversion | 3 rouges : « le point de pression ne tombe pas sur la case de depart. Canvas a (-66, 0), point de viewport (262, 162). » |
+
+Ce qui aurait dû exister depuis le premier jour : sans cette garde, un point qui tombe à côté est un
+échec muet, et c'est ce silence qui a coûté six runs.
+
+## 12. Ce qui reste ouvert
+
+- **Le rapatriement du test dans la porte de vérification.** La cause est connue, la contrainte du
+  §5.1 est donc levée — mais c'est une décision du mainteneur, pas un effet de bord de ce
+  correctif.
+- **Le débordement horizontal du panneau des gabarits est réel, et il n'est pas corrigé.** Il ne
+  concerne pas la justesse du hit-test, mais un panneau MJ qui provoque un défilement horizontal à
+  1280 px de large est un défaut d'ergonomie en soi. À arbitrer séparément, et à ne pas confondre
+  avec le défaut de test corrigé ici.
+- **Le défaut d'ergonomie de l'appui long** (§5.3), inchangé : un MJ qui presse un pion, hésite une
+  demi-seconde puis glisse verrouille une porte au lieu de déplacer son pion. Reproduit en
+  conditions réelles par la mutation du §9.2 ; toujours à arbitrer.
+- **Le job de diagnostic et son instrumentation**, à conserver ou à retirer. Ils ont livré la cause
+  en deux tours après que l'observation de l'état eut échoué quatre fois ; le canal des annotations
+  du §10 vaut, lui, bien au-delà de ce test.

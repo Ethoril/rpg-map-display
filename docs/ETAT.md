@@ -65,7 +65,16 @@ laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 Depuis le 4 août 2026, `test:e2e` ne lance que le projet `chromium` : les trois scénarios de
 geste réel vivent dans le projet `manuel`, **hors de la porte**, à lancer par
 `pnpm run test:manuel` (voir « Ce qui reste à vérifier manuellement »). Un `verify` vert ne dit
-donc plus rien de ces trois-là.
+donc plus rien de ces trois-là. Leur cause d'instabilité est trouvée et corrigée depuis le
+4 août 2026 — c'était un défaut du test, pas de l'application —, **mais le rapatriement dans la
+porte n'est pas fait** : il attend une décision du mainteneur.
+
+Un job `geste-diagnostic` les exécute néanmoins à chaque push, hors de toute chaîne de dépendance,
+donc sans pouvoir bloquer ni retarder un déploiement. Il publie son verdict en **annotations**
+GitHub Actions — le seul canal de diagnostic lisible sans authentification, les journaux répondant
+403 et les artefacts 401. ⚠ **Ne pas lire les conclusions d'étape comme un verdict** :
+`continue-on-error` réécrit une étape en échec en `success`, ce qui a fait rapporter le run 75
+comme entièrement vert alors que deux étapes avaient échoué.
 
 Résultat de la passe d’intégration du 4 août 2026 (après L-08 et le correctif de désarmement
 des outils MJ), mesuré sur le poste Windows de reprise :
@@ -490,19 +499,32 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   La carte `testbig150` est au catalogue pour ça (65 × 71 cases, 1338 murs, 141 portes,
   185 lumières, 13,7 Mio de WebP). Si elle ne tient pas, le pas suivant est de redescendre
   `MAX_PREPARED_TEXTURE_PX`, pas de bricoler le rendu ;
-- **`pnpm run test:manuel` — le glisser réel du désarmement des outils MJ**, sorti de la porte de
-  vérification le 4 août 2026 et à y rapatrier. `tests/manuel/gmToolDisarmGeste.spec.mjs` reproduit
-  le geste du mainteneur — armer un outil, changer d'onglet, glisser un pion — et il est **vert en
-  local, rouge sur le runner GitHub**, sur le seul scénario des gabarits, de façon reproductible.
-  Quatre diagnostics ont été réfutés par la mesure : course de la caméra, état accumulé entre les
-  étapes, appui long, défilement du panneau. L'état joint au message d'échec est normal à chaque
-  fois, donc le blocage est **après le `pointerdown`**. Ce qui reste couvert par la porte : les
-  cinq tests de mécanisme (exclusion mutuelle, Échap, marque d'onglet, abandon du tracé, bascule
-  du bouton actif). Ce qui ne l'est plus : l'issue « le pion se saisit », vérifiée une fois par un
-  chemin indépendant avec preuve par mutation, mais plus à chaque push. **Ce n'est pas une
-  vérification désactivée pour la faire passer** (interdiction n°16) : c'est un test instable
-  retiré d'une porte bloquante, en le disant, parce qu'il retenait un correctif vérifié par
-  ailleurs. Décision du mainteneur, à rouvrir dès que la cause sera connue ;
+- **`pnpm run test:manuel` — le glisser réel du désarmement des outils MJ. ✅ Cause trouvée le
+  4 août 2026, correctif livré ; il reste à décider du rapatriement dans la porte.**
+  `tests/manuel/gmToolDisarmGeste.spec.mjs` était vert en local et rouge sur le runner GitHub, sur
+  le seul scénario des gabarits, des runs 69 à 76. **C'était un défaut du test, et de lui seul :**
+  `camera.mapToScreen` rend des coordonnées relatives au canvas, `page.mouse` en attend du viewport,
+  et les deux ne coïncident que si `#board` commence en `(0, 0)`. Le panneau des gabarits déborde
+  horizontalement sur le runner — pas sur Windows, les métriques de police diffèrent —, le document
+  défile de 66 px, `#board` passe à `left: -66`, et le test pressait 66 px à côté : la case visée
+  n'avait pas de pion, `canStartTokenDrag` rendait `null`, et le glisser devenait un **pan**.
+  L'application est innocente, `getScreenPoint` faisant `clientX - rect.left`. Corrigé par une
+  conversion explicite **et une précondition exprimée** — le point de pression doit tomber sur la
+  case de départ, vérifié par le calcul même de l'application —, avec preuve par mutation des deux
+  côtés. Détail complet et les deux erreurs de méthode qui ont coûté quatre tours :
+  `docs/DIAGNOSTIC-GESTE-GABARITS.md` §10 à §12. **Le rapatriement dans la porte est donc ouvert,
+  et c'est une décision du mainteneur** ; d'ici là un `verify` vert ne dit rien de ces trois
+  scénarios ;
+- **le débordement horizontal du panneau des gabarits, non corrigé** — sous-produit du diagnostic
+  ci-dessus, et sans rapport avec la justesse du hit-test. Un panneau MJ qui provoque un défilement
+  horizontal du document à 1280 px de large est un défaut d'ergonomie en soi, mesuré sur le runner
+  (66 px). À arbitrer séparément, et à ne pas confondre avec le défaut de test corrigé ;
+- **l'appui long qui vole le geste du MJ, non corrigé** — un MJ qui presse un pion, hésite une
+  demi-seconde puis glisse obtient un appui long, donc **verrouille une porte au lieu de déplacer
+  son pion** (`js/input/pointer.js:249-260`, `js/app/gm.js:848-868`). Reproduit en conditions
+  réelles par mutation le 4 août 2026 : à 700 ms entre la pression et le glisser, l'intention
+  `longPress` part et aucun `dragToken` n'est émis. C'est un défaut applicatif, pas un défaut de
+  test ; à arbitrer ;
 - **le correctif du masquage des pions, à confirmer sur la tablette** — c'est le point le plus
   concret de cette liste, parce qu'un défaut y a été mesuré puis corrigé sans que la mesure
   finale soit faite. Le masquage de L-04 allouait par image un canvas aux dimensions de la carte
