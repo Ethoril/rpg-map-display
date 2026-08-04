@@ -146,8 +146,14 @@ C'est la règle qui manque au code actuel (§1.2), et la seule à retenir de ce 
 n'en retient qu'une.
 
 La couche ignore aujourd'hui le zoom : `RenderOptions` de `tokens.js` ne le porte pas. Il faut
-donc l'y ajouter et le fournir depuis les trois points d'entrée — `gm.js`, `player.js`,
-`diag.js` — qui tiennent déjà la caméra.
+donc l'y ajouter et le fournir depuis les **deux** points d'entrée qui rendent cette couche :
+`gm.js` et `player.js`.
+
+> **Correction du 04/08 au soir : `diag.js` n'est PAS concerné**, contrairement à ce que ce
+> brief affirmait d'abord. Il applique bien `camera.applyToContext` (`diag.js:172`), ce qui
+> rendait la déduction tentante, mais il **n'utilise pas la couche `tokens.js`** : il trace ses
+> propres disques au contexte (`diag.js:192-200`) pour mesurer un profil de charge. Y chercher
+> un appel à `tokensLayer.render()` serait chercher ce qui n'existe pas.
 
 ⚠ **`zoom` n'est pas `resolution`.** `gm.js:421` applique `ctx.scale(stage.resolution, …)`
 *avant* la caméra, avec `RENDER_RESOLUTION_CAP = 1,5`. La résolution ne change pas la taille
@@ -327,8 +333,18 @@ et idempotent. Un tableau de marqueurs **est** une valeur absolue. Il n'y a donc
 7. Le MJ cochant un état voit le badge apparaître sur les trois vues ; le rechargement le
    conserve.
 8. La vue joueurs n'a gagné **aucun** élément d'interface.
-9. `pnpm run verify` sort à 0, et `pnpm run test:manuel` est passé — la case à cocher est un
-   geste réel, or `verify` ne couvre pas le geste.
+9. `pnpm run verify` sort à 0.
+
+   > **Correction du 04/08 au soir : `pnpm run test:manuel` n'est PAS requis par cette
+   > tranche**, contrairement à ce que ce brief exigeait d'abord. Le projet `manuel` existe
+   > pour les **gestes tactiles de la vue joueurs**, sortis de la porte le 04/08. Or L-09
+   > n'ajoute aucun geste : le sélecteur est une case à cocher du panneau MJ, donc un clic
+   > souris, que Playwright couvre entièrement. L'exiger aurait été demander une vérification
+   > qui ne vérifie rien de cette tranche — et une vérification hors sujet est le début d'un
+   > faux vert.
+   >
+   > Elle redeviendrait requise si les badges touchaient le chemin du geste de la vue joueurs,
+   > ce qui n'est pas le cas : ils se dessinent, ils ne se tapent pas.
 
 **Le critère 4 du CdC ne se coche pas ici.** « Lisibles sur les trois écrans » exige la
 tablette et l'écran de cast. Le mécanisme sera vérifié, la lisibilité constatée à la table —
