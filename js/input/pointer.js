@@ -66,7 +66,7 @@ export class PointerInput {
     /** @type {boolean} */
     this.longPressTriggered = false;
 
-    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'longPress'|'brushing'} */
+    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'brushing'} */
     this.mode = 'idle';
     /** @type {string|null} */
     this.dragTokenId = null;
@@ -244,24 +244,18 @@ export class PointerInput {
             : null;
         this.longPressTriggered = false;
 
-        // Planification du timer d'appui long
+        // Planification du timer d'appui long : pose la candidature sans appliquer l'effet au milieu du geste
         this.clearLongPressTimer();
         this.longPressTimer = setTimeout(() => {
           if (this.activePointers.size === 1 && this.startScreenPos) {
             this.longPressTriggered = true;
-            this.mode = 'longPress';
-            const mPos = this.camera.screenToMap(this.startScreenPos);
-            this.emit({
-              type: 'longPress',
-              screenPos: this.startScreenPos,
-              mapPos: mPos,
-            });
           }
         }, this.longPressMs);
       }
     } else if (this.activePointers.size === 2) {
       // Annulation d'appui long et bascule en mode pinch/pan à 2 doigts
       this.clearLongPressTimer();
+      this.longPressTriggered = false;
       if (this.mode === 'brushing' && this.startScreenPos) {
         this.emit({
           type: 'brushStroke',
@@ -296,12 +290,11 @@ export class PointerInput {
     if (this.activePointers.size === 1 && this.startScreenPos && this.lastScreenPos) {
       const distFromStart = distanceBetween(this.startScreenPos, screenPos);
 
-      // Si mouvement significatif, annuler le long press
+      // Si mouvement significatif, annuler le long press et sa candidature
       if (distFromStart >= this.dragDistanceThreshold) {
         this.clearLongPressTimer();
+        this.longPressTriggered = false;
       }
-
-      if (this.mode === 'longPress') return;
 
       if (this.mode === 'brushing') {
         const mapPos = this.camera.screenToMap(screenPos);
@@ -356,6 +349,7 @@ export class PointerInput {
       }
     } else if (this.activePointers.size === 2 && this.lastPinchCenter) {
       this.clearLongPressTimer();
+      this.longPressTriggered = false;
 
       const pointers = Array.from(this.activePointers.values());
       const p1 = pointers[0].screenPos;
@@ -426,6 +420,17 @@ export class PointerInput {
         });
       } else if (
         this.mode === 'tapCandidate' &&
+        this.longPressTriggered &&
+        dist < this.dragDistanceThreshold
+      ) {
+        // C'est un APPUI LONG ! (Geste achevé émis au pointerup)
+        this.emit({
+          type: 'longPress',
+          screenPos: this.startScreenPos,
+          mapPos: this.camera.screenToMap(this.startScreenPos),
+        });
+      } else if (
+        this.mode === 'tapCandidate' &&
         !this.longPressTriggered &&
         duration < this.dragHoldMs &&
         dist < this.dragDistanceThreshold
@@ -447,6 +452,7 @@ export class PointerInput {
       this.mode = 'idle';
       this.dragTokenId = null;
       this.lastPinchCenter = null;
+      this.longPressTriggered = false;
     }
   }
 
@@ -456,6 +462,7 @@ export class PointerInput {
    */
   handlePointerCancel(e) {
     this.clearLongPressTimer();
+    this.longPressTriggered = false;
     if (this.mode === 'brushing' && this.startScreenPos) {
       this.emit({
         type: 'brushStroke',

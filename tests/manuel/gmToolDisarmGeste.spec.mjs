@@ -554,16 +554,15 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
 
     await page.mouse.move(coords.start.x, coords.start.y);
     await page.mouse.down();
-    // ⚠ AUCUNE attente entre le `down` et le `move`, et c'est délibéré : `pointer.js` arme un
-    // minuteur d'appui long à 500 ms au `pointerdown`, et une attente le laisse mûrir — `mode`
-    // bascule sur `'longPress'`, `handlePointerMove` sort aussitôt, le glisser est abandonné en
-    // silence. Défaut établi au commit 189a6c1. Aucun paramètre ne doit rendre cette attente
-    // réintroductible.
+    // Depuis le correctif applicatif de l'appui long (docs/CORRECTIF-APPUI-LONG.md),
+    // l'appui long est un geste achevé émis au `pointerup` et annulé par tout mouvement.
+    // Une attente entre `down` et `move` n'abandonne donc plus le glisser : le déplacement
+    // annule la candidature d'appui long et la saisie de pion s'exécute normalement.
     //
-    // Pour refaire la preuve par mutation du §4.3 de `docs/DIAGNOSTIC-GESTE-GABARITS.md` :
-    // insérer ici, **en local et sans le commiter**, `await page.waitForTimeout(700);` et vérifier
-    // que le journal montre l'intention `longPress`, `mode: 'longPress'` sur les `pointermove`, et
-    // aucun `dragToken` de phase `end`.
+    // Pour refaire la preuve par mutation (§4.5 de docs/CORRECTIF-APPUI-LONG.md) : insérer ici,
+    // **en local et sans le commiter**, `await page.waitForTimeout(700);` — le pion doit se
+    // déplacer et le journal ne doit contenir AUCUNE intention `longPress`. Le geste nominal, lui,
+    // reste sans attente : elle n'apporte rien et rallonge trois tests.
     await page.mouse.move(coords.end.x, coords.end.y, { steps: 5 });
     await page.mouse.up();
     await page.waitForTimeout(200);

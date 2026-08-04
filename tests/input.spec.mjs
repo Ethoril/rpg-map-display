@@ -2,18 +2,12 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Seuils désarmant l'appui long.
+ * Seuils désarmant l'appui long pour les tests de seuil spatial.
  *
- * Un maintien exprimé en durée fixe n'est sûr que si le geste n'a **pas** de
- * borne supérieure. Or il en a une : au-delà de `longPressMs` (500 ms par
- * défaut), `PointerInput` bascule `mode = 'longPress'`
- * (`js/input/pointer.js:238`) et le déplacement qui suit ne produit plus jamais
- * de `panBy` ni de `dragToken`. Un maintien de 180 ms n'a donc que 320 ms de
- * marge, et une page affamée la consomme : l'intention attendue n'arrive jamais,
- * et aucune attente d'observation, même de 5 s, ne la fera apparaître.
- *
- * Les tests qui veulent « au-delà du seuil de drag, mais pas un appui long »
- * repoussent donc ce seuil hors d'atteinte au lieu de parier sur l'horloge.
+ * Historiquement, un appui long était déclenché au milieu du geste à l'échéance du timer.
+ * Désormais, l'appui long est un geste achevé émis au `pointerup` dont le mouvement annule
+ * la candidature. Cette constante est conservée à titre de précaution dans les tests qui
+ * testent des seuils spatiaux avec de longs délais temporisés.
  */
 const SANS_APPUI_LONG = { longPressMs: 100_000 };
 
@@ -286,3 +280,119 @@ test('Appui long — Émission d une intention longPress si immobile pendant lon
   expect(longPressIntentions[0].screenPos).toEqual({ screenX: 400, screenY: 400 });
   expect(longPressIntentions[0].mapPos).toBeDefined();
 });
+
+test('Correctif — Hésitation avant déplacement (700 ms) émet la panBy et AUCUN longPress (Amendement A1)', async ({ page }) => {
+  // Monte la scène avec les seuils réels (500 ms) pour mesurer l'hésitation réelle
+  await mountInputStage(page, 'players');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  const startX = canvasBox.x + 100;
+  const startY = canvasBox.y + 100;
+  const endX = canvasBox.x + 170;
+  const endY = canvasBox.y + 100;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // Hésitation immobile de 700 ms > 500 ms (longPressMs)
+  await page.waitForTimeout(700);
+  await page.mouse.move(endX, endY, { steps: 5 });
+  await page.mouse.up();
+
+  await waitForIntention(page, 'panBy');
+
+  const intentions = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  const panIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'panBy');
+  expect(panIntentions.length).toBeGreaterThan(0);
+
+  const longPressIntentions = intentions.filter(/** @param {any} i */ (i) => i.type === 'longPress');
+  expect(longPressIntentions).toHaveLength(0);
+});
+
+test("Correctif — Vue MJ : hésitation avant glisser (700 ms) émet dragToken et AUCUN longPress", async ({
+  page,
+}) => {
+  // C'est LE symptôme que le mainteneur a signalé : presser un pion, hésiter une demi-seconde,
+  // glisser — et le pion ne bougeait pas, tout en verrouillant la porte sous le point pressé
+  // (`js/app/gm.js` traite `longPress` en bascule de verrou).
+  //
+  // Le rôle MJ mérite son propre test et ne se déduit pas de celui du rôle joueurs : la branche
+  // du glisser de pion est distincte de celle du pan dans `handlePointerMove`, et elle est
+  // gardée par `role === 'gm' && this.dragTokenId`. Le glisser réel est bien exercé par
+  // `tests/manuel/gmToolDisarmGeste.spec.mjs`, mais ce projet est **hors de la porte** : sans ce
+  // test, le symptôme d'origine ne serait plus vérifié à chaque push.
+  //
+  // Seuils réels, aucun désarmement — sinon le test ne mesure rien (Amendement A1).
+  await mountInputStage(page, 'gm');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  const startX = canvasBox.x + 100;
+  const startY = canvasBox.y + 100;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // L'hésitation du MJ : au-delà de longPressMs (500 ms), donc la candidature est posée.
+  await page.waitForTimeout(700);
+  await page.mouse.move(startX + 70, startY, { steps: 5 });
+  await page.mouse.up();
+
+  await waitForIntention(page, 'dragToken');
+
+  const intentions = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  const drags = intentions.filter(/** @param {any} i */ (i) => i.type === 'dragToken');
+  expect(drags.length).toBeGreaterThan(0);
+  // Le glisser doit aller jusqu'à son terme : c'est la phase `end` qui déplace réellement le pion.
+  expect(drags.some(/** @param {any} i */ (i) => i.phase === 'end')).toBe(true);
+
+  expect(intentions.filter(/** @param {any} i */ (i) => i.type === 'longPress')).toHaveLength(0);
+});
+
+test('Correctif — Appui long immobile (700 ms) émet exactement UN longPress au pointerup et AUCUN panBy (Amendement A1)', async ({ page }) => {
+  // Monte la scène avec les seuils réels (500 ms)
+  await mountInputStage(page, 'players');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  const clickX = canvasBox.x + 350;
+  const clickY = canvasBox.y + 350;
+
+  await page.mouse.move(clickX, clickY);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+
+  // Avant le pointerup, aucune intention longPress ne doit être émise
+  const intentionsMid = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+  expect(intentionsMid.filter(/** @param {any} i */ (i) => i.type === 'longPress')).toHaveLength(0);
+
+  await page.mouse.up();
+
+  await waitForIntention(page, 'longPress');
+
+  const intentionsFinal = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.getIntentions();
+  });
+
+  expect(intentionsFinal.filter(/** @param {any} i */ (i) => i.type === 'longPress')).toHaveLength(1);
+  expect(intentionsFinal.filter(/** @param {any} i */ (i) => i.type === 'panBy')).toHaveLength(0);
+  expect(intentionsFinal.filter(/** @param {any} i */ (i) => i.type === 'dragToken')).toHaveLength(0);
+});
+
