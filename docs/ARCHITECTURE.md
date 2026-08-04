@@ -159,6 +159,11 @@ F:\rpg-map-display\
 │
 ├─ fixtures/                      [1a] cf. docs/FIXTURES.md
 ├─ maps/                          [1a] images traitées, commitées
+├─ assets/
+│   └─ icons/status/              [2]  les 14 icônes d'états, une par valeur de
+│                                      `token.markers`. Le nom de fichier EST l'identifiant.
+│                                      Provenance, licence et normalisation : SOURCES.md du
+│                                      dossier. Contenu clos — cf. CdC §12 Q7
 ├─ tests/                         [1a] deux familles, deux exécuteurs :
 │                                      *.test.mjs → node:test (logique pure)
 │                                      *.spec.mjs → Playwright (navigateur, vrai Canvas)
