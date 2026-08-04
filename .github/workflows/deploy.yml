@@ -65,6 +65,70 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  # Job de diagnostic autonome pour observer le glisser réel des gabarits.
+  # Aucun lien avec deploy (ne bloque pas et ne retarde pas les déploiements).
+  geste-diagnostic:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # ⚠ `pnpm exec playwright test` et non `pnpm run test:manuel -- …`. Mesuré sur pnpm 11 :
+      # `pnpm run test:manuel -- --grep "fog" --list` perd **silencieusement** ses arguments et
+      # lance les trois tests. Le job serait resté vert, l'artefact présent, et le
+      # discriminateur ci-dessous n'aurait rien discriminé — chaque étape exécutant les trois
+      # scénarios et écrasant le journal de la précédente faute de `--output`.
+
+      # Sans `continue-on-error` : une sélection fausse doit casser le job, pas se déguiser en
+      # échec de scénario. Un motif qui ne correspond à rien sort en 1 ; un motif qui en
+      # correspond à deux sortirait en 0, d'où le contrôle du compte.
+      - name: Contrôle de la sélection des motifs grep
+        run: |
+          for motif in fog murs gabarits; do
+            total="$(pnpm exec playwright test --project=manuel --grep "$motif" --list | grep -E '^Total: ')"
+            echo "$motif -> $total"
+            if [ "$total" != "Total: 1 test in 1 file" ]; then
+              echo "ERREUR : le motif '$motif' ne sélectionne pas exactement un test."
+              exit 1
+            fi
+          done
+
+      - name: geste — pinceau de fog
+        run: pnpm exec playwright test --project=manuel --grep "fog" --output=test-results/geste-fog
+        continue-on-error: true
+
+      - name: geste — éditeur de murs
+        run: pnpm exec playwright test --project=manuel --grep "murs" --output=test-results/geste-murs
+        continue-on-error: true
+
+      - name: geste — gabarits seul
+        run: pnpm exec playwright test --project=manuel --grep "gabarits" --output=test-results/geste-gabarits
+        continue-on-error: true
+
+      - name: geste — les trois en série
+        run: pnpm exec playwright test --project=manuel --output=test-results/geste-serie
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geste-journal
+          path: test-results/
+          retention-days: 7
+
   deploy:
     # LA garde : pas de déploiement si la vérification échoue.
     needs: verify
