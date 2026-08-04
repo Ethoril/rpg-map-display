@@ -6,6 +6,7 @@ import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
 import { createFogTools } from './fogTools.js';
 import { createWallEditor } from './wallEditor.js';
+import { createTemplateTools } from './templateTools.js';
 import { VERSION } from '../../core/version.js';
 import { GM_SESSION_STORAGE_KEY } from '../../core/constants.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
@@ -32,7 +33,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, destroy: () => void}}
+ * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -76,6 +77,7 @@ export function createGMPanel(container, options = {}) {
       <button class="gm-tab-btn" data-tab="handouts" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Handouts</button>
       <button class="gm-tab-btn" data-tab="fog-tools" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🌫️ Fog</button>
       <button class="gm-tab-btn" data-tab="wall-editor" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🧱 Murs</button>
+      <button class="gm-tab-btn" data-tab="template-tools" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">📐 Gabarits</button>
       <button class="gm-tab-btn" data-tab="grid-settings" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Grille</button>
     </div>
 
@@ -91,6 +93,10 @@ export function createGMPanel(container, options = {}) {
 
       <div id="tab-content-wall-editor" class="gm-tab-pane" style="display: none;">
         <div id="wall-editor-mount"></div>
+      </div>
+
+      <div id="tab-content-template-tools" class="gm-tab-pane" style="display: none;">
+        <div id="template-tools-mount"></div>
       </div>
 
       <div id="tab-content-import-uvtt" class="gm-tab-pane" style="display: block;">
@@ -243,9 +249,12 @@ export function createGMPanel(container, options = {}) {
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
   const wallEditorMount = /** @type {HTMLElement} */ (container.querySelector('#wall-editor-mount'));
+  const templateToolsMount = /** @type {HTMLElement} */ (container.querySelector('#template-tools-mount'));
 
   /** @type {ReturnType<typeof createWallEditor>|null} */
   let wallEditor = null;
+  /** @type {ReturnType<typeof createTemplateTools>|null} */
+  let templateTools = null;
 
   // Initialisation du composant FogTools
   const fogTools = fogToolsMount
@@ -255,8 +264,9 @@ export function createGMPanel(container, options = {}) {
         scheduleFogPublish,
         requestRender,
         onToolChange: (tool) => {
-          if (tool !== 'none' && wallEditor) {
-            wallEditor.setArmed(false);
+          if (tool !== 'none') {
+            if (wallEditor) wallEditor.setArmed(false);
+            if (templateTools) templateTools.disarm();
           }
         },
       })
@@ -278,8 +288,32 @@ export function createGMPanel(container, options = {}) {
         return removed;
       },
       onArmChange: (armed) => {
-        if (armed && fogTools) {
-          fogTools.disarm();
+        if (armed) {
+          if (fogTools) fogTools.disarm();
+          if (templateTools) templateTools.disarm();
+        }
+      },
+      requestRender,
+    });
+  }
+
+  // Initialisation du composant TemplateTools
+  if (templateToolsMount) {
+    templateTools = createTemplateTools(templateToolsMount, {
+      getActiveLevelId: () => store.getActiveLevelId(),
+      onClearTemplates: (levelId) => {
+        store.clearTemplates(levelId);
+        transport?.publish({
+          type: 'template.clear',
+          payload: { levelId },
+          at: Date.now(),
+          by: 'gm',
+        });
+      },
+      onArmChange: (armed) => {
+        if (armed) {
+          if (fogTools) fogTools.disarm();
+          if (wallEditor) wallEditor.setArmed(false);
         }
       },
       requestRender,
@@ -705,6 +739,7 @@ export function createGMPanel(container, options = {}) {
     tokenMaker,
     fogTools,
     wallEditor,
+    templateTools,
     destroy: () => {
       listeners.abort();
       unsubscribeStore();

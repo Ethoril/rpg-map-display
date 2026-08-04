@@ -123,6 +123,7 @@ F:\rpg-map-display\
 │   │   │   ├─ handouts.js        [1b] révélation d'image
 │   │   │   ├─ fogTools.js        [2]  pinceaux révéler/masquer, reset
 │   │   │   ├─ wallEditor.js      [2]  éditeur minimal de murs
+│   │   │   ├─ templateTools.js   [2]  gabarits de zone d'effet (choix forme/rayon, armement, effacement)
 │   │   │   └─ levelSelector.js   [3]  sélecteur d'étage MJ
 │   │   └─ player/
 │   │       ├─ bootstrap.js       [1a] montage de la vue joueurs

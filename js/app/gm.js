@@ -10,6 +10,7 @@ import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
 import { WallsLayer } from '../render/layers/walls.js';
+import { TemplatesLayer, computeTemplateCells } from '../render/layers/templates.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { gridFor } from '../grid/index.js';
@@ -94,6 +95,7 @@ export async function bootstrapGMApp(options = {}) {
   const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
   const moveZoneLayer = new MoveZoneLayer();
+  const templatesLayer = new TemplatesLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
 
@@ -435,6 +437,8 @@ export async function bootstrapGMApp(options = {}) {
           selectedToken: state.selectedToken,
           reachableCells: state.reachableCells,
         }),
+      templates: () =>
+        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], false),
       tokens: () => {
         const result = tokensLayer.render(
           stage.context,
@@ -745,6 +749,36 @@ export async function bootstrapGMApp(options = {}) {
       const state = store.getState();
       if (!state.activeLevel) return;
 
+      if (gmPanel?.templateTools?.isArmed()) {
+        const grid = gridFor(state.activeLevel);
+        const cell = grid.cellFromPoint(intention.mapPos);
+        if (cell) {
+          const cfg = gmPanel.templateTools.getConfig();
+          /** @type {import('../core/types.js').Template} */
+          const template = {
+            id: cfg.templateId,
+            levelId: state.activeLevel.id,
+            shape: cfg.shape,
+            origin: cell,
+            radiusCells: cfg.radiusCells,
+            directionDeg: 0,
+            widthCells: 1,
+            color: cfg.color,
+            visibleToPlayers: cfg.visibleToPlayers,
+          };
+          const segments = extractBlockedSegments(state.activeLevel, grid);
+          const cells = computeTemplateCells(template, grid, state.activeLevel, segments);
+          store.placeTemplate(template, cells);
+          transport?.publish({
+            type: 'template.place',
+            payload: { template, cells },
+            at: Date.now(),
+            by: 'gm',
+          });
+        }
+        return;
+      }
+
       if (gmPanel?.wallEditor?.isArmed()) {
         const grid = gridFor(state.activeLevel);
         const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
@@ -880,11 +914,13 @@ export async function bootstrapGMApp(options = {}) {
     onIntention: handleIntention,
     canStartBrush: (_screenPos, _mapPos) => {
       if (gmPanel?.wallEditor?.isArmed()) return false;
+      if (gmPanel?.templateTools?.isArmed()) return false;
       if (!gmPanel || !gmPanel.fogTools) return false;
       return gmPanel.fogTools.getActiveTool() !== 'none';
     },
     canStartTokenDrag: (_screenPos, mapPos) => {
       if (gmPanel?.wallEditor?.isArmed()) return null;
+      if (gmPanel?.templateTools?.isArmed()) return null;
       if (gmPanel?.fogTools?.getActiveTool() !== 'none') return null;
       const state = store.getState();
       if (!state.activeLevel) return null;
@@ -926,6 +962,8 @@ export async function bootstrapGMApp(options = {}) {
     pointerInput,
     backgroundLayer,
     tokensLayer,
+    templatesLayer,
+    gmPanel,
     transport,
     sessionId,
     destroy,

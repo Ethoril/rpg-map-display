@@ -813,6 +813,71 @@ export function removeToken(tokenId) {
 }
 
 /**
+ * Pose ou déplace un gabarit sur la campagne.
+ *
+ * @param {import('../core/types.js').Template} templateData
+ * @param {string[]} [cells]
+ * @returns {void}
+ */
+export function placeTemplate(templateData, cells = []) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!templateData || typeof templateData !== 'object') {
+    throw new Error('Données de gabarit requises');
+  }
+
+  const candidate = structuredClone(campaign);
+  if (!Array.isArray(candidate.templates)) {
+    candidate.templates = [];
+  }
+
+  const idx = candidate.templates.findIndex((t) => t.id === templateData.id);
+  if (idx >= 0) {
+    candidate.templates[idx] = structuredClone(templateData);
+  } else {
+    candidate.templates.push(structuredClone(templateData));
+  }
+
+  assertValidCampaign(candidate, `Placement du gabarit "${templateData.id || 'inconnu'}"`);
+  campaign = candidate;
+  if (Array.isArray(cells)) {
+    sessionTemplateCellsMap.set(templateData.id, cells);
+  }
+  notifySubscribers();
+}
+
+/**
+ * Supprime tous les gabarits d'un étage donné.
+ *
+ * @param {string} levelId
+ * @returns {void}
+ */
+export function clearTemplates(levelId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!levelId || typeof levelId !== 'string') {
+    throw new Error('Identifiant d\'étage requis');
+  }
+  const levelExists = campaign.levels.some((l) => l.id === levelId);
+  if (!levelExists) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+
+  const candidate = structuredClone(campaign);
+  const toRemove = (candidate.templates || []).filter((t) => t.levelId === levelId);
+  candidate.templates = (candidate.templates || []).filter((t) => t.levelId !== levelId);
+
+  assertValidCampaign(candidate, `Effacement des gabarits de l'étage "${levelId}"`);
+  campaign = candidate;
+  for (const t of toRemove) {
+    sessionTemplateCellsMap.delete(t.id);
+  }
+  notifySubscribers();
+}
+
+/**
  * Vide le store : aucune campagne, aucun étage actif, aucune sélection.
  *
  * C'est une mutation comme les autres — elle **notifie**, et elle **conserve les abonnés**.
@@ -825,6 +890,7 @@ export function resetStore() {
   campaign = null;
   activeLevelId = null;
   activeHandout = null;
+  sessionTemplateCellsMap.clear();
   clearSelectionState();
   notifySubscribers();
 }
@@ -1077,6 +1143,33 @@ export function setSessionVision(levelId, png) {
     sessionVisionMap.delete(levelId);
   } else {
     sessionVisionMap.set(levelId, png);
+  }
+  notifySubscribers();
+}
+
+/** @type {Map<string, string[]>} */
+const sessionTemplateCellsMap = new Map();
+
+/**
+ * Recupere les cases affectees par un gabarit (Session).
+ * @param {string} templateId
+ * @returns {string[]}
+ */
+export function getSessionTemplateCells(templateId) {
+  return templateId ? sessionTemplateCellsMap.get(templateId) ?? [] : [];
+}
+
+/**
+ * Enregistre les cases affectees d'un gabarit (Session).
+ * @param {string} templateId
+ * @param {string[]} cells
+ */
+export function setSessionTemplateCells(templateId, cells) {
+  if (!templateId) return;
+  if (!Array.isArray(cells) || cells.length === 0) {
+    sessionTemplateCellsMap.delete(templateId);
+  } else {
+    sessionTemplateCellsMap.set(templateId, cells);
   }
   notifySubscribers();
 }

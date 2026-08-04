@@ -252,6 +252,45 @@ export function applyNetworkEvent(event) {
       }
     }
 
+    case 'template.place': {
+      if (!payload.template || typeof payload.template !== 'object' || !payload.template.levelId) {
+        console.error('Événement "template.place" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((l) => l.id === payload.template.levelId)) {
+        console.error(`Événement "template.place" refusé : étage inconnu "${payload.template.levelId}"`);
+        return false;
+      }
+      try {
+        store.placeTemplate(payload.template, Array.isArray(payload.cells) ? payload.cells : []);
+      } catch (err) {
+        console.error(
+          `Événement "template.place" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'template.clear': {
+      if (!payload.levelId || typeof payload.levelId !== 'string') {
+        console.error('Événement "template.clear" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((l) => l.id === payload.levelId)) {
+        console.error(`Événement "template.clear" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      try {
+        store.clearTemplates(payload.levelId);
+      } catch (err) {
+        console.error(
+          `Événement "template.clear" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+
     default:
       return false;
   }

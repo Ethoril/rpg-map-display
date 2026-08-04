@@ -801,8 +801,40 @@ export function validateCampaign(campaign) {
 
   if (Array.isArray(campaign.templates)) {
     for (const template of campaign.templates) {
-      if (template && !isValidHexColor(template.color)) {
-        errors.push(`Gabarit "${template.id || 'inconnu'}" : color invalide "${template.color}" (format #RRGGBB attendu)`);
+      if (!template || typeof template !== 'object') {
+        errors.push('Gabarit invalide');
+        continue;
+      }
+      const tId = template.id || 'inconnu';
+      if (typeof template.id !== 'string' || template.id.trim() === '') {
+        errors.push(`Gabarit "${tId}" : id invalide`);
+      }
+      if (typeof template.levelId !== 'string' || !levelsById.has(template.levelId)) {
+        errors.push(`Gabarit "${tId}" : levelId invalide "${template.levelId}"`);
+      }
+      if (template.shape !== 'circle' && template.shape !== 'cone' && template.shape !== 'line') {
+        errors.push(`Gabarit "${tId}" : shape invalide "${template.shape}"`);
+      }
+      if (
+        !template.origin ||
+        typeof template.origin !== 'object' ||
+        !Number.isInteger(template.origin.a) ||
+        !Number.isInteger(template.origin.b)
+      ) {
+        errors.push(`Gabarit "${tId}" : origin invalide`);
+      }
+      if (
+        typeof template.radiusCells !== 'number' ||
+        !Number.isFinite(template.radiusCells) ||
+        template.radiusCells <= 0
+      ) {
+        errors.push(`Gabarit "${tId}" : radiusCells invalide "${template.radiusCells}"`);
+      }
+      if (typeof template.visibleToPlayers !== 'boolean') {
+        errors.push(`Gabarit "${tId}" : visibleToPlayers invalide "${template.visibleToPlayers}"`);
+      }
+      if (!isValidHexColor(template.color)) {
+        errors.push(`Gabarit "${tId}" : color invalide "${template.color}" (format #RRGGBB attendu)`);
       }
     }
   }

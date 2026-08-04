@@ -508,8 +508,9 @@ Cercle, cône, ligne, placés par le MJ (ou par un joueur si autorisé) et **sur
 cases affectées**.
 
 S'appuie entièrement sur des briques déjà spécifiées : énumération de cases via
-`GridAdapter`, et occlusion par les segments de murs et portes fermées du §5.3bis. Un
-gabarit respecte donc les murs sans code de géométrie supplémentaire.
+`GridAdapter`, et occlusion par les segments de murs et portes fermées.
+
+> **Amendement L-08 (04/08/2026)** : L'occlusion se calcule au sweep (`vision/sweep.js`), et non par le masque d'arêtes bloquées §5.3bis (mesuré : 3 cases d'écart en moyenne, 11 dans le pire cas sur `manoir-rdc`). Le cône et la ligne sont reportés car ils demandent un geste d'orientation. Les cases affectées calculées par le MJ transitent avec `template.place` et ne sont pas recalculées par la tablette.
 
 Règle le principal arbitrage verbal pénible à table — « est-ce que le gobelin est dans la
 boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
@@ -697,10 +698,12 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `ping` | tous | ponctuel |
 | `ambient.set` | MJ | throttlé |
 | `handout.show` / `handout.hide` | MJ | ponctuel |
-| `template.place` / `move` / `clear` | MJ, joueurs si autorisé | ponctuel |
+| `template.place` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
+
+> **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 
 ### Règles
 
@@ -966,7 +969,7 @@ murs : **éditeur minimal de murs** (§5.7), **gabarits de zone d'effet** (§5.9
 Critères :
 - [x] Un segment de mur manquant s'ajoute à la main et corrige immédiatement la vision.
 - [x] Un étage importé en image simple reçoit des murs et gagne des lignes de vue.
-- [ ] Un gabarit circulaire surligne les cases affectées **en respectant les murs**.
+- [x] Un gabarit circulaire surligne les cases affectées **en respectant les murs**.
 - [ ] Les marqueurs d'un pion sont lisibles sur les trois écrans.
 - [ ] Les zones hors vision sont masquées côté joueurs, pas côté MJ.
 - [ ] Une zone explorée puis quittée reste grisée, et **aucun pion n'y est visible**.
@@ -1031,5 +1034,4 @@ Critères :
    établie. À trancher avant d'implémenter `HexGrid`.
 7. **Jeu de marqueurs d'état** (§5.3) : liste et icônes à définir. Le champ `markers` est
    figé, son contenu non. À arbitrer après une séance réelle, pas avant.
-8. **Gabarits manipulables par les joueurs ?** Le modèle l'autorise
-   (`template.place` ouvert aux deux). Défaut à trancher — probablement MJ seul au début.
+8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2.** Le modèle l'autorisera plus tard sans refonte, mais rien ne l'implémente côté vue joueurs au lot 2. Voir `TRANCHE-L08-GABARITS.md` §10.
