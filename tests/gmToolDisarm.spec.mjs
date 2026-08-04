@@ -121,7 +121,21 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
 
       await page.mouse.move(coords.start.screenX, coords.start.screenY);
       await page.mouse.down();
-      await page.waitForTimeout(220); // DRAG_HOLD_MS vaut 150, attente d'au moins 220 ms
+      // ⚠ AUCUNE attente entre le `down` et le `move`, et c'est délibéré.
+      //
+      // La version d'origine attendait 220 ms « parce que DRAG_HOLD_MS vaut 150 ». C'était une
+      // méprise sur le seuil : `isDragThresholdExceeded` rend
+      // `dist >= distanceThreshold || duration >= dragHoldMs` — un **OU**. Un déplacement de
+      // 72 px franchit déjà le seuil de 5 px, la durée n'a rien à démontrer.
+      //
+      // Et l'attente était nuisible : `pointer.js` arme un minuteur d'appui long à 500 ms au
+      // `pointerdown`. En CI, `down()`, l'attente et `move()` sont trois allers-retours CDP
+      // distincts ; sur un runner chargé leur total franchit les 500 ms, le minuteur bascule
+      // `mode` sur `'longPress'`, et `handlePointerMove` sort alors immédiatement — le glisser
+      // est abandonné **en silence**, sans erreur, pion immobile. C'est le défaut qui a fait
+      // rougir le CI aux runs 69 à 72, avec un état par ailleurs parfaitement normal.
+      //
+      // Sans attente, le premier pas intermédiaire (~14 px) annule le minuteur bien avant.
       await page.mouse.move(coords.end.screenX, coords.end.screenY, { steps: 5 });
       await page.mouse.up();
       await page.waitForTimeout(200);
