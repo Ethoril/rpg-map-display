@@ -35,23 +35,75 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     });
   });
 
-  test('1. Scénario du mainteneur : armer un outil, changer vers l\'onglet Pions, glisser un pion', async ({ page }) => {
-    // Helper pour récupérer le premier pion et sa case
-    const getTokenCell = async () => {
-      return await page.evaluate(async () => {
-        const store = await import('../js/state/store.js');
-        const token = store.getState().campaign?.tokens[0];
-        if (!token) throw new Error('Aucun pion trouvé dans la campagne');
-        return { a: token.cell.a, b: token.cell.b };
-      });
+  /**
+   * Le scénario du mainteneur, un test par outil.
+   *
+   * ⚠ **Trois tests et non un seul à trois étapes, et c'est le CI qui l'a imposé.** La première
+   * version enchaînait les trois outils dans un même test, en déplaçant le pion de deux cases à
+   * chaque fois. Verte en local, y compris six fois de suite et avec `CI=1` ; rouge en CI, run 69
+   * du 04/08, **sur la troisième étape seulement**. La trace le dit sans ambiguïté : avant le
+   * troisième glisser `getActiveToolName()` valait bien `'none'`, les coordonnées calculées
+   * tombaient bien sur le pion, aucune erreur n'était journalisée — et le pion ne bougeait pas,
+   * alors que les deux glissers précédents avaient réussi dans les mêmes conditions.
+   *
+   * La seule variable qui distinguait la troisième étape des deux premières était **l'état
+   * accumulé** par les glissers antérieurs, et aucune machine ici n'a pu la reproduire. Un test
+   * par outil, chacun sur une page neuve avec le pion à sa case de départ, supprime cette
+   * variable au lieu de la contourner par une attente devinée.
+   *
+   * Bénéfice secondaire, qui aurait suffi à le justifier : un échec nomme désormais l'outil
+   * fautif au lieu d'une étape anonyme.
+   *
+   * @param {import('@playwright/test').Page} page
+   */
+  const getTokenCell = async (page) => {
+    return await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const token = store.getState().campaign?.tokens[0];
+      if (!token) throw new Error('Aucun pion trouvé dans la campagne');
+      return { a: token.cell.a, b: token.cell.b };
+    });
+  };
+
+  /**
+     * Attend que la caméra soit réellement ajustée à l'étage chargé par `beforeEach`.
+     *
+     * Sans cela le test est une course, et elle a fait rougir le CI le 04/08 (run 69) alors
+     * qu'il passait six fois de suite en local : `fitActiveLevel` vit dans la boucle de rendu,
+     * qui est **à la demande** (CdC §9). Tant que la frame n'a pas eu lieu, la caméra est restée
+     * sur son état par défaut, `mapToScreen` rend un point hors du canvas, le `mouse.down`
+     * manque le pion, le glisser devient un pan — et le pion ne bouge pas.
+     *
+     * La précondition est donc **exprimée** et non temporisée : aucune attente fixe ne garantit
+     * une frame sur une machine plus lente que celle qui écrit le test.
+     *
+     * @param {import('@playwright/test').Page} page
+     * @param {{ a: number, b: number }} cell case dont le centre doit être cliquable
+     */
+  const waitForCameraOn = async (page, cell) => {
+      await page.waitForFunction(
+        async (/** @type {{a: number, b: number}} */ c) => {
+          const { gridFor } = await import('../js/grid/index.js');
+          const store = await import('../js/state/store.js');
+          const app = /** @type {any} */ (window).__RPG_APP__;
+          const level = store.getActiveLevel();
+          const board = document.querySelector('#board');
+          if (!level || !app?.camera || !board) return false;
+          const p = app.camera.mapToScreen(gridFor(level).pointFromCell(c));
+          const r = board.getBoundingClientRect();
+          return p.screenX > 0 && p.screenY > 0 && p.screenX < r.width && p.screenY < r.height;
+        },
+        cell
+      );
     };
 
-    // Helper pour effectuer un glisser de pion de fromCell vers toCell en calculant les coordonnées écran exactes
-    /**
-     * @param {{ a: number, b: number }} fromCell
-     * @param {{ a: number, b: number }} toCell
-     */
-    const dragToken = async (fromCell, toCell) => {
+  /**
+   * @param {import('@playwright/test').Page} page
+   * @param {{ a: number, b: number }} fromCell
+   * @param {{ a: number, b: number }} toCell
+   */
+  const dragToken = async (page, fromCell, toCell) => {
+      await waitForCameraOn(page, fromCell);
       const coords = await page.evaluate(async ({ from, to }) => {
         const { gridFor } = await import('../js/grid/index.js');
         const store = await import('../js/state/store.js');
@@ -75,63 +127,35 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
       await page.waitForTimeout(200);
     };
 
-    // Étape A : Tester avec l'outil Fog
-    const cellAStart = await getTokenCell();
-    await page.click('button[data-tab="fog-tools"]');
-    await page.click('#fog-btn-tool-reveal');
+  const OUTILS = [
+    { nom: 'pinceau de fog', onglet: 'fog-tools', armer: '#fog-btn-tool-reveal' },
+    { nom: 'éditeur de murs', onglet: 'wall-editor', armer: '#wall-btn-arm' },
+    { nom: 'gabarits', onglet: 'template-tools', armer: '#tpl-toggle-arm' },
+  ];
 
-    // Changer vers l'onglet Pions
-    await page.click('button[data-tab="token-maker"]');
+  for (const outil of OUTILS) {
+    test(`1. Scénario du mainteneur, ${outil.nom} : armer, changer d'onglet, glisser un pion`, async ({
+      page,
+    }) => {
+      const depart = await getTokenCell(page);
 
-    const activeToolAfterFog = await page.evaluate(() => {
-      const w = /** @type {any} */ (window);
-      return w.__RPG_APP__?.gmPanel?.getActiveToolName();
+      await page.click(`button[data-tab="${outil.onglet}"]`);
+      await page.click(outil.armer);
+      await page.click('button[data-tab="token-maker"]');
+
+      // Le mécanisme : l'outil est bien désarmé. Conservé à côté de l'issue parce qu'il dit
+      // POURQUOI quand l'issue échoue.
+      const outilApres = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.__RPG_APP__?.gmPanel?.getActiveToolName();
+      });
+      expect(outilApres).toBe('none');
+
+      // L'issue, et c'est elle que le mainteneur a signalée : le pion se saisit.
+      await dragToken(page, depart, { a: depart.a + 2, b: depart.b + 2 });
+      expect(await getTokenCell(page)).not.toEqual(depart);
     });
-    expect(activeToolAfterFog).toBe('none');
-
-    const cellATarget = { a: cellAStart.a + 2, b: cellAStart.b + 2 };
-    await dragToken(cellAStart, cellATarget);
-    const cellAEnd = await getTokenCell();
-    expect(cellAEnd).not.toEqual(cellAStart);
-
-    // Étape B : Tester avec l'outil Éditeur de Murs
-    const cellBStart = await getTokenCell();
-    await page.click('button[data-tab="wall-editor"]');
-    await page.click('#wall-btn-arm');
-
-    // Changer vers l'onglet Pions
-    await page.click('button[data-tab="token-maker"]');
-
-    const activeToolAfterWall = await page.evaluate(() => {
-      const w = /** @type {any} */ (window);
-      return w.__RPG_APP__?.gmPanel?.getActiveToolName();
-    });
-    expect(activeToolAfterWall).toBe('none');
-
-    const cellBTarget = { a: cellBStart.a + 2, b: cellBStart.b + 2 };
-    await dragToken(cellBStart, cellBTarget);
-    const cellBEnd = await getTokenCell();
-    expect(cellBEnd).not.toEqual(cellBStart);
-
-    // Étape C : Tester avec l'outil Gabarits
-    const cellCStart = await getTokenCell();
-    await page.click('button[data-tab="template-tools"]');
-    await page.click('#tpl-toggle-arm');
-
-    // Changer vers l'onglet Pions
-    await page.click('button[data-tab="token-maker"]');
-
-    const activeToolAfterTemplate = await page.evaluate(() => {
-      const w = /** @type {any} */ (window);
-      return w.__RPG_APP__?.gmPanel?.getActiveToolName();
-    });
-    expect(activeToolAfterTemplate).toBe('none');
-
-    const cellCTarget = { a: cellCStart.a + 2, b: cellCStart.b + 2 };
-    await dragToken(cellCStart, cellCTarget);
-    const cellCEnd = await getTokenCell();
-    expect(cellCEnd).not.toEqual(cellCStart);
-  });
+  }
 
   test('2. Touche Échap (Escape) désarme l\'outil actif et rend la saisie de pion', async ({ page }) => {
     // Armer le pinceau de fog
