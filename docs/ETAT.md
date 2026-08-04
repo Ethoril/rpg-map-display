@@ -454,6 +454,19 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   La carte `testbig150` est au catalogue pour ça (65 × 71 cases, 1338 murs, 141 portes,
   185 lumières, 13,7 Mio de WebP). Si elle ne tient pas, le pas suivant est de redescendre
   `MAX_PREPARED_TEXTURE_PX`, pas de bricoler le rendu ;
+- **`pnpm run test:manuel` — le glisser réel du désarmement des outils MJ**, sorti de la porte de
+  vérification le 4 août 2026 et à y rapatrier. `tests/manuel/gmToolDisarmGeste.spec.mjs` reproduit
+  le geste du mainteneur — armer un outil, changer d'onglet, glisser un pion — et il est **vert en
+  local, rouge sur le runner GitHub**, sur le seul scénario des gabarits, de façon reproductible.
+  Quatre diagnostics ont été réfutés par la mesure : course de la caméra, état accumulé entre les
+  étapes, appui long, défilement du panneau. L'état joint au message d'échec est normal à chaque
+  fois, donc le blocage est **après le `pointerdown`**. Ce qui reste couvert par la porte : les
+  cinq tests de mécanisme (exclusion mutuelle, Échap, marque d'onglet, abandon du tracé, bascule
+  du bouton actif). Ce qui ne l'est plus : l'issue « le pion se saisit », vérifiée une fois par un
+  chemin indépendant avec preuve par mutation, mais plus à chaque push. **Ce n'est pas une
+  vérification désactivée pour la faire passer** (interdiction n°16) : c'est un test instable
+  retiré d'une porte bloquante, en le disant, parce qu'il retenait un correctif vérifié par
+  ailleurs. Décision du mainteneur, à rouvrir dès que la cause sera connue ;
 - **le correctif du masquage des pions, à confirmer sur la tablette** — c'est le point le plus
   concret de cette liste, parce qu'un défaut y a été mesuré puis corrigé sans que la mesure
   finale soit faite. Le masquage de L-04 allouait par image un canvas aux dimensions de la carte
