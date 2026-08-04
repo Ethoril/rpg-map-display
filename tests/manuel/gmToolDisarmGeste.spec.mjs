@@ -90,6 +90,71 @@ function formatJournalForFailure(browserJournal, nodeJournal) {
   );
 }
 
+/**
+ * Publie l'essentiel du journal sous forme d'annotation GitHub Actions.
+ *
+ * ⚠ **C'est le seul canal de diagnostic lisible sans authentification.** Les journaux de la CI
+ * répondent 403 et les artefacts 401 à un lecteur anonyme, alors que
+ * `GET /repos/{o}/{r}/check-runs/{id}/annotations` répond 200 et rend le texte — vérifié sur le
+ * run 75. Une commande de workflow `::notice title=…::` écrite sur la sortie standard devient une
+ * annotation : le diagnostic remonte donc sans qu'un humain ait à télécharger quoi que ce soit.
+ *
+ * Ne remplace pas l'artefact, qui garde le journal entier. Ce condensé ne porte que les champs qui
+ * départagent les chemins du §2 de `docs/DIAGNOSTIC-GESTE-GABARITS.md`.
+ *
+ * @param {import('@playwright/test').TestInfo} testInfo
+ * @param {Array<any>} browserJournal
+ */
+function publierAnnotation(testInfo, browserJournal) {
+  if (!process.env.CI) return;
+
+  const journal = Array.isArray(browserJournal) ? browserJournal : [];
+  const down = journal.find((e) => e.source === 'board-bubble' && e.type === 'pointerdown');
+  const predicats = journal
+    .filter((e) => e.source === 'predicat' && e.type === 'canStartTokenDrag')
+    .map((e) => ({
+      resultat: e.resultat,
+      outilActif: e.outilActif,
+      gabaritArme: e.gabaritArme,
+      mapPos: e.mapPos,
+      camera: e.camera,
+      rectCanvas: e.rectCanvas,
+    }));
+
+  /** @type {Record<string, number>} */
+  const intentions = {};
+  for (const e of journal.filter((x) => x.source === 'intention')) {
+    intentions[e.type] = (intentions[e.type] ?? 0) + 1;
+  }
+
+  const condense = {
+    statut: testInfo.status,
+    down: down ? { x: Math.round(down.clientX), y: Math.round(down.clientY) } : null,
+    dragTokenId: down?.stateAfter?.dragTokenId ?? '(absent)',
+    predicats,
+    intentions,
+    speciaux: journal
+      .filter((e) => ['blur', 'focus', 'visibilitychange', 'pointercancel'].includes(e.type))
+      .map((e) => e.type),
+  };
+
+  // Un titre court et stable par scénario : c'est lui qui nomme la ligne dans l'API.
+  const outil = /gabarits/.test(testInfo.title)
+    ? 'gabarits'
+    : /murs/.test(testInfo.title)
+      ? 'murs'
+      : 'fog';
+  const niveau = testInfo.status === 'passed' ? 'notice' : 'error';
+
+  // Les commandes de workflow s'échappent, et le message doit tenir sur une seule ligne.
+  const message = JSON.stringify(condense)
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+
+  process.stdout.write(`::${niveau} title=geste-${outil}::${message}\n`);
+}
+
 test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte de vérification)', () => {
   /** @type {Array<any>} */
   let nodeJournal = [];
@@ -277,6 +342,43 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
         return origOnIntention(intention);
       };
 
+      // 5. Enveloppement des deux predicats injectes par la vue MJ.
+      //
+      // C'est le niveau que le premier journal a rendu necessaire : au run 75, le `pointerdown`
+      // du scenario des gabarits arrivait bien sur le canvas mais `dragTokenId` valait `null`,
+      // aux memes coordonnees (262,162) ou les scenarios du fog et des murs rendaient bien
+      // l'identifiant du pion. `canStartTokenDrag` a donc pris une branche de sortie, et le
+      // journal doit dire laquelle : outil encore arme, etage absent, ou case sans pion.
+      const origCanDrag = pi.canStartTokenDrag;
+      pi.canStartTokenDrag = (/** @type {any} */ screenPos, /** @type {any} */ mapPos) => {
+        const resultat = origCanDrag(screenPos, mapPos);
+        const app = w.__RPG_APP__;
+        record({
+          source: 'predicat',
+          type: 'canStartTokenDrag',
+          screenPos,
+          mapPos,
+          resultat,
+          outilActif: app?.gmPanel?.getActiveToolName?.() ?? '(absent)',
+          gabaritArme: app?.gmPanel?.templateTools?.isArmed?.() ?? '(absent)',
+          camera: app?.camera
+            ? { x: app.camera.x, y: app.camera.y, zoom: app.camera.zoom }
+            : null,
+          rectCanvas: (() => {
+            const r = board.getBoundingClientRect();
+            return { left: r.left, top: r.top, width: r.width, height: r.height };
+          })(),
+        });
+        return resultat;
+      };
+
+      const origCanBrush = pi.canStartBrush;
+      pi.canStartBrush = (/** @type {any} */ screenPos, /** @type {any} */ mapPos) => {
+        const resultat = origCanBrush(screenPos, mapPos);
+        record({ source: 'predicat', type: 'canStartBrush', resultat });
+        return resultat;
+      };
+
       const origReset = pi.resetInteraction.bind(pi);
       pi.resetInteraction = () => {
         record({ source: 'pointerInput', type: 'resetInteraction', stateBefore: snapshot() });
@@ -317,6 +419,8 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
     } catch {
       // Garde-fou
     }
+
+    publierAnnotation(testInfo, browserJournal);
   });
 
   /**
