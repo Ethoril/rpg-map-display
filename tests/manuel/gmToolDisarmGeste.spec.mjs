@@ -1,32 +1,51 @@
 // @ts-check
 /**
- * GESTE RÉEL — hors de la porte de vérification, et il faut savoir pourquoi.
+ * GESTE RÉEL — le geste du mainteneur, et la cause de six runs rouges.
  *
  * Ces trois tests reproduisent le geste exact du mainteneur : armer un outil MJ, changer
- * d'onglet, puis GLISSER un pion à la souris et vérifier qu'il a bougé. Ils sont verts en
- * local — y compris avec CI=1 et six répétitions — et rouges sur le runner GitHub, sur le seul
- * scénario des gabarits, de façon reproductible.
+ * d'onglet, puis GLISSER un pion à la souris et vérifier qu'il a bougé.
  *
- * Quatre diagnostics ont échoué à l'expliquer, chacun réfuté par une mesure : course de la
- * caméra (la trace montre des coordonnées justes), état accumulé entre les étapes (le découpage
- * en trois tests n'a rien changé), déclenchement de l'appui long (démontré comme cause d'un
- * échec, mais son retrait n'a pas suffi), défilement du panneau décalant le canvas (mesuré :
- * le canvas reste à (0,0), rien ne défile).
+ * ## La cause, mesurée le 4 août 2026
  *
- * L'état joint au message d'échec est **normal** à chaque fois : outil à 'none', trois outils
- * désarmés, bon onglet visible, et le hit-test trouve bien la case du pion sous le point de
- * pression. Le blocage est donc après le `pointerdown`, dans un mécanisme que l'observation de
- * l'état ne montre pas.
+ * Verts en local, rouges sur le runner GitHub sur le seul scénario des gabarits, de façon
+ * reproductible des runs 69 à 76. **C'était un défaut du test, et lui seul :**
+ * `camera.mapToScreen` rend des coordonnées relatives au canvas, `page.mouse` en attend du
+ * viewport. Les deux ne coïncident que si `#board` commence en `(0, 0)`.
+ *
+ * Le panneau des gabarits déborde horizontalement sur le runner — pas sur Windows, les métriques
+ * de police diffèrent. Cliquer `#tpl-toggle-arm` le fait défiler dans la vue, le document part de
+ * 66 px, et `#board` se retrouve à `left: -66`. Le test pressait donc 66 px à côté : `screenToMap`
+ * rendait `x = 886,67` au lieu de `630`, la case visée n'avait pas de pion, `canStartTokenDrag`
+ * rendait `null`, et le glisser devenait un **pan** — cinq `panBy`, aucun `dragToken`, pion
+ * immobile, et un état par ailleurs parfaitement normal.
+ *
+ * L'application est innocente : `getScreenPoint` fait `clientX - rect.left`, juste quel que soit
+ * le défilement.
+ *
+ * ## Ce que quatre diagnostics avaient manqué, et pourquoi
+ *
+ * Course de la caméra, état accumulé, appui long, défilement du panneau : les quatre ont été
+ * réfutés par une mesure, et les quatre étaient hors sujet. Le dernier passait à côté d'un cheveu
+ * — il avait mesuré `scrollY` et le défilement **vertical**, quand le décalage était horizontal.
+ *
+ * Ce qui a fermé la question à tort, c'est un champ de diagnostic mal lu : `caseSousLePoint`
+ * faisait un aller-retour depuis la case du pion, jamais depuis le point réellement pressé. Il
+ * rendait donc toujours la bonne case, ce qui a fait conclure que le hit-test tombait juste et
+ * qu'il fallait chercher **après** le `pointerdown`. Une sonde qui ne mesure pas ce que son nom
+ * annonce coûte plus cher que pas de sonde du tout.
+ *
+ * Ce qui a fini par trancher : instrumenter le mécanisme et non l'état — les événements reçus, les
+ * intentions émises, puis les prédicats injectés par la vue MJ — et faire remonter le condensé par
+ * annotation GitHub Actions, seul canal lisible sans authentification.
  *
  * ⚠ **Ce n'est PAS une vérification désactivée pour la faire passer** (interdiction n°16). Le
  * mécanisme du désarmement reste gardé par les cinq tests de `tests/gmToolDisarm.spec.mjs`, et
  * l'issue — « le pion se saisit » — a été vérifiée par un chemin indépendant avec preuve par
- * mutation avant la livraison du correctif. Ce qui sort de la porte, c'est la seule assertion
- * qui dépend d'un geste de souris chronométré, parce qu'un test instable qui retient un
- * correctif vérifié protège moins qu'il ne coûte.
+ * mutation avant la livraison du correctif.
  *
- * À lancer à la main : `pnpm run test:manuel`. À rapatrier dans la porte dès que la cause est
- * connue. Voir `docs/ETAT.md`, section des vérifications manuelles.
+ * À lancer à la main : `pnpm run test:manuel`. **La cause étant désormais connue, le rapatriement
+ * dans la porte de vérification est ouvert** — c'est une décision du mainteneur, pas un effet de
+ * bord de ce correctif. Voir `docs/DIAGNOSTIC-GESTE-GABARITS.md` et `docs/ETAT.md`.
  *
  * ⚠ **Les `import()` dans les `page.evaluate` s'écrivent `../../js/…` et non `../js/…`**, et les
  * deux résolutions doivent tomber juste. `tsc` les résout depuis ce fichier, donc depuis
@@ -459,6 +478,27 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
   };
 
   /**
+   * ⚠ **`camera.mapToScreen` rend des coordonnées relatives au canvas ; `page.mouse` en attend du
+   * viewport.** Les deux ne coïncident que si le canvas commence en `(0, 0)`, et c'est ce qui a
+   * fait rougir la CI des runs 69 à 75.
+   *
+   * Le panneau des gabarits déborde horizontalement sur le runner — pas sur Windows, les métriques
+   * de police diffèrent. Cliquer `#tpl-toggle-arm` le fait alors défiler dans la vue, le document
+   * part de 66 px vers la droite, et `#board` se retrouve à `left: -66`. Mesuré par annotation sur
+   * le run du commit 3189387 : `rectCanvas.left` valait `-66` pour les gabarits et `0` pour les
+   * deux autres scénarios, à caméra et point de pression identiques.
+   *
+   * Le test pressait donc 66 px à côté : `screenToMap` rendait `x = 886,67` au lieu de `630`, la
+   * case visée n'avait pas de pion, `canStartTokenDrag` rendait `null`, et `handlePointerMove`
+   * partait en pan — cinq `panBy`, aucun `dragToken`, pion immobile, état par ailleurs normal.
+   *
+   * **L'application n'y est pour rien** : `getScreenPoint` fait `clientX - rect.left`, ce qui reste
+   * juste quel que soit le défilement. C'était un défaut du test, et lui seul.
+   *
+   * On convertit donc explicitement, et on **vérifie la conversion** juste avant de presser : sans
+   * cette garde, un point qui tombe à côté redevient un échec muet, et c'est ce silence qui a coûté
+   * quatre tours de diagnostic.
+   *
    * @param {import('@playwright/test').Page} page
    * @param {{ a: number, b: number }} fromCell
    * @param {{ a: number, b: number }} toCell
@@ -472,18 +512,47 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
         const app = /** @type {any} */ (window).__RPG_APP__;
         const activeLevel = store.getActiveLevel();
         if (!activeLevel) throw new Error('Étage initial absent');
+        const board = document.querySelector('#board');
+        if (!board) throw new Error('Canvas #board absent');
         const grid = gridFor(activeLevel);
-        const startPt = grid.pointFromCell(from);
-        const endPt = grid.pointFromCell(to);
+        const rect = board.getBoundingClientRect();
+
+        /** Case que l'application trouvera sous un point de viewport, par son propre calcul. */
+        const cellUnderViewport = (/** @type {{x: number, y: number}} */ pt) =>
+          grid.cellFromPoint(
+            app.camera.screenToMap({ screenX: pt.x - rect.left, screenY: pt.y - rect.top })
+          );
+
+        /** Coordonnées de viewport du centre d'une case. */
+        const viewportOf = (/** @type {{a: number, b: number}} */ c) => {
+          const p = app.camera.mapToScreen(grid.pointFromCell(c));
+          return { x: rect.left + p.screenX, y: rect.top + p.screenY };
+        };
+
+        const start = viewportOf(from);
+        const end = viewportOf(to);
         return {
-          start: app.camera.mapToScreen(startPt),
-          end: app.camera.mapToScreen(endPt),
+          start,
+          end,
+          rectLeft: rect.left,
+          rectTop: rect.top,
+          // Le contrôle de la conversion, fait par le calcul même de l'application.
+          caseSousLeDepart: cellUnderViewport(start),
         };
       },
       { from: fromCell, to: toCell }
     );
 
-    await page.mouse.move(coords.start.screenX, coords.start.screenY);
+    // La précondition est exprimée, pas supposée : si le point de pression ne tombe pas sur la case
+    // de départ, l'échec nomme le décalage au lieu de se déguiser en « le pion n'a pas bougé ».
+    expect(
+      coords.caseSousLeDepart,
+      `le point de pression ne tombe pas sur la case de depart. ` +
+        `Canvas a (${coords.rectLeft}, ${coords.rectTop}), point de viewport ` +
+        `(${Math.round(coords.start.x)}, ${Math.round(coords.start.y)}).`
+    ).toEqual(fromCell);
+
+    await page.mouse.move(coords.start.x, coords.start.y);
     await page.mouse.down();
     // ⚠ AUCUNE attente entre le `down` et le `move`, et c'est délibéré : `pointer.js` arme un
     // minuteur d'appui long à 500 ms au `pointerdown`, et une attente le laisse mûrir — `mode`
@@ -495,7 +564,7 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
     // insérer ici, **en local et sans le commiter**, `await page.waitForTimeout(700);` et vérifier
     // que le journal montre l'intention `longPress`, `mode: 'longPress'` sur les `pointermove`, et
     // aucun `dragToken` de phase `end`.
-    await page.mouse.move(coords.end.screenX, coords.end.screenY, { steps: 5 });
+    await page.mouse.move(coords.end.x, coords.end.y, { steps: 5 });
     await page.mouse.up();
     await page.waitForTimeout(200);
   };
@@ -540,7 +609,17 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
             ongletVisible:
               document.querySelector('.gm-tab-btn.active')?.getAttribute('data-tab') ?? '(aucun)',
             caseDuPion: pion ? { a: pion.cell.a, b: pion.cell.b } : null,
-            caseSousLePoint: centre && grid ? grid.cellFromPoint(centre) : null,
+            // ⚠ Aller-retour depuis la case du pion, et **rien de plus**. Ce champ ne dit pas que
+            // le point réellement pressé tombe sur le pion : il n'a jamais vu ce point. Lu comme
+            // une preuve du contraire, il a orienté quatre diagnostics vers l'après-`pointerdown`
+            // alors que le défaut était le décalage du canvas. La vraie garde est l'assertion de
+            // `dragToken`, qui part du point de viewport.
+            caseAllerRetour: centre && grid ? grid.cellFromPoint(centre) : null,
+            // Le champ qui manquait : c'est lui qui portait la cause.
+            rectCanvas: (() => {
+              const r = document.querySelector('#board')?.getBoundingClientRect();
+              return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+            })(),
             cible,
           };
         },
