@@ -538,9 +538,12 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 - température et stabilité pendant une séance de 45 minutes puis quatre heures ;
 - limite de texture réelle et qualité du rééchantillonnage ;
 - reprise du Wake Lock et du plein écran sur Android réel ;
-- **règles de sécurité du projet Firebase** — le point le plus important de cette liste, et le
-  seul qui protège les données. Voir la section dédiée plus bas, avec les règles à appliquer et
-  les deux pièges du mode test ;
+- **règles de sécurité du projet Firebase — ✅ le mode test ne s'applique pas**, confirmé par le
+  mainteneur le 4 août 2026 : les règles en liste blanche d'adresses sont en place, il n'y a donc
+  ni accès anonyme ni expiration à 30 jours qui court. Ce qui reste à confirmer une fois, dans la
+  console, est plus étroit : que la condition RTDB porte bien sur `$sessionId` et non sur `events`
+  seul — sans quoi `presence` reste sans règle, donc refusé, et la détection d'écart de build ne se
+  déclenche jamais en silence. Voir la section dédiée plus bas ;
 - restriction de la clé d'API Google (Cloud Console → Identifiants, « Browser key (auto created
   by Firebase) ») : référents HTTP et API limitées. **Confort, pas urgence** — sans compte de
   facturation, aucun coût n'est possible, les quotas du plan gratuit étant des plafonds durs.
@@ -650,6 +653,12 @@ La clé d'API est publique par conception (`firebase-config.js`) : **ce sont les
 elles seules, qui empêchent un tiers de lire ou d'écrire une campagne.** Sans compte de
 facturation, il n'y a aucun risque de coût ; le risque est l'accès aux données et l'épuisement
 du quota gratuit.
+
+> ✅ **Le mode test ne s'applique pas à ce projet** — confirmé par le mainteneur le 4 août 2026 :
+> les règles en liste blanche ci-dessus sont bien celles en place. Les deux pièges décrits juste
+> après sont donc **sans objet ici**, et notamment l'expiration à 30 jours : il n'y a pas
+> d'échéance qui court. Le paragraphe est conservé parce qu'il vaut pour tout projet Firebase
+> reparti du mode test — un second projet, un fork, une base de test séparée.
 
 **Deux pièges du mode test**, à vérifier avant toute séance : il autorise lecture et écriture
 **sans authentification**, et il **expire au bout de 30 jours** — après quoi tout casse, y
