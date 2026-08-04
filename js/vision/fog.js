@@ -265,6 +265,7 @@ export async function decodeFogPng(b64Png, widthCells, heightCells, createCanvas
         if (ctx) {
           const isMockPixels = ctx.pixels && ctx.pixels instanceof Uint8Array;
           const pixelBuf = isMockPixels ? ctx.pixels : new Uint8Array(maskWidth * maskHeight * 4);
+          const maskAlpha = new Uint8Array(maskWidth * maskHeight);
 
           let scanIdx = 0;
           for (let y = 0; y < maskHeight; y++) {
@@ -284,8 +285,13 @@ export async function decodeFogPng(b64Png, widthCells, heightCells, createCanvas
               pixelBuf[idx + 1] = 0;
               pixelBuf[idx + 2] = 0;
               pixelBuf[idx + 3] = alpha;
+              maskAlpha[y * maskWidth + x] = alpha;
             }
           }
+
+          canvas.maskAlpha = maskAlpha;
+          canvas.maskWidth = maskWidth;
+          canvas.maskHeight = maskHeight;
 
           if (!isMockPixels && typeof ImageData !== 'undefined' && typeof ctx.putImageData === 'function') {
             const imgData = new ImageData(new Uint8ClampedArray(pixelBuf.buffer), maskWidth, maskHeight);
@@ -299,6 +305,89 @@ export async function decodeFogPng(b64Png, widthCells, heightCells, createCanvas
   }
 
   return canvas;
+}
+
+/**
+ * Extrait ou récupère le tableau d'alpha du masque de vision/fog pour une grille donnée.
+ * Si le canvas possède déjà maskAlpha (Uint8Array), il est renvoyé directement sans allocation ni getImageData.
+ * Sinon, l'alpha est extrait une seule fois via getImageData et mis en cache sur le canvas.
+ *
+ * @param {any} canvas Canvas HTML ou mock
+ * @param {number} widthCells Largeur de l'étage en cases
+ * @param {number} heightCells Hauteur de l'étage en cases
+ * @returns {Uint8Array|null} Tableau d'octets d'alpha ou null
+ */
+export function getOrExtractMaskAlpha(canvas, widthCells, heightCells) {
+  if (!canvas || !widthCells || !heightCells) return null;
+  if (canvas.maskAlpha && canvas.maskAlpha instanceof Uint8Array) {
+    return canvas.maskAlpha;
+  }
+
+  const maskWidth = widthCells * FOG_MASK_PX_PER_CELL;
+  const maskHeight = heightCells * FOG_MASK_PX_PER_CELL;
+  const ctx = canvas.getContext ? canvas.getContext('2d') : canvas._ctx;
+  if (!ctx) return null;
+
+  if (ctx.pixels && ctx.pixels instanceof Uint8Array) {
+    const pixels = ctx.pixels;
+    const alpha = new Uint8Array(maskWidth * maskHeight);
+    for (let i = 0; i < alpha.length; i++) {
+      alpha[i] = pixels[i * 4 + 3];
+    }
+    canvas.maskAlpha = alpha;
+    canvas.maskWidth = maskWidth;
+    canvas.maskHeight = maskHeight;
+    return alpha;
+  }
+
+  if (typeof ctx.getImageData === 'function') {
+    try {
+      const imgData = ctx.getImageData(0, 0, maskWidth, maskHeight);
+      const data = imgData.data;
+      const alpha = new Uint8Array(maskWidth * maskHeight);
+      for (let i = 0; i < alpha.length; i++) {
+        alpha[i] = data[i * 4 + 3];
+      }
+      canvas.maskAlpha = alpha;
+      canvas.maskWidth = maskWidth;
+      canvas.maskHeight = maskHeight;
+      return alpha;
+    } catch (err) {
+      console.warn('[fog] Impossible d\'extraire getImageData du canvas :', err);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Teste si la case d'ancrage d'un pion {a, b} a son centre dans la zone vue du masque d'alpha.
+ *
+ * @param {import('../core/types.js').Cell|null} cell Case d'ancrage du pion
+ * @param {Uint8Array|null} maskAlpha Tableau d'alpha du masque
+ * @param {number} widthCells Largeur en cases
+ * @param {number} heightCells Hauteur en cases
+ * @returns {boolean} true si le centre de la case est dans la vision courante (alpha > 0)
+ */
+export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells) {
+  if (!cell || typeof cell.a !== 'number' || typeof cell.b !== 'number') return false;
+  if (!maskAlpha || !widthCells || !heightCells) return false;
+
+  const a = Math.floor(cell.a);
+  const b = Math.floor(cell.b);
+  if (a < 0 || a >= widthCells || b < 0 || b >= heightCells) return false;
+
+  const maskWidth = widthCells * FOG_MASK_PX_PER_CELL;
+  const maskHeight = heightCells * FOG_MASK_PX_PER_CELL;
+
+  const maskX = Math.floor((a + 0.5) * FOG_MASK_PX_PER_CELL);
+  const maskY = Math.floor((b + 0.5) * FOG_MASK_PX_PER_CELL);
+
+  if (maskX < 0 || maskX >= maskWidth || maskY < 0 || maskY >= maskHeight) return false;
+
+  const idx = maskY * maskWidth + maskX;
+  // le fill() du sweep est antialiasé, donc le bord de vision porte un dégradé d'alpha complet — mesuré sur un masque réel, 1,43 % des pixels sont partiels, avec des valeurs de 15 à 246, et l'aller-retour PNG les préserve exactement. Avec un seuil à > 0, une case dont le pixel central vaut 15, soit 6 % couvert, compte comme vue et le pion qui s'y trouve est dessiné — ce qui viole l'interdiction n°3 et le critère 6 du §11, « aucun pion visible en zone explorée hors vision ». CONVENTIONS.md §3 déclare le masque binaire (« 0 = non exploré, 255 = exploré ») : les valeurs intermédiaires sont un artefact, et 128 en est la lecture naturelle — le centre de la case doit être couvert à plus de moitié. Le mode d'échec passe d'une violation de règle à un défaut cosmétique : un pion tout au bord masqué un pas trop tôt. Aucun risque pour le pion d'un joueur, dont la propre case est à alpha 255.
+  return maskAlpha[idx] >= 128;
 }
 
 /**

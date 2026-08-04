@@ -348,7 +348,6 @@ test('Critère 6 : La zone explorée-hors-vision reste grisée sur la vue joueur
     activeLevelWidthCells: 10,
     activeLevelHeightCells: 10,
     visibleCanvas,
-    createOffscreenCanvas: (/** @type {number} */ w, /** @type {number} */ h) => createMockCanvas(w, h).canvas,
   });
 
   const pxPionPnj = tokenCtx.getImageData(85, 85, 1, 1).data;

@@ -557,6 +557,8 @@ export async function bootstrapPlayerApp(options = {}) {
     pointerInput: playerControls.pointerInput,
     backgroundLayer,
     tokensLayer,
+    getPlayerVisibleCanvas,
+    getPlayerExploredCanvas,
     transport,
     sessionId,
     destroy,

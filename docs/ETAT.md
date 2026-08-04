@@ -454,6 +454,14 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   La carte `testbig150` est au catalogue pour ça (65 × 71 cases, 1338 murs, 141 portes,
   185 lumières, 13,7 Mio de WebP). Si elle ne tient pas, le pas suivant est de redescendre
   `MAX_PREPARED_TEXTURE_PX`, pas de bricoler le rendu ;
+- **le correctif du masquage des pions, à confirmer sur la tablette** — c'est le point le plus
+  concret de cette liste, parce qu'un défaut y a été mesuré puis corrigé sans que la mesure
+  finale soit faite. Le masquage de L-04 allouait par image un canvas aux dimensions de la carte
+  entière, 6720 × 6300 sur `manoir-rdc`, soit 161 Mio de RGBA : **542 ms par image sur un poste
+  de bureau, seize fois le budget de 33 ms**. Relevé par le mainteneur en usage réel, sur la
+  tablette, avant tout test. Le correctif filtre les pions case par case au lieu de masquer des
+  pixels, et retombe à 0,44 ms de bureau. **Ce chiffre ne vaut pas validation** (interdiction
+  n°14) : c'est la tablette qui dira si la vue joueurs tient désormais ses 30 fps ;
 - tenue à 30 fps sous cast sur la tablette cible ;
 - lisibilité du badge d'élévation (+N/−N) sous cast sur la tablette cible (miroir passif Google Cast) ;
 - température et stabilité pendant une séance de 45 minutes puis quatre heures ;

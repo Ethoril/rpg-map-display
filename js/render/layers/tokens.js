@@ -1,5 +1,7 @@
 // @ts-check
 
+import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
+
 const TOKEN_IMAGE_CACHE_LIMIT = 64;
 export const TOKEN_MOVE_STEP_MS = 160;
 
@@ -23,14 +25,14 @@ export const TOKEN_MOVE_STEP_MS = 160;
  * @typedef {{
  *   role?: 'gm'|'players',
  *   isGM?: boolean,
+ *   isPlayerView?: boolean,
  *   activeLevelId: string,
  *   now?: number,
  *   dragPreview?: { tokenId: string, mapPos: import('../../core/types.js').MapPoint }|null,
- *   visiblePolygons?: import('../../core/types.js').MapPoint[][],
  *   visibleCanvas?: any,
+ *   visibleAlpha?: Uint8Array|null,
  *   activeLevelWidthCells?: number,
- *   activeLevelHeightCells?: number,
- *   createOffscreenCanvas?: (w: number, h: number) => any
+ *   activeLevelHeightCells?: number
  * }} RenderOptions
  */
 
@@ -180,7 +182,7 @@ export class TokensLayer {
     const selectedTokenId = typeof selection === 'string'
       ? selection
       : selection?.tokenId ?? selection?.selectedTokenId ?? null;
-    const isPlayerView = options.role === 'players' || options.isGM === false;
+    const isPlayerView = options.role === 'players' || options.isPlayerView === true || (options.isGM === false);
     const now = options.now ?? Date.now();
     const visibleTokens = tokens.filter(
       (token) =>
@@ -188,44 +190,28 @@ export class TokensLayer {
         !(isPlayerView && token.hidden)
     );
 
-    // Côté joueurs (L-04 §7) : les pions se composent sur un canvas hors écran auquel
-    // on applique le masque `visible` en `destination-in` pour qu'aucun pion
-    // n'apparaisse en zone explorée-hors-vision.
-    const usePlayerMask = isPlayerView && (options.visibleCanvas || (Array.isArray(options.visiblePolygons) && options.visiblePolygons.length > 0));
-    let targetCtx = ctx;
-    let offscreenCanvas = null;
-
-    let mapWidth = ctx.canvas?.width || 800;
-    let mapHeight = ctx.canvas?.height || 600;
-
-    if (usePlayerMask && options.activeLevelWidthCells && options.activeLevelHeightCells) {
-      const bottomRight = grid.mapFromCellPoint({
-        cellX: options.activeLevelWidthCells,
-        cellY: options.activeLevelHeightCells,
-      });
-      mapWidth = Math.ceil(bottomRight.x);
-      mapHeight = Math.ceil(bottomRight.y);
-    }
-
-    if (usePlayerMask) {
-      if (typeof options.createOffscreenCanvas === 'function') {
-        offscreenCanvas = options.createOffscreenCanvas(mapWidth, mapHeight);
-      } else if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-        offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = mapWidth;
-        offscreenCanvas.height = mapHeight;
-      }
-      if (offscreenCanvas) {
-        const offCtx = offscreenCanvas.getContext ? offscreenCanvas.getContext('2d') : offscreenCanvas._ctx;
-        if (offCtx) {
-          targetCtx = offCtx;
-        }
+    // Filtrage discret pion par pion côté joueurs (Option A / CORRECTIF) :
+    // Aucun canvas hors écran n'est alloué, aucune composition destination-in sur la carte complète.
+    // Pour chaque pion, on vérifie si la case d'ancrage token.cell est vue dans le masque.
+    let maskAlpha = null;
+    if (isPlayerView && (options.visibleAlpha || options.visibleCanvas)) {
+      if (options.visibleAlpha && options.visibleAlpha instanceof Uint8Array) {
+        maskAlpha = options.visibleAlpha;
+      } else if (options.visibleCanvas && options.activeLevelWidthCells && options.activeLevelHeightCells) {
+        maskAlpha = getOrExtractMaskAlpha(options.visibleCanvas, options.activeLevelWidthCells, options.activeLevelHeightCells);
       }
     }
 
-    targetCtx.save();
+    ctx.save();
     for (const token of visibleTokens) {
       if (!token.cell) continue;
+
+      if (isPlayerView && maskAlpha && options.activeLevelWidthCells && options.activeLevelHeightCells) {
+        if (!isCellVisibleInMask(token.cell, maskAlpha, options.activeLevelWidthCells, options.activeLevelHeightCells)) {
+          continue;
+        }
+      }
+
       let position = tokenPosition(token, now);
       if (options.dragPreview?.tokenId === token.id) {
         const cellPoint = grid.cellPointFromMap(options.dragPreview.mapPos);
@@ -238,33 +224,9 @@ export class TokensLayer {
       }
       result.animationActive ||= position.active;
       result.renderedTokenIds.push(token.id);
-      this._drawToken(targetCtx, grid, token, position, selectedTokenId === token.id);
+      this._drawToken(ctx, grid, token, position, selectedTokenId === token.id);
     }
-    targetCtx.restore();
-
-    if (usePlayerMask && offscreenCanvas && targetCtx !== ctx) {
-      targetCtx.save();
-      targetCtx.globalCompositeOperation = 'destination-in';
-
-      if (options.visibleCanvas) {
-        targetCtx.drawImage(options.visibleCanvas, 0, 0, mapWidth, mapHeight);
-      } else if (Array.isArray(options.visiblePolygons)) {
-        targetCtx.beginPath();
-        for (const poly of options.visiblePolygons) {
-          if (!poly || poly.length === 0) continue;
-          targetCtx.moveTo(poly[0].x, poly[0].y);
-          for (let i = 1; i < poly.length; i++) {
-            targetCtx.lineTo(poly[i].x, poly[i].y);
-          }
-          targetCtx.closePath();
-        }
-        targetCtx.fillStyle = '#000000';
-        targetCtx.fill();
-      }
-
-      targetCtx.restore();
-      ctx.drawImage(offscreenCanvas, 0, 0);
-    }
+    ctx.restore();
 
     return result;
   }
