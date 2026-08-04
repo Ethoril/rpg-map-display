@@ -152,8 +152,42 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
       expect(outilApres).toBe('none');
 
       // L'issue, et c'est elle que le mainteneur a signalée : le pion se saisit.
+      //
+      // L'état complet est capturé AVANT le glisser et joint au message d'assertion. Ce n'est
+      // pas du zèle : le CI a rougi deux fois ici sans que rien dise pourquoi, et deux tours
+      // de diagnostic ont été perdus faute d'avoir cette information dans le rapport. Un
+      // message d'échec qui porte l'état est une fonctionnalité, pas une sonde jetable.
+      const etatAvant = await page.evaluate(async (cible) => {
+        const w = /** @type {any} */ (window);
+        const store = await import('../js/state/store.js');
+        const { gridFor } = await import('../js/grid/index.js');
+        const panel = w.__RPG_APP__?.gmPanel;
+        const level = store.getActiveLevel();
+        const grid = level ? gridFor(level) : null;
+        const pion = store.getCampaign()?.tokens?.[0];
+        const centre = grid && pion ? grid.pointFromCell(pion.cell) : null;
+        return {
+          outilActif: panel?.getActiveToolName?.() ?? '(absent)',
+          fogOutil: panel?.fogTools?.getActiveTool?.() ?? '(absent)',
+          murArme: panel?.wallEditor?.isArmed?.() ?? '(absent)',
+          gabaritArme: panel?.templateTools?.isArmed?.() ?? '(absent)',
+          ongletVisible:
+            document.querySelector('.gm-tab-btn.active')?.getAttribute('data-tab') ?? '(aucun)',
+          caseDuPion: pion ? { a: pion.cell.a, b: pion.cell.b } : null,
+          // La case que le hit-test trouvera sous le point de pression.
+          caseSousLePoint: centre && grid ? grid.cellFromPoint(centre) : null,
+          cible,
+        };
+      }, { a: depart.a + 2, b: depart.b + 2 });
+
       await dragToken(page, depart, { a: depart.a + 2, b: depart.b + 2 });
-      expect(await getTokenCell(page)).not.toEqual(depart);
+
+      const arrivee = await getTokenCell(page);
+      expect(
+        arrivee,
+        `le pion devait se saisir apres avoir arme « ${outil.nom} ». ` +
+          `Etat juste avant le glisser : ${JSON.stringify(etatAvant)}`
+      ).not.toEqual(depart);
     });
   }
 
