@@ -136,3 +136,90 @@ mécanisme des gestes est la couche la plus dense en régressions silencieuses d
 
 Les cinq conditions de `CONVENTIONS.md` §9, plus les cinq mesures du §4 ci-dessus, plus la ligne
 « Écarts ». Y déclarer notamment tout test existant qu'il a fallu modifier, et pourquoi.
+
+---
+
+## 7. Amendements au plan de mise en œuvre
+
+> Contrôle du plan, 4 août 2026. Le périmètre et les cinq modifications de `pointer.js` sont justes.
+> Sept amendements, dont **les deux premiers sont bloquants** : sans eux, les tests nouveaux ne
+> prouvent rien et le fichier garde une explication devenue fausse.
+
+### A1 — Les deux tests nouveaux doivent tourner avec le **vrai** seuil de 500 ms *(bloquant)*
+
+`tests/input.spec.mjs` expose deux jeux de seuils prêts à l'emploi, `SANS_APPUI_LONG` et
+`SANS_SEUILS_TEMPORELS`, et les six tests existants les utilisent. **Les réutiliser ici viderait les
+deux tests de leur objet** : `longPressMs: 100_000` supprime précisément le mécanisme qu'ils doivent
+éprouver. Ils passeraient, avant comme après le correctif, sans rien mesurer — un faux vert exemplaire.
+
+Les deux tests nouveaux montent donc la scène **sans aucun désarmement**, et attendent réellement
+700 ms. Ils sont, par construction, les seuls du fichier à dépendre de l'horloge de l'appui long, et
+c'est leur raison d'être.
+
+**Et ils doivent être vérifiés par mutation** : le correctif retiré, **les deux doivent rougir**. Un
+test qui reste vert quand on annule le correctif qu'il garde ne garde rien.
+
+### A2 — L'en-tête de `input.spec.mjs` devient faux *(bloquant)*
+
+Le plan annonce « conservation sans aucune altération des 6 tests existants ». C'est juste pour les
+**assertions**, et faux pour la **documentation**. Le commentaire de `SANS_APPUI_LONG` justifie la
+constante par le défaut même qu'on corrige :
+
+> « au-delà de `longPressMs` […] `PointerInput` bascule `mode = 'longPress'` et le déplacement qui
+> suit ne produit plus jamais de `panBy` ni de `dragToken` »
+
+Après le correctif, **cette phrase est fausse** : le déplacement annule la candidature et l'intention
+part normalement. Laisser l'explication en place, c'est laisser un lecteur désarmer un seuil pour un
+défaut qui n'existe plus — et c'est exactement la faute qui vient de coûter quatre tours de
+diagnostic sur le glisser des gabarits (`DIAGNOSTIC-GESTE-GABARITS.md` §11.2).
+
+Donc : **réécrire ce paragraphe**, en disant que le plafond temporel a disparu et que la constante ne
+subsiste que par prudence. `SANS_SEUILS_TEMPORELS`, lui, **reste nécessaire et son commentaire reste
+juste** : la borne `duration < dragHoldMs` (150 ms) du `tap` est un mécanisme distinct, que ce
+correctif ne touche pas.
+
+### A3 — La recette de mutation du spec manuel décrit l'ancien comportement
+
+`tests/manuel/gmToolDisarmGeste.spec.mjs` porte, autour de son `mouse.down()`, la recette de la
+preuve par mutation : elle annonce qu'une attente de 700 ms doit faire apparaître `mode: 'longPress'`
+sur les `pointermove` et aucun `dragToken`. **Après ce correctif, l'attendu s'inverse** : le pion doit
+se déplacer et aucune intention `longPress` ne doit paraître.
+
+À corriger **dans le même commit**. Une recette qui décrit le défaut comme résultat attendu enverra
+le prochain lecteur conclure à une régression.
+
+### A4 — `pnpm run test:manuel -- --grep` perd ses arguments
+
+Mesuré sur pnpm 11 : `pnpm run test:manuel -- --grep "gabarits"` lance **les trois** tests. La forme
+qui fonctionne est `pnpm exec playwright test --project=manuel --grep gabarits`. Le plan reprend la
+forme fautive au §3 de son plan de vérification ; c'est sans gravité ici — les trois scénarios
+partagent le même `dragToken`, donc les trois seraient mutés — mais autant que la commande dise ce
+qu'elle fait.
+
+### A5 — `resetInteraction` remet déjà `longPressTriggered` à `false`
+
+`js/input/pointer.js:151`. Rien à y ajouter. `handlePointerCancel`, en revanche, ne le fait pas, et
+le plan a raison de le prévoir.
+
+### A6 — Un ressenti tactile change, et le plan ne le signale pas *(interdiction n°14)*
+
+La porte se verrouille désormais **au relâchement** et non à 500 ms, doigt encore posé. Le mécanisme
+se vérifie en Chromium ; l'impression au doigt exige la Tab S9 FE. Le rapport doit donc porter une
+ligne « à vérifier par le mainteneur » et non se déclarer intégralement vérifié.
+
+Deux phrases à mettre dans la liste de la séance de tablette :
+
+- *toucher la carte, attendre une demi-seconde, glisser* → la carte doit suivre le doigt ;
+- *presser une porte, attendre une demi-seconde, relever le doigt* → la porte doit se verrouiller au
+  relèvement, et cette latence doit rester acceptable.
+
+### A7 — La zone morte entre 150 et 500 ms est **préexistante**, et il faut l'écrire avant qu'on l'impute à ce correctif
+
+Un appui immobile de 300 ms ne produit **rien** : pas de `tap`, car la branche exige
+`duration < dragHoldMs` soit 150 ms ; pas de `longPress`, car `longPressMs` n'est pas atteint.
+
+Sur la vue joueurs, où le déplacement tap-tap est **le** geste de la séance, un tap un peu lent est
+donc sans effet. C'est antérieur à ce correctif et hors de son périmètre — **mais ce sera là demain**,
+sur la table, et ce sera attribué au correctif si ce n'est pas consigné maintenant. À arbitrer
+séparément : soit relever `dragHoldMs`, soit détacher la condition de brièveté du `tap` de la
+constante de glisser, qui n'a pas de raison d'être la même valeur.
