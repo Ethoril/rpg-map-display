@@ -33,7 +33,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, destroy: () => void}}
+ * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -201,12 +201,85 @@ export function createGMPanel(container, options = {}) {
     versionBadge = mountGMVersionBadge(footerEl, { transport, role: 'gm' });
   }
 
-  // --- Gestion de la navigation par onglets ---
+  // --- Gestion de la navigation par onglets & outil actif centralisé (CORRECTIF DESARMEMENT §3.1) ---
   const tabButtons = container.querySelectorAll('.gm-tab-btn');
   const tabPanes = container.querySelectorAll('.gm-tab-pane');
 
+  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place'} */
+  let activeToolName = 'none';
+
+  /** @type {ReturnType<typeof createWallEditor>|null} */
+  let wallEditor = null;
+  /** @type {ReturnType<typeof createTemplateTools>|null} */
+  let templateTools = null;
+  /** @type {ReturnType<typeof createFogTools>|null} */
+  let fogTools = null;
+
+  function updateTabToolIndicators() {
+    tabButtons.forEach((btn) => {
+      const tabName = btn.getAttribute('data-tab');
+      let isToolTabArmed = false;
+
+      if (tabName === 'fog-tools' && (activeToolName === 'fog-reveal' || activeToolName === 'fog-hide')) {
+        isToolTabArmed = true;
+      } else if (tabName === 'wall-editor' && (activeToolName === 'wall-draw' || activeToolName === 'wall-delete')) {
+        isToolTabArmed = true;
+      } else if (tabName === 'template-tools' && activeToolName === 'template-place') {
+        isToolTabArmed = true;
+      }
+
+      if (isToolTabArmed) {
+        btn.classList.add('gm-tab-active-tool');
+        /** @type {HTMLElement} */ (btn).style.boxShadow = 'inset 0 -3px 0 #f5a623';
+      } else {
+        btn.classList.remove('gm-tab-active-tool');
+        /** @type {HTMLElement} */ (btn).style.boxShadow = 'none';
+      }
+    });
+  }
+
+  function getActiveToolName() {
+    return activeToolName;
+  }
+
+  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place'} toolName */
+  function setActiveTool(toolName) {
+    if (activeToolName === toolName) return;
+
+    const prevTool = activeToolName;
+    activeToolName = toolName;
+
+    if (prevTool.startsWith('fog-') && !toolName.startsWith('fog-')) {
+      fogTools?.disarm();
+    }
+    if (prevTool.startsWith('wall-') && !toolName.startsWith('wall-')) {
+      wallEditor?.setArmed(false);
+    }
+    if (prevTool === 'template-place' && toolName !== 'template-place') {
+      templateTools?.disarm();
+    }
+
+    if (toolName === 'none') {
+      if (fogTools?.getActiveTool() !== 'none') fogTools?.disarm();
+      if (wallEditor?.isArmed()) wallEditor?.setArmed(false);
+      if (templateTools?.isArmed()) templateTools?.disarm();
+    }
+
+    updateTabToolIndicators();
+    requestRender();
+  }
+
+  function disarmActiveTool() {
+    setActiveTool('none');
+  }
+
   tabButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
+      // Désarmer l'outil actif à tout changement d'onglet (Amendement A3)
+      if (activeToolName !== 'none') {
+        disarmActiveTool();
+      }
+
       const targetTab = btn.getAttribute('data-tab');
       tabButtons.forEach((b) => {
         const isTarget = b === btn;
@@ -237,37 +310,25 @@ export function createGMPanel(container, options = {}) {
   const handoutsMount = /** @type {HTMLElement} */ (container.querySelector('#handouts-mount'));
   const fogToolsMount = /** @type {HTMLElement} */ (container.querySelector('#fog-tools-mount'));
 
-  // Panneaux d'import UVTT et Image — sections de DIAGNOSTIC uniquement.
-  //
-  // Aucune publication vers les joueurs ici : le plan §8 interdit d'ajouter une
-  // scène partagée depuis un simple aperçu local. Le parcours de séance passe
-  // par l'onglet « Cartes », alimenté par `pnpm maps:prepare`.
   createImportPanel(uvttMount, { mode: 'uvtt' });
   createImportPanel(imageMount, { mode: 'image' });
 
-  // Initialisation du composant Handouts
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
   const wallEditorMount = /** @type {HTMLElement} */ (container.querySelector('#wall-editor-mount'));
   const templateToolsMount = /** @type {HTMLElement} */ (container.querySelector('#template-tools-mount'));
 
-  /** @type {ReturnType<typeof createWallEditor>|null} */
-  let wallEditor = null;
-  /** @type {ReturnType<typeof createTemplateTools>|null} */
-  let templateTools = null;
-
   // Initialisation du composant FogTools
-  const fogTools = fogToolsMount
+  fogTools = fogToolsMount
     ? createFogTools(fogToolsMount, {
         getActiveLevelId: () => store.getActiveLevelId(),
         getExploredFog,
         scheduleFogPublish,
         requestRender,
         onToolChange: (tool) => {
-          if (tool !== 'none') {
-            if (wallEditor) wallEditor.setArmed(false);
-            if (templateTools) templateTools.disarm();
-          }
+          if (tool === 'reveal') setActiveTool('fog-reveal');
+          else if (tool === 'hide') setActiveTool('fog-hide');
+          else setActiveTool('none');
         },
       })
     : null;
@@ -287,10 +348,11 @@ export function createGMPanel(container, options = {}) {
         }
         return removed;
       },
-      onArmChange: (armed) => {
+      onArmChange: (/** @type {boolean} */ armed, /** @type {'tracer'|'supprimer'|undefined} */ subMode = 'tracer') => {
         if (armed) {
-          if (fogTools) fogTools.disarm();
-          if (templateTools) templateTools.disarm();
+          setActiveTool(subMode === 'supprimer' ? 'wall-delete' : 'wall-draw');
+        } else {
+          setActiveTool('none');
         }
       },
       requestRender,
@@ -312,8 +374,9 @@ export function createGMPanel(container, options = {}) {
       },
       onArmChange: (armed) => {
         if (armed) {
-          if (fogTools) fogTools.disarm();
-          if (wallEditor) wallEditor.setArmed(false);
+          setActiveTool('template-place');
+        } else {
+          setActiveTool('none');
         }
       },
       requestRender,
@@ -740,6 +803,9 @@ export function createGMPanel(container, options = {}) {
     fogTools,
     wallEditor,
     templateTools,
+    getActiveToolName,
+    setActiveTool,
+    disarmActiveTool,
     destroy: () => {
       listeners.abort();
       unsubscribeStore();

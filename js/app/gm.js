@@ -678,8 +678,8 @@ export async function bootstrapGMApp(options = {}) {
    */
   function handleIntention(intention) {
     if (intention.type === 'brushStroke') {
-      const activeTool = gmPanel?.fogTools?.getActiveTool() ?? 'none';
-      if (activeTool === 'none') return;
+      const activeTool = gmPanel?.getActiveToolName?.() ?? 'none';
+      if (activeTool !== 'fog-reveal' && activeTool !== 'fog-hide') return;
 
       const activeLevel = store.getActiveLevel();
       if (!activeLevel) return;
@@ -698,9 +698,9 @@ export async function bootstrapGMApp(options = {}) {
         gmPanel?.fogTools?.pushUndoState();
       }
 
-      if (activeTool === 'reveal') {
+      if (activeTool === 'fog-reveal') {
         fog.paintDisc(intention.mapPos, radiusPx, origin0, gridScale);
-      } else if (activeTool === 'hide') {
+      } else if (activeTool === 'fog-hide') {
         fog.eraseDisc(intention.mapPos, radiusPx, origin0, gridScale);
       }
 
@@ -748,16 +748,18 @@ export async function bootstrapGMApp(options = {}) {
     if (intention.type === 'tap') {
       const state = store.getState();
       if (!state.activeLevel) return;
+      const activeLevel = state.activeLevel;
+      const activeToolName = gmPanel?.getActiveToolName?.() ?? 'none';
 
-      if (gmPanel?.templateTools?.isArmed()) {
-        const grid = gridFor(state.activeLevel);
+      if (activeToolName === 'template-place') {
+        const grid = gridFor(activeLevel);
         const cell = grid.cellFromPoint(intention.mapPos);
-        if (cell) {
+        if (cell && gmPanel?.templateTools) {
           const cfg = gmPanel.templateTools.getConfig();
           /** @type {import('../core/types.js').Template} */
           const template = {
             id: cfg.templateId,
-            levelId: state.activeLevel.id,
+            levelId: activeLevel.id,
             shape: cfg.shape,
             origin: cell,
             radiusCells: cfg.radiusCells,
@@ -766,8 +768,8 @@ export async function bootstrapGMApp(options = {}) {
             color: cfg.color,
             visibleToPlayers: cfg.visibleToPlayers,
           };
-          const segments = extractBlockedSegments(state.activeLevel, grid);
-          const cells = computeTemplateCells(template, grid, state.activeLevel, segments);
+          const segments = extractBlockedSegments(activeLevel, grid);
+          const cells = computeTemplateCells(template, grid, activeLevel, segments);
           store.placeTemplate(template, cells);
           transport?.publish({
             type: 'template.place',
@@ -779,24 +781,24 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
-      if (gmPanel?.wallEditor?.isArmed()) {
-        const grid = gridFor(state.activeLevel);
+      if (activeToolName === 'wall-draw' || activeToolName === 'wall-delete') {
+        const grid = gridFor(activeLevel);
         const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
         const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
         const gridScale = Math.abs(origin1.x - origin0.x);
 
-        const subMode = gmPanel.wallEditor.getSubMode();
+        const subMode = gmPanel?.wallEditor?.getSubMode() ?? (activeToolName === 'wall-delete' ? 'supprimer' : 'tracer');
         if (subMode === 'tracer') {
-          const snapPt = snapWallVertex(intention.mapPos, state.activeLevel, { x: 0, y: 0 }, gridScale);
-          gmPanel.wallEditor.addVertex(snapPt);
+          const snapPt = snapWallVertex(intention.mapPos, activeLevel, { x: 0, y: 0 }, gridScale);
+          gmPanel?.wallEditor?.addVertex(snapPt);
         } else if (subMode === 'supprimer') {
-          const targetWall = findWallAt(intention.mapPos, state.activeLevel, { x: 0, y: 0 }, gridScale);
+          const targetWall = findWallAt(intention.mapPos, activeLevel, { x: 0, y: 0 }, gridScale);
           if (targetWall) {
-            const removed = store.removeWall(state.activeLevel.id, targetWall);
+            const removed = store.removeWall(activeLevel.id, targetWall);
             if (removed && transport) {
               transport.publish({
                 type: 'wall.remove',
-                payload: { levelId: state.activeLevel.id, wall: targetWall },
+                payload: { levelId: activeLevel.id, wall: targetWall },
                 at: Date.now(),
                 by: 'gm',
               });
@@ -913,21 +915,29 @@ export async function bootstrapGMApp(options = {}) {
     role: 'gm',
     onIntention: handleIntention,
     canStartBrush: (_screenPos, _mapPos) => {
-      if (gmPanel?.wallEditor?.isArmed()) return false;
-      if (gmPanel?.templateTools?.isArmed()) return false;
-      if (!gmPanel || !gmPanel.fogTools) return false;
-      return gmPanel.fogTools.getActiveTool() !== 'none';
+      const tool = gmPanel?.getActiveToolName?.() ?? 'none';
+      return tool === 'fog-reveal' || tool === 'fog-hide';
     },
     canStartTokenDrag: (_screenPos, mapPos) => {
-      if (gmPanel?.wallEditor?.isArmed()) return null;
-      if (gmPanel?.templateTools?.isArmed()) return null;
-      if (gmPanel?.fogTools?.getActiveTool() !== 'none') return null;
+      if (gmPanel?.getActiveToolName?.() !== 'none') return null;
       const state = store.getState();
       if (!state.activeLevel) return null;
       const cell = gridFor(state.activeLevel).cellFromPoint(mapPos);
       return tokenAtCell(state.campaign, state.activeLevel, cell)?.id ?? null;
     },
   });
+
+  const onKeyDown = (/** @type {KeyboardEvent} */ e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      if (gmPanel?.getActiveToolName?.() !== 'none') {
+        gmPanel?.disarmActiveTool?.();
+        requestRender();
+      }
+    }
+  };
+  if (typeof document !== 'undefined') {
+    document.addEventListener('keydown', onKeyDown);
+  }
 
   const onResize = () => {
     stage.resize();
@@ -942,6 +952,9 @@ export async function bootstrapGMApp(options = {}) {
   requestRender();
 
   const destroy = () => {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('keydown', onKeyDown);
+    }
     pointerInput.detach();
     unsubscribeStore();
     unsubscribeEvents?.();

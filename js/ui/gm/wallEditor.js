@@ -15,7 +15,7 @@
  * @property {() => string|null} getActiveLevelId
  * @property {(levelId: string, wall: CellPoint[]) => void} onAddWall
  * @property {(levelId: string, wall: CellPoint[]) => boolean} onRemoveWall
- * @property {(armed: boolean) => void} [onArmChange]
+ * @property {(armed: boolean, subMode?: 'tracer'|'supprimer') => void} [onArmChange]
  * @property {() => void} [requestRender]
  */
 
@@ -221,19 +221,25 @@ export function createWallEditor(container, options) {
     if (!isArmed) {
       draftVertices = [];
     }
-    options.onArmChange?.(isArmed);
+    options.onArmChange?.(isArmed, subMode);
     options.requestRender?.();
     updateUI();
   });
 
   btnModeTrace.addEventListener('click', () => {
     subMode = 'tracer';
+    if (isArmed) {
+      options.onArmChange?.(isArmed, subMode);
+    }
     updateUI();
   });
 
   btnModeRemove.addEventListener('click', () => {
     subMode = 'supprimer';
     draftVertices = [];
+    if (isArmed) {
+      options.onArmChange?.(isArmed, subMode);
+    }
     options.requestRender?.();
     updateUI();
   });
