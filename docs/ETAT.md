@@ -493,6 +493,12 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 
 ## Ce qui reste à vérifier manuellement
 
+> **Pour une séance de mesure, suivre `docs/SEANCE-TABLETTE.md`** : il reprend les points
+> ci-dessous **dans un ordre exécutable**, avec le geste exact et le critère de chacun. Trois d'entre
+> eux en conditionnent d'autres — la largeur du viewport avant le critère 11, la grosse carte avant
+> le jeu réel, et la tenue thermique qui court *pendant* le reste et non après. La liste ci-dessous
+> reste la référence de **ce qui est ouvert** ; l'autre document dit **dans quel ordre le fermer**.
+
 - **tenue d’une carte préparée à 8192 px sur la tablette** — le passage du plafond de 4096 à
   8192 n’est validé par aucune mesure d’affichage : 7499 × 8192 en RGBA fait **245 Mio décodés**
   dans le navigateur, et 8192 est exactement la limite *mesurée* de la dalle, donc sans marge.
@@ -519,12 +525,24 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   ci-dessus, et sans rapport avec la justesse du hit-test. Un panneau MJ qui provoque un défilement
   horizontal du document à 1280 px de large est un défaut d'ergonomie en soi, mesuré sur le runner
   (66 px). À arbitrer séparément, et à ne pas confondre avec le défaut de test corrigé ;
-- **l'appui long qui vole le geste du MJ, non corrigé** — un MJ qui presse un pion, hésite une
-  demi-seconde puis glisse obtient un appui long, donc **verrouille une porte au lieu de déplacer
-  son pion** (`js/input/pointer.js:249-260`, `js/app/gm.js:848-868`). Reproduit en conditions
-  réelles par mutation le 4 août 2026 : à 700 ms entre la pression et le glisser, l'intention
-  `longPress` part et aucun `dragToken` n'est émis. C'est un défaut applicatif, pas un défaut de
-  test ; à arbitrer ;
+- **l'appui long qui volait le geste suivant — ✅ corrigé le 4 août 2026**, et il était plus grave
+  que signalé. Le symptôme relevé était le MJ qui verrouille une porte au lieu de déplacer son pion ;
+  mais la vue joueurs ne traite que `tap` et `panBy` et **ignore `longPress`**, donc un doigt qui
+  touchait la carte, hésitait une demi-seconde puis glissait n'obtenait **aucun `panBy`** — le geste
+  principal de la séance échouait en silence. L'appui long est désormais un **geste achevé, émis au
+  `pointerup`** : le minuteur ne pose qu'une candidature, que le mouvement annule. Contrat de
+  l'intention inchangé, donc ni `gm.js` ni la vue joueurs touchés. Trois tests dans la porte, aux
+  seuils réels de 500 ms, vérifiés par mutation — le correctif annulé, les trois rougissent. **Reste
+  à vérifier au doigt** (interdiction n°14) : voir `docs/SEANCE-TABLETTE.md` points 2.1 et 2.2, le
+  verrou tombant désormais au relèvement et non à 500 ms. Détail : `docs/CORRECTIF-APPUI-LONG.md` ;
+- **la zone morte entre 150 et 500 ms, préexistante et non corrigée** — un appui immobile relâché
+  entre `DRAG_HOLD_MS` (150 ms) et `longPressMs` (500 ms) ne produit **ni `tap` ni `longPress`** :
+  la branche du tap exige `duration < dragHoldMs`, et le seuil d'appui long n'est pas atteint. Sur la
+  vue joueurs, où le déplacement tap-tap est *le* geste de la séance, **un tap un peu lent reste donc
+  sans effet**. Antérieur au correctif ci-dessus et sans rapport avec lui. L'arbitrage est de
+  découpler la brièveté du `tap` de la constante de glisser, qui n'a pas de raison d'être la même
+  valeur ; à décider après la séance, l'usage réel disant si le cas se présente
+  (`CORRECTIF-APPUI-LONG.md` §7 A7) ;
 - **le correctif du masquage des pions, à confirmer sur la tablette** — c'est le point le plus
   concret de cette liste, parce qu'un défaut y a été mesuré puis corrigé sans que la mesure
   finale soit faite. Le masquage de L-04 allouait par image un canvas aux dimensions de la carte
