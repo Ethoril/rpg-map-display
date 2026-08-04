@@ -132,10 +132,26 @@ arrêtées par `PROMPTS-ICONES-ETATS.md` :
 
 | Catégorie | Couleur | États |
 |---|---|---|
-| `damage` | rouge | `ablaze`, `bleeding`, `poisoned` |
-| `control` | orange | `prone`, `entangled`, `stunned`, `surprised` |
-| `senses` | bleu-gris | `blinded`, `deafened`, `unconscious` |
-| `mind` | violet | `broken`, `fear`, `terror`, `frenzy` |
+| `damage` | `#ef4444` rouge | `ablaze`, `bleeding`, `poisoned` |
+| `control` | `#facc15` jaune | `prone`, `entangled`, `stunned`, `surprised` |
+| `senses` | `#64748b` bleu-gris | `blinded`, `deafened`, `unconscious` |
+| `mind` | `#a855f7` violet | `broken`, `fear`, `terror`, `frenzy` |
+
+**Les deux premières valeurs ne sont pas libres, et le jaune n'est pas le choix évident.**
+
+`#ef4444` est **déjà** l'indicateur d'état des portails (`portals.js:53`) et la couleur par
+défaut d'un gabarit (`templateTools.js:35`). La collision est assumée : rouge = dégâts vaut
+plus qu'une unicité de teinte, et un portail est un trait fin sur une frontière de case quand
+un badge est un disque plein posé sur un pion — l'œil ne les confond pas.
+
+`control` en revanche **ne prend pas l'orange**, qui serait le choix spontané : `#f97316` est
+la couleur des **murs** (`walls.js:38`). Un point orange sur un pion et un mur orange se
+scannent ensemble sur l'écran de cast. Le jaune `#facc15` est retenu parce qu'il est **déjà la
+couleur des points de marqueurs aujourd'hui** (`tokens.js:334`) : c'est une continuité pour
+l'œil du mainteneur, pas une couleur de plus.
+
+> Arbitrage du mainteneur, 04/08/2026. Ne pas « harmoniser » `control` vers l'orange plus
+> tard : ce serait revenir à la collision qu'on vient d'éviter.
 
 ### 2.1 La règle qui rend tout cela vrai
 
@@ -232,8 +248,16 @@ testable de la tranche non testable. C'est le raisonnement déjà tenu pour
 précisément ce qu'un test doit fixer, puisque c'est ce que la mesure du §1.2 a trouvé faux.
 
 Le module ne touche pas au DOM au chargement — le canvas hors écran se crée à la demande,
-pas au niveau du module — sans quoi il redeviendrait inimportable depuis Node. Règles du §2
-respectées : `render/*` peut importer `core/*`.
+pas au niveau du module, **ni dans le constructeur du cache** — sans quoi il redeviendrait
+inimportable depuis Node et la justification ci-dessus tomberait. Le test `node:test` ne doit
+pas instancier le cache. Règles du §2 respectées : `render/*` peut importer `core/*`.
+
+**La fonction de dessin prend un objet d'options, pas une liste de paramètres positionnels.**
+Une signature `(ctx, token, position, widthMap, heightMap, zoom, resolution)` aligne quatre
+nombres nus, dont la paire `zoom` / `resolution` que toute cette tranche existe pour ne pas
+confondre (§2.1). C'est exactement le danger que `CONVENTIONS.md` §1 traite pour les
+coordonnées : deux nombres de même type et de sens différents doivent être nommés au point
+d'appel.
 
 ### 5.2 Les constantes
 
@@ -246,6 +270,51 @@ Dans `js/core/constants.js`, source unique partagée par le schéma, le rendu et
 Trois tables et non une : la catégorie sert au rendu, le libellé à l'interface MJ, et l'ordre
 au rendu comme à la troncature. Les réunir en un objet unique obligerait le schéma à importer
 des libellés d'interface.
+
+### 5.2bis `markers` devient une union typée — arbitrage du 04/08/2026
+
+`types.js:142` déclare `@property {string[]} markers`. Le vocabulaire étant clos, le type doit
+l'être aussi : une faute de frappe se fait attraper par `typecheck`, à la compilation, et non
+par le schéma à l'exécution.
+
+**La liste ne s'écrit qu'une fois.** Mesuré sur la version de TypeScript du dépôt (5.9.3,
+`checkJs` et `strict`), deux idiomes testés, **un seul fonctionne** :
+
+```js
+// constants.js — ✅ l'union est réelle
+export const STATUS_MARKER_IDS = /** @type {const} */ ([ 'unconscious', 'prone', /* … */ ]);
+
+// ❌ Object.freeze([...]) élargit à `string` : l'union serait vide de sens
+```
+
+```js
+// types.js — dérivé, jamais recopié
+/** @typedef {typeof STATUS_MARKER_IDS[number]} StatusMarker */
+/** @property {StatusMarker[]} markers */
+```
+
+Vérifié par sonde, les deux comportements attendus :
+
+| Écrit | Résultat |
+|---|---|
+| `/** @type {StatusMarker} */ const x = 'poisonned'` | **TS2322** — refusé |
+| passer un `string[]` là où un `StatusMarker[]` est attendu | **TS2345** — refusé |
+
+**Aucun cast n'est nécessaire, et il ne faut en écrire aucun.** La frontière JSON est déjà non
+typée : `normalizeCampaign` ne fait pas passer les pions par `createToken`, un instantané
+persisté arrive donc en `any` et le typage n'y prétend rien — c'est le **schéma** qui garde
+cette frontière, à l'exécution, et c'est son rôle (§5.3).
+
+La seule frontière réellement typée est le **DOM** : les cases à cocher rendent des `string`,
+et la deuxième ligne du tableau ci-dessus montre qu'un `string[]` sera refusé. Il faut donc un
+**garde de type**, `isStatusMarker(value)`, dans `core/schema.js` aux côtés de
+`isValidHexColor` et `isTokenImageUrl`.
+
+> **Un garde, pas un cast, et un seul pour les deux usages** : le même `isStatusMarker` sert à
+> la validation du schéma (§5.3) et au filtrage des cases à cocher (§5.5). Écrire
+> `/** @type {StatusMarker[]} */ (values)` dans `panel.js` ferait taire le compilateur sans
+> rien vérifier — c'est un faux vert au sens de l'interdiction n°16, et ça viderait l'union de
+> son intérêt à l'endroit précis où elle sert.
 
 ### 5.3 La validation
 
@@ -307,11 +376,17 @@ et idempotent. Un tableau de marqueurs **est** une valeur absolue. Il n'y a donc
 
 | Document | Amendement |
 |---|---|
-| `ARCHITECTURE.md` §1 | ajouter `js/render/statusBadges.js [2]` ; `assets/icons/status/` est déjà porté |
-| `CAHIER-DES-CHARGES.md` §5.2 | « le jeu de marqueurs reste à définir » est faux depuis le 04/08 : le nommer clos et pointer `SOURCES.md`. Retirer « concentré » de la liste d'exemples — il n'est **pas** des quatorze |
-| `CAHIER-DES-CHARGES.md` §12 | barrer Q7, la marquer tranchée le 04/08/2026 |
-| `PLAN-LOT2.md` §7 | Q7 n'est plus « ce qui reste ouvert » ; L-09 n'attend plus une partie jouée pour être **écrite**, seulement pour être **validée** |
-| `ETAT.md` | L-09 écrite, critère 4 toujours décoché et pourquoi |
+| `ARCHITECTURE.md` §1 | **déjà fait** au commit `3e57ef9` — `js/render/statusBadges.js [2]` et `assets/icons/status/` sont portés. Ne pas redéclarer |
+| `types.js` | `markers` passe de `string[]` à `StatusMarker[]`, union dérivée de `STATUS_MARKER_IDS` (§5.2bis) |
+| `CAHIER-DES-CHARGES.md` §5.2 | **déjà fait** (`3e57ef9`) — jeu de marqueurs nommé clos, `SOURCES.md` cité, « concentré » retiré des exemples |
+| `CAHIER-DES-CHARGES.md` §12 | **déjà fait** (`3e57ef9`) — Q7 barrée, tranchée le 04/08/2026 |
+| `PLAN-LOT2.md` §7 | **déjà fait** (`3e57ef9`) |
+| `ETAT.md` | **partiellement fait** (`3e57ef9`) : le critère 4 décoché y est déjà expliqué. Reste, **à la livraison seule**, à basculer « L-09 à écrire » vers « L-09 écrite » |
+
+> ⚠ **Quatre de ces six lignes sont déjà commitées.** Elles restent au tableau parce qu'un
+> brief doit dire l'état complet de ce qu'il exige, mais les refaire produirait une entrée de
+> manifeste en double et un second paragraphe Q7. C'est l'erreur qu'a faite le premier plan
+> d'implémentation : il a lu ce tableau comme une liste de travaux, pas comme un état.
 
 ---
 
