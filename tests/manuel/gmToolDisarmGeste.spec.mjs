@@ -35,10 +35,86 @@
  * Écrire `../js/…` marcherait au navigateur et ferait échouer le typecheck : ne pas « corriger ».
  */
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
 import { waitForApp, installBrowserTransport } from '../browserTestTransport.mjs';
 
+/**
+ * ⚠ **Les deux journaux ne sont jamais fusionnés, et surtout jamais triés ensemble.**
+ *
+ * Les entrées du navigateur sont horodatées par le `performance.now()` de la page, dont l'origine
+ * est la navigation ; celles de Node par le `performance.now()` du processus Playwright, dont
+ * l'origine est le démarrage du processus. **Les deux ne sont pas comparables** : trier leur
+ * concaténation sur `time` produit un entrelacement faux. Mesuré — les avertissements de console
+ * du démarrage se retrouvaient datés après la fin du geste.
+ *
+ * Ce n'est pas qu'une question d'ordre : un `pageerror` survenu pendant le glisser pouvait être
+ * trié *avant* le dernier `pointerdown`, donc écarté du message d'échec par le bornage ci-dessous
+ * — exactement la preuve que l'on cherche. Les entrées de Node sont donc reprises **en entier et
+ * sans filtre** : elles sont rares, et chacune compte.
+ *
+ * Le journal du navigateur, lui, est borné au geste (Amendement A5) :
+ * - tout ce qui suit le dernier `pointerdown` ciblant le canvas (`canvas#board`) ;
+ * - plus chaque `blur`, `focus`, `visibilitychange` et `pointercancel` quel que soit son rang, un
+ *   `blur` déclenché par un clic d'onglet pouvant armer le chemin A ;
+ * - plafond dur à 200 entrées.
+ *
+ * @param {Array<any>} browserJournal
+ * @param {Array<any>} nodeJournal
+ * @returns {string}
+ */
+function formatJournalForFailure(browserJournal, nodeJournal) {
+  const journal = Array.isArray(browserJournal) ? browserJournal : [];
+
+  const specialEntries = journal.filter((e) =>
+    ['blur', 'focus', 'visibilitychange', 'pointercancel'].includes(e.type)
+  );
+
+  let lastCanvasDownIndex = -1;
+  for (let i = journal.length - 1; i >= 0; i--) {
+    const e = journal[i];
+    if (e.type === 'pointerdown' && e.target === 'canvas#board') {
+      lastCanvasDownIndex = i;
+      break;
+    }
+  }
+
+  const gestureEntries = lastCanvasDownIndex >= 0 ? journal.slice(lastCanvasDownIndex) : journal;
+  const combinedSet = new Set([...specialEntries, ...gestureEntries]);
+  const result = Array.from(combinedSet).sort((a, b) => (a.time || 0) - (b.time || 0));
+  const capped = result.length > 200 ? result.slice(-200) : result;
+
+  return JSON.stringify(
+    { navigateur: capped, node: Array.isArray(nodeJournal) ? nodeJournal : [] },
+    null,
+    2
+  );
+}
+
 test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte de vérification)', () => {
+  /** @type {Array<any>} */
+  let nodeJournal = [];
+
   test.beforeEach(async ({ page }) => {
+    nodeJournal = [];
+
+    page.on('console', (msg) => {
+      nodeJournal.push({
+        time: performance.now(),
+        source: 'console',
+        type: msg.type(),
+        text: msg.text(),
+      });
+    });
+
+    page.on('pageerror', (err) => {
+      nodeJournal.push({
+        time: performance.now(),
+        source: 'pageerror',
+        text: err.message,
+        stack: err.stack,
+      });
+    });
+
     const sessionId = `test-disarm-${Date.now()}`;
     await installBrowserTransport(page, sessionId, null);
     await page.goto(`/gm.html?session=${sessionId}`);
@@ -68,27 +144,182 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
       const campaign = schema.createCampaign({ levels: [level], tokens: [token] });
       store.loadCampaign(campaign);
     });
+
+    // Installation de l'instrumentation window.__GESTE_JOURNAL__ après le démarrage de l'application
+    // et avant les clics d'onglet du corps du test (Amendement A8).
+    await page.evaluate(() => {
+      const w = /** @type {any} */ (window);
+      w.__GESTE_JOURNAL__ = [];
+
+      /**
+       * @param {Element | null} el
+       * @returns {string | null}
+       */
+      const formatTarget = (el) => {
+        if (!el) return null;
+        const tag = el.tagName ? el.tagName.toLowerCase() : '';
+        const id = el.id ? '#' + el.id : '';
+        return tag + id;
+      };
+
+      /**
+       * @param {any} entry
+       */
+      const record = (entry) => {
+        w.__GESTE_JOURNAL__.push({ time: performance.now(), ...entry });
+      };
+
+      // Échouer bruyamment (`CONVENTIONS.md` §6) : sans `pointerInput`, l'instrumentation
+      // s'installerait à moitié — journal plausible, mais privé de tout état et de toute
+      // intention. Un journal amputé qui ne le dit pas est pire qu'un journal absent.
+      const pi = w.__RPG_APP__?.pointerInput;
+      if (!pi) {
+        throw new Error("Instrumentation du geste : __RPG_APP__.pointerInput est absent");
+      }
+
+      /** Photographie de l'automate d'entrée au moment de l'appel. */
+      const snapshot = () => ({
+        mode: pi.mode,
+        dragTokenId: pi.dragTokenId,
+        activePointersSize: pi.activePointers?.size ?? 0,
+        longPressTriggered: pi.longPressTriggered,
+      });
+
+      // 1. Événements pointeur en capture sur window
+      ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach((evtType) => {
+        window.addEventListener(
+          evtType,
+          (e) => {
+            const pe = /** @type {PointerEvent} */ (e);
+            record({
+              source: 'window-capture',
+              type: pe.type,
+              pointerId: pe.pointerId,
+              clientX: pe.clientX,
+              clientY: pe.clientY,
+              buttons: pe.buttons,
+              target: formatTarget(/** @type {Element} */ (pe.target)),
+              activeElement: formatTarget(document.activeElement),
+              stateBefore: snapshot(),
+            });
+          },
+          { capture: true }
+        );
+      });
+
+      // Événements fenêtre (blur, focus, visibilitychange).
+      //
+      // ⚠ Sur un vrai `blur` de fenêtre, le journal montre `resetInteraction` **avant** `blur` :
+      // `PointerInput` a enregistré son écouteur au constructeur, donc avant celui-ci, et il agit
+      // le premier. L'information est complète, l'ordre est trompeur — ne pas y lire une causalité
+      // inverse.
+      ['blur', 'focus'].forEach((evtType) => {
+        window.addEventListener(evtType, (e) => {
+          record({
+            source: 'window',
+            type: e.type,
+            activeElement: formatTarget(document.activeElement),
+          });
+        });
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        record({
+          source: 'window',
+          type: 'visibilitychange',
+          visibilityState: document.visibilityState,
+          activeElement: formatTarget(document.activeElement),
+        });
+      });
+
+      // 2. Événements pointeur en bulle sur le canvas #board (ajoutés après PointerInput).
+      //
+      // C'est cette moitié qui détecte le chemin E : un événement vu en capture et absent en bulle
+      // signe un `stopPropagation` en amont. Sans canvas, elle disparaît — et sa disparition
+      // silencieuse rendrait ce chemin indétectable sans que le journal l'avoue. Donc on lève.
+      const board = document.querySelector('#board');
+      if (!board) {
+        throw new Error("Instrumentation du geste : le canvas #board est introuvable");
+      }
+      ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach((evtType) => {
+        board.addEventListener(evtType, (e) => {
+          const pe = /** @type {PointerEvent} */ (e);
+          record({
+            source: 'board-bubble',
+            type: pe.type,
+            pointerId: pe.pointerId,
+            clientX: pe.clientX,
+            clientY: pe.clientY,
+            buttons: pe.buttons,
+            target: formatTarget(/** @type {Element} */ (pe.target)),
+            activeElement: formatTarget(document.activeElement),
+            stateAfter: snapshot(),
+          });
+        });
+      });
+
+      // 3 & 4. Enveloppement de pointerInput (onIntention et resetInteraction).
+      //
+      // ⚠ Les deux enveloppes sont posées **sur l'instance**, et elles fonctionnent parce que
+      // `emit()` appelle `this.onIntention(...)` et `handleWindowBlur()` appelle
+      // `this.resetInteraction()` au moment de l'appel : le constructeur ne lie que les
+      // gestionnaires DOM (`js/input/pointer.js:88-94`). Ne pas « améliorer » `pointer.js` en y
+      // liant `resetInteraction` — ce serait une modification du code applicatif, et elle rendrait
+      // le journal aveugle aux chemins A et B, qui passent tous deux par là.
+      const origOnIntention = pi.onIntention.bind(pi);
+      pi.onIntention = (/** @type {any} */ intention) => {
+        record({
+          source: 'intention',
+          type: intention.type,
+          intention,
+          state: snapshot(),
+        });
+        return origOnIntention(intention);
+      };
+
+      const origReset = pi.resetInteraction.bind(pi);
+      pi.resetInteraction = () => {
+        record({ source: 'pointerInput', type: 'resetInteraction', stateBefore: snapshot() });
+        origReset();
+        record({
+          source: 'pointerInput',
+          type: 'resetInteraction-after',
+          stateAfter: snapshot(),
+        });
+      };
+    });
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    const browserJournal = await page
+      .evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.__GESTE_JOURNAL__ || [];
+      })
+      .catch(() => []);
+
+    // Deux sections, jamais un tri commun : voir l'avertissement sur les horloges au-dessus de
+    // `formatJournalForFailure`.
+    const journalContent = JSON.stringify(
+      { navigateur: browserJournal, node: nodeJournal },
+      null,
+      2
+    );
+
+    await testInfo.attach('geste-journal.json', {
+      body: journalContent,
+      contentType: 'application/json',
+    });
+
+    try {
+      fs.mkdirSync(testInfo.outputPath(), { recursive: true });
+      fs.writeFileSync(testInfo.outputPath('geste-journal.json'), journalContent, 'utf-8');
+    } catch {
+      // Garde-fou
+    }
   });
 
   /**
-   * Le scénario du mainteneur, un test par outil.
-   *
-   * ⚠ **Trois tests et non un seul à trois étapes, et c'est le CI qui l'a imposé.** La première
-   * version enchaînait les trois outils dans un même test, en déplaçant le pion de deux cases à
-   * chaque fois. Verte en local, y compris six fois de suite et avec `CI=1` ; rouge en CI, run 69
-   * du 04/08, **sur la troisième étape seulement**. La trace le dit sans ambiguïté : avant le
-   * troisième glisser `getActiveToolName()` valait bien `'none'`, les coordonnées calculées
-   * tombaient bien sur le pion, aucune erreur n'était journalisée — et le pion ne bougeait pas,
-   * alors que les deux glissers précédents avaient réussi dans les mêmes conditions.
-   *
-   * La seule variable qui distinguait la troisième étape des deux premières était **l'état
-   * accumulé** par les glissers antérieurs, et aucune machine ici n'a pu la reproduire. Un test
-   * par outil, chacun sur une page neuve avec le pion à sa case de départ, supprime cette
-   * variable au lieu de la contourner par une attente devinée.
-   *
-   * Bénéfice secondaire, qui aurait suffi à le justifier : un échec nomme désormais l'outil
-   * fautif au lieu d'une étape anonyme.
-   *
    * @param {import('@playwright/test').Page} page
    */
   const getTokenCell = async (page) => {
@@ -101,36 +332,27 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
   };
 
   /**
-     * Attend que la caméra soit réellement ajustée à l'étage chargé par `beforeEach`.
-     *
-     * Sans cela le test est une course, et elle a fait rougir le CI le 04/08 (run 69) alors
-     * qu'il passait six fois de suite en local : `fitActiveLevel` vit dans la boucle de rendu,
-     * qui est **à la demande** (CdC §9). Tant que la frame n'a pas eu lieu, la caméra est restée
-     * sur son état par défaut, `mapToScreen` rend un point hors du canvas, le `mouse.down`
-     * manque le pion, le glisser devient un pan — et le pion ne bouge pas.
-     *
-     * La précondition est donc **exprimée** et non temporisée : aucune attente fixe ne garantit
-     * une frame sur une machine plus lente que celle qui écrit le test.
-     *
-     * @param {import('@playwright/test').Page} page
-     * @param {{ a: number, b: number }} cell case dont le centre doit être cliquable
-     */
+   * Attend que la caméra soit réellement ajustée à l'étage chargé par `beforeEach`.
+   *
+   * @param {import('@playwright/test').Page} page
+   * @param {{ a: number, b: number }} cell case dont le centre doit être cliquable
+   */
   const waitForCameraOn = async (page, cell) => {
-      await page.waitForFunction(
-        async (/** @type {{a: number, b: number}} */ c) => {
-          const { gridFor } = await import('../../js/grid/index.js');
-          const store = await import('../../js/state/store.js');
-          const app = /** @type {any} */ (window).__RPG_APP__;
-          const level = store.getActiveLevel();
-          const board = document.querySelector('#board');
-          if (!level || !app?.camera || !board) return false;
-          const p = app.camera.mapToScreen(gridFor(level).pointFromCell(c));
-          const r = board.getBoundingClientRect();
-          return p.screenX > 0 && p.screenY > 0 && p.screenX < r.width && p.screenY < r.height;
-        },
-        cell
-      );
-    };
+    await page.waitForFunction(
+      async (/** @type {{a: number, b: number}} */ c) => {
+        const { gridFor } = await import('../../js/grid/index.js');
+        const store = await import('../../js/state/store.js');
+        const app = /** @type {any} */ (window).__RPG_APP__;
+        const level = store.getActiveLevel();
+        const board = document.querySelector('#board');
+        if (!level || !app?.camera || !board) return false;
+        const p = app.camera.mapToScreen(gridFor(level).pointFromCell(c));
+        const r = board.getBoundingClientRect();
+        return p.screenX > 0 && p.screenY > 0 && p.screenX < r.width && p.screenY < r.height;
+      },
+      cell
+    );
+  };
 
   /**
    * @param {import('@playwright/test').Page} page
@@ -138,8 +360,9 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
    * @param {{ a: number, b: number }} toCell
    */
   const dragToken = async (page, fromCell, toCell) => {
-      await waitForCameraOn(page, fromCell);
-      const coords = await page.evaluate(async ({ from, to }) => {
+    await waitForCameraOn(page, fromCell);
+    const coords = await page.evaluate(
+      async ({ from, to }) => {
         const { gridFor } = await import('../../js/grid/index.js');
         const store = await import('../../js/state/store.js');
         const app = /** @type {any} */ (window).__RPG_APP__;
@@ -152,29 +375,26 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
           start: app.camera.mapToScreen(startPt),
           end: app.camera.mapToScreen(endPt),
         };
-      }, { from: fromCell, to: toCell });
+      },
+      { from: fromCell, to: toCell }
+    );
 
-      await page.mouse.move(coords.start.screenX, coords.start.screenY);
-      await page.mouse.down();
-      // ⚠ AUCUNE attente entre le `down` et le `move`, et c'est délibéré.
-      //
-      // La version d'origine attendait 220 ms « parce que DRAG_HOLD_MS vaut 150 ». C'était une
-      // méprise sur le seuil : `isDragThresholdExceeded` rend
-      // `dist >= distanceThreshold || duration >= dragHoldMs` — un **OU**. Un déplacement de
-      // 72 px franchit déjà le seuil de 5 px, la durée n'a rien à démontrer.
-      //
-      // Et l'attente était nuisible : `pointer.js` arme un minuteur d'appui long à 500 ms au
-      // `pointerdown`. En CI, `down()`, l'attente et `move()` sont trois allers-retours CDP
-      // distincts ; sur un runner chargé leur total franchit les 500 ms, le minuteur bascule
-      // `mode` sur `'longPress'`, et `handlePointerMove` sort alors immédiatement — le glisser
-      // est abandonné **en silence**, sans erreur, pion immobile. C'est le défaut qui a fait
-      // rougir le CI aux runs 69 à 72, avec un état par ailleurs parfaitement normal.
-      //
-      // Sans attente, le premier pas intermédiaire (~14 px) annule le minuteur bien avant.
-      await page.mouse.move(coords.end.screenX, coords.end.screenY, { steps: 5 });
-      await page.mouse.up();
-      await page.waitForTimeout(200);
-    };
+    await page.mouse.move(coords.start.screenX, coords.start.screenY);
+    await page.mouse.down();
+    // ⚠ AUCUNE attente entre le `down` et le `move`, et c'est délibéré : `pointer.js` arme un
+    // minuteur d'appui long à 500 ms au `pointerdown`, et une attente le laisse mûrir — `mode`
+    // bascule sur `'longPress'`, `handlePointerMove` sort aussitôt, le glisser est abandonné en
+    // silence. Défaut établi au commit 189a6c1. Aucun paramètre ne doit rendre cette attente
+    // réintroductible.
+    //
+    // Pour refaire la preuve par mutation du §4.3 de `docs/DIAGNOSTIC-GESTE-GABARITS.md` :
+    // insérer ici, **en local et sans le commiter**, `await page.waitForTimeout(700);` et vérifier
+    // que le journal montre l'intention `longPress`, `mode: 'longPress'` sur les `pointermove`, et
+    // aucun `dragToken` de phase `end`.
+    await page.mouse.move(coords.end.screenX, coords.end.screenY, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+  };
 
   const OUTILS = [
     { nom: 'pinceau de fog', onglet: 'fog-tools', armer: '#fog-btn-tool-reveal' },
@@ -192,50 +412,51 @@ test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte d
       await page.click(outil.armer);
       await page.click('button[data-tab="token-maker"]');
 
-      // Le mécanisme : l'outil est bien désarmé. Conservé à côté de l'issue parce qu'il dit
-      // POURQUOI quand l'issue échoue.
       const outilApres = await page.evaluate(() => {
         const w = /** @type {any} */ (window);
         return w.__RPG_APP__?.gmPanel?.getActiveToolName();
       });
       expect(outilApres).toBe('none');
 
-      // L'issue, et c'est elle que le mainteneur a signalée : le pion se saisit.
-      //
-      // L'état complet est capturé AVANT le glisser et joint au message d'assertion. Ce n'est
-      // pas du zèle : le CI a rougi deux fois ici sans que rien dise pourquoi, et deux tours
-      // de diagnostic ont été perdus faute d'avoir cette information dans le rapport. Un
-      // message d'échec qui porte l'état est une fonctionnalité, pas une sonde jetable.
-      const etatAvant = await page.evaluate(async (cible) => {
-        const w = /** @type {any} */ (window);
-        const store = await import('../../js/state/store.js');
-        const { gridFor } = await import('../../js/grid/index.js');
-        const panel = w.__RPG_APP__?.gmPanel;
-        const level = store.getActiveLevel();
-        const grid = level ? gridFor(level) : null;
-        const pion = store.getCampaign()?.tokens?.[0];
-        const centre = grid && pion ? grid.pointFromCell(pion.cell) : null;
-        return {
-          outilActif: panel?.getActiveToolName?.() ?? '(absent)',
-          fogOutil: panel?.fogTools?.getActiveTool?.() ?? '(absent)',
-          murArme: panel?.wallEditor?.isArmed?.() ?? '(absent)',
-          gabaritArme: panel?.templateTools?.isArmed?.() ?? '(absent)',
-          ongletVisible:
-            document.querySelector('.gm-tab-btn.active')?.getAttribute('data-tab') ?? '(aucun)',
-          caseDuPion: pion ? { a: pion.cell.a, b: pion.cell.b } : null,
-          // La case que le hit-test trouvera sous le point de pression.
-          caseSousLePoint: centre && grid ? grid.cellFromPoint(centre) : null,
-          cible,
-        };
-      }, { a: depart.a + 2, b: depart.b + 2 });
+      const etatAvant = await page.evaluate(
+        async (cible) => {
+          const w = /** @type {any} */ (window);
+          const store = await import('../../js/state/store.js');
+          const { gridFor } = await import('../../js/grid/index.js');
+          const panel = w.__RPG_APP__?.gmPanel;
+          const level = store.getActiveLevel();
+          const grid = level ? gridFor(level) : null;
+          const pion = store.getCampaign()?.tokens?.[0];
+          const centre = grid && pion ? grid.pointFromCell(pion.cell) : null;
+          return {
+            outilActif: panel?.getActiveToolName?.() ?? '(absent)',
+            fogOutil: panel?.fogTools?.getActiveTool?.() ?? '(absent)',
+            murArme: panel?.wallEditor?.isArmed?.() ?? '(absent)',
+            gabaritArme: panel?.templateTools?.isArmed?.() ?? '(absent)',
+            ongletVisible:
+              document.querySelector('.gm-tab-btn.active')?.getAttribute('data-tab') ?? '(aucun)',
+            caseDuPion: pion ? { a: pion.cell.a, b: pion.cell.b } : null,
+            caseSousLePoint: centre && grid ? grid.cellFromPoint(centre) : null,
+            cible,
+          };
+        },
+        { a: depart.a + 2, b: depart.b + 2 }
+      );
 
       await dragToken(page, depart, { a: depart.a + 2, b: depart.b + 2 });
+
+      const browserJournal = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.__GESTE_JOURNAL__ || [];
+      });
+      const journalFormatted = formatJournalForFailure(browserJournal, nodeJournal);
 
       const arrivee = await getTokenCell(page);
       expect(
         arrivee,
         `le pion devait se saisir apres avoir arme « ${outil.nom} ». ` +
-          `Etat juste avant le glisser : ${JSON.stringify(etatAvant)}`
+          `Etat juste avant le glisser : ${JSON.stringify(etatAvant)}\n` +
+          `Journal du geste : ${journalFormatted}`
       ).not.toEqual(depart);
     });
   }
