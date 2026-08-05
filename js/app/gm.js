@@ -383,6 +383,13 @@ export async function bootstrapGMApp(options = {}) {
 
   /** @type {{tokenId: string, mapPos: MapPoint}|null} */
   let dragPreview = null;
+  /**
+   * Porte verrouillée que le MJ vient de taper en vain, et l'instant du tap. État de rendu
+   * transitoire, comme `dragPreview` : il ne va ni dans le store ni sur le réseau — l'autre MJ
+   * n'a pas à voir clignoter un geste qui n'est pas le sien.
+   * @type {{portalId: string, at: number}|null}
+   */
+  let lockedPortalFlash = null;
   /** @type {string|null} */
   let lastActiveLevelId = null;
   let restoredCamera = false;
@@ -438,7 +445,14 @@ export async function bootstrapGMApp(options = {}) {
         const draft = gmPanel?.wallEditor?.isArmed() ? gmPanel.wallEditor.getDraft() : null;
         wallsLayer.render(stage.context, grid, activeLevel, draft);
       },
-      portals: () => portalsLayer.render(stage.context, grid, activeLevel),
+      portals: () => {
+        const result = portalsLayer.render(stage.context, grid, activeLevel, {
+          zoom: camera.zoom,
+          flash: lockedPortalFlash,
+          now: Date.now(),
+        });
+        animationActive ||= result.animationActive;
+      },
       moveZone: () =>
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
@@ -461,7 +475,11 @@ export async function bootstrapGMApp(options = {}) {
             resolution: stage.resolution,
           }
         );
-        animationActive = result.animationActive;
+        // `||=` et non `=` : les pions ne sont plus la seule couche qui s'anime. Écrite en
+        // affectation, cette ligne effaçait le drapeau posé par les portes — qui se dessinent
+        // AVANT les pions —, la boucle à la demande s'arrêtait après une frame et le battement
+        // du verrou restait figé à l'écran au lieu de s'éteindre.
+        animationActive ||= result.animationActive;
       },
       // Rendu pur : ni révélation, ni publication ici. Elles appartiennent à
       // `syncVision`, qui doit tourner même quand le navigateur ne donne plus de frame
@@ -888,6 +906,14 @@ export async function bootstrapGMApp(options = {}) {
           targetState = 'open';
         } else if (hitPortal.state === 'open') {
           targetState = 'closed';
+        }
+        // Depuis `locked`, un tap ne fait rien **et le signale** (TRANCHE-L05-PORTES.md §7.6).
+        // La seconde moitié de cette exigence manquait : le code sortait en silence, et un
+        // geste sans effet ni explication ne se distingue pas d'une panne. C'est ce qui a fait
+        // conclure que l'état verrouillé n'était pas implémenté, alors qu'il l'était.
+        if (!targetState && hitPortal.state === 'locked') {
+          lockedPortalFlash = { portalId: hitPortal.id, at: Date.now() };
+          requestRender();
         }
         if (targetState) {
           store.setPortalState(state.activeLevel.id, hitPortal.id, targetState);

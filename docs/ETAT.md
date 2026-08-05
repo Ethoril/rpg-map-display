@@ -577,9 +577,14 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   tablette, avant tout test. Le correctif filtre les pions case par case au lieu de masquer des
   pixels, et retombe à 0,44 ms de bureau. **Ce chiffre ne vaut pas validation** (interdiction
   n°14) : c'est la tablette qui dira si la vue joueurs tient désormais ses 30 fps ;
-- tenue à 30 fps sous cast sur la tablette cible ;
-- lisibilité du badge d'élévation (+N/−N) sous cast sur la tablette cible (miroir passif Google Cast) ;
-- température et stabilité pendant une séance de 45 minutes puis quatre heures ;
+- **tenue à 30 fps sous cast sur la tablette cible — ✅ validée**, confirmation du mainteneur le
+  05/08/2026 après la première séance réelle. Elle vaut aussi pour le correctif du masquage des
+  pions du point précédent, qui n'avait jamais été revalidé ailleurs qu'au bureau ;
+- **lisibilité du badge d'élévation (+N/−N) sous cast — ✅ validée** le 05/08/2026, même séance
+  (miroir passif Google Cast) ;
+- **température et stabilité pendant une séance de 45 minutes puis quatre heures — toujours
+  ouvert.** ⚠ À ne pas déduire de la validation ci-dessus : c'est une mesure de **durée**, et la
+  confirmation du 05/08 portait sur l'affichage ;
 - limite de texture réelle et qualité du rééchantillonnage ;
 - reprise du Wake Lock et du plein écran sur Android réel ;
 - **règles de sécurité du projet Firebase — ✅ le mode test ne s'applique pas**, confirmé par le
@@ -777,6 +782,48 @@ décoché : le mainteneur signale que le **visuel** des six icônes changées le
 été jugé sur la tablette, seulement leur mécanique. Ordre de contrôle dans
 `assets/icons/status/SOURCES.md`.
 
+**Les mesures sous cast sont validées — confirmation du mainteneur, 05/08/2026.** Ce qui ferme
+les points « tenue à 30 fps sous cast » et « lisibilité du badge d'élévation sous cast » de la
+liste ci-dessus, ouverts depuis le lot 1a. Deux choses ne sont **pas** couvertes par cette
+confirmation et restent donc ouvertes, parce qu'elles n'étaient pas l'objet de la séance : la
+**tenue thermique** sur 45 minutes puis quatre heures, qui est une mesure de durée et non
+d'affichage, et le **jugement visuel des six icônes changées** (critère 4), que le mainteneur a
+lui-même remis à plus tard.
+
+**L'état verrouillé des portes : il l'était, on ne le voyait pas.** Le mainteneur a cru l'état
+non implanté. Il l'était — appui long de 500 ms côté MJ, avec son test e2e — et **le geste est
+conservé tel quel, décision du 05/08 : l'appui long protège des faux contacts**, ce qui est
+exactement la qualité recherchée après le défaut des portes ci-dessus. Ce qui manquait était
+ailleurs, et en deux points :
+
+1. **L'indicateur était dessiné en pixels carte.** Mesuré sur le rendu réel, fog révélé : à la
+   vue « carte entière » le trait de la porte verrouillée tombait à **1 px** d'épaisseur et son
+   cadenas — le seul signe qui la distingue d'une porte fermée — à **2 px** d'encre, contre 4 et
+   16 à zoom 1. Le pointillé vert de la porte ouverte n'atteignait plus **aucun** pixel saturé.
+   ⭐ Même défaut que le chantier K et L-09, à un troisième endroit : une grandeur écrite dans le
+   mauvais espace. Corrigé, constantes `PORTAL_*_SCREEN_PX`, et le rayon du cadenas est en outre
+   borné par la longueur de la porte à l'écran pour ne jamais la recouvrir entièrement.
+2. **Un tap sur une porte verrouillée ne signalait rien**, alors que `TRANCHE-L05-PORTES.md`
+   §7.6 l'exigeait — « un tap ne fait rien **et le signale** ». Seule la première moitié avait
+   été livrée : le code sortait en silence, et un geste sans effet ni explication est
+   indiscernable d'une panne. C'est précisément ce qui a fait conclure à l'absence de l'état.
+   Désormais un halo bat 600 ms autour du cadenas.
+
+⭐ **Et le battement a révélé un défaut qui dormait dans la boucle de rendu.** La couche des
+pions écrasait le drapeau `animationActive` par **affectation** au lieu de l'accumuler, alors
+qu'elle se dessine *après* les portes : la boucle à la demande s'arrêtait après une seule frame
+et le halo restait **figé à l'écran** au lieu de s'éteindre. Tant que les pions étaient la seule
+couche animée, l'écriture était juste ; la deuxième couche animée l'a rendue fausse. Corrigé en
+`||=` dans les deux vues — côté joueurs par symétrie, où rien ne s'anime encore avant les pions,
+pour que ce ne soit pas un piège au lot 3.
+
+> Le test qui a trouvé ce défaut est celui qui compte les frames, pas celui qui compte les
+> pixels : **un halo figé est plus visible qu'un halo correct**, donc un seuil d'encre l'aurait
+> déclaré réussi. Trois autres pièges de mesure ont été traversés au passage et sont documentés
+> dans `tests/portalIndicator.spec.mjs` : le fog qui voile l'indicateur, la colonne d'un pixel
+> qui tombe dans un creux de pointillé, et la ligne de base relevée sur une image peinte à un
+> autre zoom.
+
 **Les portes : capsule réduite de 0,5 à 0,25 case — corrigé.** Symptôme : un pion sur une case
 adjacente à une porte, et c'est la porte qui bascule au lieu du pion. La cause n'était pas cette
 seule valeur mais **son rapport à l'autre** : le pion se désigne sans aucune tolérance (la case
@@ -828,9 +875,9 @@ Relevé pour éviter de confondre « le plateau est solide » et « le produit e
 
 | Lot du CdC §11 | État |
 |---|---|
-| **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
-| **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
-| **2 — Lignes de vue, portes & tactique** | **9 sur 13 validés, neuf tranches livrées — l'intégralité du code du lot est écrite.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’un **quart** de case — une demi-case à la livraison, réduite le 05/08 après la première vraie table, voir « Retour de table » plus bas ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée. **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n'a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) ferme le critère 3** : gabarit circulaire, occlusion au sweep. La mesure a démenti le CdC §5.9 sur ce point — l'occlusion par arêtes bloquées, qu'il proposait, écarte de 3 cases en moyenne et de 11 dans le pire cas relevé, la boule de feu contournant le coin en marchant. Les cases affectées sont calculées **au placement par le MJ** et publiées avec le gabarit : la tablette n'exécute aucun sweep. **L-09 (05/08) est livrée** — quatorze états, liste close, trois paliers d'affichage, correction de géométrie écran pour les marqueurs et l'élévation. **Ne restent que trois critères décochés** — 10 et 11 attendent la tablette, et 4 (marqueurs) attend la table de jeu. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
+| **1a — Le plateau** | Code complet. **10 critères sur 11** : les 30 fps sous cast sont validés le 05/08/2026, première séance réelle. Deux restent ouverts, et ce sont des **mesures matérielles** : tenue thermique sur la durée, limite de texture réelle (carte `testbig150` prête) |
+| **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). **Le dernier point ouvert est fermé** : la lisibilité du badge d’élévation sous cast est validée le 05/08/2026, séance réelle. Le lot 1b est donc complet, code **et** mesures |
+| **2 — Lignes de vue, portes & tactique** | **10 sur 13 validés, neuf tranches livrées — l'intégralité du code du lot est écrite.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’un **quart** de case — une demi-case à la livraison, réduite le 05/08 après la première vraie table, voir « Retour de table » plus bas ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée — et ses épaisseurs, écrites en pixels carte à la livraison, sont passées en pixels écran le 05/08 : elles tombaient à 1 px à la vue « carte entière ». **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n'a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) ferme le critère 3** : gabarit circulaire, occlusion au sweep. La mesure a démenti le CdC §5.9 sur ce point — l'occlusion par arêtes bloquées, qu'il proposait, écarte de 3 cases en moyenne et de 11 dans le pire cas relevé, la boule de feu contournant le coin en marchant. Les cases affectées sont calculées **au placement par le MJ** et publiées avec le gabarit : la tablette n'exécute aucun sweep. **L-09 (05/08) est livrée** — quatorze états, liste close, trois paliers d'affichage, correction de géométrie écran pour les marqueurs et l'élévation. **Ne restent que trois critères décochés** — 10 et 11 attendent la tablette, et 4 (marqueurs) attend la table de jeu. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |

@@ -314,3 +314,44 @@ export const PORTAL_HIT_CELL_RATIO = 0.25;
  * toujours en train de publier. Vider un affichage n'a jamais déconnecté personne.
  */
 export const SESSION_EVICT_GM_EVENT = 'session.evictGm';
+
+/**
+ * Épaisseurs des indicateurs d'état de porte, **en pixels écran**.
+ *
+ * Elles étaient écrites en pixels **carte**, à l'intérieur du contexte que
+ * `camera.applyToContext` met à l'échelle par `ctx.scale(zoom, zoom)` — donc justes à zoom 1
+ * et nulle part ailleurs. Mesuré sur le rendu réel, fog révélé : à la vue « carte entière »
+ * (zoom 0,238), le trait de la porte verrouillée tombait à **1 px** d'épaisseur et son
+ * cadenas — le seul signe qui la distingue d'une porte fermée — ne pesait plus que **2 px**
+ * d'encre, contre 4 px et 16 px à zoom 1. Le pointillé vert de la porte ouverte, lui,
+ * n'atteignait plus aucun pixel saturé : `[4, 4]` en pixels carte donne des tirets de 0,95 px
+ * sous une épaisseur de 0,71 px, soit une teinte et non une couleur.
+ *
+ * ⭐ C'est le défaut du chantier K et de L-09, à un troisième endroit : **une grandeur écrite
+ * dans le mauvais espace**. La règle du projet ne change pas — toute taille d'indicateur
+ * s'écrit en pixels écran, puis se divise par le zoom au moment de tracer.
+ *
+ * Le rayon du cadenas est en outre borné par la longueur de la porte à l'écran : sur une porte
+ * courte et une carte très dézoomée, un disque de taille fixe finirait par la recouvrir
+ * entièrement, ce qui ne dirait plus « verrouillée » mais « quelque chose ici ».
+ */
+export const PORTAL_OPEN_LINE_SCREEN_PX = 3;
+export const PORTAL_OPEN_DASH_SCREEN_PX = 4;
+export const PORTAL_LOCKED_LINE_SCREEN_PX = 4;
+export const PORTAL_LOCK_DOT_RADIUS_SCREEN_PX = 5;
+export const PORTAL_LOCK_DOT_MAX_SEGMENT_RATIO = 0.35;
+export const PORTAL_LOCK_DOT_BORDER_SCREEN_PX = 1.5;
+
+/**
+ * Durée du battement qui signale « cette porte est verrouillée » après un tap sans effet.
+ *
+ * `TRANCHE-L05-PORTES.md` §7.6 l'exigeait dès la conception — « depuis `locked`, un tap ne
+ * fait rien **et le signale** » — et seule la première moitié avait été livrée : le code
+ * sortait en silence. Un geste sans effet ni explication est indiscernable d'une panne, et
+ * c'est ce qui a fait croire que l'état verrouillé n'était pas implémenté.
+ *
+ * 600 ms : assez pour être vu après que le doigt se soit relevé, assez court pour ne pas
+ * survivre au geste suivant. Le battement passe par `animationActive`, donc par la boucle de
+ * rendu à la demande — il ne pose aucun minuteur propre.
+ */
+export const PORTAL_LOCKED_FLASH_MS = 600;

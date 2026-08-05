@@ -356,7 +356,9 @@ export async function bootstrapPlayerApp(options = {}) {
           role: 'players',
         }),
       grid: () => gridLayer.render(stage.context, grid),
-      portals: () => portalsLayer.render(stage.context, grid, activeLevel),
+      // Pas de battement côté joueurs : verrouiller est réservé au MJ (CdC §12 Q3), donc un
+      // tap joueurs sur une porte verrouillée n'a rien à signaler qu'il puisse changer.
+      portals: () => portalsLayer.render(stage.context, grid, activeLevel, { zoom: camera.zoom }),
       moveZone: () =>
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
@@ -382,7 +384,11 @@ export async function bootstrapPlayerApp(options = {}) {
             resolution: stage.resolution,
           }
         );
-        animationActive = result.animationActive;
+        // `||=` et non `=`, par symétrie avec la vue MJ : les pions ne sont plus la seule
+        // couche susceptible de s'animer, et une affectation effacerait le drapeau d'une couche
+        // dessinée avant eux. Rien ne s'anime avant eux ici aujourd'hui — c'est justement pour
+        // que ce ne soit pas un piège demain.
+        animationActive ||= result.animationActive;
       },
       fog: () =>
         fogLayer.render(
