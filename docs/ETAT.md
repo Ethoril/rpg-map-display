@@ -858,6 +858,8 @@ symétrique de 49 cases (rayon 4) ; dès qu'un mur existe **n'importe où sur l'
 Cause : le polygone de sweep approche le cercle de portée par des **cordes**, qui coupent en
 deçà ; les cases à distance exactement égale au rayon tombent dehors, sauf à l'angle 0 où le
 sweep émet un sommet et où l'`eps` de `isPointInPolygon` les fait basculer dedans.
+Le brief de la refonte est écrit et **arbitré** : `TRANCHE-L10-GABARITS-LIBRES.md`. Trois décisions du mainteneur y sont consignées le 05/08 — la forme réelle **remplace** le surlignage des cases (le §5.9 est amendé sur sa raison d'être, l'arbitrage binaire est abandonné), la pointe du cône est l'ancre et le corps la poignée de rotation, et **les joueurs manipulent** comme pour les portes, ce qui rouvre le §12 Q8.
+
 La demande, elle, est ailleurs : une **forme réelle** (rond, cône), dimensionnée en cases,
 **non ancrée à la grille**, sélectionnable et déplaçable, qui épouse les murs si possible. Deux
 choses à savoir avant de chiffrer : le défaut ci-dessus **disparaît avec la peinture par cases**,
