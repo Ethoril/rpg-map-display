@@ -169,17 +169,30 @@ la fait basculer dedans. **La case de droite était la seule correcte.**
 derrière un mur (vérifié dans les deux sens). **Ce correctif ne sera pas écrit** : la décision (a)
 supprime l'énumération de cases.
 
-### 3.2 Mais la cause survit, et elle est maintenant visible
+### 3.2 La cause ne survit PAS au rendu — mesuré, et ma mise en garde était fausse
 
-Le polygone de sweep approche le plafond de portée par des **cordes**. Un contour découpé par ce
-polygone montrera donc des **facettes plates** là où le cercle devrait être lisse — et depuis la
-décision (a), **le contour est le verdict**. Ce qui n'était qu'un défaut d'appartenance discrète
-devient un défaut visible et arbitral.
+La première rédaction de ce paragraphe annonçait que le contour montrerait des **facettes
+plates**, les cordes du polygone de sweep coupant en deçà du cercle, et proposait un levier pour
+l'éviter. **La mesure l'a réfuté**, et l'écart n'est pas marginal — il est de deux ordres de
+grandeur :
 
-À regarder au rendu, avec deux leviers possibles : la résolution angulaire du sweep près du
-plafond de portée, ou un découpage du contour qui n'utilise le polygone que pour les **occulteurs**
-et garde l'arc exact pour la portée. Le second est plus juste et probablement pas plus cher —
-c'est la même séparation des deux conditions que le correctif à 2 % rétablissait.
+| rayon du gabarit | sommets du polygone | creux maximal (px carte) | à l'écran, vue « carte entière » |
+|---|---|---|---|
+| 1 case | 64 | 0,2 px | 0,0 px |
+| 4 cases | 64 | 0,7 px | 0,2 px |
+| 6 cases | 64 | 1,0 px | 0,2 px |
+
+`sweep` émet **64 sommets** sur le plafond de portée : le creux d'une corde vaut
+`R × (1 − cos(2,8°))`, soit **un millième du rayon**. Invisible à toute échelle utile. Le découpage
+naïf — `ctx.clip()` sur le polygone, puis `ctx.arc()` — est donc **correct**, et le levier proposé
+serait de la complexité pour rien.
+
+⭐ **Et cela explique enfin pourquoi les pointes du §3.1 tombaient.** Le même creux de 0,7 px
+suffisait à exclure une case dont le centre était à distance *exactement* R : un prédicat binaire
+évalué pile sur la frontière est infiniment sensible à un écart infinitésimal. Le défaut n'a
+jamais été une affaire de douceur du contour — c'était une affaire de **test discret à la
+frontière**. En abandonnant les cases, la décision (a) supprime la sensibilité elle-même, pas
+seulement son symptôme.
 
 ### 3.3 « Épouser les murs » est la partie déjà écrite
 
@@ -365,8 +378,10 @@ défauts de _prédicat_, pas d'implémentation.**
    sans erreur** (§5).
 7. Aucun geste existant ne régresse : porte, verrou, pion, pan. Les tests de L-05, L-07 et L-09
    restent verts **sans modification**.
-8. Le contour ne montre pas de facette plate grossière à la vue « carte entière » (§3.2), ou la
-   limite est mesurée et écrite.
+8. ✅ **Satisfait par construction, mesuré le 05/08** : le creux des cordes du polygone de sweep
+   vaut un millième du rayon (64 sommets), soit 0,2 px à l'écran à la vue « carte entière ». Le
+   découpage naïf suffit, et le levier que ce brief proposait était inutile (§3.2). Ce critère
+   n'appelle aucun travail — il est conservé pour que la mesure ne se reperde pas.
 
 ---
 
