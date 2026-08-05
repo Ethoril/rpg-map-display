@@ -62,9 +62,9 @@ la seconde change le périmètre :
 
 > ⚠ Conséquence directe sur le §3 : le défaut des pointes mangées et son correctif à 2 %
 > deviennent **sans objet**, puisqu'aucune case n'est plus énumérée. La mesure reste consignée
-> parce que **sa cause survit** : elle explique pourquoi un contour découpé par le polygone de
-> sweep montrera des cordes plates, et c'est exactement ce qui compte maintenant que le contour
-> fait loi.
+> parce qu'elle explique *pourquoi* — et le §3.2 montre, chiffres en main, que sa cause ne se
+> transporte **pas** au contour dessiné. C'était un défaut de prédicat binaire à la frontière,
+> pas un défaut de géométrie.
 
 ---
 
