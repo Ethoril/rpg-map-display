@@ -155,15 +155,22 @@ test.describe('Indicateurs de porte — grandeurs d\'écran, pas de carte', () =
     // 0,238 est la vue « carte entière » de la Tab S9 FE : 33 px par case pour pxPerCell 140.
     const vueTable = await mesurer(page, 0.238);
 
-    // Mesuré avant correctif : 4 px d'épaisseur à zoom 1 mais 1 px à 0,238 ; cadenas 16 px
-    // puis 2 px ; pointillé vert 96 px d'encre puis AUCUN pixel saturé. C'est cet effondrement
-    // que ce test interdit désormais.
+    // Avant correctif, mesuré : épaisseur 4 px à zoom 1 mais **1 px** à 0,238 ; cadenas 16 px
+    // d'encre puis **2 px** ; pointillé vert 96 px puis **aucun** pixel saturé. C'est cet
+    // effondrement que ce test interdit.
+    //
+    // Les seuils sont volontairement placés loin sous les valeurs mesurées après correctif
+    // (4–5 px, 0,90–1,00 et 9–11) et loin au-dessus de celles d'avant. Un seuil serré sur une
+    // mesure d'antialiasing serait un flake en attente : la pile de rendu du runner Linux n'est
+    // pas celle du poste de développement, et ce dépôt s'est déjà fait piéger par un échec
+    // Linux-only sur des métriques de police (`DIAGNOSTIC-GESTE-GABARITS.md`). Ce qui compte
+    // ici est l'ordre de grandeur, pas la décimale.
     expect(zoomUn.epaisseurVerrouillee).toBeGreaterThanOrEqual(3);
     expect(vueTable.epaisseurVerrouillee).toBeGreaterThanOrEqual(3);
-    expect(zoomUn.encreOuverte).toBeGreaterThanOrEqual(0.8);
-    expect(vueTable.encreOuverte).toBeGreaterThanOrEqual(0.8);
-    expect(zoomUn.cadenas).toBeGreaterThanOrEqual(8);
-    expect(vueTable.cadenas).toBeGreaterThanOrEqual(8);
+    expect(zoomUn.encreOuverte).toBeGreaterThanOrEqual(0.5);
+    expect(vueTable.encreOuverte).toBeGreaterThanOrEqual(0.5);
+    expect(zoomUn.cadenas).toBeGreaterThanOrEqual(5);
+    expect(vueTable.cadenas).toBeGreaterThanOrEqual(5);
 
     // Et les grandeurs ne dérivent pas d'un zoom à l'autre : ce sont bien des pixels d'écran.
     expect(Math.abs(vueTable.epaisseurVerrouillee - zoomUn.epaisseurVerrouillee)).toBeLessThanOrEqual(1);

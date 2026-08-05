@@ -18,7 +18,14 @@ export default defineConfig({
   testMatch: '**/*.spec.mjs',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  reporter: 'list',
+  // En CI, le rapporteur `github` en plus de `list`. Ce n'est pas un agrément d'affichage :
+  // sur ce dépôt, les **journaux** de run répondent 403 en lecture anonyme et les **artefacts**
+  // 401, donc un échec e2e ne se lisait nulle part — l'annotation de la porte disait « Process
+  // completed with exit code 1 » et rien d'autre, ce qui a coûté un aller-retour complet pour
+  // savoir quel test avait rougi. Le rapporteur `github` écrit des commandes `::error` avec
+  // fichier, ligne et message, qui remontent par
+  // `GET /repos/{owner}/{repo}/check-runs/{id}/annotations` — le seul canal accessible.
+  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
