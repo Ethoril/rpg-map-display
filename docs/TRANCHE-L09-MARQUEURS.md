@@ -84,6 +84,37 @@ même géométrie que les marqueurs.** Sans cela le même pion porterait deux r�
 contradictoires, et la deuxième serait fausse. Le coût est d'une division ; le laisser en
 place, c'est garantir la divergence.
 
+### 1.2bis Les valeurs du badge d'élévation, calculées — et un seuil bas qui manquait
+
+> **Correction du 05/08/2026, et l'erreur est de ce brief.** Une première rédaction de ces
+> attentes annonçait « `badgeRadiusScreen` vaut 14 » à tous les zooms, **sans l'avoir calculé**.
+> C'est faux, et le coût a été réel : l'implémentation a été écrite pour satisfaire ce nombre,
+> ce qui l'a forcée à retirer le zoom de la formule — `clamp(8, 14, 0,12 × largeurCarte)` au
+> lieu de `clamp(8, 14, 0,12 × D)`. Un critère d'acceptation ne se réécrit jamais pour coller
+> au code ; mais l'inverse est aussi vrai, et c'est celui-ci qui s'est produit.
+
+La règle est `rayonÉcran = clamp(8, 14, 0,12 × D)`, où `D = largeurCarte × zoom`. Calculé :
+
+| `largeurCarte` | zoom | `D` | rayon écran | diamètre du badge, en % du pion |
+|---|---|---|---|---|
+| 140 | 0,10× | 14,0 px | 8,000 px | **114 %** — plus gros que le pion |
+| 140 | 0,24× | 33,6 px | 8,000 px | 48 % |
+| 140 | 0,50× | 70,0 px | 8,400 px | 24 % |
+| 140 | 1,00× | 140,0 px | 14,000 px | 20 % |
+| 420 | 0,24× | 100,8 px | 12,096 px | 24 % |
+| 420 | 1,00× | 420,0 px | 14,000 px | 7 % |
+
+**Le plafond de 14 ne mord qu'à partir de `zoom ≥ 0,833`** pour un pion d'une case — d'où
+l'erreur : à la vue « carte entière » c'est le **plancher** qui joue, pas le plafond.
+
+Et la première ligne du tableau ouvre un trou que ce brief n'avait pas vu : un badge qui porte
+un **nombre** a une taille minimale absolue de lisibilité, environ 8 px de rayon pour une
+police de 9. En dessous d'un pion de deux fois ce diamètre, le badge et le pion ne peuvent plus
+coexister. **Le badge d'élévation ne se dessine donc pas quand `D < 40 px`** — seuil choisi,
+non dérivé : 40 px laisse le pion lisible sous un badge de 16. Cela lui donne la dégradation
+que les marqueurs ont déjà, et c'est cohérent : à cette échelle les marqueurs sont eux aussi
+réduits à des points de catégorie ou à un point unique. Le MJ qui a besoin de l'altitude zoome.
+
 ### 1.3 Le nombre de badges qui tiennent est invariant au zoom — donc c'est un choix
 
 Si le badge est proportionnel au pion, le nombre qui tient sur sa largeur ne dépend plus du
@@ -442,8 +473,26 @@ et idempotent. Un tableau de marqueurs **est** une valeur absolue. Il n'y a donc
    La rangée ne dépasse jamais 0,832 fois la largeur du pion.
 4. Un pion portant `ablaze`, `bleeding` et `poisoned` au palier intermédiaire affiche **un
    seul** point rouge, pas trois.
-5. Le badge d'élévation garde lui aussi sa taille à l'écran, et `+2` reste lisible à la vue
-   « carte entière ».
+5. Le badge d'élévation garde lui aussi sa taille à l'écran. Attentes **absolues**, écrites en
+   dur dans le test et non dérivées du code (§1.2bis) : `(140, 0,24×)` → **8**,
+   `(140, 1×)` → **14**, `(420, 0,24×)` → **12,096**, `(420, 1×)` → **14**. Un test qui ne
+   compare que `rayonCarte × zoom` à `rayonÉcran` vérifie une identité entre deux sorties de
+   la même fonction : il attrape l'absence de division, pas une valeur fausse.
+   Et le badge ne se dessine pas sous `D = 40 px`.
+
+5bis. **Le test de rendu doit distinguer l'icône de son repli.** Le repli dessine un disque de
+   couleur **au même centre** que l'icône, et le fond de carte est opaque : une assertion du
+   type « le pixel au centre du badge a `alpha = 255` » est donc vraie partout, y compris si
+   `drawStatusBadges` ne dessine **rien du tout** — mesuré le 05/08/2026, une version qui
+   retournait immédiatement passait les cinq tests e2e. Le prédicat doit porter sur la
+   **couleur** : l'icône est blanche sur disque sombre, le repli est la couleur de catégorie
+   (`#facc15` pour `prone`). Assertion utile : le pixel du centre **n'est pas** la couleur de
+   catégorie.
+
+5ter. **L'invalidation au chargement de l'icône doit être vérifiée par ce même test**, et c'est
+   sa raison d'être : après le chargement, le badge doit passer du repli à l'icône **sans
+   aucune interaction avec la page**. Sans ce prédicat, retirer l'appel à `invalidate()` ne
+   fait rougir aucun test — mesuré, la mutation survit.
 6. `markers: ["poisonned"]` est **refusé** par le schéma, avec la valeur fautive dans le
    message. `["prone","prone"]` également.
 7. Le MJ cochant un état voit le badge apparaître sur les trois vues ; le rechargement le
