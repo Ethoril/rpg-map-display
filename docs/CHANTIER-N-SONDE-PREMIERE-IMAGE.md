@@ -1,13 +1,19 @@
 # Chantier N — Sonde : la première image après inactivité
 
-> **Statut : instrument posé le 05/08/2026 — aucune mesure encore lue.** La sonde est en place
+> **Statut : chantier clos le 05/08/2026 — la sonde a désigné une cause.** Instrument en place
 > (`js/render/probe.js`, touche `P` dans la vue MJ, instantané des 64 dernières frames avec
-> ventilation par couche et résidu brut). Le critère 3 du §6 — *la sonde désigne une cause* — n'est
-> pas rempli : il exige une séance réelle, et la marche à suivre est dans la liste des
-> vérifications manuelles d'`ETAT.md`.
+> ventilation par couche et résidu brut), et **lecture faite le jour même**.
 >
-> ⛔ Ce chantier ne corrige toujours rien. Le correctif ne s'écrit qu'après la lecture, et son
-> choix dépend du résultat.
+> **Résultat : le décodage synchrone du bitmap de fond.** Sur une frame provoquée après 88 à 124 s
+> d'inactivité, total ≈ 500 ms dont **fond ≈ 490 ms**, fog à 0,3 ms, résidu à 3 ms — la première des
+> trois lectures du §4, et le résidu exclut GC et compositing. La sonde a donné deux choses en plus :
+> la fenêtre d'éviction est **entre 6 s et 88 s** et non au-delà de 30 s comme supposé au §2, et la
+> frame froide de chargement est la n°4, pas la n°1 — l'exclusion codée dans `FrameProbe` ne
+> l'attrape donc pas.
+>
+> **Le correctif est le chantier P** (`CHANTIER-P-DECODAGE-DU-FOND.md`), qui reprend ces chiffres et
+> arbitre entre les trois options. La sonde y reste en place : c'est elle qui devra constater que le
+> correctif tient, et elle ne se retire qu'après (critère 4 du §6 — retirable en un commit).
 
 ## 1. Le symptôme, tel qu'il a été rapporté
 

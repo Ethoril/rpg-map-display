@@ -9,10 +9,15 @@
 > désignation des pions au doigt : marge de 24 px **écran** plafonnée à 0,75 case, mesurée au
 > rectangle du pion, le plus proche gagne, départage par identifiant. Le code est écrit et couvert
 > en unitaire ; le geste réel au doigt, lui, n'est couvert par aucun test de la porte et attend la
-> table. N — la sonde de la première image après inactivité : **c'est un instrument, pas un
-> correctif.** Elle est posée (touche `P` dans la vue MJ, instantané des 64 dernières frames avec
-> ventilation par couche et résidu) et **aucune mesure n'a encore été lue** : tant que la sonde n'a
-> pas désigné une cause en séance, le chantier n'est pas clos et le correctif n'est pas choisi.
+> table. N — la sonde de la première image après inactivité : **posée et lue le jour même, elle a
+> désigné une cause.** Après 88 à 124 s d'inactivité, un cran de zoom coûte ≈ 500 ms dont **490 ms
+> dans le seul `drawImage` du fond**, fog à 0,3 ms, résidu à 3 ms : c'est le redécodage synchrone du
+> bitmap, ni GC ni compositing. Deux surprises : le bitmap est encore chaud à 5,6 s et froid à 88 s
+> — la bascule est donc **entre 6 s et 88 s**, pas au-delà de 30 s —, et la frame froide de
+> chargement est la n°4 et non la n°1. **Le correctif est le chantier P**
+> (`CHANTIER-P-DECODAGE-DU-FOND.md`), tranché sur cette mesure : doublure basse résolution retenue
+> en `ImageBitmap` et décodage asynchrone, **sans toucher au plafond de préparation ni à la densité
+> des cartes**. La sonde reste en place jusqu'à ce qu'elle constate que le correctif tient.
 >
 > **L-09 est livrée le 5 août 2026.** Le jeu de marqueurs (Q7) comporte quatorze états, liste close,
 > les trois paliers d'affichage (icônes à 3 emplacements, points de catégorie, point unique) et la correction
@@ -534,22 +539,17 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 > le jeu réel, et la tenue thermique qui court *pendant* le reste et non après. La liste ci-dessous
 > reste la référence de **ce qui est ouvert** ; l'autre document dit **dans quel ordre le fermer**.
 
-- **chantier N — lire la sonde après un vrai silence.** Ouvrir `gm.html` sur la carte de la
-  séance, laisser la tablette et le Mac sans y toucher **plus de 30 s**, puis zoomer une fois et
-  presser `P`. La ligne en rouge est la frame incriminée. Trois lectures, et une seule est à
-  retenir : total élevé **et** fond élevé → décodage synchrone du bitmap ; total élevé **et** fog
-  élevé → mémoïsation perdue ; total élevé **et toutes les couches basses** → le coût est hors JS
-  (GC ou compositing) et le correctif n'est pas celui qu'on croyait. « La sonde ne tranche pas »
-  est un résultat recevable, pas un échec. ⛔ Rien à corriger avant cette lecture ;
-- **chantier O — le tap au doigt sur un pion, à la vue « carte entière ».** Ce que la porte de
-  vérification ne couvre pas : le geste réel. À constater à la table, dans cet ordre. (a) viser un
-  pion et le manquer d'un demi-doigt le sélectionne quand même ; (b) un pion adjacent à une porte
-  se sélectionne sans ouvrir la porte ; (c) côté joueurs, taper **à côté** d'un PNJ posté devant
-  une porte ouvre bien la porte, tandis que taper **en plein** sur le PNJ ne fait rien — la
-  distinction est voulue ; (d) avec un PJ sélectionné, taper une case vide voisine d'un autre pion
-  le déplace au lieu de désélectionner. Puis la question ouverte du brief §8 : **la capsule des
-  portes peut-elle remonter de 0,25 vers 0,4 sans que le pion redevienne difficile à viser ?**
-  C'est le gain caché du chantier et il ne se constate qu'à la table ;
+- **chantier N — la sonde. ✅ Lue le 5 août 2026, elle a désigné une cause** : 490 ms des 500 ms
+  d'une frame post-inactivité sont dans le `drawImage` du fond, résidu à 3 ms donc ni GC ni
+  compositing, bitmap encore chaud à 5,6 s et froid à 88 s. Correctif au **chantier P**. Ce qui
+  reste ouvert est la **lecture d'après** : une fois P livré, remesurer au même endroit et sur la
+  même carte — après 2 min d'inactivité, la colonne « Fond » doit passer sous 5 ms —, constater à
+  la main que la tablette ne saccade plus, puis retirer la sonde en un commit ;
+- **chantier O — le tap au doigt sur un pion. ✅ Constaté à la table le 5 août 2026 : le mainteneur
+  donne le geste pour satisfaisant.** Ce qui reste ouvert est la question du §8 du brief : **la
+  capsule des portes peut-elle remonter de 0,25 vers 0,4 maintenant que le pion a sa tolérance ?**
+  Les portes n'ont pas été jugées pénibles à viser à cette séance, donc rien ne presse — mais c'est
+  le gain caché du chantier, et il ne se constate qu'à la table ;
 - **tenue d’une carte préparée à 8192 px sur la tablette** — le passage du plafond de 4096 à
   8192 n’est validé par aucune mesure d’affichage : 7499 × 8192 en RGBA fait **245 Mio décodés**
   dans le navigateur, et 8192 est exactement la limite *mesurée* de la dalle, donc sans marge.
