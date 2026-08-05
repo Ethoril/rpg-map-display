@@ -262,3 +262,55 @@ export const BADGE_RASTER_STEP_PX = 2;
  * n'expose que trois à cinq états simultanés.
  */
 export const STATUS_ICON_CACHE_LIMIT = 128;
+
+/**
+ * Demi-largeur de la capsule de désignation d'une porte, en cases.
+ *
+ * Elle valait **0,5**, soit une case entière de bande autour du segment, et c'était trop :
+ * retour de table du 05/08/2026, « si un pion est sur une case adjacente aux portes, souvent
+ * on ouvre/ferme la porte au lieu de sélectionner le pion ». Le déséquilibre n'était pas dans
+ * cette valeur seule mais dans son rapport à l'autre : **le pion se désigne sans aucune
+ * tolérance** (la case exacte, `tokenAtCell`), la porte avec une demi-case tout autour.
+ *
+ * L'arithmétique de la table le dit : à la vue « carte entière » — la vue normale de la
+ * tablette — une case fait 33 px à l'écran (cf. `hardware_measurements`), donc l'ancienne
+ * bande faisait 17 px quand un doigt en couvre une quarantaine. Le tap sortait de la case du
+ * pion, entrait dans la bande de la porte, et la porte gagnait.
+ *
+ * Précision qui a failli me faire écrire un test creux : la comparaison est `dist < maxDist`,
+ * **stricte**, et une porte court sur une arête de case. Viser le centre exact de la case
+ * voisine — à une demi-case pile — ne déclenchait donc **déjà** rien à 0,5. La zone-piège
+ * n'était pas ce centre mais tout ce qui se trouve entre lui et la porte, du côté vide : le
+ * doigt qui manque le pion d'un tiers de case y tombait. C'est cette bande-là que 0,25 divise
+ * en deux, et c'est ce point-là que pinne `tests/portals.test.mjs`, cas 6.
+ *
+ * ⚠ La contrepartie est réelle et assumée : à 0,25 la bande ne fait plus que 8 px à l'écran à
+ * cette vue-là, donc **les portes deviennent plus difficiles à viser quand la carte est
+ * dézoomée**. C'est le sens du « un peu réduire » demandé — un tap manqué rend désormais un
+ * « rien sélectionné » plutôt qu'une porte ouverte par surprise, ce qui est le bon sens de
+ * l'erreur. Si la visée devient pénible, c'est cette constante qu'il faut remonter, et elle
+ * est seule : les deux vues l'importent depuis `js/input/portalHit.js`.
+ *
+ * ⛔ Ne pas la convertir en pixels écran par analogie avec les badges. Un badge doit garder sa
+ * taille à l'écran ; une porte est un objet de la carte, et une bande constante à l'écran
+ * couvrirait **d'autant plus de cases que la carte est dézoomée** — soit exactement le défaut
+ * qu'on corrige, amplifié.
+ */
+export const PORTAL_HIT_CELL_RATIO = 0.25;
+
+/**
+ * Type de l'événement qui congédie les autres sessions MJ. Nommé ici parce qu'il est écrit à
+ * deux endroits — publication et réception — et qu'une faute de frappe entre les deux ne
+ * produirait aucune erreur : juste un bouton sans effet, ce qui est le pire des deux mondes.
+ *
+ * **L'éviction est coopérative, et ne peut pas ne pas l'être.** Personne ne coupe la connexion
+ * d'un autre appareil à distance : le MJ congédié la coupe lui-même en recevant l'événement.
+ * Conséquences à connaître avant de s'y fier — un onglet en veille profonde ne se congédiera
+ * qu'à son réveil, et un appareil hors réseau jamais.
+ *
+ * ⛔ **Ne pas « améliorer » en supprimant les entrées de présence des autres.** Ça aurait l'air
+ * de marcher : la liste se vide sous les yeux. Puis le heartbeat de chaque client les recrée
+ * quelques secondes plus tard (`FirebaseTransport.publishPresence`), toujours connectés,
+ * toujours en train de publier. Vider un affichage n'a jamais déconnecté personne.
+ */
+export const SESSION_EVICT_GM_EVENT = 'session.evictGm';

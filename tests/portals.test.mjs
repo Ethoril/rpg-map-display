@@ -7,6 +7,8 @@ import * as store from '../js/state/store.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { gridFor } from '../js/grid/index.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
+import { findHitPortal } from '../js/input/portalHit.js';
+import { PORTAL_HIT_CELL_RATIO } from '../js/core/constants.js';
 
 function makeValidPortalCampaign() {
   const level = createLevel({
@@ -160,4 +162,53 @@ test('5. Événement réseau portal.toggle', () => {
     by: 'gm',
   });
   assert.equal(invalid, false);
+});
+
+test('6. Capsule de désignation d\'une porte, et la case du pion voisin qui lui échappe', () => {
+  const campaign = makeValidPortalCampaign();
+  const level = campaign.levels[0];
+  const grid = gridFor(level);
+  const px = level.pxPerCell;
+
+  // portal-1 est le segment horizontal du coin (2,2) au coin (3,2). En pixels carte, il court
+  // donc le long de y = 2 px/case, entre x = 2 et x = 3 px/case.
+  const onSegment = { x: 2.5 * px, y: 2 * px };
+  assert.equal(findHitPortal(grid, level, onSegment)?.id, 'portal-1');
+
+  // La tolérance est un ratio de case, pas une valeur en dur : le test la relit plutôt que de
+  // la recopier, sinon il ne vérifierait que sa propre copie.
+  const inside = PORTAL_HIT_CELL_RATIO * 0.8;
+  const outside = PORTAL_HIT_CELL_RATIO * 1.2;
+  assert.equal(findHitPortal(grid, level, { x: 2.5 * px, y: (2 + inside) * px })?.id, 'portal-1');
+  assert.equal(findHitPortal(grid, level, { x: 2.5 * px, y: (2 + outside) * px }), null);
+
+  // Le point qui motive le réglage, et il demande de la précision. Le centre exact de la case
+  // voisine ne déclenchait DÉJÀ rien à 0,5 : il est à une demi-case pile du segment, et le
+  // test est `dist < maxDist`, strict. La zone-piège n'était donc pas le centre mais tout ce
+  // qui se trouve ENTRE la porte et lui — le doigt qui manque le pion d'un tiers de case
+  // tombait dans la capsule et ouvrait la porte au lieu de ne rien sélectionner.
+  const nearMiss = { x: 2.5 * px, y: (2 + 0.35) * px };
+  assert.equal(findHitPortal(grid, level, nearMiss), null);
+
+  // Et le centre de la case voisine, lui, était et reste hors capsule — la frontière exclusive
+  // n'est pas un hasard qu'il faudrait « corriger ».
+  const neighbourCentre = grid.pointFromCell({ a: 2, b: 2 });
+  assert.equal(Math.abs(neighbourCentre.y - 2 * px), 0.5 * px);
+  assert.equal(findHitPortal(grid, level, neighbourCentre), null);
+
+  // Départage entre deux portes à égalité, par identifiant, pour ne pas dépendre de l'ordre
+  // du tableau. Les deux segments sont ici équidistants du point choisi.
+  const tie = createLevel({
+    id: 'tie',
+    portals: [
+      { id: 'portal-b', a: { cellX: 4, cellY: 4 }, b: { cellX: 5, cellY: 4 }, state: 'closed', freestanding: false },
+      { id: 'portal-a', a: { cellX: 4, cellY: 4 }, b: { cellX: 4, cellY: 5 }, state: 'closed', freestanding: false },
+    ],
+  });
+  const tieGrid = gridFor(tie);
+  const corner = { x: 4 * tie.pxPerCell, y: 4 * tie.pxPerCell };
+  assert.equal(findHitPortal(tieGrid, tie, corner)?.id, 'portal-a');
+
+  // Un étage sans porte ne désigne rien, et ne jette pas.
+  assert.equal(findHitPortal(grid, createLevel({ id: 'vide' }), { x: 0, y: 0 }), null);
 });

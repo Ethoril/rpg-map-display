@@ -1,6 +1,7 @@
 // @ts-check
 
 import { PointerInput } from '../../input/pointer.js';
+import { findHitPortal } from '../../input/portalHit.js';
 import { gridFor } from '../../grid/index.js';
 import { cellKey } from '../../core/cellKey.js';
 import { findPath } from '../../movement/path.js';
@@ -182,60 +183,5 @@ export function bootstrapPlayerView(options) {
   };
 }
 
-/**
- * Calcule la distance euclidienne entre un point et un segment en pixels carte.
- * @param {{x: number, y: number}} pt
- * @param {{x: number, y: number}} a
- * @param {{x: number, y: number}} b
- * @returns {number}
- */
-function distancePointToSegment(pt, a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) {
-    return Math.hypot(pt.x - a.x, pt.y - a.y);
-  }
-  let t = ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  const projX = a.x + t * dx;
-  const projY = a.y + t * dy;
-  return Math.hypot(pt.x - projX, pt.y - projY);
-}
-
-/**
- * Recherche le portail le plus proche sous le tap dans la capsule de 0.5 case.
- *
- * @param {import('../../grid/GridAdapter.js').GridAdapter} grid
- * @param {import('../../core/types.js').Level} activeLevel
- * @param {{x: number, y: number}} mapPos
- * @returns {import('../../core/types.js').Portal|null}
- */
-function findHitPortal(grid, activeLevel, mapPos) {
-  if (!activeLevel.portals || activeLevel.portals.length === 0) return null;
-
-  const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-  const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-  const gridScale = Math.abs(origin1.x - origin0.x);
-  const maxDist = 0.5 * gridScale;
-
-  /** @type {{portal: import('../../core/types.js').Portal, dist: number}|null} */
-  let best = null;
-
-  for (const portal of activeLevel.portals) {
-    const pA = grid.mapFromCellPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
-    const pB = grid.mapFromCellPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
-    const dist = distancePointToSegment(mapPos, pA, pB);
-    if (dist < maxDist) {
-      if (
-        !best ||
-        dist < best.dist - 1e-6 ||
-        (Math.abs(dist - best.dist) <= 1e-6 && portal.id < best.portal.id)
-      ) {
-        best = { portal, dist };
-      }
-    }
-  }
-
-  return best ? best.portal : null;
-}
+// `findHitPortal` et `distancePointToSegment` vivaient ici en double avec la vue MJ.
+// Elles sont désormais dans `js/input/portalHit.js`, avec leur tolérance.

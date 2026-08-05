@@ -27,6 +27,8 @@ import * as store from '../../state/store.js';
  * @property {() => void} [requestRender]
  * @property {(levelId: string, wall: import('../../core/types.js').CellPoint[]) => void} [onAddWall]
  * @property {(levelId: string, wall: import('../../core/types.js').CellPoint[]) => void} [onRemoveWall]
+ * @property {() => import('../../state/presence.js').ClientPresence[]} [getOtherGmSessions]
+ * @property {() => boolean} [onEvictOtherGms]
  */
 
 /**
@@ -47,6 +49,8 @@ export function createGMPanel(container, options = {}) {
     getExploredFog = () => null,
     scheduleFogPublish = () => {},
     requestRender = () => {},
+    getOtherGmSessions = () => [],
+    onEvictOtherGms = () => false,
   } = options;
   const listeners = new AbortController();
 
@@ -66,7 +70,8 @@ export function createGMPanel(container, options = {}) {
     <div class="gm-session-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; background: #232323; border-bottom: 1px solid #333;">
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Session</span>
       <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.2em; color: #4a90e2;">${sessionId || '—'}</code>
-      <button id="gm-leave-session" style="margin-left: auto; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
+      <button id="gm-evict-others" style="margin-left: auto; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Déconnecte les autres écrans MJ de cette session">Autres MJ</button>
+      <button id="gm-leave-session" style="padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
     </div>
 
     <!-- Barre d'onglets du panneau MJ -->
@@ -507,6 +512,56 @@ export function createGMPanel(container, options = {}) {
     gridOpacityInput.value = String(activeLvl.grid.opacity ?? 0.25);
     gridOpacityVal.textContent = String(activeLvl.grid.opacity ?? 0.25);
   }
+
+  // --- Déconnecter les autres sessions MJ ---
+  //
+  // Le libellé porte le compte, et ce n'est pas décoratif : une éviction est irréversible pour
+  // celui qui la subit, donc le MJ doit voir **combien** de postes il congédie avant de le
+  // faire — et voir « aucun autre » lui évite de chercher un concurrent qui n'existe pas.
+  // Le compte se relit à chaque affichage plutôt que de s'abonner à la présence : un bouton
+  // dont l'état ne bouge qu'au moment où on le regarde suffit, là où un abonnement de plus
+  // serait un abonnement de plus à défaire.
+  const evictOthersBtn = /** @type {HTMLButtonElement} */ (
+    container.querySelector('#gm-evict-others')
+  );
+
+  function refreshEvictButton() {
+    if (!evictOthersBtn) return;
+    const others = getOtherGmSessions();
+    evictOthersBtn.textContent = others.length === 0 ? 'Aucun autre MJ' : `Autres MJ (${others.length})`;
+    evictOthersBtn.disabled = others.length === 0;
+    evictOthersBtn.style.opacity = others.length === 0 ? '0.5' : '1';
+    evictOthersBtn.style.cursor = others.length === 0 ? 'default' : 'pointer';
+  }
+
+  evictOthersBtn?.addEventListener(
+    'click',
+    () => {
+      const others = getOtherGmSessions();
+      if (others.length === 0) {
+        refreshEvictButton();
+        return;
+      }
+      const liste = others.map((c) => `• ${c.label || c.clientId}`).join('\n');
+      if (
+        !window.confirm(
+          `Déconnecter ${others.length} autre(s) session(s) MJ ?\n\n${liste}\n\n` +
+            `Ces écrans cesseront de recevoir et de publier la partie. La vue joueurs n'est pas ` +
+            `touchée.\n\nUn appareil en veille ou hors réseau ne se déconnectera qu'à son retour.`
+        )
+      ) {
+        return;
+      }
+      onEvictOtherGms();
+      refreshEvictButton();
+    },
+    { signal: listeners.signal }
+  );
+
+  // Rafraîchi à l'ouverture du panneau et quand la fenêtre reprend le focus — les présences
+  // ont pu apparaître ou périmer pendant qu'on regardait ailleurs.
+  refreshEvictButton();
+  window.addEventListener('focus', refreshEvictButton, { signal: listeners.signal });
 
   // --- Quitter la session ---
   //

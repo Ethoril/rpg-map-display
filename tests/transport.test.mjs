@@ -15,6 +15,7 @@ import { TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
 import {
     checkBuildMismatch,
     listBuildMismatches,
+    listOtherGmClients,
     clearPresence,
     getPresenceList,
     setPresenceMap,
@@ -241,6 +242,30 @@ test('listBuildMismatches les rend tous, du plus en retard au plus avancé', () 
     const ecarts = listBuildMismatches(93, 'self');
     assert.deepEqual(ecarts.map((client) => client.build), [90, 91]);
     assert.deepEqual(ecarts.map((client) => client.role), ['players', 'gm']);
+    clearPresence();
+});
+
+test('listOtherGmClients ne rend que les MJ concurrents, ni soi ni la table ni les périmés', () => {
+    clearPresence();
+    const now = Date.now();
+    setPresenceMap({
+        self: { role: 'gm', at: now, build: 35, label: 'portable du MJ' },
+        salon: { role: 'gm', at: now - 30_000, build: 35, label: 'tablette du salon' },
+        vieil_onglet: { role: 'gm', at: now - 5_000, build: 35, label: 'onglet oublié' },
+        table: { role: 'players', at: now, build: 35, label: 'écran de la table' },
+        ferme: { role: 'gm', at: now - 120_000, build: 35, label: 'fermé brutalement' },
+    });
+
+    const autres = listOtherGmClients('self');
+    // La table n'est pas un MJ : la congédier reviendrait à éteindre l'écran des joueurs.
+    // Et `ferme` a dépassé PRESENCE_STALE_AFTER_MS : compter un concurrent qui n'est plus là
+    // ferait paraître le bouton cassé, puisqu'il ne se déconnecterait jamais.
+    assert.deepEqual(autres.map((client) => client.clientId), ['salon', 'vieil_onglet']);
+
+    // Sans clientId local — transport non connecté — on ne se retire pas de sa propre liste,
+    // et c'est le comportement voulu : mieux vaut un bouton qui propose une éviction de trop
+    // qu'un bouton qui masque un concurrent réel.
+    assert.equal(listOtherGmClients().length, 3);
     clearPresence();
 });
 

@@ -108,6 +108,22 @@ export function listBuildMismatches(localBuild, selfClientId = '') {
 }
 
 /**
+ * Les autres sessions MJ vivantes, hors la sienne.
+ *
+ * S'appuie sur `getPresenceList`, qui écarte déjà les présences périmées : un onglet MJ fermé
+ * brutalement disparaît de lui-même au bout de `PRESENCE_STALE_AFTER_MS`, sans quoi le compte
+ * afficherait des concurrents qui ne sont plus là et le bouton d'éviction paraîtrait cassé.
+ *
+ * @param {string} [selfClientId] Son propre clientId, à exclure
+ * @returns {ClientPresence[]} Triées de la plus ancienne à la plus récente
+ */
+export function listOtherGmClients(selfClientId = '') {
+  return getPresenceList()
+    .filter((client) => client.role === 'gm' && client.clientId !== selfClientId)
+    .sort((a, b) => a.at - b.at);
+}
+
+/**
  * Vérifie si une désynchronisation de build existe par rapport au build local.
  *
  * @param {number} localBuild Build du client local

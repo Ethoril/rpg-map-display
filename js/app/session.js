@@ -154,6 +154,64 @@ async function requestGoogleSignIn(role, host, transport) {
 }
 
 /**
+ * Écran de fin pour un MJ congédié par un autre poste.
+ *
+ * Il n'est pas décoratif. Une session MJ congédiée cesse de recevoir et de publier : sans
+ * cet écran, l'appareil se contente de ne plus rien faire, ce qui se lit comme un plantage ou
+ * comme un réseau tombé — et le MJ le rechargerait, donc reprendrait la main, donc annulerait
+ * l'éviction qu'il vient de subir. Le message doit dire **qui a agi** et **quoi faire**.
+ *
+ * L'écran est bloquant à dessein : `inset:0` et un fond opaque couvrent la carte, parce que
+ * la vue affichée derrière est désormais un état figé qui ne reçoit plus les mutations.
+ *
+ * @param {{ sessionId?: string, label?: string, onReconnect?: () => void }} [options]
+ * @returns {{ element: HTMLElement, remove: () => void }|null}
+ */
+export function showEvictionOverlay(options = {}) {
+  if (typeof document === 'undefined') return null;
+
+  const existing = document.getElementById('gm-evicted');
+  if (existing) return { element: existing, remove: () => existing.remove() };
+
+  const overlay = document.createElement('div');
+  overlay.id = 'gm-evicted';
+  overlay.setAttribute('role', 'alertdialog');
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:1100;display:grid;place-items:center;text-align:center;' +
+    'background:#12161c;color:#e7ebf2;font:15px/1.6 system-ui,sans-serif;padding:24px';
+
+  const source = options.label ? ` depuis « ${options.label} »` : '';
+  const code = options.sessionId ? ` ${options.sessionId}` : '';
+  const inner = document.createElement('div');
+  inner.style.cssText = 'max-width:44ch;display:grid;gap:14px;justify-items:center';
+  inner.innerHTML =
+    `<strong style="font-size:19px">Session MJ reprise ailleurs</strong>` +
+    `<p style="margin:0;color:#a8b3c4">Un autre poste MJ a demandé la déconnexion des sessions` +
+    ` concurrentes${source}. Cet écran ne reçoit plus la partie${code} et ne publie plus rien.</p>` +
+    `<p style="margin:0;color:#8b97aa;font-size:13px">Reprendre la main ici déconnectera l'autre` +
+    ` poste à son tour : à ne faire que si c'est bien celui-ci qui doit mener.</p>`;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'gm-evicted-reconnect';
+  button.textContent = 'Reprendre la main sur cet écran';
+  button.style.cssText =
+    'padding:11px 16px;font:inherit;cursor:pointer;background:#2b3442;color:#e7ebf2;' +
+    'border:1px solid #46536a;border-radius:6px';
+  button.addEventListener('click', () => {
+    overlay.remove();
+    if (options.onReconnect) options.onReconnect();
+    else window.location.reload();
+  });
+
+  inner.appendChild(button);
+  overlay.appendChild(inner);
+  document.body.appendChild(overlay);
+
+  return { element: overlay, remove: () => overlay.remove() };
+}
+
+/**
  * Construit et connecte le transport d'une page. Un transport injecté sert aux tests et au
  * mode LAN ; Firebase est utilisé sinon lorsque sa configuration publique est disponible.
  *

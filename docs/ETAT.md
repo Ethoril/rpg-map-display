@@ -757,6 +757,70 @@ sur une session.
 **Ce qui reste le vrai juge**, et qui ne coûte rien : la première séance à table. Si la tablette
 décroche, ça se verra sans instrumentation.
 
+## Retour de table du 5 août 2026 — première séance réelle sur la Tab S9 FE
+
+Ce que la table a dit, et ce qu'il en reste. **Deux points sont corrigés, trois restent
+ouverts**, et l'un des trois change une conception plutôt qu'un réglage.
+
+**Fluide, sauf la première action après une pause — non corrigé, et pas à l'aveugle.** Aucun
+problème de performance visible, sauf **systématiquement** au premier zoom ou déplacement après
+un moment d'inactivité. Le rendu est **à la demande** (`FrameLoop`) : rien ne se repeint pendant
+la pause, donc la première frame refait tout d'un coup. Hypothèse principale, à mesurer et non à
+supposer : Chrome libère le bitmap décodé de l'image de fond, que plus personne ne peint, et la
+première frame doit la **redécoder en synchrone** sur le fil principal — jusqu'à 8192 px de
+côté. Si la mesure le confirme, le correctif est un `ImageBitmap` décodé une fois, que le
+navigateur ne peut pas redécoder. ⚠ Cela se mesure **par couche, sur la tablette** : une sonde
+posée sur la machine de développement ne reproduira pas l'éviction du cache.
+
+**Le badge d'élévation est lisible, les marqueurs fonctionnent.** Le critère 4 reste néanmoins
+décoché : le mainteneur signale que le **visuel** des six icônes changées le 05/08 n'a pas encore
+été jugé sur la tablette, seulement leur mécanique. Ordre de contrôle dans
+`assets/icons/status/SOURCES.md`.
+
+**Les portes : capsule réduite de 0,5 à 0,25 case — corrigé.** Symptôme : un pion sur une case
+adjacente à une porte, et c'est la porte qui bascule au lieu du pion. La cause n'était pas cette
+seule valeur mais **son rapport à l'autre** : le pion se désigne sans aucune tolérance (la case
+exacte, `tokenAtCell`), la porte avec une demi-case tout autour. À la vue « carte entière » une
+case fait 33 px, donc la bande faisait 17 px là où un doigt en couvre une quarantaine. Le
+raisonnement complet, la contrepartie assumée et le piège d'un test creux sont sur
+`PORTAL_HIT_CELL_RATIO` dans `js/core/constants.js`. **Le fond du problème reste ouvert** : la
+tolérance nulle sur le pion. Le désigner au plus proche, comme la porte, serait la correction de
+principe — c'est un changement de sémantique de sélection, à arbitrer.
+Au passage, `findHitPortal` et `distancePointToSegment` existaient **en double**, mot pour mot,
+dans la vue MJ et la vue joueurs : deux valeurs à régler pour un seul réglage. Elles sont
+désormais dans `js/input/portalHit.js`.
+
+**Bouton de déconnexion des sessions MJ concurrentes — livré.** Dans la barre de session, il
+porte le compte des autres postes MJ et les nomme avant de confirmer.
+⚠ **L'éviction est coopérative, et ne peut pas ne pas l'être** : personne ne coupe la connexion
+d'un autre appareil à distance ; le MJ congédié la coupe lui-même en recevant
+`session.evictGm`. Un onglet en veille profonde ne se congédiera qu'à son réveil, un appareil
+hors réseau jamais. Le congédié reçoit un écran bloquant qui **nomme le poste** qui a agi —
+sans quoi son écran cesserait simplement de réagir, ce qui se lit comme un plantage, et il
+rechargerait, donc reprendrait la main. ⛔ Ne pas « améliorer » en supprimant les présences des
+autres : la liste se viderait, puis leur heartbeat les recréerait, toujours connectés.
+Deux défauts de test relevés en cours de route, tous deux par mutation : muter le store en
+direct ne publie rien (donc « le congédié ne reçoit plus » était vrai sans que personne n'ait
+émis), et le désabonnement seul suffisait à satisfaire l'assertion — c'est le sens **inverse**,
+« le congédié ne publie plus », qui mord sur la déconnexion réelle.
+
+**Les gabarits : changement de paradigme demandé, non commencé.** Le symptôme rapporté est « il
+rajoute une case à droite ». La sonde dit **l'inverse** : sans mur, l'empreinte est un losange
+symétrique de 49 cases (rayon 4) ; dès qu'un mur existe **n'importe où sur l'étage**, il en reste
+46 — les pointes haut, bas et gauche disparaissent, et **celle de droite est la seule correcte**.
+Cause : le polygone de sweep approche le cercle de portée par des **cordes**, qui coupent en
+deçà ; les cases à distance exactement égale au rayon tombent dehors, sauf à l'angle 0 où le
+sweep émet un sommet et où l'`eps` de `isPointInPolygon` les fait basculer dedans.
+La demande, elle, est ailleurs : une **forme réelle** (rond, cône), dimensionnée en cases,
+**non ancrée à la grille**, sélectionnable et déplaçable, qui épouse les murs si possible. Deux
+choses à savoir avant de chiffrer : le défaut ci-dessus **disparaît avec la peinture par cases**,
+et « épouser les murs » est la partie **déjà faite** — un `ctx.clip()` sur le polygone de sweep,
+que `js/vision/sweep.js` produit déjà pour ce même calcul. Le coût réel est la sélection et le
+glissement d'un objet non ancré, plus un `origin` qui devient un point carte : schéma, événement
+réseau, vue joueurs et tests. La même cause survivra sous une autre forme — une forme découpée
+par le polygone montrera des **cordes plates** sur son pourtour si la résolution angulaire du
+sweep est trop grossière.
+
 ## Suite produit
 
 Avancement mesuré contre les lots du cahier des charges §11, au 3 août 2026.
@@ -766,7 +830,7 @@ Relevé pour éviter de confondre « le plateau est solide » et « le produit e
 |---|---|
 | **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
 | **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
-| **2 — Lignes de vue, portes & tactique** | **9 sur 13 validés, neuf tranches livrées — l'intégralité du code du lot est écrite.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’une demi-case ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée. **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n'a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) ferme le critère 3** : gabarit circulaire, occlusion au sweep. La mesure a démenti le CdC §5.9 sur ce point — l'occlusion par arêtes bloquées, qu'il proposait, écarte de 3 cases en moyenne et de 11 dans le pire cas relevé, la boule de feu contournant le coin en marchant. Les cases affectées sont calculées **au placement par le MJ** et publiées avec le gabarit : la tablette n'exécute aucun sweep. **L-09 (05/08) est livrée** — quatorze états, liste close, trois paliers d'affichage, correction de géométrie écran pour les marqueurs et l'élévation. **Ne restent que trois critères décochés** — 10 et 11 attendent la tablette, et 4 (marqueurs) attend la table de jeu. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
+| **2 — Lignes de vue, portes & tactique** | **9 sur 13 validés, neuf tranches livrées — l'intégralité du code du lot est écrite.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’un **quart** de case — une demi-case à la livraison, réduite le 05/08 après la première vraie table, voir « Retour de table » plus bas ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée. **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n'a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) ferme le critère 3** : gabarit circulaire, occlusion au sweep. La mesure a démenti le CdC §5.9 sur ce point — l'occlusion par arêtes bloquées, qu'il proposait, écarte de 3 cases en moyenne et de 11 dans le pire cas relevé, la boule de feu contournant le coin en marchant. Les cases affectées sont calculées **au placement par le MJ** et publiées avec le gabarit : la tablette n'exécute aucun sweep. **L-09 (05/08) est livrée** — quatorze états, liste close, trois paliers d'affichage, correction de géométrie écran pour les marqueurs et l'élévation. **Ne restent que trois critères décochés** — 10 et 11 attendent la tablette, et 4 (marqueurs) attend la table de jeu. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |

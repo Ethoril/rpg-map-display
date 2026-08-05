@@ -13,9 +13,14 @@ import { WallsLayer } from '../render/layers/walls.js';
 import { TemplatesLayer, computeTemplateCells } from '../render/layers/templates.js';
 
 import { PointerInput } from '../input/pointer.js';
+import { findHitPortal } from '../input/portalHit.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
-import { GM_SESSION_STORAGE_KEY, VISION_MAX_RANGE_CELLS } from '../core/constants.js';
+import {
+  GM_SESSION_STORAGE_KEY,
+  VISION_MAX_RANGE_CELLS,
+  SESSION_EVICT_GM_EVENT,
+} from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
 import { snapWallVertex, findWallAt } from '../ui/gm/wallEditor.js';
@@ -26,9 +31,11 @@ import {
   connectSession,
   createSessionCode,
   normalizeSessionId,
+  showEvictionOverlay,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
+import { getPresenceList, listOtherGmClients } from '../state/presence.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 /** @typedef {import('../core/types.js').MapPoint} MapPoint */
@@ -563,9 +570,51 @@ export async function bootstrapGMApp(options = {}) {
 
   /** @type {(() => void)|null} */
   let unsubscribeEvents = null;
+
+  /**
+   * Congédie cette session MJ, parce qu'un autre poste a repris la main.
+   *
+   * L'ordre compte : on cesse d'abord d'écouter, puis on coupe le transport — l'inverse
+   * laisserait passer les événements déjà en vol vers un store qu'on vient d'abandonner. Le
+   * minuteur d'instantané est annulé pour la même raison : il écrirait l'état d'un poste qui
+   * n'a plus autorité.
+   *
+   * @param {string} [label] Étiquette du poste qui a demandé l'éviction, si connue
+   */
+  function acceptEviction(label) {
+    unsubscribeEvents?.();
+    unsubscribeEvents = null;
+    if (snapshotTimer !== null) {
+      clearTimeout(snapshotTimer);
+      snapshotTimer = null;
+    }
+    try {
+      transport?.disconnect();
+    } catch (err) {
+      // Un transport déjà tombé ne doit pas empêcher l'écran de s'afficher.
+      console.warn('Déconnexion du transport après éviction :', err);
+    }
+    networkStatus.update('error', 'session MJ reprise sur un autre écran');
+    showEvictionOverlay({ sessionId, label });
+  }
+
   if (transport) {
     unsubscribeEvents = transport.subscribe((event) => {
       if (transportExtended.isOwnEvent?.(event)) return;
+
+      // Une éviction n'est pas une mutation de l'état de jeu : elle ne passe pas par
+      // `applyNetworkEvent`, qui l'ignore d'ailleurs silencieusement côté joueurs. Et le test
+      // d'événement propre ci-dessus suffit à ne pas se congédier soi-même — c'est lui qui
+      // distingue l'écho de sa propre publication de la demande d'un autre poste.
+      if (event.type === SESSION_EVICT_GM_EVENT) {
+        // L'étiquette du poste qui congédie n'est pas dans le payload : elle est lue dans le
+        // registre de présence à partir du `clientId` que le transport attache à tout
+        // événement. Un poste qui se décrirait lui-même dans son payload donnerait une
+        // deuxième source à tenir d'accord avec la première.
+        const auteur = getPresenceList().find((c) => c.clientId === event.clientId);
+        acceptEviction(auteur?.label);
+        return;
+      }
 
       // Position d'avant, lue AVANT que l'événement ne la remplace. Le payload porte
       // normalement `from`, mais s'y fier seul laisserait le trajet non révélé sur un
@@ -659,6 +708,19 @@ export async function bootstrapGMApp(options = {}) {
               by: 'gm',
             });
           }
+        },
+        // Le panneau affiche et demande ; il ne connaît ni le registre de présence ni le
+        // `clientId` du transport. Les deux restent ici.
+        getOtherGmSessions: () => listOtherGmClients(transportExtended?.clientId ?? ''),
+        onEvictOtherGms: () => {
+          if (!transport) return false;
+          transport.publish({
+            type: SESSION_EVICT_GM_EVENT,
+            payload: {},
+            at: Date.now(),
+            by: 'gm',
+          });
+          return true;
         },
       })
     : null;
@@ -1003,60 +1065,5 @@ if (typeof document !== 'undefined' && document.readyState !== 'loading') {
   document.addEventListener('DOMContentLoaded', autoStart, { once: true });
 }
 
-/**
- * Calcule la distance euclidienne entre un point et un segment en pixels carte.
- * @param {{x: number, y: number}} pt
- * @param {{x: number, y: number}} a
- * @param {{x: number, y: number}} b
- * @returns {number}
- */
-function distancePointToSegment(pt, a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) {
-    return Math.hypot(pt.x - a.x, pt.y - a.y);
-  }
-  let t = ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  const projX = a.x + t * dx;
-  const projY = a.y + t * dy;
-  return Math.hypot(pt.x - projX, pt.y - projY);
-}
-
-/**
- * Recherche le portail le plus proche sous le tap dans la capsule de 0.5 case.
- *
- * @param {import('../grid/GridAdapter.js').GridAdapter} grid
- * @param {import('../core/types.js').Level} activeLevel
- * @param {{x: number, y: number}} mapPos
- * @returns {import('../core/types.js').Portal|null}
- */
-function findHitPortal(grid, activeLevel, mapPos) {
-  if (!activeLevel.portals || activeLevel.portals.length === 0) return null;
-
-  const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-  const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-  const gridScale = Math.abs(origin1.x - origin0.x);
-  const maxDist = 0.5 * gridScale;
-
-  /** @type {{portal: import('../core/types.js').Portal, dist: number}|null} */
-  let best = null;
-
-  for (const portal of activeLevel.portals) {
-    const pA = grid.mapFromCellPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
-    const pB = grid.mapFromCellPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
-    const dist = distancePointToSegment(mapPos, pA, pB);
-    if (dist < maxDist) {
-      if (
-        !best ||
-        dist < best.dist - 1e-6 ||
-        (Math.abs(dist - best.dist) <= 1e-6 && portal.id < best.portal.id)
-      ) {
-        best = { portal, dist };
-      }
-    }
-  }
-
-  return best ? best.portal : null;
-}
+// `findHitPortal` et `distancePointToSegment` vivaient ici en double avec la vue joueurs.
+// Elles sont désormais dans `js/input/portalHit.js`, avec leur tolérance.
