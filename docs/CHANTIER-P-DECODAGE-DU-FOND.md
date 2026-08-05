@@ -91,28 +91,79 @@ préparées.
    `invalidate()` quand la promesse se résout — la frame suivante est nette.
 3. ⭐ **« Présumé chaud » est une présomption assumée, et c'est le cœur du correctif.** Rien ne
    permet de demander au navigateur si les pixels sont encore là. On tranche donc par une règle :
-   chaud = une peinture pleine taille a eu lieu il y a moins de **4 s** (sous les 5,6 s observés
-   chauds au §1). Ce qui rend la règle sûre, c'est que **ses deux erreurs sont invisibles** :
+   chaud = **l'image a été décodée il y a moins de 4 s** (sous les 5,6 s observés chauds au §1).
+   Ce qui rend la règle sûre, c'est que **ses deux erreurs sont invisibles** :
    - présumé froid alors qu'il était chaud → `decode()` se résout en une micro-tâche, une seule
      frame floue, soit ~16 ms ;
    - réellement froid → la doublure couvre les ~500 ms.
 
    C'est ce qui permet de traiter un état inobservable sans jamais bloquer : on ne cherche pas à
    savoir, on borne le coût de se tromper.
-4. **`decode()` ne garantit rien sur la rétention** — il dit seulement que l'image peut être peinte
+
+4. ⛔ **La machine à états s'écrit en entier, transitions comprises.** Formuler la règle comme
+   « une *peinture* pleine taille a eu lieu il y a moins de 4 s » — ce que disait une version
+   antérieure de ce brief — donne un état **sans sortie** : le chemin froid ne peint jamais en
+   pleine taille, donc rien ne peut plus rendre l'état chaud, la frame suivante est froide à son
+   tour, et l'`invalidate()` du décodage relance une frame froide. Résultat : **boucle infinie à
+   60 fps et carte définitivement floue.** Ce qui manque est une seule transition — c'est la
+   *résolution du décodage*, et non la peinture, qui fait foi :
+
+   ```
+   chaud = (now - decodedAt) < 4000
+
+   dessin pleine taille réussi   → decodedAt = now
+   decode() résolu               → decodedAt = now ; decodePending = false ; invalidate()
+   chemin froid et !decodePending → decodePending = true ; decode()
+   ```
+
+   Avec cette transition, la frame qui suit le décodage est chaude, peint net, repousse l'échéance,
+   et **la boucle s'arrête d'elle-même**. Pendant l'interaction continue, chaque peinture pleine
+   taille repousse `decodedAt`, donc la doublure n'apparaît jamais — critère 3 du §6.
+   Le garde `decodePending` n'est pas décoratif : sans lui chaque frame froide relance un décodage,
+   et les deux vues d'un même onglet en lancent deux sur la même entrée.
+
+5. **Une seule horloge, et elle est passée en paramètre.** Ce dépôt a déjà payé un bug d'horloges
+   non comparables, et les deux sont en circulation dans ce fichier même : la sonde du chantier N
+   utilise `performance.now()`, `renderAll` passe `now: Date.now()` aux couches portes et pions.
+   Mélanger les deux donne un écart de 1,7 × 10¹² et un état chaud permanent, **sans aucun symptôme
+   avant la table**. `render` reçoit donc `now` dans ses `options`, comme `portals` et `tokens`, et
+   s'en sert pour la comparaison **comme** pour la mise à jour. Bénéfice second, et il n'est pas
+   accessoire : l'horloge devient injectable, donc la règle de chaleur est testable sous Node.
+
+6. **Le rectangle de destination se calcule une fois, et il est le même pour les deux sources.**
+   Depuis `naturalWidth` / `naturalHeight` de l'image pleine taille — les deux restent lisibles même
+   quand les pixels ont été libérés. La doublure et l'image nette se dessinent dans **ce** rectangle,
+   sinon la carte se décale au passage du flou au net et l'art ne s'aligne plus avec la brume, les
+   murs et les pions, qui sont en espace carte.
+
+7. **Où vit l'état, et le cas `setImage`.** `decodedAt`, `decodePending` et la doublure sont des
+   propriétés de l'**image décodée**, donc de l'entrée de cache — partagée par URL entre les deux
+   vues d'un onglet, ce qui est exactement le comportement voulu : une vue qui garde le fond chaud
+   le garde chaud pour l'autre. L'instance ne connaît aujourd'hui que `this.image` : il lui faut
+   donc une référence à l'entrée courante. `setImage()` (ligne 169) n'a pas d'entrée — il
+   court-circuite le cache pour l'outil local et la calibration. Tranché : **il déclare son image
+   chaude en permanence et ne construit pas de doublure.** Ce sont des images locales, petites, et
+   aucun chemin ne doit y décoder en synchrone.
+
+8. **`decode()` ne garantit rien sur la rétention** — il dit seulement que l'image peut être peinte
    sans bloquer, maintenant. La doublure est le filet, pas l'appel à `decode()`.
 
 ## 5. Les pièges, tous déjà payés dans ce dépôt
 
-1. ⛔ **Le rendu est à la demande.** Si `invalidate()` n'est pas appelé quand le décodage se résout,
-   la carte nette ne revient **jamais** avant le geste suivant. C'est la première façon de casser
-   cette application, et le fog l'a déjà payée.
+1. ⛔ **Le rendu est à la demande, et ça coupe des deux côtés.** Si `invalidate()` n'est pas appelé
+   quand le décodage se résout, la carte nette ne revient **jamais** avant le geste suivant — le fog
+   l'a déjà payée. Et si l'état chaud n'a pas de transition d'entrée (§4.4), le même `invalidate()`
+   devient une **boucle infinie**. Les deux fautes tiennent dans la même ligne de code, en sens
+   opposés : la seule façon de ne pas les commettre est d'écrire les transitions avant le rendu, pas
+   de raisonner sur une frame isolée.
 2. ⛔ **Ne pas mettre huit `ImageBitmap` pleine taille dans le LRU** : 8 × 245 Mio. La doublure est
    petite *par construction*, c'est ce qui autorise à en garder plusieurs.
 3. La doublure se construit hors frame, **jamais** dans `render`.
-4. `setImage()` (ligne 169) court-circuite le cache partagé — outil local, calibration d'image. Il
-   doit soit construire sa doublure, soit s'en passer proprement, sans laisser un chemin où
-   `render` décode en synchrone.
+4. ⛔ **Ne pas faire disparaître le chemin froid des tests en les « adaptant ».** `testBackgroundLoad`
+   (`tests/mountStage.mjs:148`) rend le statut, le compte d'invalidations et le pixel central. Le
+   faire *attendre la promesse de décodage avant de capturer* le rend vert sans effort — et supprime
+   le seul endroit du dépôt où la peinture du chemin froid s'observe. Ce que la sonde doit voir doit
+   rester visible : ajouter un chemin froid explicite, pas neutraliser celui qui existe.
 5. ⚠ **Le faux objet-image de `tests/mountStage.mjs:161` n'est pas une image** : c'est un objet nu,
    sans `decode()`, sans pixels, que `createImageBitmap` refusera. Le code doit détecter l'absence
    et continuer. Et **ne pas « adapter » le mock en lui greffant un faux `decode()` qui résout
@@ -134,10 +185,37 @@ préparées.
    nette.
 3. **Pendant l'interaction continue, aucune frame ne dessine la doublure.** Sinon le correctif a
    introduit un scintillement, ce qui serait pire que le défaut.
-4. Mémoire retenue par les doublures **mesurée** et sous 8 Mio, pas estimée.
-5. `MAX_PREPARED_TEXTURE_PX` inchangé à 8192, aucune carte à réexporter, aucune perte de densité.
-6. **La tablette** : c'est là que le à-coup était le plus fort, et la sonde n'y est pas. Le
-   constater à la main fait partie du chantier, pas après.
+4. ⭐ **La boucle se termine, et c'est gardé par un test.** Deux rendus froids consécutifs : le
+   second ne redessine pas la doublure et ne relance pas de décodage. C'est le test qui attrape la
+   faute du §4.4, et c'est le plus important du chantier — un correctif qui boucle à 60 fps sur la
+   tablette est pire que le à-coup qu'il remplace.
+5. Mémoire retenue par les doublures **mesurée** et sous 8 Mio, pas estimée.
+6. `MAX_PREPARED_TEXTURE_PX` inchangé à 8192, aucune carte à réexporter, aucune perte de densité.
+7. **La tablette** : c'est là que le à-coup était le plus fort, et la sonde n'y est pas. Le
+   constater à la main fait partie du chantier, pas après. Y juger aussi la **lisibilité de la
+   doublure au zoom de combat** : 1024 px étirés sur toute la carte passent à la vue « carte
+   entière », où ils sont encore sur-échantillonnés, mais de près ce sera très flou. Si ça se lit
+   comme « c'est cassé » plutôt que comme « ça arrive », 1536 px coûtent ~9 Mio et rouvrent le
+   critère 5.
+
+⛔ **Le statut ne passe pas à « livré » à l'écriture du code.** Les critères 1, 5 et 7 exigent une
+mesure et une table : aucun des trois ne peut être vrai à l'instant où la porte passe au vert. Le
+statut correct entre les deux est **« code écrit, mesure de confirmation à faire »**, et la sonde du
+chantier N reste en place jusque-là (piège n°7). Ce dépôt a déjà confondu « livré » et « validé ».
+
+### Les trois tests qui doivent exister
+
+`background.js` n'a aujourd'hui **aucun test unitaire** — il n'est couvert qu'en e2e à travers
+`tests/mountStage.mjs`. Or l'essentiel de ce chantier est une règle de temps, donc de la logique
+pure, donc du ressort de la porte unitaire dès que l'horloge est injectée (§4.5) :
+
+1. **`tests/background.test.mjs` (nouveau) — la règle de chaleur.** `now` piloté par le test :
+   chaud sous 4 s, froid au-delà, et `decodedAt` repoussé par les deux transitions du §4.4.
+2. **Deux rendus froids consécutifs** — le critère 4 ci-dessus. Un seul décodage lancé, une seule
+   invalidation, et le second rendu n'est pas un rendu de doublure.
+3. **Le chemin froid dessine bien la doublure** et `render` rend la main sans décoder en synchrone —
+   là où le pixel central se lit, c'est-à-dire dans `mountStage`, sans supprimer l'observation
+   existante (piège n°4).
 
 ## 7. Ce qui n'est PAS dans ce chantier
 
