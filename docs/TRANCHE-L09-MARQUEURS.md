@@ -109,11 +109,25 @@ palier lisible pour afficher davantage d'illisible.
 Un seul critère, le **diamètre du pion à l'écran** `D = sizeCells × pxPerCell × zoom`, calculé
 pour chaque pion.
 
-| Palier | Condition | Ce qui s'affiche |
+| Palier | Condition | Emplacements | Diamètre d'un badge |
+|---|---|---|---|
+| **Icônes** | `D × 0,26 ≥ 14 px`, soit `D ≥ 54 px` | **3, jamais 4** (§3) | `D × 0,26` |
+| **Points de catégorie** | `D ≥ 20 px` | **4**, un par catégorie présente, dédoublonnés | `D × 0,22` |
+| **Point unique** | `D < 20 px` | 1 | `D × 0,22`, plancher 3 px |
+
+**Les deux ratios sont différents, et ce n'est pas une négligence.** Une rangée de `n`
+emplacements de ratio `r` espacés de 1,1 occupe `r × (1,1n − 0,1)` fois le diamètre. Calculé :
+
+| | 3 emplacements | 4 emplacements |
 |---|---|---|
-| **Icônes** | `D × 0,26 ≥ 14 px`, soit `D ≥ 54 px` | jusqu'à **3** icônes, puis un pastillon `+N` |
-| **Points de catégorie** | `D ≥ 20 px` | jusqu'à **4** points, un par catégorie présente, dédoublonnés |
-| **Point unique** | `D < 20 px` | **un** point neutre, « il se passe quelque chose » |
+| ratio 0,26 | 0,832 D — tient | **1,118 D — déborde** |
+| ratio 0,22 | 0,704 D — tient | 0,946 D — tient |
+
+Le palier des points a besoin de **quatre** emplacements, puisqu'il y a quatre catégories : il
+lui faut donc 0,22. Le palier des icônes n'en a besoin que de trois et peut se payer 0,26,
+c'est-à-dire une icône plus grande — ce qui est exactement ce qu'on veut là où l'on dessine un
+glyphe et non une pastille de couleur. Au bas de son palier, à `D = 20 px`, un point fait
+4,4 px et les quatre occupent 18,9 px.
 
 Vérifié sur la plage réelle, `pxPerCell` 140 :
 
@@ -179,11 +193,30 @@ seraient floues sur un écran dense.
 
 ---
 
-## 3. Le plafond de trois, et l'ordre qui décide qui tombe
+## 3. Trois emplacements, et l'ordre qui décide qui tombe
 
-Trois icônes au plus, puis un pastillon `+N`. Reste à dire **lesquelles trois**, et la réponse
-ne peut pas être « les trois premières du document » : cette liste est alphabétique, et
-tronquer alphabétiquement masquerait `unconscious` derrière `assourdi`. Absurde à la table.
+> **Correction du 05/08/2026.** Ce brief a d'abord écrit « jusqu'à trois icônes, **puis** un
+> pastillon `+N` ». C'est arithmétiquement impossible : cela fait **quatre** emplacements, et
+> quatre emplacements à 0,26 occupent 1,118 fois le diamètre du pion (§2). Le plan
+> d'implémentation avait fidèlement repris la contradiction — `BADGE_MAX_ICONS = 3` **plus** un
+> `overflowCount` à dessiner.
+
+**La rangée compte trois emplacements, jamais quatre, et le compte occupe le troisième.**
+
+| Marqueurs portés | Ce qui s'affiche |
+|---|---|
+| 1 à 3 | 1 à 3 icônes |
+| 4 et plus | **2 icônes + `+N`**, où `N` = nombre de marqueurs non montrés |
+
+Un pion portant cinq marqueurs affiche donc deux icônes et `+3`. C'est moins d'information
+qu'espéré, et c'est le prix d'une icône lisible : élargir la rangée à quatre emplacements
+imposerait de retomber à 0,22, donc des glyphes de 11,9 px au bas du palier au lieu de 14 —
+sous le seuil de lisibilité qui définit ce palier. La liste complète se lit dans le panneau MJ
+(§5.5), qui est là pour ça.
+
+Reste à dire **lesquelles** tombent, et la réponse ne peut pas être « les premières du
+document » : cette liste est alphabétique, et tronquer alphabétiquement masquerait
+`unconscious` derrière `assourdi`. Absurde à la table.
 
 **Les badges se dessinent toujours dans un ordre canonique, jamais dans l'ordre d'insertion**
 — sinon la rangée se réorganise sous l'œil du MJ à chaque ajout. Cet ordre canonique est aussi
@@ -264,8 +297,14 @@ d'appel.
 Dans `js/core/constants.js`, source unique partagée par le schéma, le rendu et l'interface :
 `STATUS_MARKER_IDS` (les quatorze, dans l'ordre canonique du §3),
 `STATUS_MARKER_CATEGORY`, `STATUS_MARKER_LABEL_FR`, puis `BADGE_DIAMETER_RATIO = 0.26`,
-`BADGE_ICON_MIN_PX = 14`, `BADGE_DOT_MIN_TOKEN_PX = 20`, `BADGE_MAX_ICONS = 3`,
-`BADGE_RASTER_STEP_PX = 2`, `STATUS_ICON_CACHE_LIMIT = 128`.
+**`BADGE_DOT_DIAMETER_RATIO = 0.22`**, `BADGE_ICON_MIN_PX = 14`, `BADGE_DOT_MIN_TOKEN_PX = 20`,
+**`BADGE_DOT_MIN_PX = 3`**, `BADGE_ROW_SLOTS = 3`, `BADGE_RASTER_STEP_PX = 2`,
+`STATUS_ICON_CACHE_LIMIT = 128`.
+
+> **`BADGE_ROW_SLOTS = 3` remplace `BADGE_MAX_ICONS = 3`**, et le renommage porte la
+> correction du §3 : trois **emplacements**, dont le dernier devient le compte en cas de
+> débordement. Nommer la constante « max icônes » invitait précisément à dessiner un quatrième
+> badge à côté des trois.
 
 Trois tables et non une : la catégorie sert au rendu, le libellé à l'interface MJ, et l'ordre
 au rendu comme à la troncature. Les réunir en un objet unique obligerait le schéma à importer
@@ -397,8 +436,10 @@ et idempotent. Un tableau de marqueurs **est** une valeur absolue. Il n'y a donc
    central** — c'est exactement ce que le code actuel ne fait pas (§1.2).
 2. **Le palier suit le diamètre du pion, pas le zoom.** À un zoom donné, un pion de trois
    cases affiche ses icônes quand un pion d'une case en est encore aux points.
-3. Un pion portant cinq marqueurs affiche **trois icônes et `+2`**, les trois étant les
-   premières de l'ordre canonique.
+3. Un pion portant cinq marqueurs affiche **deux icônes et `+3`**, les deux étant les
+   premières de l'ordre canonique — trois emplacements au total, dont le dernier porte le
+   compte. Un pion en portant exactement trois affiche **trois icônes et aucun compte**.
+   La rangée ne dépasse jamais 0,832 fois la largeur du pion.
 4. Un pion portant `ablaze`, `bleeding` et `poisoned` au palier intermédiaire affiche **un
    seul** point rouge, pas trois.
 5. Le badge d'élévation garde lui aussi sa taille à l'écran, et `+2` reste lisible à la vue
