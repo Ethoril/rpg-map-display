@@ -2,6 +2,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { ICONS, assertPaintsWhiteOnly } from '../scripts/install-status-icons.mjs';
 
 import {
   getBadgeTier,
@@ -196,4 +200,40 @@ test('6. Validation du Schéma pour token.markers', () => {
   const errs2 = validateCampaign(campaign);
   assert.equal(errs2.length, 1);
   assert.match(errs2[0], /marqueur d'état en doublon "prone"/);
+});
+
+test('7. Les quatorze fichiers d\'icônes existent et ne peignent que du blanc', () => {
+  // Le nom de fichier EST l'identifiant (CdC Q7) : la table de l'installateur et la liste
+  // close des marqueurs n'ont donc pas le droit de diverger.
+  assert.deepEqual(Object.keys(ICONS).sort(), [...STATUS_MARKER_IDS].sort());
+
+  for (const id of STATUS_MARKER_IDS) {
+    const path = fileURLToPath(new URL(`../assets/icons/status/${id}.svg`, import.meta.url));
+    const svg = readFileSync(path, 'utf8').trim();
+    // Un fond noir laissé en place masquerait le pion, et une icône sans dimension
+    // intrinsèque ne se dessine pas de façon fiable via drawImage : les deux échouent à
+    // la table de jeu, pas à l'exécution. D'où le contrôle ici, sur les fichiers réels.
+    const { size, whiteRefs } = assertPaintsWhiteOnly(svg, id);
+    assert.ok(size > 0, `${id} : dimension nulle`);
+    assert.ok(whiteRefs > 0, `${id} : aucune couleur`);
+  }
+
+  // Et la vérification mord : un anneau blanc sans `fill` se remplirait de noir.
+  assert.throws(
+    () =>
+      assertPaintsWhiteOnly(
+        '<svg width="256" height="256" viewBox="0 0 256 256"><circle stroke="#fff" r="101"/></svg>',
+        'sonde'
+      ),
+    /peindrait en noir/
+  );
+  // …et un carré de fond conservé, de même.
+  assert.throws(
+    () =>
+      assertPaintsWhiteOnly(
+        '<svg width="512" height="512" viewBox="0 0 512 512"><path d="M0 0h512v512H0z"/><path fill="#fff" d="M1 1"/></svg>',
+        'sonde'
+      ),
+    /peindrait en noir/
+  );
 });

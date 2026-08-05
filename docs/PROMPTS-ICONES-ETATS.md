@@ -69,6 +69,10 @@ Pour assurer la cohérence visuelle sur l'ensemble de votre UI, vous pouvez ajou
   donc une armure qui cède. Or la table des couleurs de ce document range `broken.svg` dans
   Psychologie / Mental, et le bouclier disait l'inverse. C'est bien l'état mental qui est
   visé ; le cœur brisé a été écarté au passage, il se lit « chagrin d'amour ».
+  **Renversé le 05/08/2026** : l'icône en service est `delapouite/shattered-heart`, soit
+  précisément le cœur brisé — arbitrage de l'illustratrice consultée, contre celui-ci. La
+  crainte du « chagrin d'amour » n'était donc pas partagée ; la silhouette prostrée, elle,
+  demandait un tracé complexe pour un badge de 14 px. La catégorie ne change pas.
 - **Prompt :**
   ```text
   Flat vector icon of a collapsed despairing human silhouette, head buried in hands, hunched shoulders, mental break status badge, bold silhouette, high contrast, isolated white background
@@ -97,6 +101,13 @@ Pour assurer la cohérence visuelle sur l'ensemble de votre UI, vous pouvez ajou
 
 ### 8. Hémorragique (Bleeding)
 - **Concept visuel :** Deux ou trois gouttes de sang épaisses alignées ou une goutte principale entaillée.
+  **Tranché le 05/08/2026** : l'icône en service est `sbed/water-drop`, soit **une** goutte et
+  non trois, et une goutte d'eau plutôt que de sang. Deux mesures ont conduit là. La première
+  a écarté `lorc/bleeding-wound`, retenue le 04/08 : à 14 px elle était la moins encrée des
+  quatorze (15 %) et se diluait dans le disque du badge. La seconde a écarté les trois gouttes
+  de ce concept-ci, `lorc/droplets` (42 %), au profit d'une forme unique et pleine, mieux lue
+  à la taille réelle. **C'est la couleur du badge qui porte le sang** — la table des couleurs
+  en bas de ce document range `bleeding.svg` en rouge, et cela suffit.
 - **Prompt :**
   ```text
   Flat vector icon of three sharp blood droplets falling, bleeding status condition, bold clean graphic symbol, game UI badge, isolated white background
