@@ -42,6 +42,24 @@ donc :
 `cells` du payload de `template.place`, et la passe de remplissage par case de `TemplatesLayer`.
 C'est une tranche qui **retire** plus qu'elle n'ajoute, côté modèle.
 
+### ⚠ Conséquence manquée à la première rédaction : un critère coché du lot 2 tombe
+
+Le critère 3 du lot 2 est écrit, dans le CdC §11, mot pour mot :
+
+> - [x] Un gabarit circulaire **surligne les cases affectées** en respectant les murs.
+
+Il est **coché**, fermé par L-08. La décision (a) le rend faux **tel qu'il est rédigé** : sans
+cases surlignées, le critère n'est plus satisfait quoi que fasse la forme. Deux conséquences, et
+la seconde change le périmètre :
+
+1. **Le critère 3 doit être amendé lui aussi**, pas seulement le §5.9. Sans quoi le lot 2 repasse
+   de 10 sur 13 à 9 sur 13 — la liste d'acceptation du CdC *est* la définition de « fait ».
+2. **La découpe par les murs n'est donc plus optionnelle.** La demande disait « idéalement la
+   forme épouse les murs […] si trop compliqué on laisse tomber » ; or « en respectant les murs »
+   est la moitié du critère. L'abandonner ne reformulerait pas le critère, il le **perdrait**.
+   Comme la découpe est un `ctx.clip()` sur un polygone déjà calculé (§3.3), le coût ne justifie
+   pas de le perdre : **elle est exigée.**
+
 > ⚠ Conséquence directe sur le §3 : le défaut des pointes mangées et son correctif à 2 %
 > deviennent **sans objet**, puisqu'aucune case n'est plus énumérée. La mesure reste consignée
 > parce que **sa cause survit** : elle explique pourquoi un contour découpé par le polygone de
@@ -193,7 +211,10 @@ et le cas se produira dès la première boule de feu posée sur une porte, ou d�
 dont la pointe se pose sur le pion collé au mur.
 
 - **Proposition** : si l'origine tombe à moins d'ε d'un segment, la repousser de ε le long de la
-  normale, du côté où elle se trouvait. Déterministe, borné, invisible à l'écran.
+  normale, **du côté où elle se trouvait** — le côté se lit au signe du produit vectoriel, et il
+  doit être conservé, sinon un cône posé contre un mur se retrouverait à souffler dans la pièce
+  voisine. ε **en pixels carte** et non en cases : la valeur est numérique, elle n'a pas à suivre
+  le zoom ni la taille des cases. Déterministe, borné, invisible à l'écran.
 - À écarter : refuser le placement (le MJ ne comprendrait pas pourquoi son doigt ne prend pas),
   et ignorer le cas (le polygone serait arbitraire, donc le contour aussi — et le contour fait
   loi).
@@ -235,9 +256,28 @@ Inventaire des fichiers touchés, pour que le périmètre soit lisible avant d'o
 - `js/app/gm.js` — l'appel à `computeTemplateCells` au placement, et le passage des cases à la
   publication.
 
-⚠ Retirer `computeTemplateCells` **casse** `tests/templates.test.mjs` (ou l'équivalent) : ces
-tests portent sur une règle abandonnée, ils se **suppriment** avec elle. Ne pas les « adapter »
-pour les garder verts — un test conservé sur une règle morte est un test qui mesure le passé.
+⚠ Retirer `computeTemplateCells` **casse** `tests/templates.test.mjs`, et le tri est à faire
+test par test — « nettoyer » ou « réécrire » le fichier en bloc est trop vague pour être exécuté
+sans dommage. Sur les huit tests actuels :
+
+| test | sort |
+|---|---|
+| `isPointInPolygon` détermine… | **supprimé** — la fonction disparaît |
+| Énumération 5 / 13 / 29 / 49 cases | **supprimé** — règle abandonnée |
+| Occlusion : 21 cases contre 31 | **supprimé, mais son intention est transplantée** (voir ci-dessous) |
+| « Le centre de la case décide » | **supprimé** — règle abandonnée |
+| Store `placeTemplate` / `clearTemplates` | adapté : plus d'argument `cells` |
+| Schéma refuse un gabarit malformé | adapté : `origin` est un `MapPoint` |
+| Réseau `template.place` / `template.clear` | adapté, plus `template.move` |
+| Isolation : aucune formule euclidienne réinventée | à réexaminer selon ce qui reste |
+
+⛔ **Ne pas « adapter » les quatre premiers pour les garder verts** : un test conservé sur une
+règle morte mesure le passé, et il maintiendra en vie la fonction qu'il teste.
+
+⚠ **Mais l'intention du test d'occlusion doit survivre.** Il prouvait qu'un mur arrête l'effet —
+la moitié du critère 3 du lot 2. Le supprimer sans le remplacer ferait perdre la propriété en
+silence, avec une suite verte. Son remplaçant porte sur la **découpe** : une portion de forme
+derrière un mur n'est pas peinte.
 
 ### À écrire
 
@@ -250,10 +290,21 @@ pour les garder verts — un test conservé sur une règle morte est un test qui
 - `js/input/templateHit.js` (nouveau) — désignation sous le doigt : dans la pointe, dans le corps,
   ou dehors. **Logique pure, testable sous Node**, sur le modèle de `js/input/portalHit.js`. La
   taille de la zone « pointe » est une constante commentée, en pixels écran.
+  ⚠ **Et bornée par la taille de la forme à l'écran**, sinon la poignée avale le corps : à la vue
+  « carte entière » une case fait 33 px, donc une poignée fixe de 24 px ne laisse plus de zone
+  « corps » sur un cône de rayon 1 — la rotation devient impossible et rien ne le signale. Même
+  remède que le cadenas de porte : `min(taille fixe, fraction de la taille écran de la forme)`.
 - `js/core/constants.js` — angle du cône, taille de la poignée de pointe, ε de décollement de
   l'origine (§4).
 - `js/core/types.js` + `js/core/schema.js` — `origin: MapPoint`, sens dépendant de la forme
   (§2.1), convention de `directionDeg`, normalisation à la lecture des anciennes campagnes (§5).
+  ⚠ **`js/core/schema.js` ne peut pas importer `js/grid/*`** : la règle §2 d'`ARCHITECTURE.md`
+  n'autorise `core/*` qu'à importer `core/*`, et le test 6 du manifeste la vérifie fichier par
+  fichier. La conversion `{a, b}` → `{x, y}` doit donc se faire **en arithmétique sur place**, à
+  partir de `level.pxPerCell` et `level.grid.offsetX/offsetY` du niveau retrouvé par
+  `template.levelId` — et sur le **centre** de la case, `offset + (a + 0,5) × pxPerCell`, jamais
+  le coin : l'ancienne origine était le centre de sa case (L-08 §4), et prendre le coin
+  décalerait chaque gabarit migré d'une demi-case.
 - `js/app/gm.js` et `js/ui/player/` — la manipulation, avec la règle d'autorisation à l'émission
   (§2.3) et l'ordre des cibles (§2.2).
 - `js/app/networkEvents.js` — `template.move` portant position **et** direction.
@@ -304,7 +355,10 @@ défauts de _prédicat_, pas d'implémentation.**
    rotation — assertion sur `origin`, pas sur l'image.
 3. Un glisser depuis la **pointe** déplace ; un glisser depuis le **corps** pivote. Les deux se
    distinguent au point de départ, et le test le vérifie dans les deux sens.
-4. La forme **épouse les murs**, ou la tranche est livrée sans et c'est écrit ici — pas deviné.
+4. La forme **épouse les murs** — **exigé, non optionnel** : « en respectant les murs » est la
+   moitié du critère 3 du lot 2, et l'abandonner le perdrait au lieu de le reformuler (§1). Le
+   test transplante l'intention de l'ancien test d'occlusion : une portion de forme derrière un
+   mur n'est pas peinte.
 5. Un **joueur** peut déplacer et pivoter, **pas** poser ni effacer, et la règle est vérifiée à
    l'émission (L-05 §6.3).
 6. Une campagne persistée avec `origin: {a, b}` et une liste de cases se relit **sans perte et
@@ -318,6 +372,9 @@ défauts de _prédicat_, pas d'implémentation.**
 
 ## 10. Amendements requis
 
+- **CdC §11, critère 3 du lot 2** — à amender **et à laisser coché** : « surligne les cases
+  affectées » devient « dessine la zone d'effet ». Sans cet amendement, le critère est faux tel
+  qu'il est rédigé et le lot 2 retombe à 9 sur 13 (§1).
 - **CdC §5.9** — amendement daté : la forme réelle **remplace** le surlignage. La *raison d'être*
   du paragraphe est réécrite, pas seulement son rendu — l'arbitrage binaire est abandonné au
   profit d'un objet manipulable (§1).
