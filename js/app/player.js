@@ -378,6 +378,8 @@ export async function bootstrapPlayerApp(options = {}) {
             activeLevelHeightCells: activeLevel.heightCells,
             visibleCanvas,
             now: Date.now(),
+            zoom: camera.zoom,
+            resolution: stage.resolution,
           }
         );
         animationActive = result.animationActive;

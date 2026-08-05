@@ -1,6 +1,7 @@
 // @ts-check
 
 import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
+import { computeElevationBadgeLayout, drawStatusBadges } from '../statusBadges.js';
 
 const TOKEN_IMAGE_CACHE_LIMIT = 64;
 export const TOKEN_MOVE_STEP_MS = 160;
@@ -32,7 +33,10 @@ export const TOKEN_MOVE_STEP_MS = 160;
  *   visibleCanvas?: any,
  *   visibleAlpha?: Uint8Array|null,
  *   activeLevelWidthCells?: number,
- *   activeLevelHeightCells?: number
+ *   activeLevelHeightCells?: number,
+ *   zoom?: number,
+ *   resolution?: number,
+ *   invalidate?: () => void
  * }} RenderOptions
  */
 
@@ -224,7 +228,7 @@ export class TokensLayer {
       }
       result.animationActive ||= position.active;
       result.renderedTokenIds.push(token.id);
-      this._drawToken(ctx, grid, token, position, selectedTokenId === token.id);
+      this._drawToken(ctx, grid, token, position, selectedTokenId === token.id, options);
     }
     ctx.restore();
 
@@ -238,8 +242,9 @@ export class TokensLayer {
    * @param {Token} token
    * @param {{cellX: number, cellY: number}} position
    * @param {boolean} selected
+   * @param {RenderOptions} [options]
    */
-  _drawToken(ctx, grid, token, position, selected) {
+  _drawToken(ctx, grid, token, position, selected, options) {
     const sizeCells = Math.max(1, token.sizeCells || 1);
     const p0 = grid.mapFromCellPoint(position);
     const p1 = grid.mapFromCellPoint({
@@ -308,40 +313,36 @@ export class TokensLayer {
       ctx.restore();
     }
 
+    const zoom = options?.zoom && options.zoom > 0 ? options.zoom : 1;
+    const resolution = options?.resolution && options.resolution > 0 ? options.resolution : 1;
+
     if (typeof token.elevation === 'number' && token.elevation !== 0) {
-      const badgeRadius = Math.max(8, Math.min(14, width * 0.12));
-      const badgeX = p0.x + width - badgeRadius - 2;
-      const badgeY = p0.y + badgeRadius + 2;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.font = `bold ${Math.max(9, Math.round(badgeRadius * 1.1))}px sans-serif`;
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(token.elevation > 0 ? `+${token.elevation}` : `${token.elevation}`, badgeX, badgeY);
-      ctx.restore();
+      const { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible } = computeElevationBadgeLayout(width, zoom);
+      if (visible) {
+        const cx = p0.x + badgeX;
+        const cy = p0.y + badgeY;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, badgeRadiusMap, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1 / zoom;
+        ctx.stroke();
+        ctx.font = `bold ${Math.max(9, Math.round(badgeRadiusScreen * 1.1)) / zoom}px sans-serif`;
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(token.elevation > 0 ? `+${token.elevation}` : `${token.elevation}`, cx, cy);
+        ctx.restore();
+      }
     }
 
-    if (Array.isArray(token.markers) && token.markers.length > 0) {
-      const markerRadius = Math.max(3, Math.min(6, width * 0.05));
-      ctx.save();
-      ctx.fillStyle = '#facc15';
-      ctx.strokeStyle = '#111827';
-      for (let index = 0; index < token.markers.length; index++) {
-        const markerX = p0.x + markerRadius * 2 + index * markerRadius * 2.5;
-        const markerY = p0.y + height - markerRadius * 2;
-        ctx.beginPath();
-        ctx.arc(markerX, markerY, markerRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+    drawStatusBadges(ctx, token, p0, {
+      widthMap: width,
+      zoom,
+      resolution,
+      invalidate: options?.invalidate ?? this.invalidate.bind(this),
+    });
   }
 }

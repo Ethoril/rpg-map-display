@@ -116,3 +116,149 @@ export const FOG_VEIL_GM_EXPLORED = 0.25;
  */
 export const FOG_VEIL_PLAYER_UNEXPLORED = 1;
 export const FOG_VEIL_PLAYER_EXPLORED = 0.5;
+
+/**
+ * Les quatorze marqueurs d'état — **liste close**, CdC §12 Q7 tranchée le 04/08/2026.
+ *
+ * L'assertion de constance posée sur le littéral ci-dessous n'est pas décorative : elle fait
+ * de ce tableau une union de littéraux, dont `StatusMarker` est dérivé. `Object.freeze([...])`
+ * élargirait à `string` et viderait l'union de son sens — mesuré sur TypeScript 5.9.3. Ne pas
+ * la retirer, et ne pas non plus écrire cette assertion dans un commentaire de documentation :
+ * elle y serait lue comme une annotation de déclaration, et `const` n'est pas un type.
+ *
+ * **L'ordre est celui de la troncature**, du plus décisif au moins décisif : ce qui change ce
+ * qu'un personnage peut faire ce tour-ci passe devant ce qui lui coûte des points de vie.
+ * C'est un arbitrage de jeu, à confirmer après une séance qui verra cinq marqueurs sur un
+ * pion (`TRANCHE-L09-MARQUEURS.md` §3). L'ordre alphabétique masquerait `unconscious`
+ * derrière `deafened`, ce qui serait absurde à la table.
+ */
+export const STATUS_MARKER_IDS = /** @type {const} */ ([
+  'unconscious',
+  'prone',
+  'stunned',
+  'entangled',
+  'terror',
+  'fear',
+  'blinded',
+  'deafened',
+  'broken',
+  'frenzy',
+  'ablaze',
+  'bleeding',
+  'poisoned',
+  'surprised',
+]);
+
+/** @typedef {typeof STATUS_MARKER_IDS[number]} StatusMarker */
+/** @typedef {'damage'|'control'|'senses'|'mind'} StatusCategory */
+
+/**
+ * Catégorie de chaque état. Sert au palier intermédiaire, où quatre points dédoublonnés
+ * remplacent les icônes : « blessé **et** entravé », sans prétendre dire lequel.
+ *
+ * @type {Record<StatusMarker, StatusCategory>}
+ */
+export const STATUS_MARKER_CATEGORY = {
+  unconscious: 'senses',
+  prone: 'control',
+  stunned: 'control',
+  entangled: 'control',
+  terror: 'mind',
+  fear: 'mind',
+  blinded: 'senses',
+  deafened: 'senses',
+  broken: 'mind',
+  frenzy: 'mind',
+  ablaze: 'damage',
+  bleeding: 'damage',
+  poisoned: 'damage',
+  surprised: 'control',
+};
+
+/**
+ * Couleur de chaque catégorie. **Deux de ces valeurs ne sont pas libres.**
+ *
+ * `#ef4444` est déjà l'indicateur d'état des portails (`portals.js`) et la couleur par défaut
+ * d'un gabarit : collision assumée, rouge = dégâts vaut plus qu'une unicité de teinte, et un
+ * trait fin ne se confond pas avec un disque plein posé sur un pion.
+ *
+ * ⚠ `control` ne prend **pas** l'orange `#f97316`, qui est la couleur des murs
+ * (`walls.js:38`) — un point orange sur un pion et un mur orange se scannent ensemble sur
+ * l'écran de cast. Le jaune `#facc15` est déjà celui des points de marqueurs. Ne pas
+ * « harmoniser » vers l'orange plus tard : ce serait revenir à la collision évitée.
+ *
+ * @type {Record<StatusCategory, string>}
+ */
+export const STATUS_MARKER_CATEGORY_COLORS = {
+  damage: '#ef4444',
+  control: '#facc15',
+  senses: '#64748b',
+  mind: '#a855f7',
+};
+
+/**
+ * Libellés français, pour le sélecteur du panneau MJ uniquement.
+ *
+ * Table distincte des deux précédentes, et c'est délibéré : les réunir obligerait le schéma
+ * à importer des libellés d'interface (`CONVENTIONS.md` §7, identifiants en anglais).
+ *
+ * @type {Record<StatusMarker, string>}
+ */
+export const STATUS_MARKER_LABEL_FR = {
+  unconscious: 'Inconscient',
+  prone: 'À terre',
+  stunned: 'Sonné',
+  entangled: 'Empêtré',
+  terror: 'Terreur',
+  fear: 'Peur',
+  blinded: 'Aveuglé',
+  deafened: 'Assourdi',
+  broken: 'Brisé',
+  frenzy: 'Frénésie',
+  ablaze: 'En flammes',
+  bleeding: 'Hémorragique',
+  poisoned: 'Empoisonné',
+  surprised: 'Surpris',
+};
+
+/**
+ * Géométrie des badges. **Toutes ces valeurs sont en pixels ÉCRAN**, jamais en pixels carte :
+ * la couche de rendu travaille en espace carte et le zoom est appliqué par-dessus, donc une
+ * grandeur absolue s'écrit ici en pixels écran puis se divise par le zoom au dessin. Un
+ * garde-fou écrit dans le mauvais espace ne borne rien — c'était le défaut du chantier K, qui
+ * variait d'un facteur 50 sur la plage de zoom.
+ *
+ * Les deux ratios diffèrent parce que les deux paliers n'ont pas le même nombre
+ * d'emplacements. Une rangée de `n` badges de ratio `r` espacés de 1,1 occupe
+ * `r × (1,1n − 0,1)` fois le diamètre du pion : à 0,26 quatre emplacements débordent
+ * (1,118 D) quand trois tiennent (0,832 D) ; le palier des points en exige quatre — une
+ * catégorie chacun — d'où 0,22, qui tient en 0,946 D.
+ */
+export const BADGE_DIAMETER_RATIO = 0.26;
+export const BADGE_DOT_DIAMETER_RATIO = 0.22;
+
+/** Sous 14 px de badge, un glyphe de viewBox 512 devient une tache : on passe aux points. */
+export const BADGE_ICON_MIN_PX = 14;
+
+/** Sous 20 px de pion, même quatre points ne tiennent plus : un seul point neutre. */
+export const BADGE_DOT_MIN_TOKEN_PX = 20;
+
+/** Plancher d'un point, pour qu'il reste un point et non un pixel. */
+export const BADGE_DOT_MIN_PX = 3;
+
+/**
+ * Trois emplacements, **jamais quatre** — et le dernier porte le compte `+N` en cas de
+ * débordement. Nommer cette constante « max icônes » invitait à dessiner un quatrième badge
+ * à côté des trois, qui sortait du pion.
+ */
+export const BADGE_ROW_SLOTS = 3;
+
+/** Pas d'arrondi de la rastérisation, pour ne pas re-rastériser à chaque cran de pinch. */
+export const BADGE_RASTER_STEP_PX = 2;
+
+/**
+ * Plafond du cache de rastérisation. Dix tailles distinctes apparaissent sur toute la plage
+ * de zoom pour des pions de 1 à 3 cases, soit 140 entrées au pire théorique ; l'usage réel
+ * n'expose que trois à cinq états simultanés.
+ */
+export const STATUS_ICON_CACHE_LIMIT = 128;

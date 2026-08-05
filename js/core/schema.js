@@ -6,7 +6,20 @@
  * @typedef {import('./types.js').Token} Token
  */
 
+import { STATUS_MARKER_IDS } from './constants.js';
+
+/** @typedef {import('./constants.js').StatusMarker} StatusMarker */
+
 const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+const STATUS_MARKER_SET = new Set(STATUS_MARKER_IDS);
+
+/**
+ * Garde de type vérifiant si une valeur est un identifiant de marqueur d'état valide.
+ * @type {(v: unknown) => v is StatusMarker}
+ */
+export function isStatusMarker(val) {
+  return typeof val === 'string' && STATUS_MARKER_SET.has(/** @type {StatusMarker} */ (val));
+}
 
 /**
  * Valide si une valeur est une couleur CSS au format `#RRGGBB`.
@@ -758,6 +771,17 @@ export function validateCampaign(campaign) {
         !Array.isArray(token.markers)
       ) {
         errors.push(`Pion "${tokenId}" : objet non conforme au schéma Token`);
+      } else {
+        const seenMarkers = new Set();
+        for (const marker of token.markers) {
+          if (!isStatusMarker(marker)) {
+            errors.push(`Pion "${tokenId}" : marqueur d'état inconnu "${marker}"`);
+          } else if (seenMarkers.has(marker)) {
+            errors.push(`Pion "${tokenId}" : marqueur d'état en doublon "${marker}"`);
+          } else {
+            seenMarkers.add(marker);
+          }
+        }
       }
 
       const level = levelsById.get(token.levelId);

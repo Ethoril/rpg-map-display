@@ -450,6 +450,8 @@ export async function bootstrapGMApp(options = {}) {
             activeLevelId: activeLevel.id,
             now: Date.now(),
             dragPreview,
+            zoom: camera.zoom,
+            resolution: stage.resolution,
           }
         );
         animationActive = result.animationActive;

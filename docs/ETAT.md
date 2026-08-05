@@ -1,15 +1,13 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 4 août 2026 — **le lot 2 du CdC est à 9 critères sur 13, et tout son
-> code est écrit.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
+> Dernière mise à jour : 5 août 2026 — **le lot 2 du CdC est à 9 critères sur 13, et l'intégralité de son code est écrite.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
 > L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
-> de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet. Les trois critères
+> de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet, L-09 marqueurs d'état. Les trois critères
 > restants : les 10 et 11 attendent la Tab S9 FE, le 4 (marqueurs) attend la table.
 >
-> **Nuance du 04/08 au soir : L-09 n'attend plus rien pour être écrite.** La question Q7 — le
-> jeu de marqueurs — a été tranchée : quatorze états, liste close, icônes commitées dans
-> `assets/icons/status/`, brief dans `TRANCHE-L09-MARQUEURS.md`. Le lot 2 a donc **une tranche
-> de code encore à écrire**, ce que le chapeau précédent niait. Le critère 4 restera malgré
+> **L-09 est livrée le 5 août 2026.** Le jeu de marqueurs (Q7) comporte quatorze états, liste close,
+> les trois paliers d'affichage (icônes à 3 emplacements, points de catégorie, point unique) et la correction
+> de géométrie d'écran pour l'élévation (rayon de 8 à 14 px écran, seuil bas D < 40 px) et les marqueurs sous tout zoom. Le critère 4 reste malgré
 > tout décoché à sa livraison : « lisibles sur les trois écrans » se constate sur les trois
 > écrans.
 >
@@ -687,41 +685,7 @@ s'affichaient. Forcer la mise à jour ne changeait donc rien, et ne pouvait rien
    message MJ annonçait « la tablette » quel que soit le rôle du fautif. `listBuildMismatches`
    les rend tous, triés, et les deux vues nomment le rôle. Le bouton « Mettre à jour » ne
    s'affiche plus que si la page est **réellement** en retard : sur l'écran déjà à jour, il
-   promettait un remède qu'il ne pouvait pas tenir.
-
-> Le premier défaut est le plus instructif : comparer deux horloges sans référentiel commun ne
-> produit pas une erreur, mais une condition qui **s'inverse silencieusement**. Une borne à
-> sens unique sur une différence de temps mérite toujours la question « et si c'était négatif ? ».
-
-## Règles de sécurité Firebase — les seules qui protègent réellement
-
-La clé d'API est publique par conception (`firebase-config.js`) : **ce sont les règles, et
-elles seules, qui empêchent un tiers de lire ou d'écrire une campagne.** Sans compte de
-facturation, il n'y a aucun risque de coût ; le risque est l'accès aux données et l'épuisement
-du quota gratuit.
-
-> ✅ **Le mode test ne s'applique pas à ce projet** — confirmé par le mainteneur le 4 août 2026 :
-> les règles en liste blanche ci-dessus sont bien celles en place. Les deux pièges décrits juste
-> après sont donc **sans objet ici**, et notamment l'expiration à 30 jours : il n'y a pas
-> d'échéance qui court. Le paragraphe est conservé parce qu'il vaut pour tout projet Firebase
-> reparti du mode test — un second projet, un fork, une base de test séparée.
-
-**Deux pièges du mode test**, à vérifier avant toute séance : il autorise lecture et écriture
-**sans authentification**, et il **expire au bout de 30 jours** — après quoi tout casse, y
-compris en pleine partie.
-
-Chemins réellement utilisés par `FirebaseTransport`, et rien d'autre :
-
-| Service | Chemin |
-|---|---|
-| Realtime Database | `session/{code}/events`, `session/{code}/presence/{clientId}` |
-| Firestore | `campaigns/{code}` |
-
-Les règles en place sont une **liste blanche d'adresses**, plus strictes qu'un simple
-`auth != null` : seuls le compte du mainteneur, avec adresse vérifiée, et le compte technique
-de test sont admis. La console fait foi ; ce qui suit en est le reflet.
-
-Realtime Database. **La condition est portée au niveau `$sessionId`, pas sur `events` seul** —
+   promRealtime Database. **La condition est portée au niveau `$sessionId`, pas sur `events` seul** —
 et c'est un correctif, pas un détail de style : les règles RTDB ne se propagent pas
 latéralement, donc une condition posée sur `events` laisse `presence` **sans aucune règle, donc
 refusé**. Le code écrit `session/{code}/presence/{clientId}` toutes les 30 s et lit le nœud
@@ -802,7 +766,7 @@ Relevé pour éviter de confondre « le plateau est solide » et « le produit e
 |---|---|
 | **1a — Le plateau** | Code complet. 3 critères sur 11 restent ouverts, et ce sont des **mesures matérielles** : 30 fps sous cast, tenue thermique, limite de texture réelle |
 | **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). Un seul point reste ouvert et c’est une **mesure matérielle** : la lisibilité du badge sous cast |
-| **2 — Lignes de vue, portes & tactique** | **9 sur 13 validés, huit tranches livrées — tout le lot est écrit.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’une demi-case ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée. **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n’a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) ferme le critère 3** : gabarit circulaire, occlusion au sweep. La mesure a démenti le CdC §5.9 sur ce point — l'occlusion par arêtes bloquées, qu'il proposait, écarte de 3 cases en moyenne et de 11 dans le pire cas relevé, la boule de feu contournant le coin en marchant. Les cases affectées sont calculées **au placement par le MJ** et publiées avec le gabarit : la tablette n'exécute aucun sweep. **Ne restent que trois critères** — 10 et 11 attendent la tablette. **Le 4 attendait une partie jouée : il n'attend plus. Q7 est tranchée le 04/08/2026** — quatorze états, liste close, icônes tirées de game-icons.net et normalisées dans `assets/icons/status/` (`SOURCES.md` fait autorité, le nom de fichier **est** l'identifiant dans `token.markers`). **L-09 est donc à écrire, et c'est la seule tranche de code restante du lot** : brief dans `TRANCHE-L09-MARQUEURS.md`. Sa mesure préalable a trouvé un **défaut dans le code déjà livré** — les garde-fous de taille des badges de `tokens.js:312` et `tokens.js:332` sont écrits en espace *carte* alors qu'ils expriment une intention d'*écran*, si bien qu'ils varient d'un facteur 50 sur la plage de zoom : à la vue « carte entière », le badge d'élévation du chantier K fait 3,4 px de rayon avec `+2` dedans. L-09 corrige les deux, sinon le même pion porterait deux règles de taille contradictoires. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
+| **2 — Lignes de vue, portes & tactique** | **9 sur 13 validés, neuf tranches livrées — l'intégralité du code du lot est écrite.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’une demi-case ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée. **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n'a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) ferme le critère 3** : gabarit circulaire, occlusion au sweep. La mesure a démenti le CdC §5.9 sur ce point — l'occlusion par arêtes bloquées, qu'il proposait, écarte de 3 cases en moyenne et de 11 dans le pire cas relevé, la boule de feu contournant le coin en marchant. Les cases affectées sont calculées **au placement par le MJ** et publiées avec le gabarit : la tablette n'exécute aucun sweep. **L-09 (05/08) est livrée** — quatorze états, liste close, trois paliers d'affichage, correction de géométrie écran pour les marqueurs et l'élévation. **Ne restent que trois critères décochés** — 10 et 11 attendent la tablette, et 4 (marqueurs) attend la table de jeu. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
 | **3 — Étages & lumière** | 0 sur 6 |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |

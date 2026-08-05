@@ -1,10 +1,11 @@
 // @ts-check
-import { createToken, isPersistableAssetUrl, isValidHexColor } from '../core/schema.js';
+import { createToken, isPersistableAssetUrl, isValidHexColor, isStatusMarker } from '../core/schema.js';
 
 /**
  * @typedef {import('../core/types.js').TokenLibraryEntry} TokenLibraryEntry
  * @typedef {import('../core/types.js').Token} Token
  * @typedef {import('../core/types.js').Cell} Cell
+ * @typedef {import('../core/constants.js').StatusMarker} StatusMarker
  */
 
 /**
@@ -183,7 +184,7 @@ export function removeTokenEntry(catalog, id) {
  * @property {boolean} [playerMovable] - Déplaçable par les joueurs (défini selon kind par défaut)
  * @property {boolean} [locked] - Pion verrouillé (false par défaut)
  * @property {number} [elevation] - Élévation (0 par défaut)
- * @property {string[]} [markers] - Marqueurs d'état ([] par défaut)
+ * @property {StatusMarker[]} [markers] - Marqueurs d'état ([] par défaut)
  */
 
 /**

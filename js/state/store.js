@@ -721,7 +721,6 @@ export function removeWall(levelId, wall) {
  * - `cell`, `move` — la position appartient à `moveTokenToCell` et à `token.move`, qui
  *   portent l'animation déterministe. Deux chemins vers la même donnée en feraient diverger
  *   un des deux.
- * - `markers` — tranche L-09 du lot 2, dont le jeu de valeurs n'est pas arrêté (CdC Q7).
  * - `imageUrl` — remplacer l'image, c'est repasser par le générateur : un champ texte libre
  *   n'y apporterait qu'un moyen de casser l'affichage.
  */
@@ -737,6 +736,7 @@ const ALLOWED_TOKEN_PATCH_KEYS = new Set([
   'visionBright',
   'visionDim',
   'elevation',
+  'markers',
 ]);
 
 /**

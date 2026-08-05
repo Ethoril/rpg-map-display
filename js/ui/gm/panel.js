@@ -8,7 +8,8 @@ import { createFogTools } from './fogTools.js';
 import { createWallEditor } from './wallEditor.js';
 import { createTemplateTools } from './templateTools.js';
 import { VERSION } from '../../core/version.js';
-import { GM_SESSION_STORAGE_KEY } from '../../core/constants.js';
+import { GM_SESSION_STORAGE_KEY, STATUS_MARKER_IDS, STATUS_MARKER_LABEL_FR } from '../../core/constants.js';
+import { isStatusMarker } from '../../core/schema.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
@@ -143,6 +144,20 @@ export function createGMPanel(container, options = {}) {
 
             <label for="token-edit-locked" style="font-size: 0.85rem; color: #aaa;">Verrouillé :</label>
             <input type="checkbox" id="token-edit-locked" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+          </div>
+
+          <div id="token-markers-section" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333;">
+            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #4a90e2;">Marqueurs d'état</h4>
+            <div id="token-markers-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 0.5rem; font-size: 0.8rem;">
+              ${STATUS_MARKER_IDS.map(
+                (id) => `
+                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer; color: #ccc;">
+                  <input type="checkbox" class="token-marker-checkbox" value="${id}" disabled />
+                  <span>${STATUS_MARKER_LABEL_FR[id]}</span>
+                </label>
+              `
+              ).join('')}
+            </div>
           </div>
 
           <p id="token-edit-status" style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #888; min-height: 1rem;"></p>
@@ -585,6 +600,9 @@ export function createGMPanel(container, options = {}) {
   const tokenEditLocked = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-locked'));
   const tokenEditStatus = /** @type {HTMLElement} */ (container.querySelector('#token-edit-status'));
   const btnDeleteToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-delete-token'));
+  const markerCheckboxes = Array.from(
+    container.querySelectorAll('.token-marker-checkbox')
+  ).map((el) => /** @type {HTMLInputElement} */ (el));
 
   const tokenEditControls = [
     tokenEditLabel,
@@ -595,6 +613,7 @@ export function createGMPanel(container, options = {}) {
     tokenEditHidden,
     tokenEditPlayerMovable,
     tokenEditLocked,
+    ...markerCheckboxes,
   ];
 
   function updateTokenEditUIFromStore() {
@@ -606,6 +625,9 @@ export function createGMPanel(container, options = {}) {
     if (!selectedToken) {
       tokenEditLabel.value = '';
       tokenEditStatus.textContent = '';
+      for (const cb of markerCheckboxes) {
+        cb.checked = false;
+      }
       return;
     }
 
@@ -624,6 +646,13 @@ export function createGMPanel(container, options = {}) {
     tokenEditHidden.checked = Boolean(selectedToken.hidden);
     tokenEditPlayerMovable.checked = Boolean(selectedToken.playerMovable);
     tokenEditLocked.checked = Boolean(selectedToken.locked);
+
+    const activeMarkers = new Set(selectedToken.markers ?? []);
+    for (const cb of markerCheckboxes) {
+      if (document.activeElement !== cb) {
+        cb.checked = activeMarkers.has(/** @type {import('../../core/constants.js').StatusMarker} */ (cb.value));
+      }
+    }
   }
 
   /**
@@ -748,6 +777,22 @@ export function createGMPanel(container, options = {}) {
     () => applyTokenPatch({ locked: tokenEditLocked.checked }),
     { signal: listeners.signal }
   );
+
+  for (const cb of markerCheckboxes) {
+    cb.addEventListener(
+      'change',
+      () => {
+        const selectedToken = store.getSelectedToken();
+        if (!selectedToken) return;
+        const selectedMarkers = markerCheckboxes
+          .filter((checkbox) => checkbox.checked)
+          .map((checkbox) => checkbox.value)
+          .filter(isStatusMarker);
+        applyTokenPatch({ markers: selectedMarkers });
+      },
+      { signal: listeners.signal }
+    );
+  }
 
   // La suppression est irréversible — il n'y a pas d'annulation dans le modèle — donc elle
   // se confirme, comme « quitter la session » plus haut.

@@ -139,7 +139,7 @@
  * @property {boolean} playerMovable
  * @property {boolean} locked
  * @property {number} elevation
- * @property {string[]} markers
+ * @property {import('./constants.js').StatusMarker[]} markers
  * @property {TokenMove} [move]
  */
 

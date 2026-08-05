@@ -457,7 +457,7 @@ test('updateToken refuse un pion inconnu et laisse le store intact', () => {
   assert.deepStrictEqual(getState(), stateBefore);
 });
 
-test('updateToken refuse les champs hors liste blanche (cell, levelId, id, markers, etc.) en nommant le champ', () => {
+test('updateToken refuse les champs hors liste blanche (cell, levelId, id, imageUrl, etc.) en nommant le champ', () => {
   const camp = makeValidCampaign();
   loadCampaign(camp);
   const stateBefore = getState();
@@ -478,8 +478,8 @@ test('updateToken refuse les champs hors liste blanche (cell, levelId, id, marke
   }, /champ non autorisé "id"/);
 
   assert.throws(() => {
-    updateToken('hero-1', { markers: ['dead'] });
-  }, /champ non autorisé "markers"/);
+    updateToken('hero-1', { imageUrl: 'https://example.com/img.png' });
+  }, /champ non autorisé "imageUrl"/);
 
   assert.deepStrictEqual(getState(), stateBefore);
 });
@@ -510,6 +510,7 @@ test('updateToken accepte les champs d’édition du pion, et les applique ensem
     locked: true,
     visionBright: 7,
     visionDim: 14,
+    markers: ['prone'],
   });
 
   const token = getCampaign()?.tokens.find((t) => t.id === 'hero-1');
@@ -523,6 +524,7 @@ test('updateToken accepte les champs d’édition du pion, et les applique ensem
   assert.equal(token?.locked, true);
   assert.equal(token?.visionBright, 7);
   assert.equal(token?.visionDim, 14);
+  assert.deepEqual(token?.markers, ['prone']);
 
   // La position et l'identité restent hors d'atteinte d'un patch.
   assert.deepEqual(token?.cell, { a: 2, b: 2 });
