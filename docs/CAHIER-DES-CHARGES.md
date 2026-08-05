@@ -521,6 +521,8 @@ S'appuie entièrement sur des briques déjà spécifiées : énumération de cas
 `GridAdapter`, et occlusion par les segments de murs et portes fermées.
 
 > **Amendement L-08 (04/08/2026)** : L'occlusion se calcule au sweep (`vision/sweep.js`), et non par le masque d'arêtes bloquées §5.3bis (mesuré : 3 cases d'écart en moyenne, 11 dans le pire cas sur `manoir-rdc`). Le cône et la ligne sont reportés car ils demandent un geste d'orientation. Les cases affectées calculées par le MJ transitent avec `template.place` et ne sont pas recalculées par la tablette.
+>
+> **Amendement L-10 (05/08/2026)** : La forme réelle déplaçable et pivotable (cercle et cône à 60°) remplace le surlignage des cases. Plus d'énumération de cases. Découpe stricte par les murs au `ctx.clip()` sur le polygone de sweep. `origin` passe en `MapPoint` carte et la pointe du cône est l'ancre fixe des rotations. Les joueurs peuvent manipuler les gabarits libres marqués `visibleToPlayers`.
 
 Règle le principal arbitrage verbal pénible à table — « est-ce que le gobelin est dans la
 boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
@@ -979,7 +981,7 @@ murs : **éditeur minimal de murs** (§5.7), **gabarits de zone d'effet** (§5.9
 Critères :
 - [x] Un segment de mur manquant s'ajoute à la main et corrige immédiatement la vision.
 - [x] Un étage importé en image simple reçoit des murs et gagne des lignes de vue.
-- [x] Un gabarit circulaire surligne les cases affectées **en respectant les murs**.
+- [x] Un gabarit (cercle ou cône) dessine la forme réelle affectée **en respectant les murs** (découpe par les murs obligatoire).
 - [ ] Les marqueurs d'un pion sont lisibles sur les trois écrans.
 - [ ] Les zones hors vision sont masquées côté joueurs, pas côté MJ.
 - [ ] Une zone explorée puis quittée reste grisée, et **aucun pion n'y est visible**.
@@ -1052,4 +1054,4 @@ Critères :
    > que la séance dira encore : l'**ordre de troncature** quand un pion porte plus de trois
    > marqueurs, et le **seuil de 14 px** au-delà duquel une icône vaut mieux qu'un point
    > coloré. Deux constantes, pas deux décisions de conception.
-8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2.** Le modèle l'autorisera plus tard sans refonte, mais rien ne l'implémente côté vue joueurs au lot 2. Voir `TRANCHE-L08-GABARITS.md` §10.
+8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2** (Voir `TRANCHE-L08-GABARITS.md` §10). **Rouverte et amendée le 05/08/2026 (L-10)** : Les joueurs manipulent (déplacer, pivoter) les gabarits visibles (`visibleToPlayers`), avec autorisation à l'émission. La pose, l'effacement et le réglage restent réservés au MJ. Voir `TRANCHE-L10-GABARITS-LIBRES.md`.

@@ -10,10 +10,11 @@ import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
 import { WallsLayer } from '../render/layers/walls.js';
-import { TemplatesLayer, computeTemplateCells } from '../render/layers/templates.js';
+import { TemplatesLayer } from '../render/layers/templates.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
+import { findHitTemplate } from '../input/templateHit.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
 import {
@@ -834,31 +835,29 @@ export async function bootstrapGMApp(options = {}) {
       const activeToolName = gmPanel?.getActiveToolName?.() ?? 'none';
 
       if (activeToolName === 'template-place') {
-        const grid = gridFor(activeLevel);
-        const cell = grid.cellFromPoint(intention.mapPos);
-        if (cell && gmPanel?.templateTools) {
+        if (gmPanel?.templateTools) {
           const cfg = gmPanel.templateTools.getConfig();
           /** @type {import('../core/types.js').Template} */
           const template = {
             id: cfg.templateId,
             levelId: activeLevel.id,
             shape: cfg.shape,
-            origin: cell,
+            origin: intention.mapPos,
             radiusCells: cfg.radiusCells,
             directionDeg: 0,
             widthCells: 1,
             color: cfg.color,
             visibleToPlayers: cfg.visibleToPlayers,
           };
-          const segments = extractBlockedSegments(activeLevel, grid);
-          const cells = computeTemplateCells(template, grid, activeLevel, segments);
-          store.placeTemplate(template, cells);
+          store.placeTemplate(template);
           transport?.publish({
             type: 'template.place',
-            payload: { template, cells },
+            payload: { template },
             at: Date.now(),
             by: 'gm',
           });
+          gmPanel.templateTools.disarm();
+          requestRender();
         }
         return;
       }
@@ -998,8 +997,64 @@ export async function bootstrapGMApp(options = {}) {
         at: startedAt,
         by: 'gm',
       });
+      return;
+    }
+
+    if (intention.type === 'dragTemplate') {
+      const state = store.getState();
+      if (!state.activeLevel || !state.campaign) return;
+      const activeLevel = state.activeLevel;
+      const t = (state.campaign.templates || []).find((item) => item.id === intention.templateId);
+      if (!t || t.levelId !== activeLevel.id) return;
+
+      if (intention.phase === 'start') {
+        gmTemplateDragState = {
+          templateId: t.id,
+          startMapPos: { ...intention.mapPos },
+          initialOrigin: { ...t.origin },
+          initialDirectionDeg: t.directionDeg || 0,
+        };
+      }
+
+      if (!gmTemplateDragState || gmTemplateDragState.templateId !== t.id) return;
+
+      if (intention.dragMode === 'move') {
+        const dx = intention.mapPos.x - gmTemplateDragState.startMapPos.x;
+        const dy = intention.mapPos.y - gmTemplateDragState.startMapPos.y;
+        const newOrigin = {
+          x: gmTemplateDragState.initialOrigin.x + dx,
+          y: gmTemplateDragState.initialOrigin.y + dy,
+        };
+        store.moveTemplate(t.id, newOrigin, t.directionDeg);
+      } else if (intention.dragMode === 'rotate') {
+        const dx = intention.mapPos.x - t.origin.x;
+        const dy = intention.mapPos.y - t.origin.y;
+        const angleRad = Math.atan2(dy, dx);
+        const angleDeg = Math.round(((angleRad * 180) / Math.PI + 360) % 360);
+        store.moveTemplate(t.id, t.origin, angleDeg);
+      }
+
+      requestRender();
+
+      if (intention.phase === 'end') {
+        transport?.publish({
+          type: 'template.move',
+          payload: {
+            templateId: t.id,
+            origin: t.origin,
+            directionDeg: t.directionDeg || 0,
+          },
+          at: Date.now(),
+          by: 'gm',
+        });
+        gmTemplateDragState = null;
+      }
+      return;
     }
   }
+
+  /** @type {{ templateId: string, startMapPos: import('../core/types.js').MapPoint, initialOrigin: import('../core/types.js').MapPoint, initialDirectionDeg: number }|null} */
+  let gmTemplateDragState = null;
 
   const pointerInput = new PointerInput(canvas, camera, {
     role: 'gm',
@@ -1014,6 +1069,13 @@ export async function bootstrapGMApp(options = {}) {
       if (!state.activeLevel) return null;
       const cell = gridFor(state.activeLevel).cellFromPoint(mapPos);
       return tokenAtCell(state.campaign, state.activeLevel, cell)?.id ?? null;
+    },
+    canStartTemplateDrag: (_screenPos, mapPos) => {
+      if (gmPanel?.getActiveToolName?.() !== 'none') return null;
+      const state = store.getState();
+      if (!state.activeLevel || !state.campaign) return null;
+      const hit = findHitTemplate(state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom, 0, false);
+      return hit ? { templateId: hit.template.id, dragMode: hit.mode } : null;
     },
   });
 

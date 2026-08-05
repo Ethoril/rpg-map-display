@@ -150,9 +150,9 @@
  * @property {string} id
  * @property {string} levelId
  * @property {TemplateShape} shape
- * @property {Cell} origin
+ * @property {MapPoint} origin Position sur la carte (centre pour cercle, pointe pour cône)
  * @property {number} radiusCells
- * @property {number} directionDeg
+ * @property {number} directionDeg Orientation en degrés (0 = Est, sens horaire)
  * @property {number} widthCells
  * @property {string} color
  * @property {boolean} visibleToPlayers

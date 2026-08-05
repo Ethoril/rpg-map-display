@@ -355,3 +355,24 @@ export const PORTAL_LOCK_DOT_BORDER_SCREEN_PX = 1.5;
  * rendu à la demande — il ne pose aucun minuteur propre.
  */
 export const PORTAL_LOCKED_FLASH_MS = 600;
+
+/**
+ * Angle d'ouverture du cône en degrés (convention D&D 5e : 60°).
+ */
+export const CONE_ANGLE_DEG = 60;
+
+/**
+ * Diamètre cible de la poignée de pointe / centre d'un gabarit, en pixels ÉCRAN.
+ */
+export const TEMPLATE_VERTEX_HANDLE_PX = 24;
+
+/**
+ * Ratio maximal du rayon de la poignée par rapport à la portée en pixels écran.
+ * Évite d'engloutir le corps d'un cône de rayon 1 dézoomé.
+ */
+export const TEMPLATE_VERTEX_HANDLE_MAX_RATIO = 0.4;
+
+/**
+ * Épsilon de décollement d'origine pour éviter de poser l'origine d'un sweep pile sur un segment.
+ */
+export const TEMPLATE_ORIGIN_EPS = 0.5;

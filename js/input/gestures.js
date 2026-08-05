@@ -52,7 +52,17 @@
  */
 
 /**
- * @typedef {TapIntention | PanIntention | DragTokenIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
+ * @typedef {Object} DragTemplateIntention
+ * @property {'dragTemplate'} type
+ * @property {ScreenPoint} screenPos Position courante sur l'écran
+ * @property {MapPoint} mapPos Même position sur la carte
+ * @property {string} templateId Identifiant du gabarit
+ * @property {'move'|'rotate'} dragMode 'move' pour déplacement, 'rotate' pour rotation
+ * @property {'start'|'move'|'end'} phase Phase du glisser
+ */
+
+/**
+ * @typedef {TapIntention | PanIntention | DragTokenIntention | DragTemplateIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
  */
 
 /**

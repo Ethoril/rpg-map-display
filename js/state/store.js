@@ -813,13 +813,12 @@ export function removeToken(tokenId) {
 }
 
 /**
- * Pose ou déplace un gabarit sur la campagne.
+ * Pose ou met à jour un gabarit sur la campagne.
  *
  * @param {import('../core/types.js').Template} templateData
- * @param {string[]} [cells]
  * @returns {void}
  */
-export function placeTemplate(templateData, cells = []) {
+export function placeTemplate(templateData) {
   if (!campaign) {
     throw new Error('Aucune campagne chargée');
   }
@@ -841,9 +840,41 @@ export function placeTemplate(templateData, cells = []) {
 
   assertValidCampaign(candidate, `Placement du gabarit "${templateData.id || 'inconnu'}"`);
   campaign = candidate;
-  if (Array.isArray(cells)) {
-    sessionTemplateCellsMap.set(templateData.id, cells);
+  notifySubscribers();
+}
+
+/**
+ * Déplace ou pivote un gabarit existant.
+ *
+ * @param {string} templateId Identifiant du gabarit
+ * @param {import('../core/types.js').MapPoint} origin Nouvelle origine (pixels carte)
+ * @param {number} [directionDeg] Nouvelle direction en degrés
+ * @returns {void}
+ */
+export function moveTemplate(templateId, origin, directionDeg) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
   }
+  if (!templateId || typeof templateId !== 'string') {
+    throw new Error('Identifiant de gabarit requis');
+  }
+  if (!origin || typeof origin.x !== 'number' || typeof origin.y !== 'number') {
+    throw new Error('Origine valide requise');
+  }
+
+  const candidate = structuredClone(campaign);
+  const t = (candidate.templates || []).find((tpl) => tpl.id === templateId);
+  if (!t) {
+    throw new Error(`Gabarit inconnu : "${templateId}"`);
+  }
+
+  t.origin = { x: origin.x, y: origin.y };
+  if (typeof directionDeg === 'number' && Number.isFinite(directionDeg)) {
+    t.directionDeg = directionDeg;
+  }
+
+  assertValidCampaign(candidate, `Déplacement du gabarit "${templateId}"`);
+  campaign = candidate;
   notifySubscribers();
 }
 
@@ -866,14 +897,10 @@ export function clearTemplates(levelId) {
   }
 
   const candidate = structuredClone(campaign);
-  const toRemove = (candidate.templates || []).filter((t) => t.levelId === levelId);
   candidate.templates = (candidate.templates || []).filter((t) => t.levelId !== levelId);
 
   assertValidCampaign(candidate, `Effacement des gabarits de l'étage "${levelId}"`);
   campaign = candidate;
-  for (const t of toRemove) {
-    sessionTemplateCellsMap.delete(t.id);
-  }
   notifySubscribers();
 }
 
@@ -890,7 +917,6 @@ export function resetStore() {
   campaign = null;
   activeLevelId = null;
   activeHandout = null;
-  sessionTemplateCellsMap.clear();
   clearSelectionState();
   notifySubscribers();
 }
@@ -1147,30 +1173,4 @@ export function setSessionVision(levelId, png) {
   notifySubscribers();
 }
 
-/** @type {Map<string, string[]>} */
-const sessionTemplateCellsMap = new Map();
-
-/**
- * Recupere les cases affectees par un gabarit (Session).
- * @param {string} templateId
- * @returns {string[]}
- */
-export function getSessionTemplateCells(templateId) {
-  return templateId ? sessionTemplateCellsMap.get(templateId) ?? [] : [];
-}
-
-/**
- * Enregistre les cases affectees d'un gabarit (Session).
- * @param {string} templateId
- * @param {string[]} cells
- */
-export function setSessionTemplateCells(templateId, cells) {
-  if (!templateId) return;
-  if (!Array.isArray(cells) || cells.length === 0) {
-    sessionTemplateCellsMap.delete(templateId);
-  } else {
-    sessionTemplateCellsMap.set(templateId, cells);
-  }
-  notifySubscribers();
-}
 

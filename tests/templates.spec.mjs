@@ -2,8 +2,8 @@
 import { test, expect } from '@playwright/test';
 import { waitForApp, installBrowserTransport } from './browserTestTransport.mjs';
 
-test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
-  test('1. Panneau MJ : Onglet "📐 Gabarits" présent et armement interactif', async ({ page }) => {
+test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
+  test('1. Panneau MJ : Onglet "📐 Gabarits" présent, cône disponible et armement interactif', async ({ page }) => {
     const sessionId = `test-template-e2e-1-${Date.now()}`;
     await installBrowserTransport(page, sessionId, null);
     await page.goto(`/gm.html?session=${sessionId}`);
@@ -16,6 +16,11 @@ test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
 
     const pane = page.locator('#tab-content-template-tools');
     await expect(pane).toBeVisible();
+
+    // Vérifier l'option cône
+    const selectShape = page.locator('#tpl-shape');
+    await expect(selectShape).toBeVisible();
+    await selectShape.selectOption('cone');
 
     const armBtn = page.locator('#tpl-toggle-arm');
     await expect(armBtn).toBeVisible();
@@ -83,7 +88,7 @@ test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
     expect(wallArmed).toBe(false);
   });
 
-  test('3. Placement et effacement de gabarit par le MJ', async ({ page }) => {
+  test('3. Pose, déplacement et pivot de cône (origin MapPoint et pointe-ancre)', async ({ page }) => {
     const sessionId = `test-template-e2e-3-${Date.now()}`;
     await installBrowserTransport(page, sessionId, null);
     await page.goto(`/gm.html?session=${sessionId}`);
@@ -100,6 +105,7 @@ test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
         name: 'Étage Test',
         widthCells: 10,
         heightCells: 10,
+        pxPerCell: 140,
       });
 
       const campaign = schema.createCampaign({ levels: [level] });
@@ -107,13 +113,11 @@ test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
     });
 
     await page.click('button[data-tab="template-tools"]');
+    await page.selectOption('#tpl-shape', 'cone');
     await page.click('#tpl-toggle-arm');
 
-    // Emuler un placement via l'intention tap à la case {a: 5, b: 5}
+    // Pose par tap à la position {x: 250, y: 250}
     await page.evaluate(async () => {
-      const store = await import('../js/state/store.js');
-      const level = store.getActiveLevel();
-      if (!level) return;
       const w = /** @type {any} */ (window);
       if (w.__RPG_APP__?.pointerInput) {
         w.__RPG_APP__.pointerInput.onIntention({
@@ -124,12 +128,31 @@ test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
       }
     });
 
-    // Vérifier la présence du gabarit dans le store
-    const templatesCount = await page.evaluate(async () => {
+    // Vérifier la présence du gabarit et son origine MapPoint
+    const tplState = await page.evaluate(async () => {
       const store = await import('../js/state/store.js');
-      return store.getState().campaign?.templates.length ?? 0;
+      const templates = store.getState().campaign?.templates || [];
+      if (templates.length === 0) return null;
+      return { origin: templates[0].origin, directionDeg: templates[0].directionDeg, shape: templates[0].shape };
     });
-    expect(templatesCount).toBe(1);
+    expect(tplState).not.toBeNull();
+    expect(tplState?.shape).toBe('cone');
+    expect(tplState?.origin).toEqual({ x: 250, y: 250 });
+
+    // Pivot du cône autour de sa pointe (origin ne doit pas bouger)
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const t = store.getState().campaign?.templates[0];
+      if (t) store.moveTemplate(t.id, t.origin, 90);
+    });
+
+    const tplAfterRotate = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const t = store.getState().campaign?.templates[0];
+      return { origin: t?.origin, directionDeg: t?.directionDeg };
+    });
+    expect(tplAfterRotate.origin).toEqual({ x: 250, y: 250 });
+    expect(tplAfterRotate.directionDeg).toBe(90);
 
     // Effacement des gabarits de l'étage
     await page.click('#tpl-clear-level');
@@ -139,5 +162,176 @@ test.describe('Tranche L-08 — Gabarits de zone d\'effet (E2E)', () => {
       return store.getState().campaign?.templates.length ?? 0;
     });
     expect(templatesAfterClear).toBe(0);
+  });
+
+  test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {
+    const sessionId = `test-template-e2e-4-${Date.now()}`;
+    const levelWithWall = {
+      id: 'lvl-clip',
+      name: 'Étage Mur',
+      order: 0,
+      imageUrl: 'maps/minimal.webp',
+      videoUrl: null,
+      animatedOverlays: [],
+      pxPerCell: 140,
+      widthCells: 10,
+      heightCells: 8,
+      grid: { type: /** @type {const} */ ('square'), offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: false },
+      terrainCost: null,
+      walls: [
+        // Mur vertical entre la colonne 3 et 4 (de y=0 à y=6*140)
+        [ { cellX: 3, cellY: 0 }, { cellX: 3, cellY: 6 } ]
+      ],
+      portals: [],
+      lights: [],
+      ambient: { color: '#ffffff', level: 1, baked: false },
+    };
+
+    const templateRed = {
+      id: 'tpl-red-clip',
+      levelId: 'lvl-clip',
+      shape: /** @type {const} */ ('circle'),
+      origin: { x: 2.5 * 140, y: 3 * 140 }, // { x: 350, y: 420 }
+      radiusCells: 3, // Rayon 420 px -> atteindrait x = 770 px sans mur
+      directionDeg: 0,
+      widthCells: 1,
+      color: '#ef4444', // Rouge très marqué
+      visibleToPlayers: true,
+    };
+
+    const snapshot = {
+      campaign: {
+        schemaVersion: 2,
+        campaignId: 'cmp-clip',
+        name: 'Campagne Clip',
+        levels: [levelWithWall],
+        links: [],
+        tokens: [],
+        templates: [templateRed],
+        settings: { ambientLevel: 1 },
+      },
+      activeLevelId: 'lvl-clip',
+      selectedTokenId: null,
+    };
+
+    await installBrowserTransport(page, sessionId, snapshot);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await page.setViewportSize({ width: 900, height: 900 });
+
+    // 1. Révéler le fog pour lever la brume (protocole portalIndicator.spec.mjs)
+    await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+    await page.click('#fog-btn-reveal-all');
+    await expect(page.locator('#fog-btn-undo')).toHaveText(/Annuler \((?!0\))\d+\)/);
+
+    // 2. Mesure d'échantillons sur le canvas avec préconditions (protocole portalIndicator.spec.mjs)
+    const mesure = await page.evaluate(async () => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+
+      // Attendre que fitActiveLevel s'exécute une première fois, puis fixer la caméra pour la frame suivante
+      await new Promise((resolve) => {
+        const listener = () => {
+          app.frameLoop.removeListener(listener);
+          app.camera.setPan(3 * 140, 3 * 140);
+          app.camera.setZoom(1);
+          const listener2 = () => {
+            app.frameLoop.removeListener(listener2);
+            resolve(null);
+          };
+          app.frameLoop.addListener(listener2);
+          app.frameLoop.requestFrame();
+        };
+        app.frameLoop.addListener(listener);
+        app.frameLoop.requestFrame();
+      });
+
+      const res = app.stage?.resolution ?? 1;
+
+      const marge = 30;
+      /** @param {number} mapX @param {number} mapY */
+      const dansLeCanvas = (mapX, mapY) => {
+        const p = app.camera.mapToScreen({ x: mapX, y: mapY });
+        return (
+          p.screenX > marge &&
+          p.screenY > marge &&
+          p.screenX < app.canvas.width / res - marge &&
+          p.screenY < app.canvas.height / res - marge
+        );
+      };
+
+      // Contrôle de clarté du fond (le fog est levé)
+      const pFond = app.camera.mapToScreen({ x: 2.5 * 140, y: 3 * 140 });
+      const dFond = app.context.getImageData(
+        Math.round(pFond.screenX * res),
+        Math.round(pFond.screenY * res),
+        Math.round(6 * res),
+        Math.round(6 * res)
+      ).data;
+      let sommeFond = 0;
+      for (let i = 0; i < dFond.length; i += 4) sommeFond += (dFond[i] + dFond[i + 1] + dFond[i + 2]) / 3;
+      const clarteDuFond = sommeFond / (dFond.length / 4);
+
+      // Mesure de la teinte rouge (R - (G+B)/2) sur une zone de 10x10 px autour d'un MapPoint
+      /** @param {number} mapX @param {number} mapY */
+      const mesureDominanceRouge = (mapX, mapY) => {
+        const p = app.camera.mapToScreen({ x: mapX, y: mapY });
+        const d = app.context.getImageData(
+          Math.round((p.screenX - 5) * res),
+          Math.round((p.screenY - 5) * res),
+          Math.round(10 * res),
+          Math.round(10 * res)
+        ).data;
+        let sumRedDom = 0;
+        const count = d.length / 4;
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i];
+          const g = d[i + 1];
+          const b = d[i + 2];
+          sumRedDom += r - (g + b) / 2;
+        }
+        return sumRedDom / count;
+      };
+
+      /** @param {number} mapX @param {number} mapY */
+      const sampleRGB = (mapX, mapY) => {
+        const p = app.camera.mapToScreen({ x: mapX, y: mapY });
+        const d = app.context.getImageData(
+          Math.round(p.screenX * res),
+          Math.round(p.screenY * res),
+          1,
+          1
+        ).data;
+        return [d[0], d[1], d[2]];
+      };
+
+      // Échantillon 1 (Contrôle) : du côté de l'origine {x: 2.1 * 140, y: 3 * 140} (dans le gabarit, sans mur)
+      const pControl = { x: 2.1 * 140, y: 3 * 140 };
+      // Échantillon 2 (Assertion) : derrière le mur {x: 3.1 * 140, y: 3 * 140} (14 px après le mur x = 3*140)
+      // ⚠ 3,1 case et pas plus loin : à cette abscisse le fond de `minimal.webp` est CLAIR, ce qui
+      // laisse la dominance rouge monter franchement. Plus loin sur cette ligne le fond devient
+      // verdâtre, et une dominance `r − max(g, b)` n'y distingue plus « pas de rouge peint » de
+      // « rouge peint sur du vert » — mesuré le 05/08 : 12 dans les deux cas. Déplacer cet
+      // échantillon désarmerait donc le test en silence, sans rien faire rougir.
+      const pBehind = { x: 3.1 * 140, y: 3 * 140 };
+
+      return {
+        zoomEffectif: app.camera.zoom,
+        canvas: `${app.canvas.width}x${app.canvas.height}@${res}`,
+        samplesDansLeCanvas: dansLeCanvas(pControl.x, pControl.y) && dansLeCanvas(pBehind.x, pBehind.y),
+        clarteDuFond,
+        redDomControl: mesureDominanceRouge(pControl.x, pControl.y),
+        redDomBehind: mesureDominanceRouge(pBehind.x, pBehind.y),
+      };
+    });
+
+    const contexte = `zoom ${mesure.zoomEffectif}, canvas ${mesure.canvas}, ctrl ${mesure.redDomControl.toFixed(2)}, behind ${mesure.redDomBehind.toFixed(2)}`;
+    expect(mesure.samplesDansLeCanvas, `${contexte} : les échantillons sont hors du canvas`).toBe(true);
+    expect(mesure.clarteDuFond, `${contexte} : le canvas est sombre, le fog n'est pas levé`).toBeGreaterThan(8);
+
+    // Échantillon 1 (contrôle) : teinté en rouge par le gabarit (> 40)
+    expect(mesure.redDomControl, `${contexte} : l'échantillon de contrôle n'est pas teinté par le gabarit`).toBeGreaterThan(40);
+
+    // Échantillon 2 (assertion) : derrière le mur, découpé par ctx.clip() (< 20, carte seule ~12)
+    expect(mesure.redDomBehind, `${contexte} : le gabarit a débordé derrière le mur (défaut de ctx.clip)`).toBeLessThan(20);
   });
 });

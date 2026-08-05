@@ -116,7 +116,8 @@ F:\rpg-map-display\
 │   ├─ input/
 │   │   ├─ pointer.js             [1a] pointerdown/move/up → intentions abstraites
 │   │   ├─ gestures.js            [1a] pan, pinch, tap, appui long
-│   │   └─ portalHit.js           [2]  désignation d'une porte sous le tap (MJ et joueurs)
+│   │   ├─ portalHit.js           [2]  désignation d'une porte sous le tap (MJ et joueurs)
+│   │   └─ templateHit.js         [2]  désignation d'un gabarit sous le tap (MJ et joueurs)
 │   │
 │   ├─ ui/
 │   │   ├─ versionBadge.js        [1a] affichage MJ (permanent) / joueurs (transitoire) + mise à jour forcée

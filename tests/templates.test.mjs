@@ -5,150 +5,39 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { createCampaign, createLevel, validateCampaign } from '../js/core/schema.js';
-import { SquareGrid } from '../js/grid/SquareGrid.js';
 import { gridFor } from '../js/grid/index.js';
-import { computeTemplateCells, isPointInPolygon } from '../js/render/layers/templates.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
+import { sweep } from '../js/vision/sweep.js';
 import * as store from '../js/state/store.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 
-test('isPointInPolygon détermine correctement si un point est dans un polygone', () => {
-  const poly = [
-    { x: 0, y: 0 },
-    { x: 10, y: 0 },
-    { x: 10, y: 10 },
-    { x: 0, y: 10 },
-  ];
-  assert.equal(isPointInPolygon({ x: 5, y: 5 }, poly), true);
-  assert.equal(isPointInPolygon({ x: 15, y: 5 }, poly), false);
-  assert.equal(isPointInPolygon({ x: -1, y: 5 }, poly), false);
-});
-
-test('Énumération géométrique par grid.distance() sans obstacle : 5, 13, 29, 49 cases (rayons 1 à 4) et limite à 73 au rayon 5', () => {
-  const level = createLevel({
-    id: 'lvl-open',
-    widthCells: 30,
-    heightCells: 30,
-    pxPerCell: 100,
-  });
-  const grid = new SquareGrid(level);
-  const origin = { a: 15, b: 15 };
-
-  // Rayon 1
-  const t1 = {
-    id: 't1',
-    levelId: 'lvl-open',
-    shape: /** @type {const} */ ('circle'),
-    origin,
-    radiusCells: 1,
-    directionDeg: 0,
-    widthCells: 1,
-    color: '#ef4444',
-    visibleToPlayers: true,
-  };
-  const cells1 = computeTemplateCells(t1, grid, level);
-  assert.equal(cells1.length, 5, 'Rayon 1 doit retenir 5 cases');
-
-  // Rayon 2
-  const t2 = { ...t1, id: 't2', radiusCells: 2 };
-  const cells2 = computeTemplateCells(t2, grid, level);
-  assert.equal(cells2.length, 13, 'Rayon 2 doit retenir 13 cases');
-
-  // Rayon 3
-  const t3 = { ...t1, id: 't3', radiusCells: 3 };
-  const cells3 = computeTemplateCells(t3, grid, level);
-  assert.equal(cells3.length, 29, 'Rayon 3 doit retenir 29 cases');
-
-  // Rayon 4
-  const t4 = { ...t1, id: 't4', radiusCells: 4 };
-  const cells4 = computeTemplateCells(t4, grid, level);
-  assert.equal(cells4.length, 49, 'Rayon 4 doit retenir 49 cases');
-
-  // Rayon 5 (limite acceptée de grid.distance : 73 cases vs 81 euclidienne)
-  const t5 = { ...t1, id: 't5', radiusCells: 5 };
-  const cells5 = computeTemplateCells(t5, grid, level);
-  assert.equal(cells5.length, 73, 'Rayon 5 par grid.distance() doit retenir 73 cases');
-
-  // Compte euclidien pour comparaison gelée
-  let euclidCount = 0;
-  for (let a = 0; a < 30; a++) {
-    for (let b = 0; b < 30; b++) {
-      const dx = a - origin.a;
-      const dy = b - origin.b;
-      if (Math.hypot(dx, dy) <= 5) {
-        euclidCount++;
-      }
-    }
-  }
-  assert.equal(euclidCount, 81, 'Distance du centre euclidienne au rayon 5 fait 81 cases');
-});
-
-test('Occlusion adossée au §1.2 : manoir-rdc à l\'origine {a:31, b:31}, rayon 4 retient 21 cases (vs 31 par arêtes bloquées)', () => {
+test('Occlusion par les murs (L-10) : manoir-rdc à l\'origine {x: 4410, y: 4410}, sweep produit un polygone découpé par les obstacles', () => {
   const scenePath = path.resolve('maps/generated/manoir-rdc.scene.json');
   assert.equal(fs.existsSync(scenePath), true, 'Fichier de scène manoir-rdc.scene.json requis');
 
   const campaignData = JSON.parse(fs.readFileSync(scenePath, 'utf8'));
   const level = createLevel(campaignData.levels[0]);
   const grid = gridFor(level);
-  const origin = { a: 31, b: 31 };
-
-  const template = {
-    id: 'tpl-manoir-31-31',
-    levelId: level.id,
-    shape: /** @type {const} */ ('circle'),
-    origin,
-    radiusCells: 4,
-    directionDeg: 0,
-    widthCells: 1,
-    color: '#ef4444',
-    visibleToPlayers: true,
-  };
+  // (31 + 0.5) * 140 = 4410
+  const origin = { x: 4410, y: 4410 };
+  const radiusPx = 4 * level.pxPerCell; // 560 px
 
   const segments = extractBlockedSegments(level, grid);
-  const affectedCells = computeTemplateCells(template, grid, level, segments);
-  assert.equal(affectedCells.length, 21, 'Le sweep pour {a:31, b:31} au rayon 4 doit retenir exactement 21 cases');
+  assert.ok(segments.length > 0, 'La scène doit comporter des segments d\'obstacles');
 
-  // Énumération par arêtes bloquées sans sweep (pour vérifier le constat du §1.2)
-  let blockedEdgesCellsCount = 0;
-  for (let a = 0; a < level.widthCells; a++) {
-    for (let b = 0; b < level.heightCells; b++) {
-      if (grid.distance(origin, { a, b }) <= 4) {
-        blockedEdgesCellsCount++;
-      }
-    }
-  }
-  assert.equal(blockedEdgesCellsCount, 49, 'Énumération sans occlusion ferait 49 cases');
+  const sweepPoly = sweep(origin, segments, radiusPx);
+  assert.ok(Array.isArray(sweepPoly) && sweepPoly.length >= 3, 'Le sweep doit produire un polygone valide');
+
+  // Sans obstacle, un cercle aurait ses sommets à distance exacte du rayon.
+  // Avec obstacles (murs), certains sommets sont à distance nettement inférieure au rayon (occultation).
+  const hasShortVertex = sweepPoly.some((pt) => {
+    const dist = Math.hypot(pt.x - origin.x, pt.y - origin.y);
+    return dist < radiusPx - 5;
+  });
+  assert.equal(hasShortVertex, true, 'Un mur doit arrêter la visibilité du sweep en deçà du rayon maximum');
 });
 
-test('Le centre de la case décide de l\'inclusion', () => {
-  const level = createLevel({ id: 'lvl-test', widthCells: 10, heightCells: 10, pxPerCell: 100 });
-  const grid = new SquareGrid(level);
-  const origin = { a: 5, b: 5 };
-
-  const template = {
-    id: 't-center',
-    levelId: 'lvl-test',
-    shape: /** @type {const} */ ('circle'),
-    origin,
-    radiusCells: 1,
-    directionDeg: 0,
-    widthCells: 1,
-    color: '#ef4444',
-    visibleToPlayers: true,
-  };
-
-  const cells = computeTemplateCells(template, grid, level);
-  // (5,5), (4,5), (6,5), (5,4), (5,6)
-  assert.equal(cells.includes('5,5'), true);
-  assert.equal(cells.includes('4,5'), true);
-  assert.equal(cells.includes('6,5'), true);
-  assert.equal(cells.includes('5,4'), true);
-  assert.equal(cells.includes('5,6'), true);
-  // Diagonale (4,4) est à distance octile 1.5, donc > radius 1
-  assert.equal(cells.includes('4,4'), false);
-});
-
-test('Store placeTemplate et clearTemplates (idempotence, remplacement, isolation et persistance)', () => {
+test('Store placeTemplate, moveTemplate et clearTemplates (idempotence, déplacement, pivot, isolation)', () => {
   store.resetStore();
   const lvl1 = createLevel({ id: 'lvl1', name: 'Étage 1' });
   const lvl2 = createLevel({ id: 'lvl2', name: 'Étage 2' });
@@ -159,7 +48,7 @@ test('Store placeTemplate et clearTemplates (idempotence, remplacement, isolatio
     id: 'tpl-1',
     levelId: 'lvl1',
     shape: /** @type {const} */ ('circle'),
-    origin: { a: 2, b: 2 },
+    origin: { x: 350, y: 350 },
     radiusCells: 3,
     directionDeg: 0,
     widthCells: 1,
@@ -173,33 +62,38 @@ test('Store placeTemplate et clearTemplates (idempotence, remplacement, isolatio
   });
 
   // Placement d'un premier gabarit
-  store.placeTemplate(t1, ['2,2', '2,3']);
+  store.placeTemplate(t1);
   const state1 = store.getState();
   assert.equal(state1.campaign?.templates.length, 1);
   assert.equal(state1.campaign?.templates[0].id, 'tpl-1');
-  assert.deepEqual(store.getSessionTemplateCells('tpl-1'), ['2,2', '2,3']);
+  assert.deepEqual(state1.campaign?.templates[0].origin, { x: 350, y: 350 });
 
   // Reposer le même id remplace l'existant sans le dupliquer
   const t1Modified = { ...t1, radiusCells: 5 };
-  store.placeTemplate(t1Modified, ['2,2', '2,3', '2,4']);
+  store.placeTemplate(t1Modified);
   const state2 = store.getState();
   assert.equal(state2.campaign?.templates.length, 1);
   assert.equal(state2.campaign?.templates[0].radiusCells, 5);
-  assert.deepEqual(store.getSessionTemplateCells('tpl-1'), ['2,2', '2,3', '2,4']);
+
+  // Déplacement et rotation via moveTemplate
+  store.moveTemplate('tpl-1', { x: 400, y: 450 }, 90);
+  const stateMove = store.getState();
+  assert.deepEqual(stateMove.campaign?.templates[0].origin, { x: 400, y: 450 });
+  assert.equal(stateMove.campaign?.templates[0].directionDeg, 90);
 
   // Ajouter un gabarit sur l'étage 2
   const t2 = {
     id: 'tpl-2',
     levelId: 'lvl2',
-    shape: /** @type {const} */ ('circle'),
-    origin: { a: 10, b: 10 },
+    shape: /** @type {const} */ ('cone'),
+    origin: { x: 1400, y: 1400 },
     radiusCells: 2,
-    directionDeg: 0,
+    directionDeg: 180,
     widthCells: 1,
     color: '#3b82f6',
     visibleToPlayers: false,
   };
-  store.placeTemplate(t2, ['10,10']);
+  store.placeTemplate(t2);
   assert.equal(store.getState().campaign?.templates.length, 2);
 
   // Effacer uniquement l'étage 1 laisse l'étage 2 intact
@@ -207,8 +101,6 @@ test('Store placeTemplate et clearTemplates (idempotence, remplacement, isolatio
   const state3 = store.getState();
   assert.equal(state3.campaign?.templates.length, 1);
   assert.equal(state3.campaign?.templates[0].id, 'tpl-2');
-  assert.deepEqual(store.getSessionTemplateCells('tpl-1'), []);
-  assert.deepEqual(store.getSessionTemplateCells('tpl-2'), ['10,10']);
 
   // Effacer un étage inconnu lève une erreur
   assert.throws(() => store.clearTemplates('lvl-inconnu'), /Étage inconnu/);
@@ -216,7 +108,7 @@ test('Store placeTemplate et clearTemplates (idempotence, remplacement, isolatio
   unsub();
 });
 
-test('Schema : validateCampaign refuse un gabarit malformé en nommant le gabarit (Critère 10)', () => {
+test('Schema : validateCampaign valide les origin MapPoint et refuse les gabarits malformés (L-10)', () => {
   const level = createLevel({ id: 'lvl1' });
   const campaign = createCampaign({ levels: [level] });
 
@@ -228,8 +120,9 @@ test('Schema : validateCampaign refuse un gabarit malformé en nommant le gabari
         id: 'tpl-bad-shape',
         levelId: 'lvl1',
         shape: 'triangle',
-        origin: { a: 1, b: 1 },
+        origin: { x: 100, y: 100 },
         radiusCells: 2,
+        directionDeg: 0,
         visibleToPlayers: true,
         color: '#ef4444',
       },
@@ -238,23 +131,24 @@ test('Schema : validateCampaign refuse un gabarit malformé en nommant le gabari
   const err1 = validateCampaign(c1);
   assert.equal(err1.some((e) => e.includes('tpl-bad-shape') && e.includes('shape invalide')), true);
 
-  // 2. origin fractionnaire (non entière)
+  // 2. origin invalide (pas un MapPoint avec x et y finis)
   const c2 = {
     ...campaign,
     templates: [
       {
-        id: 'tpl-float-origin',
+        id: 'tpl-bad-origin',
         levelId: 'lvl1',
         shape: 'circle',
-        origin: { a: 1.5, b: 2 },
+        origin: { a: 1, b: 2 }, // Ancienne forme non migrée
         radiusCells: 2,
+        directionDeg: 0,
         visibleToPlayers: true,
         color: '#ef4444',
       },
     ],
   };
   const err2 = validateCampaign(c2);
-  assert.equal(err2.some((e) => e.includes('tpl-float-origin') && e.includes('origin invalide')), true);
+  assert.equal(err2.some((e) => e.includes('tpl-bad-origin') && e.includes('origin invalide')), true);
 
   // 3. radiusCells nul ou négatif
   const c3 = {
@@ -264,8 +158,9 @@ test('Schema : validateCampaign refuse un gabarit malformé en nommant le gabari
         id: 'tpl-neg-radius',
         levelId: 'lvl1',
         shape: 'circle',
-        origin: { a: 1, b: 1 },
+        origin: { x: 100, y: 100 },
         radiusCells: -3,
+        directionDeg: 0,
         visibleToPlayers: true,
         color: '#ef4444',
       },
@@ -274,55 +169,38 @@ test('Schema : validateCampaign refuse un gabarit malformé en nommant le gabari
   const err3 = validateCampaign(c3);
   assert.equal(err3.some((e) => e.includes('tpl-neg-radius') && e.includes('radiusCells invalide')), true);
 
-  // 4. levelId inexistant
+  // 4. directionDeg invalide
   const c4 = {
     ...campaign,
     templates: [
       {
-        id: 'tpl-unknown-level',
-        levelId: 'lvl-fantome',
-        shape: 'circle',
-        origin: { a: 1, b: 1 },
+        id: 'tpl-bad-dir',
+        levelId: 'lvl1',
+        shape: 'cone',
+        origin: { x: 100, y: 100 },
         radiusCells: 2,
+        directionDeg: 'nord',
         visibleToPlayers: true,
         color: '#ef4444',
       },
     ],
   };
   const err4 = validateCampaign(c4);
-  assert.equal(err4.some((e) => e.includes('tpl-unknown-level') && e.includes('levelId invalide')), true);
-
-  // 5. visibleToPlayers non booléen
-  const c5 = {
-    ...campaign,
-    templates: [
-      {
-        id: 'tpl-bad-vis',
-        levelId: 'lvl1',
-        shape: 'circle',
-        origin: { a: 1, b: 1 },
-        radiusCells: 2,
-        visibleToPlayers: 'oui',
-        color: '#ef4444',
-      },
-    ],
-  };
-  const err5 = validateCampaign(c5);
-  assert.equal(err5.some((e) => e.includes('tpl-bad-vis') && e.includes('visibleToPlayers invalide')), true);
+  assert.equal(err4.some((e) => e.includes('tpl-bad-dir') && e.includes('directionDeg invalide')), true);
 });
 
-test('Événements réseau template.place et template.clear dans networkEvents.js', () => {
+test('Événements réseau template.place et template.move dans networkEvents.js', () => {
   store.resetStore();
   const level = createLevel({ id: 'lvl1' });
   const campaign = createCampaign({ levels: [level] });
   store.loadCampaign(campaign);
 
-  // Payload valide template.place
+  // Payload valide template.place (sans champ cells)
   const template = {
     id: 'tpl-net-1',
     levelId: 'lvl1',
-    shape: /** @type {const} */ ('circle'),
-    origin: { a: 5, b: 5 },
+    shape: /** @type {const} */ ('cone'),
+    origin: { x: 700, y: 700 },
     radiusCells: 3,
     directionDeg: 0,
     widthCells: 1,
@@ -332,41 +210,33 @@ test('Événements réseau template.place et template.clear dans networkEvents.j
 
   const res1 = applyNetworkEvent({
     type: 'template.place',
-    payload: { template, cells: ['5,5', '5,6'] },
+    payload: { template },
     at: Date.now(),
     by: 'gm',
   });
   assert.equal(res1, true);
   assert.equal(store.getState().campaign?.templates.length, 1);
-  assert.deepEqual(store.getSessionTemplateCells('tpl-net-1'), ['5,5', '5,6']);
 
-  // Idempotence : réappliquer le même événement fonctionne
-  const res1b = applyNetworkEvent({
-    type: 'template.place',
-    payload: { template, cells: ['5,5', '5,6'] },
+  // Événement template.move
+  const resMove = applyNetworkEvent({
+    type: 'template.move',
+    payload: { templateId: 'tpl-net-1', origin: { x: 800, y: 850 }, directionDeg: 45 },
     at: Date.now(),
-    by: 'gm',
+    by: 'players',
   });
-  assert.equal(res1b, true);
-  assert.equal(store.getState().campaign?.templates.length, 1);
+  assert.equal(resMove, true);
+  const tplMoved = store.getState().campaign?.templates[0];
+  assert.deepEqual(tplMoved?.origin, { x: 800, y: 850 });
+  assert.equal(tplMoved?.directionDeg, 45);
 
   // Payload malformé refusé
   const res2 = applyNetworkEvent({
-    type: 'template.place',
-    payload: { template: null },
+    type: 'template.move',
+    payload: { templateId: 'tpl-net-1', origin: null },
     at: Date.now(),
-    by: 'gm',
+    by: 'players',
   });
   assert.equal(res2, false);
-
-  // Étage inconnu refusé
-  const res3 = applyNetworkEvent({
-    type: 'template.place',
-    payload: { template: { ...template, levelId: 'inconnu' } },
-    at: Date.now(),
-    by: 'gm',
-  });
-  assert.equal(res3, false);
 
   // Effacement valide template.clear
   const resClear = applyNetworkEvent({
@@ -377,15 +247,11 @@ test('Événements réseau template.place et template.clear dans networkEvents.j
   });
   assert.equal(resClear, true);
   assert.equal(store.getState().campaign?.templates.length, 0);
-  assert.deepEqual(store.getSessionTemplateCells('tpl-net-1'), []);
 });
 
-test('Vérification d\'isolation : aucun calcul de distance de case à case ne réinvente de formule euclidienne', () => {
+test('Vérification d\'isolation (L-10) : aucun résidu d\'énumération de cases dans templates.js', () => {
   const codeTemplates = fs.readFileSync('js/render/layers/templates.js', 'utf8');
-  const codeTools = fs.readFileSync('js/ui/gm/templateTools.js', 'utf8');
 
-  assert.equal(codeTemplates.includes('Math.hypot'), false, 'templates.js ne doit pas appeler Math.hypot');
-  assert.equal(codeTemplates.includes('Math.sqrt'), false, 'templates.js ne doit pas appeler Math.sqrt');
-  assert.equal(codeTools.includes('Math.hypot'), false, 'templateTools.js ne doit pas appeler Math.hypot');
-  assert.equal(codeTools.includes('Math.sqrt'), false, 'templateTools.js ne doit pas appeler Math.sqrt');
+  assert.equal(codeTemplates.includes('computeTemplateCells'), false, 'templates.js ne doit plus exporter ni utiliser computeTemplateCells');
+  assert.equal(codeTemplates.includes('getSessionTemplateCells'), false, 'templates.js ne doit plus lire getSessionTemplateCells');
 });

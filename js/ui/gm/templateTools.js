@@ -46,7 +46,7 @@ export function createTemplateTools(container, options) {
         <label style="font-size: 0.75rem; color: #aaa;">Forme du gabarit</label>
         <select id="tpl-shape" style="background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 0.4rem; border-radius: 4px; font-size: 0.85rem;">
           <option value="circle" selected>Cercle (disque)</option>
-          <option value="cone" disabled>Cône (bientôt)</option>
+          <option value="cone">Cône (60°)</option>
           <option value="line" disabled>Ligne (bientôt)</option>
         </select>
       </div>
@@ -146,7 +146,7 @@ export function createTemplateTools(container, options) {
 
   selectShape.addEventListener('change', () => {
     const val = /** @type {TemplateShape} */ (selectShape.value);
-    if (val === 'circle') shape = val;
+    if (val === 'circle' || val === 'cone') shape = val;
   });
 
   checkVisible.addEventListener('change', () => {

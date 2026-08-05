@@ -12,6 +12,7 @@ import {
   TOKEN_IMAGE_MAX_BYTES,
   TOKEN_IMAGE_TOTAL_MAX_BYTES,
   validateCampaign,
+  normalizeCampaign,
   terrainCostRecordToMap,
   terrainCostMapToRecord,
 } from '../js/core/schema.js';
@@ -294,7 +295,7 @@ test('Validation refuse une couleur hors #RRGGBB sur au moins deux des 8 chemins
         id: 'tpl1',
         levelId: 'rdc',
         shape: 'circle',
-        origin: { a: 0, b: 0 },
+        origin: { x: 70, y: 70 },
         radiusCells: 2,
         directionDeg: 0,
         widthCells: 1,
@@ -310,5 +311,40 @@ test('Validation refuse une couleur hors #RRGGBB sur au moins deux des 8 chemins
   assert.ok(errors.some((err) => err.includes('éclairage ambiant') && err.includes('ffffffff')));
   assert.ok(errors.some((err) => err.includes('Pion "t1"') && err.includes('borderColor invalide')));
   assert.ok(errors.some((err) => err.includes('Gabarit "tpl1"') && err.includes('color invalide')));
+});
+
+test('normalizeCampaign convertit les anciens gabarits origin {a, b} en centre de case {x, y} sans cells', () => {
+  const level = createLevel({ id: 'rdc', pxPerCell: 140 });
+  const oldCampaign = {
+    schemaVersion: 2,
+    campaignId: 'c1',
+    name: 'Ancienne campagne',
+    levels: [level],
+    links: [],
+    tokens: [],
+    templates: [
+      {
+        id: 'tpl-old',
+        levelId: 'rdc',
+        shape: 'circle',
+        origin: { a: 2, b: 3 },
+        cells: ['2,3', '2,4'],
+        radiusCells: 2,
+        color: '#ef4444',
+        visibleToPlayers: true,
+      },
+    ],
+    settings: { ambientLevel: 1.0 },
+  };
+
+  const normalized = normalizeCampaign(oldCampaign);
+  const tpl = normalized.templates[0];
+  // (2 + 0.5) * 140 = 350, (3 + 0.5) * 140 = 490
+  assert.deepEqual(tpl.origin, { x: 350, y: 490 });
+  assert.equal(tpl.directionDeg, 0);
+  assert.equal('cells' in tpl, false, 'Le champ cells doit être supprimé');
+
+  const errors = validateCampaign(normalized);
+  assert.equal(errors.length, 0, 'La campagne normalisée doit passer la validation');
 });
 

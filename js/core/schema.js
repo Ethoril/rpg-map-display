@@ -152,8 +152,14 @@ export function normalizeCampaignColors(campaign) {
     }
   }
 
-  // 6. Template.color
+  // 6. Template.color et normalisation L-10 (origin: Cell -> MapPoint au centre de case, directionDeg, suppression de cells)
   if (Array.isArray(campaign.templates)) {
+    const levelsMap = new Map();
+    if (Array.isArray(campaign.levels)) {
+      for (const l of campaign.levels) {
+        if (l && l.id) levelsMap.set(l.id, l);
+      }
+    }
     for (const template of campaign.templates) {
       if (!template || typeof template !== 'object') continue;
       const templateId = template.id || 'inconnu';
@@ -163,6 +169,27 @@ export function normalizeCampaignColors(campaign) {
         if (res.warning) {
           console.warn(`[schema] Gabarit "${templateId}" color : ${res.warning}`);
         }
+      }
+
+      // Normalisation L-10 : origin {a, b} -> {x, y} au centre de la case sans aucun import de grid/*
+      if (template.origin && typeof template.origin === 'object') {
+        const orig = /** @type {any} */ (template.origin);
+        if (typeof orig.x !== 'number' && typeof orig.a === 'number' && typeof orig.b === 'number') {
+          const level = levelsMap.get(template.levelId);
+          const pxPerCell = level && typeof level.pxPerCell === 'number' && level.pxPerCell > 0 ? level.pxPerCell : 140;
+          template.origin = {
+            x: (orig.a + 0.5) * pxPerCell,
+            y: (orig.b + 0.5) * pxPerCell,
+          };
+        }
+      }
+
+      if (typeof template.directionDeg !== 'number' || !Number.isFinite(template.directionDeg)) {
+        template.directionDeg = 0;
+      }
+
+      if ('cells' in template) {
+        delete template.cells;
       }
     }
   }
@@ -842,10 +869,15 @@ export function validateCampaign(campaign) {
       if (
         !template.origin ||
         typeof template.origin !== 'object' ||
-        !Number.isInteger(template.origin.a) ||
-        !Number.isInteger(template.origin.b)
+        typeof template.origin.x !== 'number' ||
+        !Number.isFinite(template.origin.x) ||
+        typeof template.origin.y !== 'number' ||
+        !Number.isFinite(template.origin.y)
       ) {
-        errors.push(`Gabarit "${tId}" : origin invalide`);
+        errors.push(`Gabarit "${tId}" : origin invalide (MapPoint {x, y} attendu)`);
+      }
+      if (typeof template.directionDeg !== 'number' || !Number.isFinite(template.directionDeg)) {
+        errors.push(`Gabarit "${tId}" : directionDeg invalide`);
       }
       if (
         typeof template.radiusCells !== 'number' ||

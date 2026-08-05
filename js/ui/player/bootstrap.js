@@ -9,6 +9,8 @@ import { computeBlockedEdges } from '../../import/blockedEdges.js';
 import { terrainCostRecordToMap } from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
+import { findHitTemplate } from '../../input/templateHit.js';
+
 /** @typedef {import('../../core/types.js').Cell} Cell */
 /** @typedef {import('../../core/types.js').Token} Token */
 /** @typedef {import('../../input/gestures.js').InputIntention} InputIntention */
@@ -32,11 +34,66 @@ import * as store from '../../state/store.js';
 export function bootstrapPlayerView(options) {
   const { element, camera, transport } = options;
 
+  /** @type {{ templateId: string, startMapPos: import('../../core/types.js').MapPoint, initialOrigin: import('../../core/types.js').MapPoint, initialDirectionDeg: number }|null} */
+  let playerTemplateDragState = null;
+
   /**
    * Traite les intentions d'input spécifiques à la vue joueurs.
    * @param {InputIntention} intention
    */
   function handleIntention(intention) {
+    if (intention.type === 'dragTemplate') {
+      const state = store.getState();
+      if (!state.activeLevel || !state.campaign) return;
+      const activeLevel = state.activeLevel;
+      const t = (state.campaign.templates || []).find((item) => item.id === intention.templateId);
+      if (!t || t.levelId !== activeLevel.id || t.visibleToPlayers !== true) return;
+
+      if (intention.phase === 'start') {
+        playerTemplateDragState = {
+          templateId: t.id,
+          startMapPos: { ...intention.mapPos },
+          initialOrigin: { ...t.origin },
+          initialDirectionDeg: t.directionDeg || 0,
+        };
+      }
+
+      if (!playerTemplateDragState || playerTemplateDragState.templateId !== t.id) return;
+
+      if (intention.dragMode === 'move') {
+        const dx = intention.mapPos.x - playerTemplateDragState.startMapPos.x;
+        const dy = intention.mapPos.y - playerTemplateDragState.startMapPos.y;
+        const newOrigin = {
+          x: playerTemplateDragState.initialOrigin.x + dx,
+          y: playerTemplateDragState.initialOrigin.y + dy,
+        };
+        store.moveTemplate(t.id, newOrigin, t.directionDeg);
+      } else if (intention.dragMode === 'rotate') {
+        const dx = intention.mapPos.x - t.origin.x;
+        const dy = intention.mapPos.y - t.origin.y;
+        const angleRad = Math.atan2(dy, dx);
+        const angleDeg = Math.round(((angleRad * 180) / Math.PI + 360) % 360);
+        store.moveTemplate(t.id, t.origin, angleDeg);
+      }
+
+      if (intention.phase === 'end') {
+        if (transport) {
+          transport.publish({
+            type: 'template.move',
+            payload: {
+              templateId: t.id,
+              origin: t.origin,
+              directionDeg: t.directionDeg || 0,
+            },
+            at: Date.now(),
+            by: 'players',
+          });
+        }
+        playerTemplateDragState = null;
+      }
+      return;
+    }
+
     if (intention.type !== 'tap') {
       return;
     }
@@ -173,6 +230,12 @@ export function bootstrapPlayerView(options) {
   const pointerInput = new PointerInput(element, camera, {
     role: 'players',
     onIntention: handleIntention,
+    canStartTemplateDrag: (_screenPos, mapPos) => {
+      const state = store.getState();
+      if (!state.activeLevel || !state.campaign) return null;
+      const hit = findHitTemplate(state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom, 0, true);
+      return hit ? { templateId: hit.template.id, dragMode: hit.mode } : null;
+    },
   });
 
   return {

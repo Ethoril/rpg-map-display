@@ -13,6 +13,10 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  *
  * @typedef {Object} InputCamera
  * @property {(screenPoint: ScreenPoint) => MapPoint} screenToMap
+ * @property {number} zoom Échelle carte→écran, requise par les tests de désignation qui
+ *   dimensionnent une poignée en pixels **écran** (`templateHit.js`). Ajoutée à L-10 : la vue
+ *   joueurs recevait une caméra typée par ce contrat et lisait `camera.zoom`, absent d'ici — le
+ *   typecheck tombait, donc `verify`, donc le déploiement.
  */
 
 /**
@@ -26,6 +30,8 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  * @property {number} [longPressMs=500] Seuil pour l'appui long (ms)
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartTokenDrag]
  *   Hit-test injecté par la vue MJ. L'input ne connaît jamais le store.
+ * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => { templateId: string, dragMode: 'move'|'rotate' }|null} [canStartTemplateDrag]
+ *   Hit-test gabarit injecté par l'application (MJ et joueurs).
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => boolean} [canStartBrush]
  *   Prédicat injecté par la vue MJ indiquant si un pinceau est armé.
  */
@@ -49,6 +55,7 @@ export class PointerInput {
     this.dragDistanceThreshold = options.dragDistanceThreshold ?? 5;
     this.longPressMs = options.longPressMs ?? 500;
     this.canStartTokenDrag = options.canStartTokenDrag ?? (() => null);
+    this.canStartTemplateDrag = options.canStartTemplateDrag ?? (() => null);
     this.canStartBrush = options.canStartBrush ?? (() => false);
 
     /** @type {Map<number, { screenPos: ScreenPoint, timeStamp: number }>} */
@@ -66,10 +73,12 @@ export class PointerInput {
     /** @type {boolean} */
     this.longPressTriggered = false;
 
-    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'brushing'} */
+    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'templateDrag'|'brushing'} */
     this.mode = 'idle';
     /** @type {string|null} */
     this.dragTokenId = null;
+    /** @type {{ templateId: string, dragMode: 'move'|'rotate' }|null} */
+    this.dragTemplateHit = null;
 
     /** @type {number} */
     this.initialPinchDistance = 0;
@@ -148,6 +157,7 @@ export class PointerInput {
     this.lastPinchCenter = null;
     this.initialPinchDistance = 0;
     this.dragTokenId = null;
+    this.dragTemplateHit = null;
     this.longPressTriggered = false;
     this.mode = 'idle';
   }
@@ -242,6 +252,10 @@ export class PointerInput {
           this.role === 'gm'
             ? this.canStartTokenDrag(screenPos, mapPos)
             : null;
+        this.dragTemplateHit =
+          !this.dragTokenId
+            ? this.canStartTemplateDrag(screenPos, mapPos)
+            : null;
         this.longPressTriggered = false;
 
         // Planification du timer d'appui long : pose la candidature sans appliquer l'effet au milieu du geste
@@ -266,6 +280,7 @@ export class PointerInput {
       }
       this.mode = 'pinching';
       this.dragTokenId = null;
+      this.dragTemplateHit = null;
 
       const pointers = Array.from(this.activePointers.values());
       const p1 = pointers[0].screenPos;
@@ -335,16 +350,42 @@ export class PointerInput {
           });
           return;
         }
+      } else if (this.dragTemplateHit) {
+        const isExceeded = isDragThresholdExceeded(
+          this.startScreenPos,
+          screenPos,
+          this.startTime,
+          timeStamp,
+          this.dragHoldMs,
+          this.dragDistanceThreshold
+        );
+
+        if (isExceeded || this.mode === 'templateDrag') {
+          const isFirstDrag = this.mode !== 'templateDrag';
+          this.mode = 'templateDrag';
+
+          const mapPos = this.camera.screenToMap(screenPos);
+          this.emit({
+            type: 'dragTemplate',
+            templateId: this.dragTemplateHit.templateId,
+            dragMode: this.dragTemplateHit.dragMode,
+            screenPos,
+            mapPos,
+            phase: isFirstDrag ? 'start' : 'move',
+          });
+          return;
+        }
       }
 
       // Un micro-mouvement reste un candidat au tap. Le pan ne commence qu'une fois le
-      // seuil spatial franchi, et il est exclusif avec le drag de pion MJ.
+      // seuil spatial franchi, et il est exclusif avec le drag de pion MJ et de gabarit.
       if (
         this.mode === 'panning' ||
         distFromStart >= this.dragDistanceThreshold
       ) {
         this.mode = 'panning';
         this.dragTokenId = null;
+        this.dragTemplateHit = null;
         this.queuePan(dx, dy);
       }
     } else if (this.activePointers.size === 2 && this.lastPinchCenter) {
@@ -418,6 +459,16 @@ export class PointerInput {
           mapPos,
           phase: 'end',
         });
+      } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
+        const mapPos = this.camera.screenToMap(screenPos);
+        this.emit({
+          type: 'dragTemplate',
+          templateId: this.dragTemplateHit.templateId,
+          dragMode: this.dragTemplateHit.dragMode,
+          screenPos,
+          mapPos,
+          phase: 'end',
+        });
       } else if (
         this.mode === 'tapCandidate' &&
         this.longPressTriggered &&
@@ -451,6 +502,7 @@ export class PointerInput {
       this.lastScreenPos = null;
       this.mode = 'idle';
       this.dragTokenId = null;
+      this.dragTemplateHit = null;
       this.lastPinchCenter = null;
       this.longPressTriggered = false;
     }
@@ -470,6 +522,16 @@ export class PointerInput {
         mapPos: this.camera.screenToMap(this.startScreenPos),
         phase: 'end',
       });
+    } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
+      const screenPos = this.lastScreenPos || { screenX: 0, screenY: 0 };
+      this.emit({
+        type: 'dragTemplate',
+        templateId: this.dragTemplateHit.templateId,
+        dragMode: this.dragTemplateHit.dragMode,
+        screenPos,
+        mapPos: this.camera.screenToMap(screenPos),
+        phase: 'end',
+      });
     }
     this.activePointers.delete(e.pointerId);
 
@@ -478,6 +540,7 @@ export class PointerInput {
       this.lastScreenPos = null;
       this.mode = 'idle';
       this.dragTokenId = null;
+      this.dragTemplateHit = null;
       this.lastPinchCenter = null;
     }
   }

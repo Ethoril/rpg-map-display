@@ -262,10 +262,31 @@ export function applyNetworkEvent(event) {
         return false;
       }
       try {
-        store.placeTemplate(payload.template, Array.isArray(payload.cells) ? payload.cells : []);
+        store.placeTemplate(payload.template);
       } catch (err) {
         console.error(
           `Événement "template.place" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'template.move': {
+      if (
+        !payload.templateId ||
+        typeof payload.templateId !== 'string' ||
+        !payload.origin ||
+        typeof payload.origin.x !== 'number' ||
+        typeof payload.origin.y !== 'number'
+      ) {
+        console.error('Événement "template.move" refusé : payload malformé');
+        return false;
+      }
+      try {
+        store.moveTemplate(payload.templateId, payload.origin, payload.directionDeg);
+      } catch (err) {
+        console.error(
+          `Événement "template.move" refusé : ${err instanceof Error ? err.message : String(err)}`
         );
         return false;
       }
