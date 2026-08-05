@@ -5,6 +5,13 @@
 > de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet, L-09 marqueurs d'état. Les trois critères
 > restants : les 10 et 11 attendent la Tab S9 FE, le 4 (marqueurs) attend la table.
 >
+> **Chantier P, 5 août 2026 — code écrit, mesure de confirmation à faire.** Le décodage du fond sort
+> du chemin critique : doublure de 1024 px retenue en `ImageBitmap` (deux au plus, ~7,8 Mio), décodage
+> asynchrone par `image.decode()`, et une frame floue au lieu d'un gel d'une demi-seconde. Le plafond
+> de préparation reste à 8192, aucune carte n'est à réexporter. **Rien n'est validé tant que la sonde
+> du chantier N ne l'a pas constaté** : après 2 min d'inactivité, la colonne « Fond » doit passer sous
+> 5 ms, et la tablette doit cesser de saccader.
+>
 > **Chantiers N et O, 5 août 2026, retours de la première séance réelle.** O — tolérance de
 > désignation des pions au doigt : marge de 24 px **écran** plafonnée à 0,75 case, mesurée au
 > rectangle du pion, le plus proche gagne, départage par identifiant. Le code est écrit et couvert

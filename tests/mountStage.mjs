@@ -145,16 +145,51 @@ const probe = {
     }
     return { width, height, borderColumns };
   },
+  /**
+   * Chargement du fond contre un vrai décodeur d'image, et les deux chemins du chantier P.
+   *
+   * L'horloge est **pilotée par le test** : la couche ne prend plus de `now` en paramètre de rendu,
+   * précisément pour qu'aucun appelant ne puisse en injecter une qui ne soit pas la sienne.
+   */
   testBackgroundLoad: async (/** @type {string} */ url) => {
     let invalidations = 0;
-    const layer = new BackgroundLayer({ invalidate: () => invalidations++ });
+    let fauxTemps = 10_000;
+    const layer = new BackgroundLayer({
+      invalidate: () => invalidations++,
+      clock: () => fauxTemps,
+    });
     await layer.load(url);
+    resetCanvas(120, 80);
+    const loadInvalidations = invalidations;
+
+    // 1. Premier rendu : FROID. `onload` ne décode pas, donc rien n'autorise à peindre en pleine
+    //    taille — c'est ce qui évite les 484 ms mesurées au chargement (chantier N, ligne 4).
+    //    La peinture de la doublure elle-même se prouve dans `tests/background.test.mjs`, où
+    //    `createImageBitmap` est sous contrôle : ici elle dépend d'une promesse dont l'échéance ne
+    //    s'observe pas, et un test qui attend « assez longtemps » redevient rouge un jour sur le
+    //    runner.
+    layer.render(context, 120, 80, { role: 'gm' });
+    const invalidationsApresFroid = invalidations;
+
+    // 2. Le décodage se résout, ce qui invalide une fois et réveille la boucle.
+    if (layer.image && typeof layer.image.decode === 'function') {
+      try {
+        await layer.image.decode();
+      } catch {}
+    }
+    await new Promise((r) => setTimeout(r, 20));
+
+    // 3. La frame suivante est chaude et peint net, sans avoir avancé l'horloge : c'est la
+    //    résolution du décodage qui a rendu l'état chaud, pas le temps qui passe.
     resetCanvas(120, 80);
     layer.render(context, 120, 80, { role: 'gm' });
     const pixels = context.getImageData(0, 0, 120, 80).data;
+
     return {
       status: layer.status,
       invalidations,
+      loadInvalidations,
+      invalidationsApresFroid,
       center: pixelAt(120, 80, pixels, 60, 40),
     };
   },

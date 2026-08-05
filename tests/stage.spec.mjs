@@ -49,13 +49,20 @@ test('trois invalidations sont coalescées puis la boucle reste inactive', async
   expect(await page.evaluate(() => /** @type {any} */ (window).__stageProbe.frameCount())).toBe(1);
 });
 
-test('le fond charge une URL réelle et invalide exactement une fois', async ({ page }) => {
+test('le fond charge une URL réelle, invalide une fois au chargement, puis une seconde fois quand le décodage se résout', async ({ page }) => {
   await mountStage(page);
   const result = await page.evaluate(
     () => /** @type {any} */ (window).__stageProbe.testBackgroundLoad('/maps/minimal.webp')
   );
   expect(result.status).toBe('ready');
-  expect(result.invalidations).toBe(1);
+  // Le chargement invalide une fois, comme avant le chantier P.
+  expect(result.loadInvalidations).toBe(1);
+  // Le premier rendu est FROID et n'invalide pas de lui-même : il lance un décodage et rend la main.
+  // Si ce compte montait à 2 ici, `render` aurait invalidé en synchrone, donc décodé dans la frame.
+  expect(result.invalidationsApresFroid).toBe(1);
+  // La résolution du décodage invalide, et elle seule.
+  expect(result.invalidations).toBe(2);
+  // La frame d'après peint la carte pleine taille, sans que l'horloge du test ait avancé.
   expect(result.center.a).toBeGreaterThan(0);
 });
 

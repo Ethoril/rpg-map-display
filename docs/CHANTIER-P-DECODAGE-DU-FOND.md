@@ -1,9 +1,7 @@
 # Chantier P — sortir le décodage du fond du chemin critique
 
-> **Statut : brief, écrit le 05/08/2026 juste après la lecture de la sonde du chantier N.
-> Aucun code.**
-> Contrairement à N, ce chantier ne part pas d'une hypothèse : **la cause est mesurée**, et les
-> chiffres sont au §1. C'est le correctif que le brief N annonçait sans le choisir.
+> **Statut : code écrit le 05/08/2026, mesure de confirmation à faire.**
+> Décodage asynchrone hors du chemin critique et doublure basse résolution (ImageBitmap <= 1024px) implémentés. La sonde du chantier N reste en place pour mesurer la confirmation.
 
 ## 1. La mesure, et ce qu'elle tranche
 
@@ -122,13 +120,30 @@ préparées.
    Le garde `decodePending` n'est pas décoratif : sans lui chaque frame froide relance un décodage,
    et les deux vues d'un même onglet en lancent deux sur la même entrée.
 
-5. **Une seule horloge, et elle est passée en paramètre.** Ce dépôt a déjà payé un bug d'horloges
-   non comparables, et les deux sont en circulation dans ce fichier même : la sonde du chantier N
-   utilise `performance.now()`, `renderAll` passe `now: Date.now()` aux couches portes et pions.
-   Mélanger les deux donne un écart de 1,7 × 10¹² et un état chaud permanent, **sans aucun symptôme
-   avant la table**. `render` reçoit donc `now` dans ses `options`, comme `portals` et `tokens`, et
-   s'en sert pour la comparaison **comme** pour la mise à jour. Bénéfice second, et il n'est pas
-   accessoire : l'horloge devient injectable, donc la règle de chaleur est testable sous Node.
+5. **Une seule horloge, et `render` n'en accepte aucune.** Ce dépôt a déjà payé un bug d'horloges non
+   comparables, et les deux sont en circulation dans ce fichier même : la sonde du chantier N utilise
+   `performance.now()`, `renderAll` passe `now: Date.now()` aux couches portes et pions. Mélanger les
+   deux donne un écart de 1,7 × 10¹² et un état froid permanent — donc la doublure à chaque frame et
+   la boucle du point 4 —, **sans aucun symptôme avant la table**.
+
+   ⚠ Une version antérieure de ce brief demandait de passer `now` dans les `options` de `render`, par
+   analogie avec `portals` et `tokens`. C'était une erreur de ma part : ces deux couches comparent
+   des horodatages **venus du réseau**, ce qui impose `Date.now()`, alors que la chaleur d'un bitmap
+   est une **durée locale**, qui impose une horloge monotone. Offrir le paramètre laissait la mine
+   amorcée pour le prochain appelant, et c'est exactement ce qui s'est produit : la sonde de test
+   passait `Date.now()`, et son chemin froid ne s'ouvrait que grâce à cet écart d'horloges — le test
+   passait sans rien prouver.
+
+   La couche possède donc son horloge, injectée **une seule fois** au constructeur
+   (`new BackgroundLayer({ clock })`), et `render` ne prend aucun `now`. La faute devient impossible
+   au lieu d'être déconseillée, et la règle reste testable sous Node.
+
+   ⛔ Corollaire, et il est contre-intuitif : la sentinelle « jamais décodée » ne peut pas être `0`.
+   Une horloge monotone vaut quelques centaines de millisecondes juste après le chargement de la page,
+   donc `now - 0` reste sous le seuil pendant les quatre premières secondes de vie de l'onglet : une
+   carte ouverte tôt serait présumée chaude et repaierait les 484 ms — non déterministe, puisque cela
+   dépend de la vitesse de démarrage. La sentinelle est `-Infinity`, qui n'est récent sous aucune
+   horloge.
 
 6. **Le rectangle de destination se calcule une fois, et il est le même pour les deux sources.**
    Depuis `naturalWidth` / `naturalHeight` de l'image pleine taille — les deux restent lisibles même
