@@ -59,7 +59,13 @@ function mesurer(page, zoom) {
   return page.evaluate(async (z) => {
     const app = /** @type {any} */ (window).__RPG_APP__;
     app.camera.setZoom(z);
-    app.camera.setPan(1.5 * 140 * z, 1 * 140 * z);
+    // `setPan` place le CENTRE de la caméra sur la carte : on la centre donc entre les deux
+    // portes, à mi-hauteur de (2·140) et (4·140). La première version calculait un pan
+    // « à peu près bon » multiplié par le zoom — une confusion d'espace — et ne tombait juste
+    // que par chance, sur un canvas de la largeur du poste de développement. Sur le runner
+    // Linux, dont le panneau MJ n'a pas la même largeur, l'échantillon tombait hors du canvas
+    // et `getImageData` rendait du noir transparent : épaisseur mesurée **0**, sans un mot.
+    app.camera.setPan(2.5 * 140, 3 * 140);
     await new Promise((resolve) => {
       const listener = () => {
         app.frameLoop.removeListener(listener);
@@ -124,7 +130,46 @@ function mesurer(page, zoom) {
       return n / (res * res);
     };
 
+    // PRÉCONDITIONS, rendues avec la mesure et non supposées. Une sonde qui échantillonne hors
+    // du canvas, ou une carte restée sous la brume, rendent zéro — c'est-à-dire exactement ce
+    // qu'un indicateur absent rendrait. Sans ces champs, l'échec est muet et se lit comme une
+    // régression du rendu (`debugging_lessons` : « une sonde fausse ferme la question »).
+    const marge = 30;
+    /** @param {number} mapX @param {number} mapY */
+    const dansLeCanvas = (mapX, mapY) => {
+      const p = app.camera.mapToScreen({ x: mapX, y: mapY });
+      return (
+        p.screenX > marge &&
+        p.screenY > marge &&
+        p.screenX < app.canvas.width / res - marge &&
+        p.screenY < app.canvas.height / res - marge
+      );
+    };
+    // Clarté d'une zone SANS indicateur : si la brume n'a pas été levée, elle est quasi nulle.
+    //
+    // Échantillonnée **au centre de la caméra**, donc toujours dans le canvas quel que soit son
+    // format — et le canvas ne fait pas la largeur de la fenêtre, le panneau MJ en prend 360 px
+    // sur 900. Un point choisi « loin des portes » en coordonnées carte, comme dans la première
+    // version, sortait du cadre à zoom 1 et rendait 0 : la précondition destinée à démasquer les
+    // sondes aveugles en était une.
+    const fond = (() => {
+      const p = app.camera.mapToScreen({ x: 2.5 * 140, y: 3 * 140 });
+      const d = app.context.getImageData(
+        Math.round(p.screenX * res),
+        Math.round(p.screenY * res),
+        Math.round(6 * res),
+        Math.round(6 * res)
+      ).data;
+      let somme = 0;
+      for (let i = 0; i < d.length; i += 4) somme += (d[i] + d[i + 1] + d[i + 2]) / 3;
+      return somme / (d.length / 4);
+    })();
+
     return {
+      zoomEffectif: app.camera.zoom,
+      canvas: `${app.canvas.width}x${app.canvas.height}@${res}`,
+      portesDansLeCanvas: dansLeCanvas(2.15 * 140, 2 * 140) && dansLeCanvas(2.15 * 140, 4 * 140),
+      clarteDuFond: fond,
       epaisseurVerrouillee: epaisseur(2 * 140, rouge),
       encreOuverte: encreParPxDeSegment(4 * 140, vert),
       // Le cadenas : l'encre au centre du segment, moins celle d'une portion nue de même taille.
@@ -144,6 +189,11 @@ async function prepare(page, session) {
   await page.setViewportSize({ width: 900, height: 900 });
   await page.click('.gm-tab-btn[data-tab="fog-tools"]');
   await page.click('#fog-btn-reveal-all');
+  // Les indicateurs de porte se dessinent SOUS le fog : sans révélation, tout ce qui suit
+  // mesurerait du noir. La preuve que le geste a porté est prise dans le DOM — la pile d'undo
+  // passe à un pas — et non aux pixels : un seuil de clarté sur une carte de test serait un
+  // pari sur la pile de rendu du runner, exactement ce qui a fait rougir ce fichier en CI.
+  await expect(page.locator('#fog-btn-undo')).toHaveText(/Annuler \((?!0\))\d+\)/);
 }
 
 test.describe('Indicateurs de porte — grandeurs d\'écran, pas de carte', () => {
@@ -154,6 +204,24 @@ test.describe('Indicateurs de porte — grandeurs d\'écran, pas de carte', () =
     const zoomUn = await mesurer(page, 1);
     // 0,238 est la vue « carte entière » de la Tab S9 FE : 33 px par case pour pxPerCell 140.
     const vueTable = await mesurer(page, 0.238);
+
+    // Les préconditions AVANT les mesures, et avec leur contexte dans le message : sur le runner
+    // GitHub, la première version de ce test a échoué avec « épaisseur 0 » sans dire pourquoi,
+    // ce qui a coûté un aller-retour complet de déploiement.
+    /** @type {[string, Awaited<ReturnType<typeof mesurer>>][]} */
+    const mesures = [
+      ['zoom 1', zoomUn],
+      ['vue table', vueTable],
+    ];
+    for (const [nom, m] of mesures) {
+      const contexte = `${nom} — zoom ${m.zoomEffectif}, canvas ${m.canvas}`;
+      expect(m.portesDansLeCanvas, `${contexte} : les portes sont hors du canvas, la sonde échantillonne du vide`).toBe(true);
+      // Bar volontairement bas : cette garde n'existe que pour distinguer « le canvas est noir »
+      // de « l'indicateur manque ». La preuve que la brume est levée est prise dans le DOM par
+      // `prepare`, pas ici — un seuil de clarté serré serait le pari qu'on cherche à éviter.
+      expect(m.clarteDuFond, `${contexte} : le canvas est noir à cet endroit, rien n'y est dessiné`).toBeGreaterThan(8);
+      expect(Math.abs(m.zoomEffectif - (nom === 'zoom 1' ? 1 : 0.238)), `${contexte} : le zoom demandé n'a pas été appliqué`).toBeLessThan(0.01);
+    }
 
     // Avant correctif, mesuré : épaisseur 4 px à zoom 1 mais **1 px** à 0,238 ; cadenas 16 px
     // d'encre puis **2 px** ; pointillé vert 96 px puis **aucun** pixel saturé. C'est cet
