@@ -396,3 +396,16 @@ test('Correctif — Appui long immobile (700 ms) émet exactement UN longPress a
   expect(intentionsFinal.filter(/** @param {any} i */ (i) => i.type === 'dragToken')).toHaveLength(0);
 });
 
+// ⚠ Chantier O — il n'y a volontairement AUCUN test de la tolérance de désignation dans ce
+// fichier. Une première version en avait ajouté un, étiqueté « E2E … au zoom tablette 0.24 » :
+// il n'ouvrait aucun geste, ne touchait ni `PointerInput` ni `gm.js`, rejouait l'unitaire dans un
+// navigateur par `page.evaluate` — et recalculait lui-même `min(marge / zoom, plafond × case)`,
+// donc ne pouvait pas détecter une erreur dans la formule qu'il refaisait.
+//
+// L'arithmétique est couverte par `tests/tokenHit.test.mjs`, y compris le plafond au zoom lointain.
+// Ce qui reste non couvert est le **geste réel** au doigt, et ça ne se simule pas ici : les tests
+// qui pressent des coordonnées d'écran sur `gm.html` ont déjà coûté six runs de CI
+// (`DIAGNOSTIC-GESTE-GABARITS.md` — `camera.mapToScreen` est relatif au canvas, `page.mouse` au
+// viewport). C'est donc porté par la liste des vérifications manuelles d'`ETAT.md`, pas par un
+// test qui ferait semblant.
+

@@ -10,6 +10,11 @@ import { terrainCostRecordToMap } from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
 import { findHitTemplate } from '../../input/templateHit.js';
+import {
+  findHitToken,
+  exactTokenAtCell,
+  isPlayerManipulableToken,
+} from '../../input/tokenHit.js';
 
 /** @typedef {import('../../core/types.js').Cell} Cell */
 /** @typedef {import('../../core/types.js').Token} Token */
@@ -112,28 +117,31 @@ export function bootstrapPlayerView(options) {
       return;
     }
 
-    const tappedToken = campaign.tokens.find((t) => {
-      if (t.levelId !== activeLevel.id || t.hidden) return false;
-      const size = t.sizeCells || 1;
-      return (
-        targetCell.a >= t.cell.a &&
-        targetCell.a < t.cell.a + size &&
-        targetCell.b >= t.cell.b &&
-        targetCell.b < t.cell.b + size
-      );
+    const tappedToken = findHitToken(
+      grid,
+      activeLevel,
+      intention.mapPos,
+      camera.zoom,
+      campaign.tokens,
+      { filter: (t) => !t.hidden, deprioritize: (t) => !isPlayerManipulableToken(t) }
+    );
+
+    const tappedMovablePc = tappedToken && isPlayerManipulableToken(tappedToken) ? tappedToken : null;
+
+    // Le pion qui occupe **exactement** la case touchée, marge exclue. Il sert deux fois : à
+    // borner la retombée vers la porte juste en dessous, et à décider de la destination d'un
+    // déplacement plus bas.
+    const exactTappedToken = exactTokenAtCell(activeLevel, targetCell, campaign.tokens, {
+      filter: (t) => !t.hidden,
     });
 
-    // Les PNJ sont toujours réservés au MJ, même si une donnée incohérente les marque
-    // playerMovable. Les trois conditions sont défensives et cumulatives.
-    const tappedMovablePc =
-      tappedToken &&
-      tappedToken.kind === 'pc' &&
-      tappedToken.playerMovable !== false &&
-      !tappedToken.locked
-        ? tappedToken
-        : null;
-
-    if (!tappedToken) {
+    // Arbitrage n°1 (brief O §5a), **borné à la marge** : un PNJ qu'on manque de peu ne bloque
+    // plus la porte derrière lui — sinon la tolérance élargirait de 24 px la zone morte autour de
+    // chaque PNJ, soit l'inverse de ce que ce chantier corrige. Mais un PNJ touché en plein
+    // continue de la bloquer : sans cette borne, un PNJ posté à moins de 0,25 case d'une porte
+    // ferait ouvrir la porte à chaque tap sur son corps, et la porte reprendrait la priorité
+    // inconditionnelle que le brief §3 lui reproche.
+    if (!tappedMovablePc && !exactTappedToken) {
       const hitPortal = findHitPortal(grid, activeLevel, intention.mapPos);
       if (hitPortal) {
         /** @type {'open'|'closed'|null} */
@@ -167,13 +175,19 @@ export function bootstrapPlayerView(options) {
       return;
     }
 
-    if (tappedMovablePc && tappedMovablePc.id !== selectedToken.id) {
-      store.selectToken(tappedMovablePc.id);
+    // Sélection active : la marge sert à **désigner**, jamais à définir une destination. Un tap
+    // sur une case vide voisine d'un autre pion doit déplacer le pion sélectionné, pas annuler la
+    // sélection — donc l'occupation de la case cible se lit à l'appartenance exacte.
+    const exactMovablePc =
+      exactTappedToken && isPlayerManipulableToken(exactTappedToken) ? exactTappedToken : null;
+
+    if (exactMovablePc && exactMovablePc.id !== selectedToken.id) {
+      store.selectToken(exactMovablePc.id);
       return;
     }
 
-    if (tappedToken && tappedToken.id !== selectedToken.id) {
-      // Un PNJ ou un pion interdit n'est jamais une destination de mouvement implicite.
+    if (exactTappedToken && exactTappedToken.id !== selectedToken.id) {
+      // Un PNJ ou un pion interdit présent exactement sur la case n'est jamais une destination de mouvement implicite.
       store.selectToken(null);
       return;
     }

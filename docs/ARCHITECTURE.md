@@ -98,6 +98,7 @@ F:\rpg-map-display\
 │   │   ├─ stage.js               [1a] contexte Canvas 2D + ordre des couches
 │   │   ├─ camera.js              [1a] SEUL fichier convertissant carte ⇄ écran
 │   │   ├─ frame.js               [1a] boucle à la demande (coalescence rAF)
+│   │   ├─ probe.js               [N]  sonde passive : mesure la première image après inactivité
 │   │   ├─ statusBadges.js        [2]  paliers d'affichage des marqueurs, mise en page de la
 │   │   │                              rangée, cache de rastérisation des 14 icônes. Séparé de
 │   │   │                              `tokens.js` parce que le choix du palier et la
@@ -117,7 +118,8 @@ F:\rpg-map-display\
 │   │   ├─ pointer.js             [1a] pointerdown/move/up → intentions abstraites
 │   │   ├─ gestures.js            [1a] pan, pinch, tap, appui long
 │   │   ├─ portalHit.js           [2]  désignation d'une porte sous le tap (MJ et joueurs)
-│   │   └─ templateHit.js         [2]  désignation d'un gabarit sous le tap (MJ et joueurs)
+│   │   ├─ templateHit.js         [2]  désignation d'un gabarit sous le tap (MJ et joueurs)
+│   │   └─ tokenHit.js            [O]  désignation d'un pion sous le tap et glisser (MJ et joueurs)
 │   │
 │   ├─ ui/
 │   │   ├─ versionBadge.js        [1a] affichage MJ (permanent) / joueurs (transitoire) + mise à jour forcée

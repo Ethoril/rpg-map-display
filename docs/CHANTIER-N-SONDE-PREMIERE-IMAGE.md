@@ -1,8 +1,13 @@
 # Chantier N — Sonde : la première image après inactivité
 
-> **Statut : brief, écrit le 05/08/2026 après la première séance réelle. Aucun code.**
-> Ce chantier ne corrige rien : il **mesure**. Le correctif ne s'écrit qu'après, et son choix
-> dépend du résultat.
+> **Statut : instrument posé le 05/08/2026 — aucune mesure encore lue.** La sonde est en place
+> (`js/render/probe.js`, touche `P` dans la vue MJ, instantané des 64 dernières frames avec
+> ventilation par couche et résidu brut). Le critère 3 du §6 — *la sonde désigne une cause* — n'est
+> pas rempli : il exige une séance réelle, et la marche à suivre est dans la liste des
+> vérifications manuelles d'`ETAT.md`.
+>
+> ⛔ Ce chantier ne corrige toujours rien. Le correctif ne s'écrit qu'après la lecture, et son
+> choix dépend du résultat.
 
 ## 1. Le symptôme, tel qu'il a été rapporté
 

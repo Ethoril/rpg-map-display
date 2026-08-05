@@ -5,6 +5,15 @@
 > de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet, L-09 marqueurs d'état. Les trois critères
 > restants : les 10 et 11 attendent la Tab S9 FE, le 4 (marqueurs) attend la table.
 >
+> **Chantiers N et O, 5 août 2026, retours de la première séance réelle.** O — tolérance de
+> désignation des pions au doigt : marge de 24 px **écran** plafonnée à 0,75 case, mesurée au
+> rectangle du pion, le plus proche gagne, départage par identifiant. Le code est écrit et couvert
+> en unitaire ; le geste réel au doigt, lui, n'est couvert par aucun test de la porte et attend la
+> table. N — la sonde de la première image après inactivité : **c'est un instrument, pas un
+> correctif.** Elle est posée (touche `P` dans la vue MJ, instantané des 64 dernières frames avec
+> ventilation par couche et résidu) et **aucune mesure n'a encore été lue** : tant que la sonde n'a
+> pas désigné une cause en séance, le chantier n'est pas clos et le correctif n'est pas choisi.
+>
 > **L-09 est livrée le 5 août 2026.** Le jeu de marqueurs (Q7) comporte quatorze états, liste close,
 > les trois paliers d'affichage (icônes à 3 emplacements, points de catégorie, point unique) et la correction
 > de géométrie d'écran pour l'élévation (rayon de 8 à 14 px écran, seuil bas D < 40 px) et les marqueurs sous tout zoom. Le critère 4 reste malgré
@@ -525,6 +534,22 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 > le jeu réel, et la tenue thermique qui court *pendant* le reste et non après. La liste ci-dessous
 > reste la référence de **ce qui est ouvert** ; l'autre document dit **dans quel ordre le fermer**.
 
+- **chantier N — lire la sonde après un vrai silence.** Ouvrir `gm.html` sur la carte de la
+  séance, laisser la tablette et le Mac sans y toucher **plus de 30 s**, puis zoomer une fois et
+  presser `P`. La ligne en rouge est la frame incriminée. Trois lectures, et une seule est à
+  retenir : total élevé **et** fond élevé → décodage synchrone du bitmap ; total élevé **et** fog
+  élevé → mémoïsation perdue ; total élevé **et toutes les couches basses** → le coût est hors JS
+  (GC ou compositing) et le correctif n'est pas celui qu'on croyait. « La sonde ne tranche pas »
+  est un résultat recevable, pas un échec. ⛔ Rien à corriger avant cette lecture ;
+- **chantier O — le tap au doigt sur un pion, à la vue « carte entière ».** Ce que la porte de
+  vérification ne couvre pas : le geste réel. À constater à la table, dans cet ordre. (a) viser un
+  pion et le manquer d'un demi-doigt le sélectionne quand même ; (b) un pion adjacent à une porte
+  se sélectionne sans ouvrir la porte ; (c) côté joueurs, taper **à côté** d'un PNJ posté devant
+  une porte ouvre bien la porte, tandis que taper **en plein** sur le PNJ ne fait rien — la
+  distinction est voulue ; (d) avec un PJ sélectionné, taper une case vide voisine d'un autre pion
+  le déplace au lieu de désélectionner. Puis la question ouverte du brief §8 : **la capsule des
+  portes peut-elle remonter de 0,25 vers 0,4 sans que le pion redevienne difficile à viser ?**
+  C'est le gain caché du chantier et il ne se constate qu'à la table ;
 - **tenue d’une carte préparée à 8192 px sur la tablette** — le passage du plafond de 4096 à
   8192 n’est validé par aucune mesure d’affichage : 7499 × 8192 en RGBA fait **245 Mio décodés**
   dans le navigateur, et 8192 est exactement la limite *mesurée* de la dalle, donc sans marge.

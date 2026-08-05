@@ -1,7 +1,17 @@
 # Chantier O — Désigner un pion au doigt : la tolérance manquante
 
-> **Statut : brief, écrit le 05/08/2026. Aucun code.** Deux arbitrages attendent le mainteneur
-> (§5), le reste est décidé par la mesure et par le code existant.
+> **Statut : code livré le 05/08/2026 ; validation à la table ouverte.** Marge de 24 px écran
+> plafonnée à 0,75 case, mesurée au rectangle du pion, sur le tap **et** le glisser
+> (`js/input/tokenHit.js`). Les deux arbitrages du §5 sont tranchés : (a) un pion non manipulable
+> qu'on **manque de peu** ne bloque plus la porte derrière lui, mais un pion touché **en plein** la
+> bloque toujours — la retombée est bornée à la marge, sans quoi la porte reprendrait la priorité
+> inconditionnelle que le §3 lui reproche ; (b) le pion verrouillé reste sélectionnable par le MJ et
+> n'est déclassé qu'à distance comparable, sans que les PNJ soient pénalisés.
+>
+> Reste ouvert : les critères 1 et 6 ne sont couverts qu'en unitaire — **le geste réel au doigt
+> n'est gardé par aucun test de la porte** — et le critère 8 (remonter la capsule des portes de 0,25
+> vers 0,4) est une mesure de table. Les deux sont dans la liste des vérifications manuelles
+> d'`ETAT.md`.
 
 ## 1. Le vrai déséquilibre, et il n'est pas où on l'a cherché
 

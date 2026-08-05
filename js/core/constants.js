@@ -376,3 +376,21 @@ export const TEMPLATE_VERTEX_HANDLE_MAX_RATIO = 0.4;
  * Épsilon de décollement d'origine pour éviter de poser l'origine d'un sweep pile sur un segment.
  */
 export const TEMPLATE_ORIGIN_EPS = 0.5;
+
+/**
+ * Tolérance de désignation des pions au doigt, en pixels ÉCRAN.
+ *
+ * Contrairement aux portes (`PORTAL_HIT_CELL_RATIO` qui est une grandeur en espace carte),
+ * la tolérance d'un pion n'est pas une propriété de l'objet mais une compensation de l'imprécision
+ * du doigt (grandeur écran).
+ *
+ * À la vue « carte entière » (zoom ~0.24), une case fait 33 px écran quand un doigt en couvre 40 px.
+ * Une marge de 24 px écran permet de saisir facilement un pion même si le tap déborde légèrement du pion.
+ *
+ * Pour éviter d'attraper un pion situé 2 cases plus loin sur une carte très dézoomée, cette marge en pixels
+ * est convertie en unités carte (`marginScreen / zoom`) puis plafonnée par `TOKEN_HIT_MAX_CELL_RATIO`
+ * (0.75 case carte, strictement inférieur à 1 case). À la vue carte entière (33 px/case), 0.75 * 33 = 24.75 px,
+ * ce qui laisse la marge de 24 px totalement active sans être restreinte artificiellement.
+ */
+export const TOKEN_HIT_MARGIN_SCREEN_PX = 24;
+export const TOKEN_HIT_MAX_CELL_RATIO = 0.75;

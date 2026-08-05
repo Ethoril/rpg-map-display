@@ -15,6 +15,8 @@ import { TemplatesLayer } from '../render/layers/templates.js';
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
 import { findHitTemplate } from '../input/templateHit.js';
+import { findHitToken } from '../input/tokenHit.js';
+import { FrameProbe } from '../render/probe.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
 import {
@@ -394,6 +396,25 @@ export async function bootstrapGMApp(options = {}) {
   /** @type {string|null} */
   let lastActiveLevelId = null;
   let restoredCamera = false;
+  // Sonde du chantier N. Les deux variables ci-dessous sont hissées hors de `renderAll` pour que
+  // la mesure n'alloue rien par frame (brief N §5.2) : un objet littéral et huit fermetures créés
+  // à chaque image feraient fabriquer par la sonde la pression mémoire qu'elle cherche.
+  const frameProbe = new FrameProbe();
+  /** @type {Record<string, number>} */
+  const layerDurations = {
+    background: 0,
+    grid: 0,
+    walls: 0,
+    portals: 0,
+    moveZone: 0,
+    templates: 0,
+    tokens: 0,
+    fog: 0,
+  };
+  // Chronomètre partagé par les huit couches. Il n'est juste que parce que `renderLayerStack` les
+  // exécute strictement en séquence et qu'aucune ne rend une autre : une couche imbriquée
+  // écraserait silencieusement la borne de départ de celle qui l'englobe.
+  let lStart = 0;
 
 
   function fitActiveLevel() {
@@ -416,6 +437,7 @@ export async function bootstrapGMApp(options = {}) {
   }
 
   function renderAll() {
+    const tStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     stage.context.save();
     stage.context.setTransform(1, 0, 0, 1, 0, 0);
     stage.context.clearRect(0, 0, stage.canvas.width, stage.canvas.height);
@@ -438,30 +460,57 @@ export async function bootstrapGMApp(options = {}) {
     camera.applyToContext(stage.context);
 
     let animationActive = false;
+    layerDurations.background = 0;
+    layerDurations.grid = 0;
+    layerDurations.walls = 0;
+    layerDurations.portals = 0;
+    layerDurations.moveZone = 0;
+    layerDurations.templates = 0;
+    layerDurations.tokens = 0;
+    layerDurations.fog = 0;
+
     renderLayerStack({
-      background: () =>
-        backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, { role: 'gm' }),
-      grid: () => gridLayer.render(stage.context, grid),
+      background: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, { role: 'gm' });
+        layerDurations.background = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      grid: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        gridLayer.render(stage.context, grid);
+        layerDurations.grid = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
       walls: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const draft = gmPanel?.wallEditor?.isArmed() ? gmPanel.wallEditor.getDraft() : null;
         wallsLayer.render(stage.context, grid, activeLevel, draft);
+        layerDurations.walls = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       portals: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const result = portalsLayer.render(stage.context, grid, activeLevel, {
           zoom: camera.zoom,
           flash: lockedPortalFlash,
           now: Date.now(),
         });
         animationActive ||= result.animationActive;
+        layerDurations.portals = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
-      moveZone: () =>
+      moveZone: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
           reachableCells: state.reachableCells,
-        }),
-      templates: () =>
-        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], false),
+        });
+        layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      templates: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], false);
+        layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
       tokens: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const result = tokensLayer.render(
           stage.context,
           grid,
@@ -481,32 +530,37 @@ export async function bootstrapGMApp(options = {}) {
         // AVANT les pions —, la boucle à la demande s'arrêtait après une frame et le battement
         // du verrou restait figé à l'écran au lieu de s'éteindre.
         animationActive ||= result.animationActive;
+        layerDurations.tokens = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       // Rendu pur : ni révélation, ni publication ici. Elles appartiennent à
       // `syncVision`, qui doit tourner même quand le navigateur ne donne plus de frame
       // à cette fenêtre. `fogLayer` recalcule au besoin, et sa mémoïsation par
       // signature fait que ce recalcul n'a normalement plus rien à faire.
       fog: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const exploredFog = getExploredFog(activeLevel);
-        if (!exploredFog) return;
-
-        fogLayer.render(
-          stage.context,
-          grid,
-          activeLevel,
-          state.campaign?.tokens ?? [],
-          {
-            role: 'gm',
-            extractSegments: extractBlockedSegments,
-            exploredCanvas: exploredFog.canvas,
-          }
-        );
+        if (exploredFog) {
+          fogLayer.render(
+            stage.context,
+            grid,
+            activeLevel,
+            state.campaign?.tokens ?? [],
+            {
+              role: 'gm',
+              extractSegments: extractBlockedSegments,
+              exploredCanvas: exploredFog.canvas,
+            }
+          );
+        }
+        layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
     });
 
-
     stage.context.restore();
     if (animationActive) requestRender();
+
+    const tEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    frameProbe.recordFrame(tEnd, tEnd - tStart, layerDurations);
   }
 
   frameLoop = new FrameLoop(renderAll);
@@ -890,8 +944,18 @@ export async function bootstrapGMApp(options = {}) {
       }
 
       const grid = gridFor(state.activeLevel);
-      const cell = grid.cellFromPoint(intention.mapPos);
-      const token = tokenAtCell(state.campaign, state.activeLevel, cell);
+      // Aucun `filter` : le MJ doit pouvoir désigner un PNJ caché. Seul `locked` est déclassé —
+      // il reste sélectionnable (c'est le geste qui sert à le déverrouiller) mais ne vole pas la
+      // désignation d'un voisin libre. ⛔ Ne pas y mettre la manipulabilité *joueur* : elle
+      // déclasserait les PNJ, que le MJ manipule autant que les PJ.
+      const token = findHitToken(
+        grid,
+        state.activeLevel,
+        intention.mapPos,
+        camera.zoom,
+        state.campaign?.tokens ?? [],
+        { deprioritize: (t) => !!t.locked }
+      );
       if (token) {
         store.selectToken(token.id);
         return;
@@ -1066,9 +1130,18 @@ export async function bootstrapGMApp(options = {}) {
     canStartTokenDrag: (_screenPos, mapPos) => {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;
       const state = store.getState();
-      if (!state.activeLevel) return null;
-      const cell = gridFor(state.activeLevel).cellFromPoint(mapPos);
-      return tokenAtCell(state.campaign, state.activeLevel, cell)?.id ?? null;
+      if (!state.activeLevel || !state.campaign) return null;
+      const grid = gridFor(state.activeLevel);
+      // Même règle qu'au tap : c'est le même point d'entrée pour les deux gestes (brief O §2).
+      const hit = findHitToken(
+        grid,
+        state.activeLevel,
+        mapPos,
+        camera.zoom,
+        state.campaign.tokens || [],
+        { deprioritize: (t) => !!t.locked }
+      );
+      return hit?.id ?? null;
     },
     canStartTemplateDrag: (_screenPos, mapPos) => {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;
@@ -1080,11 +1153,21 @@ export async function bootstrapGMApp(options = {}) {
   });
 
   const onKeyDown = (/** @type {KeyboardEvent} */ e) => {
+    const target = /** @type {HTMLElement|null} */ (e.target);
+    if (
+      target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    ) {
+      return;
+    }
     if (e.key === 'Escape' || e.key === 'Esc') {
       if (gmPanel?.getActiveToolName?.() !== 'none') {
         gmPanel?.disarmActiveTool?.();
         requestRender();
       }
+    }
+    if (e.key === 'p' || e.key === 'P') {
+      frameProbe.toggleOverlay();
     }
   };
   if (typeof document !== 'undefined') {
@@ -1108,6 +1191,7 @@ export async function bootstrapGMApp(options = {}) {
       document.removeEventListener('keydown', onKeyDown);
     }
     pointerInput.detach();
+    frameProbe.stop();
     unsubscribeStore();
     unsubscribeEvents?.();
     if (snapshotTimer !== null) clearTimeout(snapshotTimer);
