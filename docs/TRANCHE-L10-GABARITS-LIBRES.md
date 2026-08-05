@@ -400,3 +400,49 @@ défauts de _prédicat_, pas d'implémentation.**
   joueurs) doit y figurer, sinon le test 5 du manifeste échoue, et c'est voulu.
 - **`ETAT.md`** — le retour de table du 05/08 renvoie déjà ici ; la ligne du lot 2 devra dire que
   L-08 est **remplacée** par L-10 sur le rendu et le modèle.
+
+---
+
+## 11. Reste à faire après la livraison du 05/08 — un seul point
+
+La tranche est livrée et sa substance est bonne. Le typecheck tombait sur un détail de contrat
+(`InputCamera` ne déclarait pas `zoom`, lu par la vue joueurs) : **corrigé**, une ligne dans
+`js/input/pointer.js`. Reste **une** chose, et elle n'est pas cosmétique.
+
+### La découpe par les murs n'est gardée par aucun test
+
+Vérifié par mutation : `ctx.clip()` retiré du rendu des gabarits, **237 tests unitaires et 112
+e2e restent verts**. Or le CdC déclare désormais `- [x] … en respectant les murs (découpe par les
+murs obligatoire)`. Un critère du lot 2 est donc coché sans rien derrière.
+
+Le test qui devait porter cette propriété — « Occlusion par les murs (L-10) … sweep produit un
+polygone découpé par les obstacles » — vérifie que **`sweep()`** rend un polygone dont un sommet
+est en deçà du rayon. C'est une propriété de `js/vision/sweep.js`, déjà couverte par L-02, et elle
+ne dit rien du rendu. L'assertion n'exerce pas son sujet : elle ne peut pas rougir.
+
+**Ce qu'il faut écrire : un test e2e, et un seul.**
+
+1. Sur `manoir-rdc`, poser un gabarit circulaire dont le rayon **traverse un mur**, de sorte
+   qu'une partie du disque tombe de l'autre côté.
+2. Échantillonner **deux** points, tous deux à l'intérieur du rayon : un **du côté de l'origine**,
+   qui doit porter la couleur du gabarit ; un **derrière le mur**, qui ne doit pas la porter.
+3. Le second point est l'assertion utile ; le premier est le contrôle, sans lequel « rien n'est
+   peint derrière le mur » serait vrai d'un rendu totalement absent.
+
+⛔ **Preuve par mutation exigée** : retirer `ctx.clip()` et constater que le test rougit. C'est
+tout l'objet de ce test — sans cette vérification il n'apporte rien de plus que celui qu'il
+remplace.
+
+**Copier le protocole de `tests/portalIndicator.spec.mjs`**, qui résout déjà, dans ce même dépôt,
+les quatre pièges que cette mesure va rencontrer :
+
+- la **brume voile tout** : les gabarits se dessinent sous le fog. Révéler d'abord, et le prouver
+  **par le DOM** (la pile d'undo du fog passe à un pas), pas par un seuil de clarté ;
+- **les préconditions s'expriment** : le canvas ne fait pas la largeur de la fenêtre (le panneau
+  MJ en prend 360 px sur 900). Un échantillon hors cadre rend zéro, soit exactement ce que rendrait
+  un rendu absent. Vérifier que les deux points visés sont dans le canvas, et le dire dans le
+  message d'échec ;
+- **la ligne de base se relève après une frame**, jamais après un simple `setZoom` : sinon on
+  échantillonne les coordonnées du nouveau zoom sur une image peinte à l'ancien ;
+- **mesurer un écart de clarté ou de couleur, pas un seuil absolu** : le voile MJ assombrit, et un
+  comptage par seuil finit par mesurer le voile.
