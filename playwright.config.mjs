@@ -17,6 +17,19 @@ export default defineConfig({
   testDir: 'tests',
   testMatch: '**/*.spec.mjs',
   fullyParallel: false,
+  // ⚠ **En local, un seul worker.** `fullyParallel: false` ne sérialise que les tests d'un même
+  // fichier : Playwright lance quand même autant de workers que la moitié des cœurs, donc six
+  // navigateurs de front sur cette machine à douze cœurs — et chaque test de convergence en ouvre
+  // deux pages. Le 6 août 2026, cela a saturé la machine du mainteneur **deux fois**, jusqu'à faire
+  // planter sa session : d'abord des tests qui échouaient sur des fichiers différents à chaque
+  // exécution — diagnostic perdu à chercher l'erreur dans le code —, puis l'éditeur et le jeu qui
+  // tombent. La machine du mainteneur est un poste de travail où tourne autre chose ; le runner
+  // GitHub ne l'est pas.
+  //
+  // ⛔ Ne pas « accélérer » en remontant ce nombre en local. Le gain est de quelques dizaines de
+  // secondes ; le coût est une session perdue, et des rouges qui n'ont rien à voir avec le code.
+  // La CI garde le défaut, où le parallélisme est gratuit.
+  workers: process.env.CI ? undefined : 1,
   forbidOnly: !!process.env.CI,
   // En CI, le rapporteur `github` en plus de `list`. Ce n'est pas un agrément d'affichage :
   // sur ce dépôt, les **journaux** de run répondent 403 en lecture anonyme et les **artefacts**
