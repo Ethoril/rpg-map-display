@@ -58,6 +58,28 @@ export function applyNetworkEvent(event) {
       store.updateLevel(payload.levelId, { grid: payload.grid });
       return true;
     }
+    // ── Lot 3, S-02 : la bascule d'étage traverse le réseau ────────────────────────────────
+    //
+    // Elle ne le faisait pas. `level.add` et `level.grid` existaient depuis le lot 1a, mais changer
+    // l'étage actif restait purement local : la tablette n'apprenait l'étage qu'au démarrage, par
+    // l'instantané. Le MJ montait à l'étage, la table restait au rez-de-chaussée, et rien ne le
+    // signalait.
+    //
+    // ⚠ L'étage inconnu est refusé **bruyamment**. `store.selectLevel` lève sur un identifiant
+    // inconnu : sans ce filtre, un événement arrivé avant l'étage qu'il désigne — l'ordre n'est pas
+    // garanti sur le canal — ferait remonter une exception au travers du réducteur.
+    case 'level.select': {
+      if (!payload.levelId || typeof payload.levelId !== 'string') {
+        console.error('Événement "level.select" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((level) => level.id === payload.levelId)) {
+        console.error(`Événement "level.select" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      store.selectLevel(payload.levelId);
+      return true;
+    }
     case 'token.add': {
       if (!payload.token) return false;
       if (campaign?.tokens.some((token) => token.id === payload.token.id)) return false;

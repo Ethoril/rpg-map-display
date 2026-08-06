@@ -74,6 +74,20 @@ export function createGMPanel(container, options = {}) {
       <button id="gm-leave-session" style="padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
     </div>
 
+    <!--
+      Barre d'étage — Lot 3, S-02.
+
+      Hors des onglets, et c'est délibéré : changer d'étage est une action de séance, faite en
+      cours de jeu et depuis n'importe quel outil. L'enfouir dans un onglet obligerait le MJ à
+      quitter son pinceau de fog ou son éditeur de murs pour monter d'un niveau. Elle est masquée
+      tant que la campagne n'a qu'un seul étage, pour ne rien ajouter au bandeau du cas courant.
+    -->
+    <div id="gm-level-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #202832; border-bottom: 1px solid #333;">
+      <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
+      <select id="gm-level-select" style="flex: 1; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
+      <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
+    </div>
+
     <!-- Barre d'onglets du panneau MJ -->
     <div class="gm-tabs-header" style="display: flex; background: #2a2a2a; border-bottom: 1px solid #333;">
       <button class="gm-tab-btn" data-tab="scene-library" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">📂 Cartes</button>
@@ -1003,8 +1017,74 @@ export function createGMPanel(container, options = {}) {
 
   updateTokenEditUIFromStore();
 
+  // ── Barre d'étage (Lot 3, S-02) ──────────────────────────────────────────────────────────
+  const levelBar = /** @type {HTMLElement} */ (container.querySelector('#gm-level-bar'));
+  const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
+  const levelStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-level-status'));
+
+  /**
+   * Reflète les étages de la campagne et l'étage actif.
+   *
+   * ⚠ Ne reconstruit les options que si la **liste** a changé. Les reconstruire à chaque
+   * notification du store — donc à chaque déplacement de pion — refermerait la liste déroulante
+   * sous le doigt du MJ en pleine sélection, et ferait clignoter le champ pendant les animations.
+   */
+  function updateLevelBarFromStore() {
+    const campagne = store.getCampaign();
+    const etages = campagne?.levels ?? [];
+    const actif = store.getActiveLevelId();
+
+    // Un seul étage : la barre n'apporte rien, elle disparaît.
+    levelBar.style.display = etages.length > 1 ? 'flex' : 'none';
+    if (etages.length === 0) return;
+
+    const signature = etages.map((l) => `${l.id} ${l.name}`).join('');
+    if (levelSelect.dataset.signature !== signature) {
+      levelSelect.dataset.signature = signature;
+      levelSelect.replaceChildren(
+        ...etages.map((l) => {
+          const opt = document.createElement('option');
+          opt.value = l.id;
+          opt.textContent = l.name || l.id;
+          return opt;
+        })
+      );
+    }
+    if (actif && levelSelect.value !== actif) levelSelect.value = actif;
+  }
+
+  levelSelect.addEventListener(
+    'change',
+    () => {
+      const cible = levelSelect.value;
+      if (!cible || cible === store.getActiveLevelId()) return;
+      try {
+        store.selectLevel(cible);
+      } catch (err) {
+        levelStatus.style.color = '#e74c3c';
+        levelStatus.textContent = err instanceof Error ? err.message : String(err);
+        updateLevelBarFromStore();
+        return;
+      }
+      levelStatus.style.color = '#888';
+      levelStatus.textContent = '';
+      // ⚠ Publier APRÈS la mutation locale, et seulement si elle a réussi : annoncer un étage que
+      // le MJ n'a pas pu adopter enverrait la table où lui-même n'est pas.
+      transport?.publish({
+        type: 'level.select',
+        payload: { levelId: cible },
+        at: Date.now(),
+        by: 'gm',
+      });
+    },
+    { signal: listeners.signal }
+  );
+
+  updateLevelBarFromStore();
+
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
+    updateLevelBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();
     updateTokenEditUIFromStore();

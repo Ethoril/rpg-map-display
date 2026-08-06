@@ -547,3 +547,59 @@ test('Le fog exploré est cumulatif et ne se vide pas sur mouvement de pion', ()
   const pxB = fog.ctx.getImageData(55, 55, 1, 1).data;
   assert.ok(pxB[3] > 0, 'Zone B suivante doit s accumuler dans le masque');
 });
+
+// ── S-01 (lot 3, critère 3) : le fog de chaque étage est indépendant ────────────
+//
+// ⭐ Le mécanisme existait — `sessionFogMap` est indexé par `levelId` et la clé de stockage porte
+// l'étage — mais **aucun test n'utilisait deux étages**. « Probablement juste, jamais vérifié »
+// n'est pas « acquis » : le critère 3 du lot 3 était compté à zéro faute d'avoir été éprouvé.
+//
+// Le piège que ce test ferme est précis : une implémentation qui ignorerait `levelId` et ne
+// garderait qu'un seul masque passerait TOUS les tests de fog existants, qui n'en utilisent qu'un.
+test('Lot 3, critère 3 : deux étages gardent des masques distincts, en mémoire et au stockage', () => {
+  store.setSessionId('test-fog-multietage');
+
+  // Deux masques différents, reconnaissables l'un de l'autre.
+  const masqueRdc =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const masqueCave =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  assert.notEqual(masqueRdc, masqueCave, 'les deux masques du test doivent différer');
+
+  store.setSessionFog('rdc', masqueRdc);
+  store.setSessionFog('cave', masqueCave);
+
+  // 1. Chaque étage rend le sien, et pas celui du voisin.
+  assert.equal(store.getSessionFog('rdc'), masqueRdc, 'le rez-de-chaussée garde son masque');
+  assert.equal(store.getSessionFog('cave'), masqueCave, 'la cave garde le sien');
+
+  // 2. Révéler davantage sur un étage ne touche pas l'autre — le cœur du critère.
+  const masqueRdcApres =
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mNkYPhfz0AEYBxVSAcAOJgD/e8bJU8AAAAASUVORK5CYII=';
+  store.setSessionFog('rdc', masqueRdcApres);
+  assert.equal(store.getSessionFog('rdc'), masqueRdcApres, 'le rez-de-chaussée a bien changé');
+  assert.equal(store.getSessionFog('cave'), masqueCave, '⛔ la cave ne doit PAS avoir bougé');
+
+  // 3. Effacer un étage n'efface pas l'autre.
+  store.setSessionFog('rdc', null);
+  assert.equal(store.getSessionFog('rdc'), null, 'le rez-de-chaussée est purgé');
+  assert.equal(store.getSessionFog('cave'), masqueCave, '⛔ la cave survit à la purge du voisin');
+
+  // 4. Persistance : les clés de stockage sont distinctes, donc un rechargement rend à chacun le
+  //    sien. C'est ce qui distingue « indépendant » de « indépendant ET persistant ».
+  const brut = globalThis.localStorage;
+  if (brut && typeof brut.getItem === 'function') {
+    assert.equal(
+      brut.getItem('rpg_fog_test-fog-multietage_cave'),
+      masqueCave,
+      'la clé de stockage doit porter le levelId'
+    );
+    assert.equal(
+      brut.getItem('rpg_fog_test-fog-multietage_rdc'),
+      null,
+      'la purge d\'un étage retire sa clé, et elle seule'
+    );
+  }
+
+  store.setSessionFog('cave', null);
+});
