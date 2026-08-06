@@ -80,6 +80,34 @@ export function applyNetworkEvent(event) {
       store.selectLevel(payload.levelId);
       return true;
     }
+    // ── Lot 3, S-03 : franchissement d'une liaison ────────────────────────────────────────
+    //
+    // L'événement porte le **pion et la liaison**, jamais la destination : chaque poste la
+    // recalcule depuis la liaison. Transmettre la case d'arrivée laisserait un client la
+    // contredire, et un pion se retrouverait à deux endroits selon l'écran qu'on regarde.
+    case 'link.traverse': {
+      if (
+        !payload.tokenId ||
+        typeof payload.tokenId !== 'string' ||
+        !payload.linkId ||
+        typeof payload.linkId !== 'string'
+      ) {
+        console.error('Événement "link.traverse" refusé : payload malformé');
+        return false;
+      }
+      try {
+        store.traverseLink(payload.tokenId, payload.linkId);
+      } catch (err) {
+        // Un franchissement impossible — pion déplacé entre-temps, liaison retirée — est refusé
+        // avec sa raison. Le laisser lever emporterait le réducteur et, avec lui, tous les
+        // événements suivants du lot.
+        console.error(
+          `Événement "link.traverse" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
     case 'token.add': {
       if (!payload.token) return false;
       if (campaign?.tokens.some((token) => token.id === payload.token.id)) return false;

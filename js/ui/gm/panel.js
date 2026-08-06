@@ -36,7 +36,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{isLevelFollowLocked: () => boolean, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -85,6 +85,7 @@ export function createGMPanel(container, options = {}) {
     <div id="gm-level-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #202832; border-bottom: 1px solid #333;">
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
       <select id="gm-level-select" style="flex: 1; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
+      <button id="gm-level-lock" type="button" aria-pressed="false" title="Cadenas : suspend la bascule automatique quand un pion change d'étage. Les pions montent quand même." style="padding: 0.3rem 0.55rem; font-size: 0.9rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🔓</button>
       <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
     </div>
 
@@ -1053,6 +1054,35 @@ export function createGMPanel(container, options = {}) {
     if (actif && levelSelect.value !== actif) levelSelect.value = actif;
   }
 
+  // ── Cadenas de bascule automatique (Lot 3, S-04) ─────────────────────────────────────────
+  //
+  // Purement local au poste MJ, et **volontairement pas dans la campagne** : c'est un réglage de
+  // conduite de séance, pas un fait de jeu. Le mettre dans le document le ferait voyager jusqu'aux
+  // tablettes et survivre à la partie, alors qu'il ne concerne que ce que le MJ veut montrer dans
+  // les dix prochaines minutes.
+  const levelLockBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-level-lock'));
+  let levelFollowLocked = false;
+
+  function renderLevelLock() {
+    levelLockBtn.textContent = levelFollowLocked ? '🔒' : '🔓';
+    levelLockBtn.setAttribute('aria-pressed', String(levelFollowLocked));
+    levelLockBtn.style.background = levelFollowLocked ? '#3a2f1a' : '#1a1a1a';
+    levelLockBtn.style.color = levelFollowLocked ? '#e0c080' : '#888';
+    levelLockBtn.style.borderColor = levelFollowLocked ? '#6a5530' : '#444';
+    levelStatus.style.color = '#888';
+    levelStatus.textContent = levelFollowLocked ? 'bascule auto suspendue' : '';
+  }
+
+  levelLockBtn.addEventListener(
+    'click',
+    () => {
+      levelFollowLocked = !levelFollowLocked;
+      renderLevelLock();
+    },
+    { signal: listeners.signal }
+  );
+  renderLevelLock();
+
   levelSelect.addEventListener(
     'change',
     () => {
@@ -1099,6 +1129,8 @@ export function createGMPanel(container, options = {}) {
   });
 
   return {
+    /** Le cadenas de bascule automatique est-il armé ? Lu par `app/gm.js` (Lot 3, S-04). */
+    isLevelFollowLocked: () => levelFollowLocked,
     tokenMaker,
     fogTools,
     wallEditor,

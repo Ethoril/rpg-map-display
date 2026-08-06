@@ -724,6 +724,7 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
+
       // Position d'avant, lue AVANT que l'événement ne la remplace. Le payload porte
       // normalement `from`, mais s'y fier seul laisserait le trajet non révélé sur un
       // client qui l'omet — et rien ne le signalerait.
@@ -739,6 +740,36 @@ export async function bootstrapGMApp(options = {}) {
         mute = applyNetworkEvent(event);
       } finally {
         applyingRemote = false;
+      }
+
+      // ── Lot 3, S-04 : la bascule automatique appartient au MJ ──────────────────────────
+      //
+      // ⚠ **Après `applyNetworkEvent`, et c'est essentiel** : avant, le franchissement n'est pas
+      // encore appliqué et le pion porte toujours son ancien étage. Placé plus haut, ce bloc
+      // aurait comparé l'étage de départ à l'étage actif et n'aurait jamais rien basculé.
+      //
+      // Le franchissement lui-même est appliqué par tous — c'est une mutation de l'état de jeu.
+      // Mais **où la table regarde** est une décision, et elle revient au MJ seul : lui seul sait
+      // si le groupe s'est séparé volontairement. Laisser chaque poste basculer de son côté
+      // donnerait autant de vues que d'écrans dès qu'un pion monte pendant que les autres restent.
+      //
+      // Le cadenas suspend la bascule sans empêcher le franchissement : les pions montent, la vue
+      // reste où le MJ l'a laissée.
+      if (mute && event.type === 'link.traverse' && !gmPanel?.isLevelFollowLocked?.()) {
+        const pionDeplace = store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId);
+        if (pionDeplace && pionDeplace.levelId !== store.getActiveLevelId()) {
+          try {
+            store.selectLevel(pionDeplace.levelId);
+            transport?.publish({
+              type: 'level.select',
+              payload: { levelId: pionDeplace.levelId },
+              at: Date.now(),
+              by: 'gm',
+            });
+          } catch (err) {
+            networkStatus.update('error', err);
+          }
+        }
       }
 
       // Un déplacement venu de la table est un trajet **marché** : tout ce qui a été

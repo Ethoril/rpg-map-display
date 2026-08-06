@@ -138,3 +138,123 @@ test('S-02 : le MJ change d\'étage, la tablette suit et reçoit la vision du no
   expect(erreurs).toEqual([]);
   await context.close();
 });
+
+/**
+ * Lot 3, S-03 et S-04 — franchir une liaison, et le cadenas.
+ *
+ * Le typedef `Link` existait depuis le lot 1a et `createCampaign` initialisait `links` à `[]` :
+ * le modèle était conçu, **jamais câblé**. Rien ne le lisait, rien ne le fabriquait.
+ *
+ * ⚠ Le geste est en **deux temps** — se poster sur l'escalier, puis retaper sa case. Un
+ * franchissement en un seul tap ferait changer d'étage chaque fois qu'on vise l'escalier pour s'y
+ * poster, et la table verrait l'autre étage sans l'avoir demandé.
+ */
+
+/** Une campagne à deux étages avec un escalier, et un PJ posté dessus. */
+const SNAPSHOT_LIAISON = {
+  campaign: {
+    schemaVersion: 2,
+    campaignId: 'c-liaison',
+    name: 'Escalier',
+    levels: [niveau('rdc', 'Rez-de-chaussée'), niveau('etage', 'Premier étage')],
+    links: [
+      {
+        id: 'escalier-1',
+        kind: 'stairs',
+        label: 'Escalier principal',
+        a: { levelId: 'rdc', at: { cellX: 3, cellY: 3 } },
+        b: { levelId: 'etage', at: { cellX: 7, cellY: 6 } },
+        bidirectional: true,
+        gmOnly: false,
+      },
+    ],
+    // Le PJ est déjà sur la case de l'escalier : le test porte sur le franchissement, pas sur
+    // le déplacement qui y mène, déjà couvert ailleurs.
+    tokens: [pion('pj-1', 'rdc', 3, 3)],
+    templates: [],
+    settings: { ambientLevel: 1 },
+  },
+  activeLevelId: 'rdc',
+  selectedTokenId: null,
+  activeHandout: null,
+};
+
+/**
+ * Fait taper le joueur sur la case d'un pion, comme un vrai geste.
+ * @param {import('@playwright/test').Page} page
+ * @param {number} a
+ * @param {number} b
+ * @param {number} pxPerCell
+ */
+const taper = (page, a, b, pxPerCell) =>
+  page.evaluate(
+    ([ca, cb, px]) => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+        type: 'tap',
+        mapPos: { x: (ca + 0.5) * px, y: (cb + 0.5) * px },
+        screenPos: { x: 0, y: 0 },
+      });
+    },
+    [a, b, pxPerCell]
+  );
+
+/**
+ * @param {import('@playwright/test').Page} page
+ * @param {string} tokenId
+ */
+const etageDuPion = (page, tokenId) =>
+  page.evaluate(async (id) => {
+    const store = await import('../js/state/store.js');
+    const t = store.getCampaign()?.tokens.find((/** @type {any} */ x) => x.id === id);
+    return t ? `${t.levelId}:${t.cell.a},${t.cell.b}` : null;
+  }, tokenId);
+
+for (const cadenas of [false, true]) {
+  test(`S-03/S-04 : franchir l'escalier téléporte le pion${cadenas ? ', et le cadenas suspend la bascule' : ' et bascule la vue'}`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    const sessionId = `liaison-${cadenas ? 'verrouille' : 'libre'}-${Date.now()}`;
+    /** @type {string[]} */
+    const erreurs = [];
+
+    const joueur = await context.newPage();
+    joueur.on('pageerror', (e) => erreurs.push(`joueur: ${e.message}`));
+    await installBrowserTransport(joueur, sessionId, SNAPSHOT_LIAISON);
+    await joueur.goto('/player.html');
+    await waitForApp(joueur);
+
+    const mj = await context.newPage();
+    mj.on('pageerror', (e) => erreurs.push(`mj: ${e.message}`));
+    await installBrowserTransport(mj, sessionId, SNAPSHOT_LIAISON);
+    await mj.goto('/gm.html');
+    await waitForApp(mj);
+
+    if (cadenas) {
+      await mj.click('#gm-level-lock');
+      await expect(mj.locator('#gm-level-lock')).toHaveAttribute('aria-pressed', 'true');
+    }
+
+    // Le joueur sélectionne son pion, puis retape sa case pour prendre l'escalier.
+    await taper(joueur, 3, 3, 100);
+    await taper(joueur, 3, 3, 100);
+
+    // 1. Le pion a changé d'étage ET de case, sur les deux postes.
+    await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
+    await expect.poll(() => etageDuPion(mj, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
+
+    // 2. La vue suit — ou pas, selon le cadenas. C'est toute la différence entre les deux cas,
+    //    et le franchissement lui-même est identique : le cadenas ne retient pas les pions.
+    if (cadenas) {
+      await joueur.waitForTimeout(1200);
+      expect(await etageActif(mj)).toBe('rdc');
+      expect(await etageActif(joueur)).toBe('rdc');
+    } else {
+      await expect.poll(() => etageActif(mj), { timeout: 8000 }).toBe('etage');
+      await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
+    }
+
+    expect(erreurs).toEqual([]);
+    await context.close();
+  });
+}

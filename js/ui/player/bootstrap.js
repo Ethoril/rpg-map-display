@@ -193,6 +193,32 @@ export function bootstrapPlayerView(options) {
     }
 
     if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
+      // ── Lot 3, S-03 : franchir une liaison ──────────────────────────────────────────────
+      //
+      // Le geste est délibérément en **deux temps** : amener le pion sur l'escalier, puis retaper
+      // sa case pour monter. Un franchissement en un seul tap ferait changer d'étage à chaque fois
+      // qu'on vise l'escalier pour s'y poster, et la table verrait l'autre étage sans l'avoir
+      // demandé. Retaper sa propre case ne servait à rien jusqu'ici : le geste était libre.
+      const liaison = store.findLinkAtCell(activeLevel.id, targetCell);
+      if (
+        liaison &&
+        selectedToken.kind === 'pc' &&
+        !selectedToken.locked &&
+        selectedToken.playerMovable !== false
+      ) {
+        try {
+          store.traverseLink(selectedToken.id, liaison.link.id);
+        } catch {
+          // Refus silencieux côté geste : le store a déjà dit pourquoi. Le pion reste où il est.
+          return;
+        }
+        transport?.publish({
+          type: 'link.traverse',
+          payload: { tokenId: selectedToken.id, linkId: liaison.link.id },
+          at: Date.now(),
+          by: 'players',
+        });
+      }
       return;
     }
 

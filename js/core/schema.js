@@ -332,6 +332,90 @@ export function createCampaign(overrides = {}) {
 }
 
 /**
+ * Fabrique une liaison entre deux étages — Lot 3, S-03.
+ *
+ * Le typedef `Link` existait depuis le lot 1a, complet, et `createCampaign` initialisait `links` à
+ * `[]`. Rien ne le lisait ni ne le fabriquait : le modèle était conçu, jamais câblé.
+ *
+ * ⚠ **Une liaison est un point à point**, pas une zone. Deux liaisons côte à côte couvrent un
+ * escalier large ; une zone demanderait une géométrie de plus à éditer, synchroniser et tester.
+ *
+ * @param {Partial<import('./types.js').Link>} [overrides]
+ * @returns {import('./types.js').Link}
+ */
+export function createLink(overrides = {}) {
+  return {
+    id: overrides.id ?? `link-${Math.random().toString(36).slice(2, 10)}`,
+    kind: overrides.kind ?? 'stairs',
+    label: overrides.label ?? '',
+    a: overrides.a ?? { levelId: '', at: { cellX: 0, cellY: 0 } },
+    b: overrides.b ?? { levelId: '', at: { cellX: 0, cellY: 0 } },
+    bidirectional: overrides.bidirectional ?? true,
+    gmOnly: overrides.gmOnly ?? false,
+  };
+}
+
+/**
+ * Une extrémité de liaison est-elle exploitable ?
+ *
+ * @param {any} extremite
+ * @returns {boolean}
+ */
+function isValidLinkEndpoint(extremite) {
+  return Boolean(
+    extremite &&
+      typeof extremite.levelId === 'string' &&
+      extremite.levelId.length > 0 &&
+      extremite.at &&
+      Number.isFinite(extremite.at.cellX) &&
+      Number.isFinite(extremite.at.cellY)
+  );
+}
+
+/**
+ * Valide les liaisons d'une campagne. Rend la liste des erreurs, vide si tout va bien.
+ *
+ * ⚠ Une liaison dont un étage n'existe pas est une **erreur**, pas un avertissement : un pion
+ * téléporté vers un étage inconnu disparaîtrait de la table sans que rien ne le dise.
+ *
+ * @param {any} campaign
+ * @returns {string[]}
+ */
+export function validateLinks(campaign) {
+  /** @type {string[]} */
+  const erreurs = [];
+  const liaisons = campaign?.links;
+  if (liaisons === undefined || liaisons === null) return erreurs;
+  if (!Array.isArray(liaisons)) {
+    erreurs.push('campaign.links doit être un tableau');
+    return erreurs;
+  }
+
+  const etages = new Set((campaign.levels ?? []).map((/** @type {any} */ l) => l?.id));
+  const vus = new Set();
+
+  for (const lien of liaisons) {
+    const nom = lien?.id ? `"${lien.id}"` : '(sans identifiant)';
+    if (!lien || typeof lien.id !== 'string' || lien.id.length === 0) {
+      erreurs.push(`Liaison ${nom} : identifiant manquant`);
+      continue;
+    }
+    if (vus.has(lien.id)) erreurs.push(`Liaison ${nom} : identifiant en double`);
+    vus.add(lien.id);
+
+    for (const cote of /** @type {const} */ (['a', 'b'])) {
+      if (!isValidLinkEndpoint(lien[cote])) {
+        erreurs.push(`Liaison ${nom} : extrémité "${cote}" invalide`);
+      } else if (etages.size > 0 && !etages.has(lien[cote].levelId)) {
+        erreurs.push(`Liaison ${nom} : étage inconnu "${lien[cote].levelId}" à l'extrémité "${cote}"`);
+      }
+    }
+  }
+
+  return erreurs;
+}
+
+/**
  * Fabrique d'une instance d'étage (Level) avec valeurs par défaut (CdC §6).
  *
  * @param {Partial<Level & { grid?: Partial<import('./types.js').GridConfig> }>} [overrides]

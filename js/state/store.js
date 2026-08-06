@@ -493,6 +493,114 @@ export function addToken(tokenData) {
 }
 
 /**
+ * Les liaisons de la campagne.
+ *
+ * @returns {import('../core/types.js').Link[]}
+ */
+export function getLinks() {
+  return campaign?.links ?? [];
+}
+
+/**
+ * La liaison dont une extrémité tombe exactement sur cette case de cet étage, s'il y en a une.
+ *
+ * ⚠ **Le franchissement exige la case exacte**, sans la tolérance de désignation du chantier O.
+ * Cette tolérance sert à *viser* un pion ou une porte, gestes réversibles ; une téléportation
+ * change d'étage et casse la continuité du plateau. Un escalier qu'on rate se retape ; un escalier
+ * qu'on prend par accident oblige à revenir, et la table a vu l'autre étage entre-temps.
+ *
+ * @param {string} levelId
+ * @param {{a: number, b: number}} cell
+ * @param {{ includeGmOnly?: boolean }} [options]
+ * @returns {{ link: import('../core/types.js').Link, vers: import('../core/types.js').LinkEndpoint }|null}
+ */
+export function findLinkAtCell(levelId, cell, options = {}) {
+  if (!levelId || !cell) return null;
+  for (const lien of getLinks()) {
+    if (!options.includeGmOnly && lien.gmOnly) continue;
+    /** @type {[import('../core/types.js').LinkEndpoint, import('../core/types.js').LinkEndpoint][]} */
+    const sens = [
+      [lien.a, lien.b],
+      [lien.b, lien.a],
+    ];
+    for (const [depuis, vers] of sens) {
+      // Une liaison à sens unique ne se prend que de `a` vers `b`.
+      if (!lien.bidirectional && depuis !== lien.a) continue;
+      if (depuis.levelId === levelId && depuis.at.cellX === cell.a && depuis.at.cellY === cell.b) {
+        return { link: lien, vers };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Fait franchir une liaison à un pion : il change de case **et d'étage**.
+ *
+ * ⚠ C'est la seule mutation qui déplace un pion d'un étage à l'autre. `moveTokenToCell` reste
+ * confinée à l'étage du pion — les deux ne doivent pas fusionner : un déplacement ordinaire qui
+ * pourrait changer d'étage par inadvertance ferait disparaître un pion de la table.
+ *
+ * @param {string} tokenId
+ * @param {string} linkId
+ * @returns {{ levelId: string, cell: {a: number, b: number} }} La destination effectivement appliquée
+ */
+export function traverseLink(tokenId, linkId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const pion = campaign.tokens.find((t) => t.id === tokenId);
+  if (!pion) {
+    throw new Error(`Pion inconnu : "${tokenId}"`);
+  }
+  const lien = getLinks().find((l) => l.id === linkId);
+  if (!lien) {
+    throw new Error(`Liaison inconnue : "${linkId}"`);
+  }
+
+  // Le départ est l'extrémité qui porte le pion ; l'arrivée est l'autre.
+  const surA =
+    lien.a.levelId === pion.levelId &&
+    lien.a.at.cellX === pion.cell.a &&
+    lien.a.at.cellY === pion.cell.b;
+  const surB =
+    lien.b.levelId === pion.levelId &&
+    lien.b.at.cellX === pion.cell.a &&
+    lien.b.at.cellY === pion.cell.b;
+
+  if (!surA && !surB) {
+    throw new Error(`Le pion "${tokenId}" n'est sur aucune extrémité de la liaison "${linkId}"`);
+  }
+  if (surB && !lien.bidirectional) {
+    throw new Error(`La liaison "${linkId}" est à sens unique et ne se prend pas dans ce sens`);
+  }
+
+  const vers = surA ? lien.b : lien.a;
+
+  const candidate = structuredClone(campaign);
+  const cible = candidate.tokens.find((/** @type {any} */ t) => t.id === tokenId);
+  if (!cible) {
+    // Inatteignable — le pion vient d'être trouvé dans `campaign` juste au-dessus, et la copie en
+    // est fidèle. Écrit quand même : une copie qui perdrait un pion doit se dire, pas se deviner.
+    throw new Error(`Pion "${tokenId}" perdu à la copie de la campagne`);
+  }
+  cible.levelId = vers.levelId;
+  cible.cell = { a: vers.at.cellX, b: vers.at.cellY };
+  assertValidCampaign(candidate, `Franchissement de la liaison "${linkId}"`);
+  campaign = candidate;
+
+  // La sélection ne survit pas au changement d'étage : le pion n'est plus sur l'étage affiché.
+  // La laisser produirait une zone de déplacement calculée sur un étage, dessinée sur un autre.
+  const selId = getSelectedTokenId();
+  if (selId === tokenId && getActiveLevelId() !== vers.levelId) {
+    clearSelectionState();
+  }
+
+  notifySubscribers();
+  return { levelId: vers.levelId, cell: { a: vers.at.cellX, b: vers.at.cellY } };
+}
+
+/**
  * Ajoute un nouvel étage à la campagne (ou initialise la campagne si inexistante) et le sélectionne.
  *
  * @param {Level} levelData
