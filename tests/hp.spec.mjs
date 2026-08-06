@@ -410,4 +410,148 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
 
     expect(publishedHpEvents.length).toBe(1);
   });
+
+  /**
+   * Critère 13, par le comportement et non par la forme du code.
+   *
+   * ⭐ **Ce test existe parce que le test unitaire du critère 13 est un faux vert**, établi par
+   * mutation le 06/08/2026. Celui-là relit les sources et cherche `health` et `hp` sur **une même
+   * ligne** ; une dérivation étalée sur trois lignes non couplées passe sans être vue :
+   *
+   * ```
+   * const ratioQ = token.hp.current / token.hp.max;      // `hp`, pas `health`
+   * const etatDeduit = ratioQ < 0.5 ? 'critical' : …;    // ni l'un ni l'autre
+   * computeStateRing(width, zoom, etatDeduit);           // ni l'un ni l'autre
+   * ```
+   *
+   * Aucune des huit autres mutations n'a échappé aux tests du chantier ; celle-ci a traversé les
+   * **deux** suites en restant verte. Et ce n'est pas un détail de forme : c'est l'arbitrage (2)
+   * du chantier, la seule raison d'être de la fonctionnalité — le mainteneur veut pouvoir laisser
+   * un boss à 12/140 annoncé « Indemne ».
+   *
+   * ⛔ **Ne pas « réparer » en durcissant l'expression régulière du test unitaire.** Une règle qui
+   * lit la forme du code se contourne toujours d'une écriture de plus ; ce qui ne se contourne pas,
+   * c'est ce que le pion affiche. La scène est donc exactement celle du mainteneur, et le pixel
+   * répond.
+   *
+   * Le premier des deux constats est le garde-fou du second : on vérifie d'abord que la sonde voit
+   * **bien** un anneau quand le MJ en annonce un. Sans lui, « aucun anneau » pourrait n'être que
+   * l'aveu d'une sonde qui regarde à côté.
+   */
+  test('5. Critère 13 par le comportement : un boss à 12/140 annoncé « Indemne » n\'affiche aucun anneau', async ({
+    context,
+  }) => {
+    /**
+     * Échantillonne l'anneau **à l'endroit où il serait s'il était dessiné**, sans consulter
+     * `health` : le rayon ne se déduit que du diamètre et du zoom. Une sonde qui demanderait sa
+     * position à `computeStateRing(…, token.health)` — comme le fait `sampleHealthRingPixel` — se
+     * placerait au centre du pion pour un état « Indemne », et ne pourrait rien constater.
+     *
+     * @param {import('@playwright/test').Page} page
+     * @param {string} tokenId
+     * @returns {Promise<[number, number, number, number]>}
+     */
+    async function sampleAnnulusPixel(page, tokenId) {
+      return page.evaluate(async (id) => {
+        const app = /** @type {any} */ (window).__RPG_APP__;
+        if (typeof app.invalidate === 'function') app.invalidate();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+
+        const ctx = app.canvas.getContext('2d');
+        const store = await import('../js/state/store.js');
+        const campaign = store.getCampaign();
+        const token = campaign?.tokens.find((/** @type {any} */ t) => t.id === id);
+        if (!token) throw new Error('Token non trouvé: ' + id);
+        const level = campaign?.levels.find((/** @type {any} */ l) => l.id === token.levelId);
+        const pxPerCell = level?.pxPerCell ?? 140;
+        const zoom = app.camera.zoom ?? 1;
+        const widthMap = token.sizeCells * pxPerCell;
+
+        // Même rayon que `computeProportionalRing` / `computeStateRing`, recalculé ici sans eux.
+        const radiusMap = widthMap / 2 + 1.5 / zoom;
+        const centerMap = {
+          x: (token.cell.a + token.sizeCells / 2) * pxPerCell,
+          y: (token.cell.b + token.sizeCells / 2) * pxPerCell,
+        };
+        const topScreen = app.camera.mapToScreen({ x: centerMap.x, y: centerMap.y - radiusMap });
+        const resolution = app.stage?.resolution ?? 1;
+        const canvasX = Math.round(topScreen.screenX * resolution);
+        const canvasY = Math.round(topScreen.screenY * resolution);
+
+        // Le pixel le plus rouge du voisinage : les deux couleurs d'état sont franchement rouges
+        // (#c2410c et #ef4444), et l'anti-aliasing peut décaler le trait d'un pixel.
+        let best = [0, 0, 0, 0];
+        let maxRougeur = -1e9;
+        for (let dx = -2; dx <= 2; dx++) {
+          for (let dy = -2; dy <= 2; dy++) {
+            const d = ctx.getImageData(canvasX + dx, canvasY + dy, 1, 1).data;
+            const rougeur = d[0] - Math.max(d[1], d[2]);
+            if (rougeur > maxRougeur) {
+              maxRougeur = rougeur;
+              best = [d[0], d[1], d[2], d[3]];
+            }
+          }
+        }
+        return [best[0], best[1], best[2], best[3]];
+      }, tokenId);
+    }
+
+    /**
+     * Un anneau d'état est-il là ? Le critère est la **rougeur**, pas la clarté.
+     *
+     * ⚠ Mesuré, et c'est ce qui a fait échouer la première version de ce test : l'anneau se dessine
+     * **sous le fog**, et le voile du MJ le divise par deux. Un anneau « mal en point » #ef4444
+     * (239, 68, 68) arrive à l'écran en (119, 34, 34) — un seuil absolu sur le rouge à 150 ne
+     * voyait donc jamais l'anneau, alors qu'il était bel et bien là. La différence entre les
+     * canaux, elle, survit au voile : 85 pour un anneau présent, 1 sans anneau. C'est aussi
+     * pourquoi le test 2 ci-dessus se contente de « rouge > bleu ».
+     *
+     * @param {[number, number, number, number]} p
+     */
+    const estAnneauEtat = (p) => p[0] - Math.max(p[1], p[2]) > 40;
+
+    /**
+     * @param {string} health
+     * @param {string} suffixe
+     */
+    const ouvrirMJ = async (health, suffixe) => {
+      const sessionId = `test-hp-c13-${suffixe}-${Date.now()}`;
+      const snapshot = {
+        campaign: {
+          schemaVersion: 2,
+          campaignId: 'hp-c13-campaign',
+          name: 'Campagne PV C13',
+          levels: [FAKE_LEVEL],
+          links: [],
+          // Le boss du scénario du mainteneur : très bas en PV, et ce qu'il en annonce varie.
+          tokens: [{ ...FAKE_PNJ, hp: { current: 12, max: 140 }, health }],
+          templates: [],
+          settings: { ambientLevel: 1 },
+        },
+        activeLevelId: FAKE_LEVEL.id,
+        // Aucune sélection : l'anneau blanc de sélection passe dans la même couronne.
+        selectedTokenId: null,
+      };
+      const page = await context.newPage();
+      await installBrowserTransport(page, sessionId, snapshot);
+      await page.goto(`/gm.html?session=${sessionId}`);
+      await waitForApp(page);
+      return page;
+    };
+
+    // 1. Garde-fou : annoncé « Mal en point », l'anneau est là, et la sonde le voit.
+    const pageCritical = await ouvrirMJ('critical', 'critical');
+    await expect
+      .poll(async () => estAnneauEtat(await sampleAnnulusPixel(pageCritical, 'boss-1')))
+      .toBe(true);
+    const pixelCritical = await sampleAnnulusPixel(pageCritical, 'boss-1');
+
+    // 2. Le constat : annoncé « Indemne » à 12/140, aucun anneau. Une dérivation depuis les PV
+    //    en dessinerait un — 12/140 est bas quel que soit le seuil qu'on imagine.
+    const pageUnharmed = await ouvrirMJ('unharmed', 'unharmed');
+    const pixelUnharmed = await sampleAnnulusPixel(pageUnharmed, 'boss-1');
+
+    expect(estAnneauEtat(pixelUnharmed)).toBe(false);
+    expect(pixelUnharmed).not.toEqual(pixelCritical);
+  });
 });
