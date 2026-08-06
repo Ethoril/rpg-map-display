@@ -368,6 +368,25 @@ export const PORTAL_HIT_CELL_RATIO = 0.25;
 export const SESSION_EVICT_GM_EVENT = 'session.evictGm';
 
 /**
+ * Demande de rediffusion du masque de vision courante, adressée au MJ par une vue joueurs.
+ *
+ * Le masque de vision est un **delta**, et rien ne le rejoue : le canal borne son écoute
+ * strictement après la dernière clé connue (`FirebaseTransport._subscribeLive`), et
+ * l'instantané ne transporte que la campagne, l'étage actif et la sélection. Une vue joueurs
+ * qui arrive — ou qui revient après que Chrome a abandonné le contexte de son onglet — n'a
+ * donc aucun moyen de retrouver la vision par elle-même. Le masque **exploré**, lui, revient
+ * de `localStorage` : c'est cette asymétrie qui produisait le symptôme observé le 6 août 2026,
+ * « le fog revient en version explorée là où les PJ devraient voir ».
+ *
+ * ⛔ **Ne pas « simplifier » en persistant le masque de vision comme l'exploré.** Ça aurait
+ * l'air de marcher, et c'est plus court. Mais un masque restauré depuis le disque est un
+ * masque d'avant l'absence : la tablette afficherait de la vision directe là où les PJ ne
+ * voient plus, jusqu'à la prochaine mise à jour. La vision est la seule chose que le MJ
+ * recalcule ; elle doit venir de lui, pas d'une archive.
+ */
+export const VISION_REQUEST_EVENT = 'vision.request';
+
+/**
  * Épaisseurs des indicateurs d'état de porte, **en pixels écran**.
  *
  * Elles étaient écrites en pixels **carte**, à l'intérieur du contexte que

@@ -581,6 +581,14 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   capsule des portes peut-elle remonter de 0,25 vers 0,4 maintenant que le pion a sa tolérance ?**
   Les portes n'ont pas été jugées pénibles à viser à cette séance, donc rien ne presse — mais c'est
   le gain caché du chantier, et il ne se constate qu'à la table ;
+- **la vision directe après une vraie mise en veille de la tablette** — le correctif du 6 août
+  2026 (voir « Retour de table du 6 août ») est couvert par un **vrai F5** dans
+  `tests/visionRecovery.spec.mjs`, ce qui reproduit la perte de contexte mais **pas** la mise en
+  veille d'Android. Le geste qui vaut preuve : laisser la tablette de côté assez longtemps pour que
+  Chrome abandonne l'onglet, y revenir, et constater que la vision directe est là **sans rien
+  déplacer**. Si elle manque encore, la piste n'est plus la rediffusion mais le moment où la
+  tablette la réclame — `visibilitychange` peut ne pas suffire si le système restaure la page par
+  un autre chemin ;
 - **tenue d’une carte préparée à 8192 px sur la tablette** — le passage du plafond de 4096 à
   8192 n’est validé par aucune mesure d’affichage : 7499 × 8192 en RGBA fait **245 Mio décodés**
   dans le navigateur, et 8192 est exactement la limite *mesurée* de la dalle, donc sans marge.
@@ -925,6 +933,68 @@ glissement d'un objet non ancré, plus un `origin` qui devient un point carte : 
 réseau, vue joueurs et tests. La même cause survivra sous une autre forme — une forme découpée
 par le polygone montrera des **cordes plates** sur son pourtour si la résolution angulaire du
 sweep est trop grossière.
+
+## Retour de table du 6 août 2026 — la vision directe disparaissait, et personne ne la renvoyait
+
+**Corrigé.** Le symptôme rapporté : au retour sur la tablette après une longue inactivité, le fog
+revenait en version « zone explorée mais non visible » là où les PJ devraient voir — autrement
+dit la vision directe disparaissait — et ne revenait qu'au premier déplacement.
+
+⭐ **La sonde a élargi le défaut au lieu de le confirmer.** Le MJ publiait bien
+`fog.update, vision.update, fog.update`, et la tablette recevait une liste **vide**. Ce n'est
+donc pas un défaut de reprise après inactivité : **toute vue joueurs qui arrive après la dernière
+publication de vision n'a jamais la vision directe**. En séance ça passe inaperçu parce que le MJ
+bouge vite quelque chose, ce qui change la signature et débloque une publication.
+
+Trois mécanismes, **chacun correct isolément**, se refermaient ensemble :
+
+1. **La vision n'est pas persistée, l'exploré si.** `getSessionFog` relit son masque depuis
+   `localStorage` quand la mémoire est vide ; `getSessionVision` ne lit que la `Map`. C'est
+   l'asymétrie exacte du symptôme — l'exploré revient, la vision non.
+2. **Le canal ne rejoue rien, volontairement.** `FirebaseTransport._subscribeLive` borne son
+   écoute strictement après la dernière clé connue, et l'instantané ne transporte que la
+   campagne, l'étage actif et la sélection. Le dernier `vision.update` n'est jamais redélivré.
+3. **Le MJ refusait de renvoyer.** `lastVisibleSignatureMap` dédoublonne par étage, et rien ne
+   l'invalidait jamais : la `Map` était seulement écrite. De son point de vue, rien n'avait
+   changé, donc rien à publier.
+
+**Le correctif : la tablette réclame, l'autorité répond.** `VISION_REQUEST_EVENT`, émis au
+démarrage **et** au retour au premier plan — les événements publiés pendant que la tablette
+dormait ne sont pas rejoués non plus. Le MJ vide son cache de signature **en entier** et
+recalcule : l'étage annoncé par le demandeur peut être en retard sur celui du MJ, qui est
+l'autorité, et vider un cache de dédoublonnage ne coûte au pire qu'une publication de plus.
+Coalescé à 250 ms — sans quoi dix tablettes qui reviennent ensemble déclencheraient autant de
+rediffusions d'environ 13 Kio, exactement le régime que la garde anti-rebouclage de `syncVision`
+existe pour éviter.
+
+⛔ **Ne pas « simplifier » en persistant le masque de vision comme l'exploré.** C'est plus court
+et ça a l'air de marcher. Mais un masque relu du disque est un masque **d'avant l'absence** : la
+tablette afficherait de la vision directe là où les PJ ne voient plus. La vision est la seule
+chose que le MJ recalcule ; elle doit venir de lui, pas d'une archive. Décision du mainteneur,
+06/08/2026.
+
+**Vérifié par mutation**, `tests/visionRecovery.spec.mjs`, deux tests — l'arrivée en cours de
+session, et un **vrai F5** suivi d'**aucun geste** (avec un déplacement, l'ancien code passait).
+Purge du cache retirée en gardant l'appel à `syncVision` → rouge. Demande au démarrage retirée en
+gardant celle du premier plan → rouge. L'assertion écran ne suppose rien de la carte : le témoin
+est pris dans le test en retirant le masque et en comparant les luminances.
+
+⚠ **Reste à confirmer sur la tablette.** Le test reproduit la perte de contexte par un F5, pas la
+mise en veille réelle d'Android. Voir la liste des vérifications manuelles.
+
+**Les points de vie : mécanique acquise, esthétique refusée.** Le mainteneur juge le rendu du
+chantier Q insatisfaisant — formes trop simples, superpositions de couleurs peu lisibles. La
+cause est structurelle et non décorative : **aucune place n'est réservée**. L'anneau de PJ est
+tracé *par-dessus* l'image du pion, sur une illustration dont on ne maîtrise ni les couleurs ni
+le contraste puisqu'elle vient d'un UVTT quelconque — le contraste est donc accidentel. Enrichir
+les formes au même endroit ne ferait qu'empiler. Direction tranchée le 06/08 : une **châsse**,
+géométrie générée en Canvas 2D, dans laquelle l'image du pion entre **en retrait**, la jauge de
+PV et l'état du PNJ vivant sur la châsse et jamais sur l'illustration. Générée et non dessinée,
+parce que les pions arrivent à toute taille et en deux formes : une matrice d'assets laisserait
+sans cadre le premier pion imprévu. Un **contrat de zones nommées** est prévu dès maintenant pour
+qu'un cadre illustré puisse s'y substituer plus tard sans rien jeter. Second principe, tiré du
+constat : encoder par la **forme et la position**, pas par la teinte seule — à bout de bras sur
+une tablette, un arc qui se remplit se lit là où deux rouges voisins ne se distinguent pas.
 
 ## Suite produit
 

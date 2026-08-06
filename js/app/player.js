@@ -15,6 +15,7 @@ import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
 import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
+import { VISION_REQUEST_EVENT } from '../core/constants.js';
 import { createNetworkStatus, connectSession, normalizeSessionId } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
@@ -492,6 +493,38 @@ export async function bootstrapPlayerApp(options = {}) {
     if (persistenceError) networkStatus.update('error', persistenceError);
   }
 
+  /**
+   * Réclame au MJ la rediffusion du masque de vision courante.
+   *
+   * Le masque exploré remonte de `localStorage`, la vision non — et le canal ne rejoue rien.
+   * Sans cette demande, la tablette affiche le voile « exploré mais non visible » là où les PJ
+   * voient, jusqu'à ce qu'un déplacement change la signature côté MJ et le décide à publier.
+   * C'est le défaut de séance du 6 août 2026.
+   *
+   * Appelée à deux moments, qui ne se recouvrent pas :
+   *  - au démarrage, y compris après un F5 ou un contexte d'onglet abandonné par le système ;
+   *  - au retour au premier plan, car les événements publiés pendant que la tablette dormait
+   *    ne sont pas rejoués — l'écoute reprend strictement après la dernière clé connue.
+   */
+  function requestVisionResend() {
+    if (!transport) return;
+    transport.publish({
+      type: VISION_REQUEST_EVENT,
+      payload: { levelId: store.getActiveLevel()?.id ?? null },
+      at: Date.now(),
+      by: 'players',
+    });
+  }
+
+  const onVisibilityRestored = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    requestVisionResend();
+  };
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityRestored);
+  }
+  requestVisionResend();
+
   const playerControls = bootstrapPlayerView({
     element: canvas,
     camera,
@@ -550,6 +583,9 @@ export async function bootstrapPlayerApp(options = {}) {
     cleanupMobileLocks();
     unsubscribeStore();
     unsubscribeEvents?.();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityRestored);
+    }
     if (snapshotTimer !== null) clearTimeout(snapshotTimer);
     window.removeEventListener('resize', onResize);
     frameLoop.stop();

@@ -23,6 +23,7 @@ import {
   GM_SESSION_STORAGE_KEY,
   VISION_MAX_RANGE_CELLS,
   SESSION_EVICT_GM_EVENT,
+  VISION_REQUEST_EVENT,
 } from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
@@ -202,6 +203,32 @@ export async function bootstrapGMApp(options = {}) {
   const visibleFogMap = new Map();
   /** @type {Map<string, string>} */
   const lastVisibleSignatureMap = new Map();
+
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let visionResendTimer = null;
+
+  /**
+   * Rediffuse le masque de vision à la demande d'une vue joueurs.
+   *
+   * Le cache de signature est **vidé en entier**, pas seulement pour l'étage annoncé par le
+   * demandeur : son étage peut être en retard sur celui du MJ, qui est l'autorité. Vider tout
+   * un cache de dédoublonnage est sans conséquence — au pire une publication de plus si le MJ
+   * change d'étage ensuite — alors que se tromper d'étage laisserait la tablette dans le noir
+   * sans que rien ne le signale.
+   *
+   * ⚠ **Coalescé.** Sans ce délai, dix tablettes qui reviennent ensemble — ou une seule qui
+   * répète sa demande — feraient autant de rediffusions d'environ 13 Kio. C'est exactement le
+   * régime que la garde anti-rebouclage de `syncVision` existe pour éviter ; on ne le
+   * réintroduit pas par la porte de service.
+   */
+  function scheduleVisionResend() {
+    if (visionResendTimer !== null) return;
+    visionResendTimer = setTimeout(() => {
+      visionResendTimer = null;
+      lastVisibleSignatureMap.clear();
+      syncVision();
+    }, 250);
+  }
 
   /**
    * Publication en temps réel du masque de vision courante (visible).
@@ -686,6 +713,14 @@ export async function bootstrapGMApp(options = {}) {
         // deuxième source à tenir d'accord avec la première.
         const auteur = getPresenceList().find((c) => c.clientId === event.clientId);
         acceptEviction(auteur?.label);
+        return;
+      }
+
+      // Une demande de vision n'est pas une mutation de l'état de jeu : elle ne passe pas par
+      // `applyNetworkEvent`, qui la laisserait tomber silencieusement. Elle est traitée ici,
+      // parce que c'est ici que vivent le cache de signature et l'autorité qui recalcule.
+      if (event.type === VISION_REQUEST_EVENT) {
+        scheduleVisionResend();
         return;
       }
 
