@@ -49,9 +49,43 @@ progressivement et non spécifié d'un bloc à l'avance.
 
 - Pas de visibilité inter-étages (ni trémie, ni balcon surplombant).
 - Pas de fiches de personnage, jets de dés, chat, ni initiative.
-- Points de vie réduits au strict nécessaire (Chantier Q, 06/08/2026) : compteur `courant/max` lisible sur le pion, anneau proportionnel sur les PJ seulement (jamais sur les PNJ), et état de santé annoncé des PNJ à trois crans manuels (`Indemne`, `Blessé`, `Mal en point`). Aucune dérivation automatique, aucun calcul de dégâts, aucun journal.
+- Pas de moteur de règles autour des points de vie : ni calcul de dégâts, ni journal de
+  blessures, ni dérivation automatique d'un état de santé depuis un compteur. Le compteur
+  lui-même, en revanche, existe depuis le 06/08/2026 — voir l'encadré sous cette liste.
 - Pas de snapshot ni de restauration de positions.
 - Un groupe séparé sur deux étages ne peut être observé que d'un étage à la fois.
+
+> **Amendement du 06/08/2026 — les points de vie entrent, et l'interdiction se scinde.**
+> Cette liste portait « Pas de points de vie. Si le besoin apparaît, la version 10 % est un
+> unique état *blessé / à terre* via `markers`, jamais une barre. » Le mainteneur a tranché
+> l'inverse ; ce qui suit est la borne exacte de l'ajout (`CHANTIER-Q-POINTS-DE-VIE.md`).
+>
+> **Ce qui existe** — trois briques, et pas une de plus :
+> - un **compteur `courant/max`** saisi à la main par le MJ. C'est le chiffre qu'il tenait
+>   déjà sur son bloc-notes, affiché là où il sert. Les joueurs voient celui d'un PJ,
+>   **jamais** celui d'un PNJ ;
+> - un **anneau proportionnel sur les PJ seulement**, dont la longueur suit `current/max` et
+>   dont la couleur est fixe ;
+> - un **anneau d'état sur les PNJ**, tour complet, à trois crans **manuels** — Indemne,
+>   Blessé, Mal en point — dont la couleur varie et que rien ne calcule.
+>
+> Chez le PJ la longueur parle et la couleur se tait ; chez le PNJ l'inverse. C'est ce qui
+> empêche de confondre un PJ à plein et un PNJ à l'agonie, qui tracent tous deux un tour
+> complet.
+>
+> **Ce qui est levé.** Pour un PJ, l'anneau proportionnel **est** une barre de points de vie :
+> l'interdiction n°4 de `CONVENTIONS.md` tombe donc pour les PJ, et il faut l'écrire ainsi
+> plutôt que jouer sur les mots. Ce qui rend la levée sans conséquence : elle ne divulgue rien
+> qu'un joueur ne lise déjà sur son propre pion.
+>
+> **Ce qui reste interdit, sans exception** : toute barre, jauge ou anneau proportionnel **sur
+> un PNJ** ; **toute dérivation automatique de l'état annoncé depuis le compteur** — c'est ce
+> qui permet de laisser un boss à 12/140 annoncé « Indemne », et c'est toute la raison d'être
+> du champ ; toute dérivation d'un marqueur depuis les PV ; tout calcul de dégâts, tout journal
+> de blessures.
+>
+> La « version 10 % » que ce paragraphe autorisait est d'ailleurs livrée telle quelle : l'état
+> annoncé des PNJ est bien un **état**, en trois crans plutôt qu'un, et non une jauge.
 
 ### Grille : carré et hexagone, par étage
 
