@@ -482,6 +482,37 @@ export const CHASSE_NOTCH_SCREEN_PX = 2;
 export const CHASSE_TIER_FULL_SCREEN_PX = 44;
 export const CHASSE_TIER_REDUCED_SCREEN_PX = 24;
 
+/**
+ * Part maximale du **rayon** du pion que la châsse peut occuper.
+ *
+ * Sans cette borne, `CHASSE_BAND_SCREEN_PX` est une valeur absolue : elle mange donc une part
+ * d'autant plus grande que le pion est petit. Mesuré sur les bornes du palier `reduced` — un pion
+ * de 24 px d'écran a un rayon de 12 px, et une bande de 6 px lui laisse un portrait de 6 px de
+ * rayon, soit **un quart de la surface**. Le pion n'est plus une illustration châssée, c'est un
+ * cadre avec un point au milieu. Défaut signalé par Gemini le 06/08/2026 sans être tranché, borné
+ * ici sur décision du mainteneur.
+ *
+ * ⭐ **La valeur n'est pas choisie, elle est dérivée — et c'est tout l'intérêt.** Au seuil du
+ * palier `full`, un pion de `CHASSE_TIER_FULL_SCREEN_PX` de diamètre a un rayon de la moitié, et
+ * la bande nominale y occupe déjà `2 × CHASSE_BAND_SCREEN_PX / CHASSE_TIER_FULL_SCREEN_PX` de ce
+ * rayon. Prendre exactement cette proportion comme plafond donne deux propriétés qu'aucun nombre
+ * écrit à la main n'aurait garanties :
+ *
+ *  1. **Le palier `full` n'est jamais affecté** : au-dessus du seuil, le plafond est plus large que
+ *     la bande nominale, donc inopérant. Les mesures des critères 2 et 7, prises au palier `full`,
+ *     restent inchangées — le bornage ne peut pas les invalider.
+ *  2. **Aucune discontinuité au passage de palier** : le plafond vaut exactement la bande nominale
+ *     au seuil, puis se resserre continûment sous lui. La châsse s'amincit progressivement au
+ *     dézoom au lieu de sauter.
+ *
+ * ⚠ Elle reste donc cohérente si le mainteneur règle `CHASSE_BAND_SCREEN_PX` ou le seuil : la
+ * règle exprimée est « la châsse ne prend jamais, sur un petit pion, une part de rayon plus grande
+ * que celle qu'elle a au seuil du palier `full` ». Ne pas la remplacer par une constante en dur,
+ * qui contredirait silencieusement les deux autres au premier réglage.
+ */
+export const CHASSE_BAND_MAX_RADIUS_RATIO =
+  (2 * CHASSE_BAND_SCREEN_PX) / CHASSE_TIER_FULL_SCREEN_PX;
+
 export const TOKEN_BORDER_SCREEN_PX = 3;
 export const TOKEN_SELECTION_RING_SCREEN_PX = 3;
 export const TOKEN_SELECTION_OFFSET_SCREEN_PX = 4;

@@ -2,6 +2,7 @@
 
 import {
   CHASSE_BAND_SCREEN_PX,
+  CHASSE_BAND_MAX_RADIUS_RATIO,
   CHASSE_BG_COLOR,
   CHASSE_SEPARATOR_COLOR,
   CHASSE_SEPARATOR_SCREEN_PX,
@@ -69,7 +70,14 @@ export function computeSocketLayout(tokenWidthMap, zoom, options = {}) {
     };
   }
 
-  const bandThicknessMap = CHASSE_BAND_SCREEN_PX / safeZoom;
+  // La bande vise `CHASSE_BAND_SCREEN_PX` à l'écran, mais ne dépasse jamais une part fixe du
+  // rayon : sur un petit pion, une épaisseur absolue mangerait l'illustration jusqu'à n'en laisser
+  // qu'un point. Le plafond est dérivé de sorte à être inopérant au palier `full` et à se resserrer
+  // continûment sous son seuil — voir `CHASSE_BAND_MAX_RADIUS_RATIO`.
+  const bandThicknessMap = Math.min(
+    CHASSE_BAND_SCREEN_PX / safeZoom,
+    outerRadius * CHASSE_BAND_MAX_RADIUS_RATIO
+  );
   const innerRadius = outerRadius - bandThicknessMap;
   const imageRadius = innerRadius;
 
