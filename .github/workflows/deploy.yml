@@ -129,15 +129,24 @@ jobs:
           path: test-results/
           retention-days: 7
 
-  deploy:
-    # LA garde : pas de déploiement si la vérification échoue.
+  # Fabrique l'artefact publiable. Séparée de `deploy` à dessein, et ce n'est pas
+  # une élégance : un job qui **uploade** l'artefact et le **déploie** dans la même
+  # foulée n'est pas réexécutable. Le 06/08/2026, un déploiement Pages a pendu dix
+  # minutes puis abandonné sur « Timeout reached » — panne côté GitHub, artefact
+  # inchangé à 22,6 Mio, `verify` vert. Le « Re-run failed jobs » qui aurait dû le
+  # rattraper a réuploadé un second artefact nommé `github-pages` dans le même run,
+  # et `deploy-pages` a refusé de choisir : « Multiple artifacts named github-pages
+  # were unexpectedly found ». Le run était alors définitivement mort, et il fallait
+  # un commit neuf pour publier quoi que ce soit.
+  #
+  # Séparés, `deploy` ne porte plus qu'une étape et consomme l'artefact déjà présent :
+  # un timeout passager se rattrape en quelques secondes, sans commit et sans doublon.
+  build:
+    # LA garde : rien ne se fabrique si la vérification échoue.
     needs: verify
     # Les pull requests sont vérifiées mais jamais publiées.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # fetch-depth: 0 est requis : le numéro de build est dérivé du nombre de commits,
       # que le clone superficiel par défaut tronquerait à 1.
@@ -172,6 +181,28 @@ jobs:
         with:
           path: '.'
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Sérialise les déploiements **entre runs**, ce qui manquait au 06/08/2026 : deux
+    # poussées à neuf minutes d'écart, et le second déploiement refusé en 9 secondes
+    # sur « due to in progress deployment. Please cancel … first or wait for it to
+    # complete ». Avec ce groupe, il attend son tour au lieu d'échouer.
+    #
+    # Le groupe est sur le **job** et non sur le workflow : `verify` doit continuer de
+    # tourner en parallèle entre deux poussées, sinon on perd le retour rapide des
+    # tests, qui n'a aucune raison de se sérialiser.
+    #
+    # `cancel-in-progress: false` et non `true` : annuler un déploiement Pages en vol
+    # peut laisser le site à moitié publié. Attendre coûte une minute, c'est aussi le
+    # choix du modèle Pages de GitHub.
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
