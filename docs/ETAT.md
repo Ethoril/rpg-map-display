@@ -995,6 +995,16 @@ sans cadre le premier pion imprévu. Un **contrat de zones nommées** est prévu
 qu'un cadre illustré puisse s'y substituer plus tard sans rien jeter. Second principe, tiré du
 constat : encoder par la **forme et la position**, pas par la teinte seule — à bout de bras sur
 une tablette, un arc qui se remplit se lit là où deux rouges voisins ne se distinguent pas.
+Le brief est écrit et **entièrement arbitré** : `CHANTIER-R-CHASSE-DES-PIONS.md`. La dernière
+décision, tranchée le 06/08 — la matière de la châsse est un **gris sombre unique et constant**,
+jamais teintée par le `borderColor` du pion, l'identité restant portée par le liseré au bord de
+l'illustration. Raison : le but même du chantier est un contraste qui ne dépende pas de données
+venues du dehors, et teinter la châsse avec une couleur de pion rouvrirait le défaut par la porte
+de service.
+Le brief relève au passage une **quatrième occurrence** de la grandeur écrite dans le mauvais
+espace — après le chantier K, L-09 et les portes — cette fois sur le liseré du pion et l'anneau de
+sélection, tous deux en pixels carte, donc à 0,7 et 0,6 px écran à la vue « carte entière ». Ils
+sont dans la zone de travail de la châsse et se corrigent au passage.
 
 ## Suite produit
 

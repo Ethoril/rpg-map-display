@@ -335,8 +335,21 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
     **faux vert** : elle coûte plus cher qu'une vérification absente, parce qu'elle ferme la
     question. Si le vrai composant est indisponible dans l'environnement de test, c'est
     l'environnement qu'on change — pas le composant.
-17. **Ne jamais exécuter de commande git** : ni `commit`, ni `add`, ni `push`, ni `stash`.
-    Les modifications restent dans l'arbre de travail (cf. `TASKS-lot1a.md`).
+17. **Ne jamais exécuter de commande git de sa propre initiative** : ni `commit`, ni `add`, ni
+    `push`, ni `stash`. Les modifications restent dans l'arbre de travail (cf. `TASKS-lot1a.md`),
+    où le mainteneur les relit avant qu'elles n'entrent dans l'historique. C'est la raison de la
+    règle, et elle ne change pas : **l'arbre de travail est le lieu de la revue.**
+
+    **Dérogation, ajoutée le 06/08/2026 : le mainteneur peut demander nommément un `commit` ou un
+    `push`.** Dans ce cas seulement, ils sont exécutés — et sur ce qu'il a désigné, rien de plus.
+    Une autorisation donnée pour un correctif ne couvre pas les fichiers d'à côté, et ne vaut pas
+    pour la fois suivante. Sans demande explicite, la règle par défaut s'applique telle quelle.
+
+    **Trois choses restent interdites même sur demande, parce qu'elles détruisent ce que la revue
+    protège** : réécrire un commit déjà poussé (`--amend` après push, `push --force`), sauter les
+    crochets (`--no-verify`), et pousser sans que la porte de vérification soit passée en local.
+    Corriger le **message** d'un commit non encore poussé est en revanche permis — c'est la seule
+    fenêtre où l'historique n'appartient encore à personne d'autre.
 18. **Ne jamais installer les dépendances autrement qu'avec
     `corepack pnpm install --frozen-lockfile`.** Sont interdits `pnpm install` nu, `pnpm
     update`, `pnpm add`, et toute commande qui réécrit `pnpm-lock.yaml` sans que le
