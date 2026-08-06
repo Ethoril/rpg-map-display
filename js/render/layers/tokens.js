@@ -1,6 +1,13 @@
 // @ts-check
 
 import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
+import { computeSocketLayout } from '../tokenSocket.js';
+import {
+  TOKEN_BORDER_SCREEN_PX,
+  TOKEN_SELECTION_RING_SCREEN_PX,
+  TOKEN_SELECTION_OFFSET_SCREEN_PX,
+  CHASSE_BEVEL_LINE_SCREEN_PX,
+} from '../../core/constants.js';
 import {
   computeElevationBadgeLayout,
   drawStatusBadges,
@@ -244,7 +251,6 @@ export class TokensLayer {
     return result;
   }
 
-
   /**
    * @param {CanvasRenderingContext2D} ctx
    * @param {GridAdapter} grid
@@ -264,17 +270,27 @@ export class TokensLayer {
     const height = p1.y - p0.y;
     const centerX = p0.x + width / 2;
     const centerY = p0.y + height / 2;
-    const radiusX = width / 2;
-    const radiusY = height / 2;
     const borderColor = token.borderColor || '#ffffff';
     const imageUrl = token.imageUrl?.trim() ?? '';
     const imageEntry = imageUrl ? this.imageCache.get(imageUrl) : undefined;
     if (imageUrl && !imageEntry) void this.preload(imageUrl);
 
+    const zoom = options?.zoom && options.zoom > 0 ? options.zoom : 1;
+    const resolution = options?.resolution && options.resolution > 0 ? options.resolution : 1;
+    const isPlayerView = options?.isPlayerView === true;
+
+    // ── Chantier R — Calcul de la disposition de la châsse ──────────────────────
+    const socketLayout = computeSocketLayout(width, zoom, {
+      kind: token.kind,
+      hp: token.hp,
+      health: token.health,
+    });
+
+    // 1. Découpe & Dessin de l'illustration (réduite à socketLayout.imageRadius)
     ctx.save();
     if (token.hidden) ctx.globalAlpha = 0.45;
     ctx.beginPath();
-    ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+    ctx.ellipse(centerX, centerY, socketLayout.imageRadius, socketLayout.imageRadius, 0, 0, Math.PI * 2);
     ctx.clip();
 
     if (imageEntry?.status === 'ready' && imageEntry.image) {
@@ -303,22 +319,76 @@ export class TokensLayer {
     }
     ctx.restore();
 
-    ctx.save();
-    if (token.hidden) ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.ellipse(centerX, centerY, radiusX - 1, radiusY - 1, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = Math.max(2, Math.min(width, height) * 0.035);
-    ctx.stroke();
-    ctx.restore();
+    // 2. Châsse des pions (palier 'full' ou 'reduced')
+    if (socketLayout.tier !== 'none') {
+      ctx.save();
+      if (token.hidden) ctx.globalAlpha = 0.45;
 
-    const zoom = options?.zoom && options.zoom > 0 ? options.zoom : 1;
-    const resolution = options?.resolution && options.resolution > 0 ? options.resolution : 1;
-    const isPlayerView = options?.isPlayerView === true;
+      // (a) Anneau de fond neutre sombre (#1e293b)
+      if (socketLayout.band) {
+        const bandWidthMap = socketLayout.band.outerRadius - socketLayout.band.innerRadius;
+        const midRadius = (socketLayout.band.innerRadius + socketLayout.band.outerRadius) / 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, midRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = socketLayout.band.color;
+        ctx.lineWidth = bandWidthMap;
+        ctx.stroke();
+      }
 
-    // ── Anneau de santé (Chantier Q §5.1-5.3) ────────────────────────────────────────────────
-    // Dessiné entre la bordure et la sélection. Uniquement si hp !== null.
-    if (token.hp !== null && token.hp !== undefined) {
+      // (b) Arc de PV PJ
+      if (socketLayout.hpArc) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, socketLayout.hpArc.radius, socketLayout.hpArc.startAngle, socketLayout.hpArc.endAngle);
+        ctx.strokeStyle = socketLayout.hpArc.color;
+        ctx.lineWidth = socketLayout.hpArc.thicknessMap;
+        ctx.stroke();
+      }
+
+      // (c) Anneau d'état PNJ blessé/critique
+      if (socketLayout.stateRing) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, socketLayout.stateRing.radius, socketLayout.stateRing.startAngle, socketLayout.stateRing.endAngle);
+        ctx.strokeStyle = socketLayout.stateRing.color;
+        ctx.lineWidth = socketLayout.stateRing.thicknessMap;
+        ctx.stroke();
+      }
+
+      // (d) Encoches PNJ
+      if (socketLayout.stateMarks) {
+        ctx.strokeStyle = socketLayout.stateMarks.color;
+        ctx.lineWidth = socketLayout.stateMarks.thicknessMap;
+        for (const angle of socketLayout.stateMarks.angles) {
+          const rInner = socketLayout.stateMarks.radius - socketLayout.stateMarks.lengthMap / 2;
+          const rOuter = socketLayout.stateMarks.radius + socketLayout.stateMarks.lengthMap / 2;
+          ctx.beginPath();
+          ctx.moveTo(centerX + rInner * Math.cos(angle), centerY + rInner * Math.sin(angle));
+          ctx.lineTo(centerX + rOuter * Math.cos(angle), centerY + rOuter * Math.sin(angle));
+          ctx.stroke();
+        }
+      }
+
+      // (e) Biseau plat extérieur
+      if (socketLayout.bevel) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, socketLayout.bevel.outerRadius - CHASSE_BEVEL_LINE_SCREEN_PX / (2 * zoom), 0, Math.PI * 2);
+        ctx.strokeStyle = socketLayout.bevel.darkColor;
+        ctx.lineWidth = CHASSE_BEVEL_LINE_SCREEN_PX / zoom;
+        ctx.stroke();
+      }
+
+      // (f) Séparateur sombre image ↔ châsse
+      if (socketLayout.separator) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, socketLayout.separator.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = socketLayout.separator.color;
+        ctx.lineWidth = socketLayout.separator.thicknessMap;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    } else if (socketLayout.tier === 'none' && token.hp !== null && token.hp !== undefined) {
+      // ── Repli du palier 'none' (brief §4.4) ──────────────────────────────────
+      // Sous 24px d'écran, pas de châsse : repli sur l'anneau fin du Chantier Q.
       const ringLayout =
         token.kind === 'pc'
           ? computeProportionalRing(width, zoom, token.hp)
@@ -336,16 +406,30 @@ export class TokensLayer {
       }
     }
 
+    // 3.5. Liseré d'identité du pion (tracé à imageRadius, épaisseur écran TOKEN_BORDER_SCREEN_PX)
+    ctx.save();
+    if (token.hidden) ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, socketLayout.imageRadius, socketLayout.imageRadius, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
+    ctx.stroke();
+    ctx.restore();
+
+
+    // 4. Anneau de sélection (Épaisseur constante à l'écran)
     if (selected) {
+      const selectionRadius = (width / 2) + TOKEN_SELECTION_OFFSET_SCREEN_PX / zoom;
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(centerX, centerY, radiusX + 4, radiusY + 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(centerX, centerY, selectionRadius, selectionRadius, 0, 0, Math.PI * 2);
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = TOKEN_SELECTION_RING_SCREEN_PX / zoom;
       ctx.stroke();
       ctx.restore();
     }
 
+    // 5. Badges (élévation, marqueurs, compteur chiffré)
     if (typeof token.elevation === 'number' && token.elevation !== 0) {
       const { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible } = computeElevationBadgeLayout(width, zoom);
       if (visible) {

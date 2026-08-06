@@ -465,3 +465,26 @@ export const TEMPLATE_ORIGIN_EPS = 0.5;
  */
 export const TOKEN_HIT_MARGIN_SCREEN_PX = 24;
 export const TOKEN_HIT_MAX_CELL_RATIO = 0.75;
+
+/**
+ * Constantes du Chantier R — La châsse des pions.
+ * Toutes les grandeurs d'affichage sont exprimées en pixels ÉCRAN (divisées par le zoom au dessin).
+ */
+export const CHASSE_BAND_SCREEN_PX = 6;
+export const CHASSE_BG_COLOR = '#1e293b';
+export const CHASSE_SEPARATOR_COLOR = '#090d16';
+export const CHASSE_SEPARATOR_SCREEN_PX = 1.5;
+export const CHASSE_BEVEL_LIGHT_COLOR = 'rgba(255, 255, 255, 0.15)';
+export const CHASSE_BEVEL_DARK_COLOR = 'rgba(0, 0, 0, 0.35)';
+export const CHASSE_NOTCH_COLOR = '#090d16';
+export const CHASSE_NOTCH_SCREEN_PX = 2;
+
+export const CHASSE_TIER_FULL_SCREEN_PX = 44;
+export const CHASSE_TIER_REDUCED_SCREEN_PX = 24;
+
+export const TOKEN_BORDER_SCREEN_PX = 3;
+export const TOKEN_SELECTION_RING_SCREEN_PX = 3;
+export const TOKEN_SELECTION_OFFSET_SCREEN_PX = 4;
+export const CHASSE_BEVEL_LINE_SCREEN_PX = 1;
+
+

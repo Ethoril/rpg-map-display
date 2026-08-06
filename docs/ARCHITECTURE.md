@@ -104,6 +104,10 @@ F:\rpg-map-display\
 │   │   │                              `tokens.js` parce que le choix du palier et la
 │   │   │                              troncature sont de l'arithmétique pure, donc
 │   │   │                              vérifiables sous node:test — cf. TRANCHE-L09 §5.1
+│   │   ├─ tokenSocket.js         [R]  géométrie et contrat de zones de la châsse des pions.
+│   │   │                              Module pur sans dépendance au DOM, vérifiable sous
+│   │   │                              node:test — cf. CHANTIER-R §3
+
 │   │   └─ layers/
 │   │       ├─ background.js      [1a] image de fond
 │   │       ├─ gridLayer.js       [1a] délègue le tracé à GridAdapter.renderGrid
