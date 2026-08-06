@@ -11,35 +11,50 @@ import { SUPPORTED_EXTENSIONS, isSupportedSource } from '../scripts/prepare-maps
 // synthétiques ne reproduisent pas ce que produit Dungeondraft — polylignes dégénérées,
 // listes de lumières vides, `grid_type` absent, `map_origin` non entier, casse variable.
 //
-// `fixtures/real/` est ignoré par git : les cartes peuvent être sous licence tierce. Le test
-// s'ignore donc avec une raison explicite quand le dossier est vide ou sans fichiers reconnus,
-// plutôt que d'échouer sur une machine fraîchement clonée.
+// ⭐ **Deux sources, et c'est ce qui décide si ce test existe.** `fixtures/real/` est ignoré par
+// git — les cartes peuvent être sous licence tierce —, donc ce test s'ignorait sur toute machine
+// fraîchement clonée **et en CI**. `FIXTURES.md` §1 l'écrivait sans détour : « tant qu'il s'ignore,
+// le parsing UVTT n'est validé qu'en théorie ». Il l'a été de sa création, le 28/07/2026, au
+// 06/08/2026 : la garantie ne tenait que sur la machine où l'export avait été déposé à la main.
+//
+// Or le dépôt **versionne** de vrais exports Dungeondraft dans `maps/` — c'est la matière du
+// catalogue et de l'outil de préparation. Le test regardait donc au seul endroit où rien n'est
+// commité, alors qu'il en avait sous la main. Il lit désormais les deux : `maps/` pour la garantie
+// reproductible partout, `fixtures/real/` pour les exports privés que le mainteneur veut éprouver
+// sans les publier.
+//
+// ⚠ Il ne s'ignore plus qu'en l'absence des deux, ce qui n'arrive pas sur un dépôt intact. Si cette
+// raison réapparaît un jour, c'est que `maps/` a perdu ses exports — et c'est un défaut, pas une
+// configuration.
 
-const dossier = path.resolve('fixtures/real');
-const dirExists = fs.existsSync(dossier);
-const entries = dirExists
-  ? fs.readdirSync(dossier).filter((f) => !f.startsWith('.'))
-  : [];
+/** Dossiers fouillés, du plus fiable au plus optionnel. */
+const DOSSIERS = ['maps', 'fixtures/real'];
 
-const fichiers = entries.filter(isSupportedSource);
-
-let raison;
-if (!dirExists || entries.length === 0) {
-  raison =
-    'fixtures/real/ est absent ou vide : déposer un export VTT réel (cf. docs/FIXTURES.md §1). ' +
-    'Le parsing VTT n\'est validé qu\'en théorie tant que ce test s\'ignore.';
-} else if (fichiers.length === 0) {
-  raison =
-    `fixtures/real/ ne contient aucun fichier avec une extension reconnue (${SUPPORTED_EXTENSIONS.join(', ')}) : ` +
-    'déposer un export .uvtt, .dd2vtt ou .df2vtt réel.';
+/** @type {{ dossier: string, nom: string, chemin: string }[]} */
+const fichiers = [];
+for (const rel of DOSSIERS) {
+  const dossier = path.resolve(rel);
+  if (!fs.existsSync(dossier)) continue;
+  for (const nom of fs.readdirSync(dossier)) {
+    if (nom.startsWith('.') || !isSupportedSource(nom)) continue;
+    fichiers.push({ dossier: rel, nom, chemin: path.join(dossier, nom) });
+  }
 }
 
+const raison =
+  fichiers.length === 0
+    ? `aucun export VTT réel trouvé dans ${DOSSIERS.join(' ni ')} ` +
+      `(extensions reconnues : ${SUPPORTED_EXTENSIONS.join(', ')}). ` +
+      'Le parsing VTT n\'est validé qu\'en théorie tant que ce test s\'ignore — et `maps/` ' +
+      'en versionne normalement, donc cette raison signale un dépôt amputé (cf. docs/FIXTURES.md §1).'
+    : undefined;
+
 test('les exports UVTT réels se parsent et produisent une campagne valide', { skip: raison }, () => {
-  for (const nom of fichiers) {
-    const brut = fs.readFileSync(path.join(dossier, nom), 'utf8');
+  for (const { dossier, nom, chemin } of fichiers) {
+    const brut = fs.readFileSync(chemin, 'utf8');
     const res = parseUvtt(brut);
     const niveau = res.level;
-    const contexte = `fixture réelle "${nom}"`;
+    const contexte = `export réel "${dossier}/${nom}"`;
 
     // Grille : `grid_type` est souvent absent d'un export Dungeondraft — le carré est le défaut.
     assert.equal(niveau.grid.type, 'square', `${contexte} : type de grille`);
@@ -79,4 +94,29 @@ test('les exports UVTT réels se parsent et produisent une campagne valide', { s
     const erreurs = validateCampaign(createCampaign({ levels: [niveau], tokens: [] }));
     assert.deepEqual(erreurs, [], `${contexte} : campagne invalide`);
   }
+});
+
+/**
+ * Garde-fou du test ci-dessus, et il ne s'ignore JAMAIS.
+ *
+ * ⭐ Le défaut réparé le 06/08/2026 n'était pas une assertion fausse, c'était un **skip** : le test
+ * ne trouvait rien à parser et s'écartait poliment, si bien que « le parsing UVTT n'est validé qu'en
+ * théorie » pouvait rester vrai pendant dix jours sans qu'aucune porte ne rougisse.
+ *
+ * ⛔ Un `skip` n'est pas un échec. Si la découverte des fichiers se casse — extensions renommées,
+ * dossier déplacé, exports retirés de `maps/` —, le test ci-dessus redeviendrait silencieusement
+ * inoffensif. Celui-ci est là pour que cette situation soit **rouge** et non « ignorée » : il
+ * affirme qu'au moins un export réel **versionné** a bien été trouvé.
+ *
+ * C'est la leçon de la journée appliquée à elle-même : ce qui garde une garantie doit être gardé à
+ * son tour.
+ */
+test('au moins un export VTT réel versionné est trouvé (le test ci-dessus ne doit jamais s\'ignorer)', () => {
+  const versionnes = fichiers.filter((f) => f.dossier === 'maps');
+  assert.ok(
+    versionnes.length > 0,
+    `aucun export VTT réel trouvé dans maps/ — le test de parsing réel s'ignorerait donc, ` +
+      `et le format ne serait plus validé que par des fixtures synthétiques. ` +
+      `Fichiers vus : ${fichiers.map((f) => `${f.dossier}/${f.nom}`).join(', ') || '(aucun)'}`
+  );
 });

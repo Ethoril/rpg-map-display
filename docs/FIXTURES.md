@@ -16,11 +16,27 @@ irrégularités qu'aucune fixture synthétique ne reproduit : polylignes de murs
 dégénérées, portails à cheval sur deux cloisons, `map_origin` non entier, cloisons
 manquantes, listes de lumières vides, variantes de casse dans les clés.
 
-**Action requise du mainteneur : faite le 28/07/2026.** Un export réel a été déposé dans
-`fixtures/real/`, et `tests/realUvtt.test.mjs` le parse à chaque exécution de `test:unit`. Le
-test **s'auto-ignore avec sa raison** si le dossier est vide — c'est le cas sur un dépôt
-fraîchement cloné, puisque le dossier est ignoré par git. Tant qu'il s'ignore, le parsing UVTT
-n'est validé qu'en théorie, et cela doit être dit.
+**Le parsing réel est désormais validé partout, y compris en CI — corrigé le 06/08/2026.**
+`tests/realUvtt.test.mjs` parse à chaque `test:unit` les exports réels **versionnés** de `maps/`,
+soit `manoir-rdc.uvtt` et `testbig150.dd2vtt`. Coût mesuré : environ 260 ms pour 27 Mo, sur les
+deux.
+
+⭐ **Ce paragraphe disait l'inverse pendant dix jours, et il avait raison de le dire.** Le test ne
+regardait que `fixtures/real/`, un dossier **ignoré par git** — les cartes peuvent être sous licence
+tierce. Il s'ignorait donc sur tout dépôt fraîchement cloné et en intégration continue : la
+garantie ne tenait que sur la machine où un export avait été déposé à la main le 28/07/2026. La
+phrase « tant qu'il s'ignore, le parsing UVTT n'est validé qu'en théorie » était donc vraie, écrite
+noir sur blanc, et personne ne l'a lue comme une alarme. Le dépôt versionnait pourtant de vrais
+exports dans `maps/` : le test regardait au seul endroit où rien ne l'est.
+
+`fixtures/real/` reste lu **en plus**, pour les exports privés que le mainteneur veut éprouver sans
+les publier. Y déposer un fichier ajoute une fixture, ne remplace rien.
+
+⛔ **Un `skip` n'est pas un échec, et c'est ce qui a permis au trou de durer.** Un second test,
+qui ne s'ignore jamais, affirme qu'au moins un export versionné a été trouvé : si la découverte se
+casse — extensions renommées, dossier déplacé, exports retirés de `maps/` —, la porte devient
+**rouge** au lieu de redevenir silencieusement inoffensive. Ne pas retirer ce garde-fou en le
+prenant pour une redondance.
 
 Ce qu'il vérifie, au-delà du simple « ça ne lève pas » : les coordonnées de murs restent dans
 les bornes de `map_size` (une conversion accidentelle en pixels donnerait des valeurs cent fois
