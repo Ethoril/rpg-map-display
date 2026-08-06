@@ -687,12 +687,27 @@ non sur le chemin de déplacement — critère 8). Antérieur à L-06, sans effe
 regarder **le jour où le fog coûtera trop cher sur la tablette**, pas avant : y toucher
 maintenant serait optimiser sans mesure, ce que l'interdiction n°14 proscrit dans l'autre sens.
 
-**2. Deux `syncVision()` au démarrage de `js/app/gm.js`.** Lignes 643 et 848 après L-06. Le
-second est un no-op — la signature de vision n'a pas changé, les deux branches sont sautées —
-et c'est lui qui porte sa raison en commentaire depuis L-04 : « une fenêtre MJ ouverte déjà en
-arrière-plan n'obtiendrait aucune frame ». Une seule devrait survivre, et c'est celle-là. Ne
-pas supprimer l'autre sans relire le bloc d'initialisation qui l'entoure : c'est lui qui a
-révélé la zone morte temporelle de `gmPanel` au contrôle de L-06.
+**2. Deux `syncVision()` au démarrage de `js/app/gm.js`. Relu le 06/08/2026 : la redondance est
+conservée sciemment, et la mise en garde ci-dessous était périmée.** Aujourd'hui lignes 846 et
+1221. Le second est un no-op — la signature de vision n'a pas changé, les deux branches sont
+sautées — et c'est lui qui porte sa raison en commentaire depuis L-04 : « une fenêtre MJ ouverte
+déjà en arrière-plan n'obtiendrait aucune frame ».
+
+Ce qui a été vérifié en relisant, comme la version précédente de ce point le demandait :
+
+- **`gmPanel` est créé ligne 787, donc avant les deux appels.** La zone morte temporelle que ce
+  paragraphe invoquait — `syncVision` appelant `gmPanel?.fogTools?.clearUndoStack` sur un panneau
+  encore nul — **n'existe plus** à cet endroit. La mise en garde a survécu au défaut qu'elle
+  décrivait ; c'est écrit ici pour qu'elle ne serve pas indéfiniment d'épouvantail.
+- **Rien entre les deux appels ne lit la vision.** Les `requestRender()` qui s'y trouvent sont tous
+  dans des corps de gestionnaires, non exécutés à l'initialisation. Les deux appels sont donc bien
+  redondants, et en retirer un serait observablement équivalent à quelques millisecondes près — la
+  publication du masque exploré étant de toute façon throttlée à 1 Hz avec traîne.
+
+**Décision : ne pas y toucher.** Le gain est un appel redondant qui se solde en no-op ; le risque
+est une régression d'ordonnancement au démarrage, qu'aucun test ne couvre. ⚠ Et « les tests passent
+après suppression » ne prouverait rien ici : il n'existe aucun test de l'ordre d'initialisation, donc
+le vert ne mesurerait que son absence. Écrire un tel test pour un gain nul serait disproportionné.
 
 **3. Le test de vision de L-07 assurait un changement, pas une direction. ✅ Réglé le 06/08/2026.**
 `tests/wallEditor.spec.mjs` ne vérifiait que la **différence** du masque publié après l'ajout d'un
