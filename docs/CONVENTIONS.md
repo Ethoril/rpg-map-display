@@ -337,6 +337,22 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
     l'environnement qu'on change — pas le composant.
 17. **Ne jamais exécuter de commande git** : ni `commit`, ni `add`, ni `push`, ni `stash`.
     Les modifications restent dans l'arbre de travail (cf. `TASKS-lot1a.md`).
+18. **Ne jamais installer les dépendances autrement qu'avec
+    `corepack pnpm install --frozen-lockfile`.** Sont interdits `pnpm install` nu, `pnpm
+    update`, `pnpm add`, et toute commande qui réécrit `pnpm-lock.yaml` sans que le
+    mainteneur ait nommé la dépendance à faire bouger. Raison : l'attaque de la chaîne
+    d'approvisionnement npm du 4 août 2026 — compte du mainteneur de `keyv`/`cacheable`
+    compromis, un ver à hook `preinstall` répandu dans 434 paquets, qui vole les identifiants
+    puis republie des paquets **d'autres mainteneurs**. Le dépôt y a échappé par pure
+    chronologie : son `pnpm-lock.yaml` datait du 30 juillet. Le lockfile est donc la barrière,
+    et le drapeau est ce qui la maintient fermée.
+
+    **Si `--frozen-lockfile` échoue, ne pas retirer le drapeau.** L'échec signale que
+    `package.json` et `pnpm-lock.yaml` divergent : dire ce qui diverge, et demander. Une
+    mise à jour réellement demandée se vérifie d'abord (les versions visées ne doivent pas
+    figurer parmi les paquets compromis), et le `pnpm-lock.yaml` modifié part dans le même
+    commit. Complète l'interdiction #13, qui régit *quelles* dépendances existent ; celle-ci
+    régit *comment* elles entrent.
 
 ---
 
