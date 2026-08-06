@@ -47,6 +47,12 @@ test('1. Application case <-> pixel confinée (hors js/grid/, pas de conversion 
     'js/core/schema.js',
     'js/import/uvtt.js',
     'js/import/imageCalibrate.js',
+    // Mesure un **pas** en pixels et le compare à un autre pas ; ne convertit aucune position.
+    // La règle interdit la conversion case <-> pixel positionnelle hors de `js/grid/`, pas la
+    // mention d'une densité — d'où les deux entrées d'import ci-dessus, de la même famille.
+    // ⛔ Ne pas « régler » ce genre de conflit en renommant le paramètre : la garde serait
+    // contournée au lieu d'être respectée, et l'interdiction n°16 vise exactement ce geste.
+    'js/import/gridPitch.js',
     'js/ui/gm/importPanel.js',
   ]);
 

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Jimp } from 'jimp';
 import webpFormat from '@jimp/wasm-webp';
+import { rowInkProfile, detectPaintedRowPitch, hexGridWarning } from '../js/import/gridPitch.js';
 
 /**
  * Plafond de dimension des images préparées, en pixels.
@@ -126,6 +127,40 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
   const srcHeight = img.height;
 
   const { sourcePxPerCell, widthCells, heightCells } = options;
+
+  // ── Topologie de la grille peinte, sur l'image SOURCE ─────────────────────────────────────
+  //
+  // Ici et pas ailleurs : c'est le seul endroit de la chaîne où les pixels d'origine sont
+  // disponibles avant rééchantillonnage, et où un canal `warnings` remonte déjà au mainteneur.
+  // Après redimensionnement, le pas serait celui de la cible — mesurable aussi, mais mesuré sur
+  // une image interpolée dont le trait a bavé.
+  //
+  // ⚠ Le pas de colonne de référence est celui de la SOURCE. Le prendre égal à
+  // `targetPxPerCell` comparerait un rythme mesuré dans l'image d'origine à une densité qu'elle
+  // n'a pas, et déclarerait hexagonale n'importe quelle carte dont la densité source diffère de
+  // 13 % de la cible — soit presque toutes.
+  const pasColonneSource =
+    widthCells && widthCells > 0
+      ? srcWidth / widthCells
+      : sourcePxPerCell && sourcePxPerCell > 0
+        ? sourcePxPerCell
+        : 0;
+
+  if (pasColonneSource >= 4) {
+    try {
+      const profil = rowInkProfile(img.bitmap.data, srcWidth, srcHeight);
+      const topologie = detectPaintedRowPitch(profil, pasColonneSource);
+      const avertissement = hexGridWarning(topologie, pasColonneSource);
+      if (avertissement) warnings.push(avertissement);
+    } catch (err) {
+      // Une sonde qui échoue ne doit pas emporter la préparation d'une carte par ailleurs
+      // valide — mais elle ne doit pas non plus se taire, sinon la détection pourrait
+      // disparaître sans que personne ne le remarque.
+      warnings.push(
+        `Détection de la topologie de grille impossible : ${/** @type {any} */ (err)?.message || err}`
+      );
+    }
+  }
 
   let targetWidth;
   let targetHeight;

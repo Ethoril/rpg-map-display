@@ -209,6 +209,42 @@ on obtiendra un hexagone techniquement correct et toujours désaligné. Le garde
 `grid_type === 'hex'` du parseur ([`uvtt.js:43`](../js/import/uvtt.js#L43)) est du code
 mort face à ce logiciel : il n'écrit jamais ce champ.
 
+#### ⭐ Amendement du 6 août 2026 — le silence est levé, la détection est faite
+
+Ce paragraphe concluait « aucun moyen de le détecter sans analyser l'image ». C'est exact au
+mot près, et c'est précisément ce qui rendait la conclusion trompeuse : **la chaîne de
+préparation analyse déjà l'image**, elle la décode et la rééchantillonne. Le moyen était donc
+disponible depuis toujours. Or importer une carte hexagonale en carré **sans rien dire**
+contredit l'exigence d'universalité de l'import — ne jamais rien écarter en silence.
+
+`js/import/gridPitch.js` mesure le pas de rangée par autocorrélation d'un profil d'encre, et
+`scripts/resample.mjs` en pousse un avertissement dans le canal `warnings` existant.
+
+**Mesuré avant d'être codé**, sur deux réseaux tracés à `w` = 300 :
+
+| image | pic | rapport | r(300) | r(260) | verdict |
+|---|---|---|---|---|---|
+| carrée | 300 px | 1,0000 | 0,833 | −0,006 | carré |
+| hexagonale | 260 px | 0,8667 | 0,224 | 0,793 | hex |
+
+Rapport mesuré 0,8667 contre 0,8660 théorique, et une marge de 3,5× entre les deux hypothèses.
+Les seuils du module viennent de ces nombres.
+
+**Contrôle du faux positif sur données réelles.** `testbig150.dd2vtt`, 9750 × 10650 px et
+65 × 71 cases, pas de 150 px : verdict `indéterminé`, aucun avertissement. C'est le bon
+résultat — cette carte n'a pas de quadrillage peint (§4.2), et un détecteur qui crierait au
+loup dessus apprendrait à ignorer les avertissements. Coût : **78 ms** pour le profil sur
+104 mégapixels, négligeable devant la préparation.
+
+⚠ **Ce qui n'est pas validé, et il faut le savoir** : le cas **positif** sur données réelles. Le
+dépôt ne versionne aucun export hexagonal, et l'image de `manoir-rdc.uvtt` est en WebP, dont le
+décodeur WASM exige un accès réseau. Déposer un export hexagonal dans `fixtures/real/` fermerait
+ce trou — `tests/realUvtt.test.mjs` lit désormais ce dossier **en plus** de `maps/`.
+
+⚠ Et le détecteur **avertit sans rien corriger** : il ne touche ni à `grid.type` ni au rendu.
+Corriger automatiquement donnerait l'hexagone techniquement correct et toujours désaligné décrit
+juste au-dessus ; rejeter contredirait l'universalité aussi sûrement que le silence.
+
 ---
 
 ## 5. Les bordures — résolu par convention d'export

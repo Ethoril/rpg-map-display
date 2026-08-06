@@ -151,3 +151,87 @@ test('parseUvtt convertit les lumières ARGB et lit environment.ambient_light', 
   assert.equal(parsed.level.ambient.color, '#112233');
 });
 
+
+/**
+ * Branchement de la détection de topologie — et non le module pur, déjà couvert par
+ * `tests/gridPitch.test.mjs`.
+ *
+ * ⭐ Ce test existe parce que le contraire serait exactement l'erreur relevée toute la journée du
+ * 06/08/2026 : éprouver la calculette et croire que le dessin s'en sert. `gridPitch.js` peut être
+ * parfait et `resample.mjs` ne jamais l'appeler — le mainteneur n'en saurait rien, puisque
+ * l'absence d'avertissement est indistinguable d'une carte carrée.
+ *
+ * Le réseau est tracé ici en PNG, format que Jimp encode et décode nativement : le WebP passe par
+ * un décodeur WASM qui exige un accès réseau, ce qui rendrait ce test dépendant d'Internet.
+ */
+test('resample avertit quand le réseau peint est hexagonal, et se taît quand il est carré', async () => {
+  const { Jimp } = await import('jimp');
+  const PAS = 60;
+  const CASES_X = 12;
+  const CASES_Y = 10;
+  const W = PAS * CASES_X;
+  const H = PAS * CASES_Y;
+
+  /** @param {'square'|'hex'} reseau */
+  const imagePng = async (reseau) => {
+    const img = new Jimp({ width: W, height: H, color: 0xf2efe6ff });
+    /** @param {number} x @param {number} y */
+    const encre = (x, y) => {
+      const xi = Math.round(x);
+      const yi = Math.round(y);
+      if (xi >= 0 && xi < W && yi >= 0 && yi < H) img.setPixelColor(0x3c3c3cff, xi, yi);
+    };
+    /** @param {number} x0 @param {number} y0 @param {number} x1 @param {number} y1 */
+    const ligne = (x0, y0, x1, y1) => {
+      const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
+      for (let k = 0; k <= n; k++) {
+        const x = x0 + ((x1 - x0) * k) / n;
+        const y = y0 + ((y1 - y0) * k) / n;
+        encre(x, y);
+        encre(x + 1, y);
+      }
+    };
+
+    if (reseau === 'square') {
+      for (let x = 0; x <= W; x += PAS) ligne(x, 0, x, H - 1);
+      for (let y = 0; y <= H; y += PAS) ligne(0, y, W - 1, y);
+    } else {
+      const hauteur = (2 * PAS) / Math.sqrt(3);
+      const pasRangee = (PAS * Math.sqrt(3)) / 2;
+      for (let r = -1; r * pasRangee < H + hauteur; r++) {
+        const cy = r * pasRangee;
+        const decal = r % 2 === 0 ? 0 : PAS / 2;
+        for (let c = -1; c * PAS + decal < W + PAS; c++) {
+          const cx = c * PAS + decal;
+          /** @type {[number, number][]} */
+          const s = [];
+          for (let k = 0; k < 6; k++) {
+            const a = (Math.PI / 3) * k - Math.PI / 2;
+            s.push([cx + (PAS / 2) * Math.cos(a), cy + (hauteur / 2) * Math.sin(a)]);
+          }
+          for (let k = 0; k < 6; k++) ligne(s[k][0], s[k][1], s[(k + 1) % 6][0], s[(k + 1) % 6][1]);
+        }
+      }
+    }
+    return img.getBuffer('image/png');
+  };
+
+  const options = { widthCells: CASES_X, heightCells: CASES_Y };
+
+  const hex = await resample(await imagePng('hex'), PAS, options);
+  const avertissementHex = hex.warnings.find((/** @type {string} */ w) => /HEXAGONAL/.test(w));
+  assert.ok(
+    avertissementHex,
+    `un réseau hexagonal doit produire un avertissement. Reçu : ${JSON.stringify(hex.warnings)}`
+  );
+  // L'avertissement doit dire quoi faire, pas seulement constater.
+  assert.match(avertissementHex, /lot 4/);
+
+  const carre = await resample(await imagePng('square'), PAS, options);
+  assert.equal(
+    carre.warnings.find((/** @type {string} */ w) => /HEXAGONAL/.test(w)),
+    undefined,
+    `une grille carrée ne doit produire AUCUN avertissement de topologie. ` +
+      `Reçu : ${JSON.stringify(carre.warnings)}`
+  );
+});

@@ -79,6 +79,13 @@ F:\rpg-map-display\
 │   │   ├─ catalog.js             [2]  chargeur et validateur de catalogue pur
 │   │   ├─ tokenCatalog.js        [1b] chargeur et validateur du catalogue de pions, pur
 │   │   ├─ imageCalibrate.js      [1a] image simple → grille (source B)
+│   │   ├─ gridPitch.js           [4]  topologie de la grille PEINTE, par autocorrélation d'un
+│   │                                  profil d'encre. Le format UVTT ne déclare jamais
+│   │                                  l'hexagone (ANALYSE-DD2VTT-GRILLES §4.3) : une carte hex
+│   │                                  s'importait donc en carré, en silence, contre l'exigence
+│   │                                  d'universalité. Pur, sans DOM ni I/O — il reçoit des
+│   │                                  pixels, il rend un verdict. ⚠ Il AVERTIT et ne corrige
+│   │                                  rien : l'adaptateur hexagonal est le lot 4.
 │   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>, par croisement
 │                                      centre-à-centre. Porte une MÉMOÏSATION par étage,
 │                                      indexée sur levelId + empreinte géométrique : c'est
