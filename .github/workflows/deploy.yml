@@ -8,6 +8,22 @@ on:
   pull_request:
     branches:
       - main
+  # Déclenchement manuel, depuis l'onglet Actions ou `gh workflow run deploy.yml`.
+  #
+  # Ajouté le 06/08/2026, pendant la panne majeure de GitHub Actions. Ce jour-là, un push a été
+  # accepté sans créer **aucune** course : les webhooks étaient bridés à environ 15 %, si bien que
+  # l'événement a été perdu. Sans `workflow_dispatch`, il n'existait alors plus aucun moyen de
+  # réamorcer — `gh run rerun` exige une course existante, et il n'y en avait pas. La seule issue
+  # était de fabriquer un commit vide pour rejouer l'événement.
+  #
+  # ⚠ Ce déclencheur ne rend pas la porte optionnelle : le job `verify` s'exécute de la même façon,
+  # et `deploy` reste conditionné à son succès. Il rend seulement l'amorçage indépendant de la
+  # bonne livraison d'un webhook.
+  #
+  # ⛔ Ne pas ajouter ce déclencheur ici sans étendre aussi la condition du job `build`, plus bas :
+  # elle filtre sur `github.event_name == 'push'`, et le déclenchement manuel serait alors vérifié
+  # puis jamais publié, sans que rien ne le signale.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -145,7 +161,14 @@ jobs:
     # LA garde : rien ne se fabrique si la vérification échoue.
     needs: verify
     # Les pull requests sont vérifiées mais jamais publiées.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    #
+    # ⚠ `workflow_dispatch` doit figurer ici, et pas seulement dans `on:`. Sans lui, un
+    # déclenchement manuel passait la porte puis **ne déployait rien, en silence** : `build` était
+    # sauté faute de `github.event_name == 'push'`, et `deploy` avec lui puisqu'il en dépend. Le
+    # bouton aurait donc paru fonctionner tout en ne publiant jamais — le pire des deux mondes.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 est requis : le numéro de build est dérivé du nombre de commits,
