@@ -50,6 +50,40 @@ couleur du pion ».** C'est la voie écartée, et elle rouvre le défaut par la 
 que la teinte dépend du pion, le contraste avec l'arc redevient variable, donc invérifiable. Le
 critère d'acceptation 2 (§7) est écrit pour mordre exactement là.
 
+Les trois arbitrages suivants comblent des **trous du brief**, relevés le 06/08/2026 en relisant le
+plan d'implémentation : aucun des trois n'était spécifié, ni ici, ni dans le plan.
+
+**(5) Un pion sans points de vie (`hp: null`) porte quand même la châsse. Seule la jauge dépend des
+PV.** Tranché par le mainteneur le 06/08/2026.
+
+> Conséquence à assumer, et elle est large : **l'aspect de tous les pions change**, y compris ceux
+> qui n'auront jamais de PV. C'est le prix d'un aspect homogène. La voie écartée — châsse seulement
+> s'il y a des PV — faisait apparaître et disparaître la châsse, donc **changer la taille du
+> portrait**, selon qu'un champ du panneau MJ est rempli ou vidé.
+
+⚠ Aujourd'hui l'anneau ne se dessine **que** si `token.hp !== null` (`tokens.js:321`). Cette
+condition ne disparaît pas : elle se déplace. Elle ne commande plus la châsse, seulement la jauge.
+
+**(6) Pour un PNJ, la couleur d'état se dessine en anneau *sur* la bande neutre, et non en
+remplissant la bande.** La bande reste grise dans tous les cas. Un PNJ « Indemne » n'a donc aucun
+anneau d'état, exactement comme aujourd'hui.
+
+> Deux bénéfices, et c'est pourquoi cette voie est retenue : les PJ et les PNJ se dessinent alors
+> **par le même chemin** — une bande neutre, un anneau par-dessus, seule sa longueur ou sa couleur
+> changeant —, et le critère 2 reste mesurable sur une bande dont la couleur est connue d'avance.
+> La voie écartée, bande entièrement teintée, se verrait de plus loin mais rendrait le critère 2
+> conditionnel à l'état du pion.
+
+**(7) Le liseré d'identité garde son épaisseur actuelle, exprimée en pixels écran.** Environ 3 px,
+constants à tous les zooms — ce que le §2 corrige. L'objectif est de réparer l'espace **sans**
+changer l'aspect : le liseré est déjà le seul porteur de l'identité de couleur (arbitrage 4), il ne
+faut pas l'amaigrir par accident.
+
+> ⚠ Mesuré, parce que la tentation est d'écrire `2 / zoom` et de croire que c'est équivalent :
+> l'actuel `Math.max(2, min(w, h) × 0,035)` vaut **4,9 px carte** sur un pion 1×1 d'une carte à
+> 140 px/case, soit ~3,1 px écran au zoom par défaut observé. `2 / zoom` en donnerait 2 : un tiers
+> de moins, sans que personne ne l'ait décidé.
+
 ---
 
 ## 1. La cause : ce n'est pas la simplicité des formes, c'est l'absence de place réservée
@@ -117,6 +151,13 @@ computeSocketLayout(tokenWidthMap, zoom, { kind, hp, health }) → {
 **Toutes les épaisseurs sont en pixels carte dans le résultat**, déjà divisées par le zoom à
 l'intérieur de la fonction — comme `computeProportionalRing` le fait déjà. Aucune division par le
 zoom dans le code de dessin : c'est ainsi qu'on évite une cinquième occurrence du §2.
+
+⛔ **Aucun nombre en dur, ni dans le module ni dans le dessin.** Toute grandeur d'écran et toute
+couleur se nomment et se documentent dans `js/core/constants.js`, à côté de `TOKEN_HP_*` et des
+`PORTAL_*_SCREEN_PX`. Ce n'est pas une préférence de style : c'est ce qui a rendu les quatre
+occurrences du §2 réparables une par une, et ce qui permet au mainteneur de régler
+`CHASSE_BAND_PX` sans lire le code de dessin. Un `#1e293b` ou un `2 / zoom` écrit dans le module
+est un réglage que personne ne retrouvera.
 
 Emplacement proposé : `js/render/tokenSocket.js`, à côté de `js/render/statusBadges.js` qui suit
 déjà exactement ce partage entre calcul pur et dessin.
@@ -219,6 +260,19 @@ c'est le défaut que `publishVisibleVision` a déjà eu à corriger.
 Vérifiables en machine, par sonde de pixels sur le canvas — précédent :
 `statusBadges.spec.mjs:174`, qui valide déjà une icône et sa position géométrique.
 
+⛔ **Les critères 1, 2, 3, 5, 7 et 8 se mesurent sur le canvas, jamais sur le retour de
+`computeSocketLayout`.** Relevé en relisant le plan d'implémentation, qui confiait 5 et 7 aux tests
+unitaires du module pur. Vérifier que la fonction *retourne* `3 / zoom` ne prouve à aucun moment
+que le code de dessin **s'en sert** : c'est tester la calculette au lieu du dessin, et c'est la
+forme exacte du faux vert attrapé sur le critère 13 du chantier Q le 06/08/2026. Le module pur peut
+être testé en unitaire **en plus**, jamais **à la place**.
+
+⚠ Et le défaut que ce chantier corrige est une propriété de **pixels** — « les superpositions de
+couleurs se voient mal ». Aucun retour de fonction ne peut en témoigner.
+
+Les critères 4 et 6 sont les seuls qui se ferment légitimement en unitaire : le premier est un
+calcul d'angle, le second un choix de palier.
+
 1. L'illustration du pion n'est **pas** recouverte : un pixel du portrait à `imageRadius − 1` est
    inchangé par la présence de la châsse.
 2. La châsse est **opaque** : la même châsse dessinée sur deux portraits de couleurs opposées
@@ -249,3 +303,26 @@ Vérifiables en machine, par sonde de pixels sur le canvas — précédent :
   de schéma paraît nécessaire, c'est le signe qu'une décision a dérivé — s'arrêter et le dire.
 - Il ne propose **aucun** cadre illustré. L'arbitrage (1) garde la porte ouverte ; il ne la
   franchit pas.
+
+---
+
+## 9. Rappels de conduite du chantier
+
+- **`pnpm`, jamais `npm`.** Interdiction n°18 : l'installation passe par
+  `corepack pnpm install --frozen-lockfile`, et les suites par `pnpm run test:unit`,
+  `pnpm run test:e2e`, `pnpm run typecheck`. Un `npm run` écrirait un `package-lock.json` que le
+  dépôt ne connaît pas.
+- **Le §5 n'est pas optionnel** : vérifier que ni le badge d'élévation, ni la rangée de marqueurs,
+  ni le compteur de PV ne tombent sur la châsse au point de la rendre illisible. Si l'un le fait,
+  c'est le badge qui se décale.
+- **La porte de vérification ne dira peut-être rien.** GitHub Actions est en panne majeure depuis le
+  06/08/2026 15:22 UTC : une course peut rester en file puis être annulée. ⚠ **Une porte qui ne
+  répond pas n'est pas une porte verte.** La vérification se fait en local, et son résultat vaut ce
+  que valent ses tests.
+- ⚠ **Ne pas enchaîner les campagnes Playwright complètes.** Chacune ouvre un serveur et une volée
+  de contextes ; enchaînées, elles saturent la machine du mainteneur — constaté le 06/08/2026, avec
+  des tests qui échouaient sur des fichiers différents à chaque exécution, puis un plantage de la
+  session. Cibler la suite concernée, et ne passer la porte complète qu'à froid.
+- **Le travail sera relu par mutation.** Casser le code volontairement, une garantie à la fois, et
+  vérifier que le test rougit. Un test vert sur du code juste ne prouve rien ; c'est ce protocole
+  qui a trouvé le faux vert du critère 13 de Q, sur l'arbitrage le plus important du chantier.
