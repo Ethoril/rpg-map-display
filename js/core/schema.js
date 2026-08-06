@@ -6,12 +6,13 @@
  * @typedef {import('./types.js').Token} Token
  */
 
-import { STATUS_MARKER_IDS } from './constants.js';
+import { STATUS_MARKER_IDS, HEALTH_STATE_IDS } from './constants.js';
 
 /** @typedef {import('./constants.js').StatusMarker} StatusMarker */
 
 const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 const STATUS_MARKER_SET = new Set(STATUS_MARKER_IDS);
+const HEALTH_STATE_SET = new Set(HEALTH_STATE_IDS);
 
 /**
  * Garde de type vérifiant si une valeur est un identifiant de marqueur d'état valide.
@@ -261,7 +262,28 @@ export function normalizeLevel(level) {
 }
 
 /**
- * Normalise la campagne entière (couleurs PUIS portails).
+ * Normalise un pion hérité (CdC §6 & Chantier Q §1.1 / §3).
+ * S'assure que markers est un tableau, et que hp et health ont des valeurs par défaut.
+ *
+ * @param {any} token
+ * @returns {any}
+ */
+export function normalizeToken(token) {
+  if (!token || typeof token !== 'object') return token;
+  if (!Array.isArray(token.markers)) {
+    token.markers = [];
+  }
+  if (token.hp === undefined) {
+    token.hp = null;
+  }
+  if (token.health === undefined) {
+    token.health = 'unharmed';
+  }
+  return token;
+}
+
+/**
+ * Normalise la campagne entière (couleurs, portails, pions).
  * Rend une copie normalisée du document.
  *
  * @param {any} campaign
@@ -274,6 +296,11 @@ export function normalizeCampaign(campaign) {
   if (Array.isArray(res.levels)) {
     for (const level of res.levels) {
       normalizeLevel(level);
+    }
+  }
+  if (Array.isArray(res.tokens)) {
+    for (const token of res.tokens) {
+      normalizeToken(token);
     }
   }
   return res;
@@ -370,6 +397,8 @@ export function createToken(overrides = {}) {
     locked: overrides.locked ?? false,
     elevation: overrides.elevation ?? 0,
     markers: overrides.markers ?? [],
+    hp: overrides.hp !== undefined ? overrides.hp : null,
+    health: overrides.health ?? 'unharmed',
     ...overrides,
   };
 }
@@ -809,6 +838,23 @@ export function validateCampaign(campaign) {
             seenMarkers.add(marker);
           }
         }
+      }
+
+      if (token.hp !== null && token.hp !== undefined) {
+        if (
+          typeof token.hp !== 'object' ||
+          !Number.isInteger(token.hp.current) ||
+          !Number.isInteger(token.hp.max) ||
+          token.hp.max < 1 ||
+          token.hp.current < 0 ||
+          token.hp.current > token.hp.max
+        ) {
+          errors.push(`Pion "${tokenId}" : hp doit être null ou un objet { current, max } avec max >= 1 et 0 <= current <= max`);
+        }
+      }
+
+      if (token.health !== undefined && !HEALTH_STATE_SET.has(token.health)) {
+        errors.push(`Pion "${tokenId}" : health invalide "${token.health}"`);
       }
 
       const level = levelsById.get(token.levelId);

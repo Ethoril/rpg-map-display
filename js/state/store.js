@@ -737,6 +737,8 @@ const ALLOWED_TOKEN_PATCH_KEYS = new Set([
   'visionDim',
   'elevation',
   'markers',
+  'hp',
+  'health',
 ]);
 
 /**

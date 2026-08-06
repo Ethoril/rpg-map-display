@@ -49,8 +49,7 @@ progressivement et non spécifié d'un bloc à l'avance.
 
 - Pas de visibilité inter-étages (ni trémie, ni balcon surplombant).
 - Pas de fiches de personnage, jets de dés, chat, ni initiative.
-- Pas de points de vie. Si le besoin apparaît, la version 10 % est un unique état
-  « blessé / à terre » via `markers`, jamais une barre.
+- Points de vie réduits au strict nécessaire (Chantier Q, 06/08/2026) : compteur `courant/max` lisible sur le pion, anneau proportionnel sur les PJ seulement (jamais sur les PNJ), et état de santé annoncé des PNJ à trois crans manuels (`Indemne`, `Blessé`, `Mal en point`). Aucune dérivation automatique, aucun calcul de dégâts, aucun journal.
 - Pas de snapshot ni de restauration de positions.
 - Un groupe séparé sur deux étages ne peut être observé que d'un étage à la fois.
 
@@ -294,6 +293,7 @@ MJ. Les PNJ ont un état Visible / Masqué (préparation d'embuscades).
 - `playerMovable`, `locked` — droits de manipulation par pion
 - `elevation` — altitude numérique (vol, escalade, fosse). Simple badge affiché sur le
   pion, sans aucune incidence sur la géométrie ni sur la vision.
+- `hp` / `health` — points de vie (Chantier Q, 06/08/2026). `hp` porte `{ current, max }` ou `null`. `health` porte l'état annoncé d'un PNJ (`unharmed`, `wounded`, `critical`).
 - `markers` — tableau d'identifiants d'états. **Le jeu de marqueurs est clos depuis le
   04/08/2026** : quatorze valeurs, dont `poisoned`, `prone` et `unconscious`, énumérées par
   `assets/icons/status/SOURCES.md`, qui fait autorité. Le nom de fichier de l'icône **est**
@@ -580,7 +580,9 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
     speedCells: 6,                      // portée des cases atteignables
     playerMovable: true, locked: false,
     elevation: 0,                       // badge affiché, sans effet géométrique
-    markers: []                         // ['poisoned', 'prone', …] — jeu à définir
+    markers: [],                        // ['poisoned', 'prone', …] — jeu clos à 14 marqueurs
+    hp: null,                           // ou { current: 14, max: 28 } (Chantier Q)
+    health: 'unharmed'                  // 'unharmed'|'wounded'|'critical' (PNJ uniquement)
   }],
 
   templates: [{                         // gabarits de zone d'effet (§5.9)
@@ -619,7 +621,11 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 ```js
 // tokenLibrary
 [{ id, name, imageUrl, kind, sizeCells, speedCells,
-   visionBright, visionDim, emitsLight, borderColor }]
+   visionBright, visionDim, emitsLight, borderColor,
+   maxHp }]        // number|null — PV maximum du gabarit (Chantier Q, 06/08/2026).
+                   // Absent toléré et normalisé à `null` : ce fichier s'édite à la main.
+                   // Un scalaire, pas un objet : un gabarit n'a pas de « courant ».
+                   // La projection pose le pion à plein — `{ current: maxHp, max: maxHp }`.
 
 // sceneLibrary — index de navigation, dérivé des levels
 [{ levelId, name, thumbUrl, gridType, source: 'uvtt'|'image', updatedAt }]
@@ -1054,4 +1060,13 @@ Critères :
    > que la séance dira encore : l'**ordre de troncature** quand un pion porte plus de trois
    > marqueurs, et le **seuil de 14 px** au-delà duquel une icône vaut mieux qu'un point
    > coloré. Deux constantes, pas deux décisions de conception.
+   >
+   > ⚠ **Le chantier Q ne rouvre pas cette question, et le vocabulaire reste à quatorze.** Ses
+   > trois états de santé — `unharmed`, `wounded`, `critical` — vivent dans un **champ séparé**,
+   > `health`, et non dans `markers`. La raison est structurelle : les quatorze marqueurs sont un
+   > **ensemble** — indépendants, cumulables, sans hiérarchie —, quand les trois états de santé
+   > s'**excluent** mutuellement. Les loger dans `markers` demanderait une logique d'exclusion
+   > dans un champ dont toute la validation suppose l'inverse. Ne pas lire « 14 + 3 = 17 » :
+   > ce sont deux vocabulaires clos, portés par deux champs, et un quinzième **marqueur**
+   > rouvrirait Q7 exactement comme avant.
 8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2** (Voir `TRANCHE-L08-GABARITS.md` §10). **Rouverte et amendée le 05/08/2026 (L-10)** : Les joueurs manipulent (déplacer, pivoter) les gabarits visibles (`visibleToPlayers`), avec autorisation à l'émission. La pose, l'effacement et le réglage restent réservés au MJ. Voir `TRANCHE-L10-GABARITS-LIBRES.md`.

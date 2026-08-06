@@ -10,7 +10,7 @@ import {
   isPlayerManipulableToken,
 } from '../js/input/tokenHit.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
-import { createLevel } from '../js/core/schema.js';
+import { createLevel, createToken } from '../js/core/schema.js';
 import { TOKEN_HIT_MARGIN_SCREEN_PX, TOKEN_HIT_MAX_CELL_RATIO } from '../js/core/constants.js';
 
 const mockLevel = createLevel({
@@ -29,27 +29,7 @@ const grid = new SquareGrid(mockLevel);
  * @returns {import('../js/core/types.js').Token}
  */
 function makeToken(overrides) {
-  const { id, ...rest } = overrides;
-  return {
-    id,
-    levelId: 'level-1',
-    cell: { a: 0, b: 0 },
-    sizeCells: 1,
-    kind: 'pc',
-    imageUrl: 'token.png',
-    borderColor: '#000000',
-    label: 'Pion',
-    hidden: false,
-    visionBright: 0,
-    visionDim: 0,
-    emitsLight: null,
-    speedCells: 6,
-    playerMovable: true,
-    locked: false,
-    elevation: 0,
-    markers: [],
-    ...rest,
-  };
+  return createToken({ levelId: 'level-1', ...overrides });
 }
 
 test('distancePointToRectangle — calcul exact de la distance au rectangle', () => {

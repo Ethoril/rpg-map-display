@@ -293,8 +293,8 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
 
 ### Fonctionnalités hors périmètre
 
-4. Ni fiches de personnage, ni jets de dés, ni tchat, ni initiative, ni barres de points de
-   vie, ni snapshot/restauration de positions. Tous **explicitement écartés**.
+4. Ni fiches de personnage, ni jets de dés, ni tchat, ni initiative, ni barre de points de
+   vie **sur un PNJ** (Chantier Q : anneau proportionnel réservé aux PJ, état de santé à 3 crans manuels pour PNJ, sans dérivation de `health` depuis `hp`), ni snapshot/restauration de positions. Tous **explicitement écartés**.
 
 ### Abstractions
 

@@ -1,9 +1,33 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 5 août 2026 — **le lot 2 du CdC est à 9 critères sur 13, et l'intégralité de son code est écrite.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
+> Dernière mise à jour : 6 août 2026 — **le lot 2 du CdC est à 9 critères sur 13, et l'intégralité de son code est écrite.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
 > L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
 > de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet, L-09 marqueurs d'état. Les trois critères
 > restants : les 10 et 11 attendent la Tab S9 FE, le 4 (marqueurs) attend la table.
+>
+> **Chantier Q, 6 août 2026 — code livré, trois vérifications de table ouvertes.** Points de vie,
+> hors CdC et demandé par le mainteneur : compteur `courant/max` saisi par le MJ, **anneau
+> proportionnel bleu `#2563eb` sur les PJ seulement**, **anneau d'état à trois crans manuels sur les
+> PNJ** (rien quand indemne, `#c2410c` blessé, `#ef4444` mal en point, épaisseur doublée). Chez le PJ
+> la longueur parle et la couleur se tait ; chez le PNJ l'inverse — c'est ce qui empêche de confondre
+> un PJ à plein et un PNJ à l'agonie, qui tracent tous deux un tour complet. Les joueurs ne voient
+> **jamais** le chiffre d'un PNJ, et `health` n'est **jamais** dérivé de `hp` : c'est un acte manuel,
+> pour qu'un boss à 12/140 puisse rester annoncé « Indemne ». Couverture : 12 tests unitaires
+> (`tests/hp.test.mjs`) et 4 tests navigateur (`tests/hp.spec.mjs`), dont une **sonde de pixels sur
+> les deux canvas** — la non-fuite du chiffre est mesurée, pas relue. Brief et arbitrages :
+> `CHANTIER-Q-POINTS-DE-VIE.md`.
+>
+> **Ce que la table doit constater, et que rien ne remplace en machine** : (1) les PV d'un PNJ ne
+> fuient sur aucun des trois écrans, TV sous cast comprise ; (2) l'anneau se distingue à la vue
+> « carte entière », orange brique contre rouge ; (3) les pastilles chiffrées du MJ restent lisibles
+> en gros combat — sinon le repli écrit est de ne les dessiner que sur le pion sélectionné
+> (`CHANTIER-Q-POINTS-DE-VIE.md` §5.5).
+>
+> **Régression corrigée en passant, et elle ne venait pas des PV** : une campagne enregistrée avant
+> le 04/08/2026 ne se chargeait plus du tout. `validateCampaign` exigeait `markers` qu'aucune
+> normalisation ne comblait — il n'existait pas de `normalizeToken`, contrairement à ce que le
+> commentaire de `store.js` promettait (« un document hérité doit être converti, jamais refusé »).
+> `normalizeToken` existe désormais et comble `markers`, `hp` et `health`.
 >
 > **Chantier P, 5 août 2026 — code écrit, mesure de confirmation à faire.** Le décodage du fond sort
 > du chemin critique : doublure de 1024 px retenue en `ImageBitmap` (deux au plus, ~7,8 Mio), décodage

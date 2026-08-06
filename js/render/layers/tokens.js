@@ -1,7 +1,13 @@
 // @ts-check
 
 import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
-import { computeElevationBadgeLayout, drawStatusBadges } from '../statusBadges.js';
+import {
+  computeElevationBadgeLayout,
+  drawStatusBadges,
+  computeProportionalRing,
+  computeStateRing,
+  computeHpBadgeLayout,
+} from '../statusBadges.js';
 
 const TOKEN_IMAGE_CACHE_LIMIT = 64;
 export const TOKEN_MOVE_STEP_MS = 160;
@@ -228,7 +234,10 @@ export class TokensLayer {
       }
       result.animationActive ||= position.active;
       result.renderedTokenIds.push(token.id);
-      this._drawToken(ctx, grid, token, position, selectedTokenId === token.id, options);
+      this._drawToken(ctx, grid, token, position, selectedTokenId === token.id, {
+        ...options,
+        isPlayerView,
+      });
     }
     ctx.restore();
 
@@ -303,6 +312,30 @@ export class TokensLayer {
     ctx.stroke();
     ctx.restore();
 
+    const zoom = options?.zoom && options.zoom > 0 ? options.zoom : 1;
+    const resolution = options?.resolution && options.resolution > 0 ? options.resolution : 1;
+    const isPlayerView = options?.isPlayerView === true;
+
+    // ── Anneau de santé (Chantier Q §5.1-5.3) ────────────────────────────────────────────────
+    // Dessiné entre la bordure et la sélection. Uniquement si hp !== null.
+    if (token.hp !== null && token.hp !== undefined) {
+      const ringLayout =
+        token.kind === 'pc'
+          ? computeProportionalRing(width, zoom, token.hp)
+          : computeStateRing(width, zoom, token.health);
+
+      if (ringLayout.visible) {
+        ctx.save();
+        if (token.hidden) ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, ringLayout.radiusMap, ringLayout.startAngle, ringLayout.endAngle);
+        ctx.strokeStyle = ringLayout.color;
+        ctx.lineWidth = ringLayout.lineWidthMap;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     if (selected) {
       ctx.save();
       ctx.beginPath();
@@ -312,9 +345,6 @@ export class TokensLayer {
       ctx.stroke();
       ctx.restore();
     }
-
-    const zoom = options?.zoom && options.zoom > 0 ? options.zoom : 1;
-    const resolution = options?.resolution && options.resolution > 0 ? options.resolution : 1;
 
     if (typeof token.elevation === 'number' && token.elevation !== 0) {
       const { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible } = computeElevationBadgeLayout(width, zoom);
@@ -344,5 +374,47 @@ export class TokensLayer {
       resolution,
       invalidate: options?.invalidate ?? this.invalidate.bind(this),
     });
+
+    // ── Compteur chiffré (Chantier Q §5.5 & §4 Qui voit quoi) ──────────────────────────────
+    // Visible sur PJ pour tout le monde, sur PNJ pour la vue MJ uniquement.
+    const canSeeHpDigits = token.kind === 'pc' || !isPlayerView;
+    if (canSeeHpDigits && token.hp && typeof token.hp.current === 'number' && typeof token.hp.max === 'number') {
+      const hpBadge = computeHpBadgeLayout(width, zoom, token.hp.current, token.hp.max);
+      if (hpBadge.visible) {
+        ctx.save();
+        if (token.hidden) ctx.globalAlpha = 0.45;
+        ctx.font = `bold ${hpBadge.fontSizeMap}px sans-serif`;
+        const textMetrics = ctx.measureText(hpBadge.text);
+        const textWidthMap = textMetrics.width;
+        const bgWidthMap = textWidthMap + hpBadge.paddingXMap * 2;
+        const bgHeightMap = hpBadge.heightMap;
+
+        // Ancrer le coin bas-droit de la pastille à (p0.x + hpBadge.badgeX, p0.y + hpBadge.badgeY)
+        const badgeLeft = p0.x + hpBadge.badgeX - bgWidthMap;
+        const badgeTop = p0.y + hpBadge.badgeY - bgHeightMap;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(badgeLeft, badgeTop, bgWidthMap, bgHeightMap, 3 / zoom);
+        } else {
+          ctx.rect(badgeLeft, badgeTop, bgWidthMap, bgHeightMap);
+        }
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1 / zoom;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          hpBadge.text,
+          badgeLeft + bgWidthMap / 2,
+          badgeTop + bgHeightMap / 2 + 0.5 / zoom
+        );
+        ctx.restore();
+      }
+    }
   }
 }

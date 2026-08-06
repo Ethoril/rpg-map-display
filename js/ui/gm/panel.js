@@ -149,6 +149,31 @@ export function createGMPanel(container, options = {}) {
 
             <label for="token-edit-locked" style="font-size: 0.85rem; color: #aaa;">Verrouillé :</label>
             <input type="checkbox" id="token-edit-locked" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+
+            <label for="token-hp-current" style="font-size: 0.85rem; color: #aaa;">PV (courant / max) :</label>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <input type="number" id="token-hp-current" min="0" disabled placeholder="—" style="width: 55px; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+              <span style="color: #888;">/</span>
+              <input type="number" id="token-hp-max" min="1" disabled placeholder="—" style="width: 55px; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+            </div>
+          </div>
+
+          <div id="token-health-section" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333; display: none;">
+            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #4a90e2;">État de santé (PNJ)</h4>
+            <div id="token-health-radios" style="display: flex; gap: 0.75rem; font-size: 0.8rem; color: #ccc;">
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="radio" name="token-health-group" id="token-health-unharmed" value="unharmed" disabled />
+                <span>Indemne</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="radio" name="token-health-group" id="token-health-wounded" value="wounded" disabled />
+                <span>Blessé</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="radio" name="token-health-group" id="token-health-critical" value="critical" disabled />
+                <span>Mal en point</span>
+              </label>
+            </div>
           </div>
 
           <div id="token-markers-section" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333;">
@@ -655,6 +680,15 @@ export function createGMPanel(container, options = {}) {
   const tokenEditLocked = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-locked'));
   const tokenEditStatus = /** @type {HTMLElement} */ (container.querySelector('#token-edit-status'));
   const btnDeleteToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-delete-token'));
+
+  const tokenHpCurrent = /** @type {HTMLInputElement} */ (container.querySelector('#token-hp-current'));
+  const tokenHpMax = /** @type {HTMLInputElement} */ (container.querySelector('#token-hp-max'));
+  const tokenHealthSection = /** @type {HTMLElement} */ (container.querySelector('#token-health-section'));
+  const tokenHealthUnharmed = /** @type {HTMLInputElement} */ (container.querySelector('#token-health-unharmed'));
+  const tokenHealthWounded = /** @type {HTMLInputElement} */ (container.querySelector('#token-health-wounded'));
+  const tokenHealthCritical = /** @type {HTMLInputElement} */ (container.querySelector('#token-health-critical'));
+
+  const healthRadios = [tokenHealthUnharmed, tokenHealthWounded, tokenHealthCritical];
   const markerCheckboxes = Array.from(
     container.querySelectorAll('.token-marker-checkbox')
   ).map((el) => /** @type {HTMLInputElement} */ (el));
@@ -668,6 +702,7 @@ export function createGMPanel(container, options = {}) {
     tokenEditHidden,
     tokenEditPlayerMovable,
     tokenEditLocked,
+    tokenHpMax,
     ...markerCheckboxes,
   ];
 
@@ -680,10 +715,42 @@ export function createGMPanel(container, options = {}) {
     if (!selectedToken) {
       tokenEditLabel.value = '';
       tokenEditStatus.textContent = '';
+      tokenHpCurrent.value = '';
+      tokenHpMax.value = '';
+      tokenHpCurrent.disabled = true;
+      tokenHealthSection.style.display = 'none';
+      for (const radio of healthRadios) {
+        radio.checked = false;
+        radio.disabled = true;
+      }
       for (const cb of markerCheckboxes) {
         cb.checked = false;
       }
       return;
+    }
+
+    if (selectedToken.hp !== null && selectedToken.hp !== undefined) {
+      if (document.activeElement !== tokenHpCurrent) tokenHpCurrent.value = String(selectedToken.hp.current);
+      if (document.activeElement !== tokenHpMax) tokenHpMax.value = String(selectedToken.hp.max);
+      tokenHpCurrent.disabled = false;
+    } else {
+      if (document.activeElement !== tokenHpCurrent) tokenHpCurrent.value = '';
+      if (document.activeElement !== tokenHpMax) tokenHpMax.value = '';
+      tokenHpCurrent.disabled = true;
+    }
+
+    if (selectedToken.kind === 'pc') {
+      tokenHealthSection.style.display = 'none';
+    } else {
+      tokenHealthSection.style.display = 'block';
+      const hpNull = selectedToken.hp === null || selectedToken.hp === undefined;
+      const currentHealth = selectedToken.health || 'unharmed';
+      for (const radio of healthRadios) {
+        radio.disabled = hpNull;
+        if (document.activeElement !== radio) {
+          radio.checked = !hpNull && radio.value === currentHealth;
+        }
+      }
     }
 
     // Ne jamais réécrire le champ que le MJ est en train de remplir. Sans cette garde,
@@ -762,6 +829,59 @@ export function createGMPanel(container, options = {}) {
     },
     { signal: listeners.signal }
   );
+
+  tokenHpCurrent.addEventListener(
+    'change',
+    () => {
+      const selectedToken = store.getSelectedToken();
+      if (!selectedToken || selectedToken.hp === null || selectedToken.hp === undefined) return;
+      const raw = parseInt(tokenHpCurrent.value.trim(), 10);
+      const current = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(raw, selectedToken.hp.max));
+      tokenHpCurrent.value = String(current);
+      if (current === selectedToken.hp.current) return;
+      applyTokenPatch({ hp: { current, max: selectedToken.hp.max } });
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenHpMax.addEventListener(
+    'change',
+    () => {
+      const selectedToken = store.getSelectedToken();
+      if (!selectedToken) return;
+      const val = tokenHpMax.value.trim();
+      if (val === '') {
+        if (selectedToken.hp === null) return;
+        applyTokenPatch({ hp: null });
+        return;
+      }
+      const rawMax = parseInt(val, 10);
+      const max = Number.isNaN(rawMax) ? 1 : Math.max(1, rawMax);
+      tokenHpMax.value = String(max);
+      const currentVal = selectedToken.hp ? selectedToken.hp.current : max;
+      const current = Math.max(0, Math.min(currentVal, max));
+      tokenHpCurrent.value = String(current);
+      if (selectedToken.hp && current === selectedToken.hp.current && max === selectedToken.hp.max) return;
+      applyTokenPatch({ hp: { current, max } });
+    },
+    { signal: listeners.signal }
+  );
+
+  for (const radio of healthRadios) {
+    radio.addEventListener(
+      'change',
+      () => {
+        const selectedToken = store.getSelectedToken();
+        if (!selectedToken || selectedToken.kind === 'pc' || selectedToken.hp === null) return;
+        if (radio.checked) {
+          const health = /** @type {'unharmed'|'wounded'|'critical'} */ (radio.value);
+          if (health === selectedToken.health) return;
+          applyTokenPatch({ health });
+        }
+      },
+      { signal: listeners.signal }
+    );
+  }
 
   tokenEditKind.addEventListener(
     'change',

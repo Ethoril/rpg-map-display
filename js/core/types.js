@@ -140,6 +140,8 @@
  * @property {boolean} locked
  * @property {number} elevation
  * @property {import('./constants.js').StatusMarker[]} markers
+ * @property {{ current: number, max: number }|null} hp
+ * @property {'unharmed'|'wounded'|'critical'} health
  * @property {TokenMove} [move]
  */
 
@@ -187,6 +189,7 @@
  * @property {number} visionDim
  * @property {{ range: number, intensity: number, color: string }|null} emitsLight
  * @property {string} borderColor
+ * @property {number|null} [maxHp]
  */
 
 /**

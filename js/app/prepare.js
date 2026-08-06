@@ -225,6 +225,7 @@ const champs = {
   speed: /** @type {HTMLInputElement} */ (document.getElementById('tk-speed')),
   vb: /** @type {HTMLInputElement} */ (document.getElementById('tk-vb')),
   vd: /** @type {HTMLInputElement} */ (document.getElementById('tk-vd')),
+  maxHp: /** @type {HTMLInputElement} */ (document.getElementById('tk-max-hp')),
   color: /** @type {HTMLInputElement} */ (document.getElementById('tk-color')),
   image: /** @type {HTMLInputElement} */ (document.getElementById('tk-image')),
 };
@@ -260,10 +261,11 @@ function afficherTokens(tokens) {
     tdImg.appendChild(img);
 
     const tdInfo = document.createElement('td');
+    const maxHpStr = typeof t.maxHp === 'number' && t.maxHp >= 1 ? `${t.maxHp} PV` : 'sans PV';
     tdInfo.innerHTML =
       `<strong>${t.name}</strong><br><span style="opacity:.7;font-size:.85em">` +
       `${t.id} · ${t.kind === 'pc' ? 'PJ' : 'PNJ'} · taille ${t.sizeCells} · ` +
-      `vitesse ${t.speedCells} · vision ${t.visionBright}/${t.visionDim}</span>`;
+      `vitesse ${t.speedCells} · vision ${t.visionBright}/${t.visionDim} · ${maxHpStr}</span>`;
 
     const tdActions = document.createElement('td');
     tdActions.style.whiteSpace = 'nowrap';
@@ -300,6 +302,7 @@ function remplirFormulaire(t) {
   champs.speed.value = String(t.speedCells);
   champs.vb.value = String(t.visionBright);
   champs.vd.value = String(t.visionDim);
+  champs.maxHp.value = typeof t.maxHp === 'number' && t.maxHp >= 1 ? String(t.maxHp) : '';
   champs.color.value = t.borderColor;
   champs.image.value = '';
   imageUrlCourante = t.imageUrl;
@@ -314,6 +317,7 @@ function viderFormulaire() {
   champs.speed.value = '3';
   champs.vb.value = '5';
   champs.vd.value = '10';
+  champs.maxHp.value = '';
   champs.color.value = '#e74c3c';
   champs.image.value = '';
   imageUrlCourante = '';
@@ -346,6 +350,9 @@ btnTokenSave.addEventListener('click', () =>
       return;
     }
 
+    const rawMaxHp = champs.maxHp.value.trim();
+    const maxHp = rawMaxHp !== '' ? Math.max(1, parseInt(rawMaxHp, 10) || 1) : null;
+
     const entry = {
       id: champs.id.value.trim(),
       name: champs.name.value.trim(),
@@ -357,6 +364,7 @@ btnTokenSave.addEventListener('click', () =>
       visionDim: Number(champs.vd.value),
       emitsLight: null,
       borderColor: champs.color.value,
+      maxHp,
     };
 
     const r = await api('/api/tokens/save', { entry, imageDataUrl });

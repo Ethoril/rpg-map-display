@@ -222,6 +222,58 @@ export const STATUS_MARKER_LABEL_FR = {
 };
 
 /**
+ * Identifiants clos des 3 états de santé d'un PNJ (Chantier Q §3.2).
+ * @type {('unharmed'|'wounded'|'critical')[]}
+ */
+export const HEALTH_STATE_IDS = ['unharmed', 'wounded', 'critical'];
+
+/**
+ * Libellés français des états de santé pour l'inspecteur MJ uniquement (Chantier Q §3.2).
+ * Table distincte des identifiants (CONVENTIONS §7).
+ * @type {Record<'unharmed'|'wounded'|'critical', string>}
+ */
+export const HEALTH_STATE_LABEL_FR = {
+  unharmed: 'Indemne',
+  wounded: 'Blessé',
+  critical: 'Mal en point',
+};
+
+/**
+ * Couleurs des états de santé d'un PNJ (Chantier Q §3.2, §5.3, §15.3).
+ *
+ * ⚠ `wounded` prend `#c2410c` (orange brique profond), strictement séparé de l'orange des murs
+ * (`walls.js:38` : `#f97316`) et du jaune `control` (`constants.js:194` : `#facc15`).
+ * `critical` réutilise `#ef4444` (rouge dégâts de la catégorie damage).
+ * @type {Record<'unharmed'|'wounded'|'critical', string>}
+ */
+export const HEALTH_STATE_COLOR = {
+  unharmed: '',
+  wounded: '#c2410c',
+  critical: '#ef4444',
+};
+
+/**
+ * Couleur unique et fixe de l'anneau proportionnel des PJ (Chantier Q §5.2, §5.4).
+ * `#2563eb` (bleu royal), hors des familles orange/rouge et distinct du bleu ciel des murs temporaires.
+ */
+export const TOKEN_HP_PJ_RING_COLOR = '#2563eb';
+
+/** Épaisseur de base de l'anneau de santé en pixels ÉCRAN (Chantier Q §5.1). */
+export const TOKEN_HP_RING_THICKNESS_PX = 3;
+
+/**
+ * Taille et géométrie du compteur chiffré au coin haut-gauche (Chantier Q §5.5).
+ * **Toutes les grandeurs sont en pixels ÉCRAN** (divisées par le zoom au dessin).
+ *
+ * ⚠ Ne dépend NI du zoom NI du diamètre du pion (arbitrage 1).
+ * ⚠ Ne possède aucun seuil de disparition au dézoom (arbitrage 1 & §5.5).
+ */
+export const TOKEN_HP_BADGE_FONT_SIZE_PX = 11;
+export const TOKEN_HP_BADGE_PADDING_X_PX = 4;
+export const TOKEN_HP_BADGE_HEIGHT_PX = 16;
+
+
+/**
  * Géométrie des badges. **Toutes ces valeurs sont en pixels ÉCRAN**, jamais en pixels carte :
  * la couche de rendu travaille en espace carte et le zoom est appliqué par-dessus, donc une
  * grandeur absolue s'écrit ici en pixels écran puis se divise par le zoom au dessin. Un

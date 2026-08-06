@@ -12,6 +12,12 @@ import {
   BADGE_ROW_SLOTS,
   BADGE_RASTER_STEP_PX,
   STATUS_ICON_CACHE_LIMIT,
+  HEALTH_STATE_COLOR,
+  TOKEN_HP_PJ_RING_COLOR,
+  TOKEN_HP_RING_THICKNESS_PX,
+  TOKEN_HP_BADGE_FONT_SIZE_PX,
+  TOKEN_HP_BADGE_PADDING_X_PX,
+  TOKEN_HP_BADGE_HEIGHT_PX,
 } from '../core/constants.js';
 
 /**
@@ -166,6 +172,111 @@ export function computeElevationBadgeLayout(tokenWidthMap, zoom) {
   const visible = tokenDiameterScreen >= 40;
 
   return { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible };
+}
+
+/**
+ * Calcule la géométrie de l'anneau proportionnel d'un PJ (Chantier Q §5.2).
+ * La longueur varie selon hp.current/hp.max, la couleur est fixe.
+ *
+ * ⚠ Ne s'applique qu'aux PJ. current === 0 produit un arc de longueur nulle (visible: false).
+ * ⚠ Arcs partants de midi (-Math.PI / 2), sens horaire. Épaisseur constante à l'écran (divisée par zoom).
+ *
+ * @param {number} tokenWidthMap Largeur du pion sur la carte
+ * @param {number} zoom Zoom de la caméra
+ * @param {{ current: number, max: number }|null} hp
+ * @returns {{ visible: boolean, radiusMap: number, startAngle: number, endAngle: number, color: string, lineWidthMap: number }}
+ */
+export function computeProportionalRing(tokenWidthMap, zoom, hp) {
+  const safeZoom = zoom > 0 ? zoom : 1;
+  if (!hp || typeof hp.current !== 'number' || typeof hp.max !== 'number' || hp.max < 1 || hp.current <= 0) {
+    return { visible: false, radiusMap: 0, startAngle: 0, endAngle: 0, color: TOKEN_HP_PJ_RING_COLOR, lineWidthMap: 0 };
+  }
+
+  const ratio = Math.max(0, Math.min(1, hp.current / hp.max));
+  if (ratio <= 0) {
+    return { visible: false, radiusMap: 0, startAngle: 0, endAngle: 0, color: TOKEN_HP_PJ_RING_COLOR, lineWidthMap: 0 };
+  }
+
+  const radiusMap = tokenWidthMap / 2 + 1.5 / safeZoom;
+  const startAngle = -Math.PI / 2;
+  const endAngle = startAngle + ratio * Math.PI * 2;
+  const lineWidthMap = TOKEN_HP_RING_THICKNESS_PX / safeZoom;
+
+  return {
+    visible: true,
+    radiusMap,
+    startAngle,
+    endAngle,
+    color: TOKEN_HP_PJ_RING_COLOR,
+    lineWidthMap,
+  };
+}
+
+/**
+ * Calcule la géométrie de l'anneau d'état de santé d'un PNJ (Chantier Q §5.3).
+ * Tour complet (360°), couleur et épaisseur variables selon health.
+ *
+ * ⚠ Ne s'applique qu'aux PNJ. 'unharmed' ne trace rien (visible: false).
+ * ⚠ 'critical' double l'épaisseur écran (6px vs 3px).
+ *
+ * @param {number} tokenWidthMap Largeur du pion sur la carte
+ * @param {number} zoom Zoom de la caméra
+ * @param {'unharmed'|'wounded'|'critical'} health
+ * @returns {{ visible: boolean, radiusMap: number, startAngle: number, endAngle: number, color: string, lineWidthMap: number }}
+ */
+export function computeStateRing(tokenWidthMap, zoom, health) {
+  const safeZoom = zoom > 0 ? zoom : 1;
+  if (!health || health === 'unharmed' || !HEALTH_STATE_COLOR[health]) {
+    return { visible: false, radiusMap: 0, startAngle: 0, endAngle: 0, color: '', lineWidthMap: 0 };
+  }
+
+  const radiusMap = tokenWidthMap / 2 + 1.5 / safeZoom;
+  const startAngle = 0;
+  const endAngle = Math.PI * 2;
+  const thicknessPx = health === 'critical' ? TOKEN_HP_RING_THICKNESS_PX * 2 : TOKEN_HP_RING_THICKNESS_PX;
+  const lineWidthMap = thicknessPx / safeZoom;
+
+  return {
+    visible: true,
+    radiusMap,
+    startAngle,
+    endAngle,
+    color: HEALTH_STATE_COLOR[health],
+    lineWidthMap,
+  };
+}
+
+/**
+ * Calcule la géométrie du compteur numérique (pastille courant/max) au coin haut-gauche (Chantier Q §5.5).
+ * **Taille constante à l'écran, sans aucun seuil de disparition.**
+ *
+ * @param {number} tokenWidthMap Largeur du pion sur la carte
+ * @param {number} zoom Zoom de la caméra
+ * @param {number} current PV actuels
+ * @param {number} max PV maximum
+ * @returns {{ visible: boolean, badgeX: number, badgeY: number, fontSizeMap: number, heightMap: number, paddingXMap: number, text: string }}
+ */
+export function computeHpBadgeLayout(tokenWidthMap, zoom, current, max) {
+  const safeZoom = zoom > 0 ? zoom : 1;
+  const text = `${current}/${max}`;
+  const fontSizeMap = TOKEN_HP_BADGE_FONT_SIZE_PX / safeZoom;
+  const heightMap = TOKEN_HP_BADGE_HEIGHT_PX / safeZoom;
+  const paddingXMap = TOKEN_HP_BADGE_PADDING_X_PX / safeZoom;
+
+  // Ancrage au coin haut-gauche du pion : le coin bas-droit de la pastille touche (-padding, -padding).
+  // La pastille croît ainsi vers le haut et la gauche (-X, -Y) pour ne pas recouvrir le portrait.
+  const badgeX = -paddingXMap;
+  const badgeY = -paddingXMap;
+
+  return {
+    visible: true,
+    badgeX,
+    badgeY,
+    fontSizeMap,
+    heightMap,
+    paddingXMap,
+    text,
+  };
 }
 
 /**

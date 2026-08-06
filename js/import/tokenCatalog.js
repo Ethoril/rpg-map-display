@@ -117,6 +117,12 @@ export function validateTokenCatalog(obj) {
     if (!isValidHexColor(entry.borderColor)) {
       errors.push(`${prefix} : borderColor doit être au format #RRGGBB`);
     }
+
+    if (entry.maxHp !== undefined && entry.maxHp !== null) {
+      if (!Number.isInteger(entry.maxHp) || entry.maxHp < 1) {
+        errors.push(`${prefix} : maxHp doit être null ou un entier >= 1`);
+      }
+    }
   }
 
   return errors;
@@ -189,7 +195,7 @@ export function removeTokenEntry(catalog, id) {
 
 /**
  * Projette une entrée de bibliothèque TokenLibraryEntry vers une instance de Token.
- * Mappe name -> label et recopie fidèlement les 9 métadonnées.
+ * Mappe name -> label et recopie fidèlement les 10 métadonnées.
  *
  * @param {TokenLibraryEntry} entry
  * @param {TokenProjectionOptions} options
@@ -202,6 +208,7 @@ export function createTokenFromLibraryEntry(entry, options) {
 
   const kind = entry.kind === 'pc' ? 'pc' : 'npc';
   const id = options.id ?? crypto.randomUUID();
+  const maxHp = typeof entry.maxHp === 'number' && Number.isInteger(entry.maxHp) && entry.maxHp >= 1 ? entry.maxHp : null;
 
   return createToken({
     id,
@@ -221,5 +228,7 @@ export function createTokenFromLibraryEntry(entry, options) {
     locked: options.locked ?? false,
     elevation: options.elevation ?? 0,
     markers: options.markers ? [...options.markers] : [],
+    hp: maxHp !== null ? { current: maxHp, max: maxHp } : null,
+    health: 'unharmed',
   });
 }
