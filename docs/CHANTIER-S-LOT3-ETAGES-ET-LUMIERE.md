@@ -79,6 +79,12 @@ l'éclairage est déjà peint dans l'image ne doit pas recevoir une seconde couc
 
 ## 2. Les tranches, dans l'ordre où elles se débloquent
 
+> **État au 7 août 2026, 4 h.** S-01 à S-04 **livrées et éprouvées par mutation**. S-05 **non
+> commencée**. Deux manques nommés au §4.
+>
+> Critères du lot : **3 sur 6** — le 3 (fog par étage), le 2 (téléportation et bascule) et le 4
+> (cadenas). Le 1 est partiellement acquis, le 5 et le 6 restent entiers.
+
 ### S-01 — Le fog par étage est indépendant *(critère 3)*
 
 Éprouver ce qui existe. Deux étages, révéler sur l'un, vérifier que l'autre est intact, revenir,
@@ -116,3 +122,25 @@ vision sans lumière ; `baked_lighting` force la pleine lumière et le signale.
 - ⚠ **Toute grandeur d'écran se divise par le zoom**, quatre occurrences déjà payées.
 - ⚠ **Un `skip` n'est pas un échec**, et **un test vert sur du code juste ne prouve rien** : chaque
   tranche est éprouvée par mutation.
+
+---
+
+## 4. Ce qui n'est pas fait, et qu'il ne faut pas croire acquis
+
+**S-05 — lumières et ambiante : non commencée.** Les critères 5 et 6 restent entiers.
+`token.emitsLight`, `level.lights` et `level.ambient.level` sont toujours **parsés puis jetés** :
+aucun module ne les consomme. Une carte `baked_lighting: true` n'est signalée qu'à la préparation.
+
+⚠ C'est la tranche qui touche au **modèle de vision**, donc la plus risquée du lot : elle rouvre
+le sweep, le masque publié et la question de la vision dans le noir — dont le champ existe depuis
+le lot 1a, et qu'`ETAT.md` interdit de régler à 0 sur un PJ avant ce lot précisément.
+
+**Il n'existe aucun éditeur de liaisons.** `traverseLink` fonctionne, mais une liaison ne peut
+naître que dans les **données** de la campagne — import ou instantané. Le MJ ne peut pas en poser
+une depuis le panneau. Le critère 2 est donc satisfait *mécaniquement* et pas *utilisable en
+séance* : c'est une tranche S-06 à écrire, sur le modèle de l'éditeur de murs.
+
+⚠ **Le critère 1 — « trois étages importés indépendamment, sans alignement manuel » — n'est pas
+vérifié.** Le sélecteur d'étage et la bascule fonctionnent à deux étages dans les tests, mais
+personne n'a importé trois UVTT à la suite pour constater qu'ils coexistent sans retouche. Ne pas
+le compter acquis sur la foi de S-02.
