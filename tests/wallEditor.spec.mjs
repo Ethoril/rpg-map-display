@@ -260,5 +260,68 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
 
     expect(visionAfter).not.toBeNull();
     expect(visionAfter).not.toEqual(visionBefore);
+
+    /**
+     * Mesure du masque publié : surface révélée, et visibilité de deux cases nommées.
+     *
+     * Le masque encode le vu dans le canal **alpha** — 0 vierge, 255 vu — à
+     * `FOG_MASK_PX_PER_CELL` pixels par case. `decodeFogPng` attache le tableau `maskAlpha` au
+     * canvas qu'il rend, il n'y a donc rien à re-extraire.
+     *
+     * @param {string} png
+     */
+    const mesurer = (png) =>
+      page.evaluate(async (b64) => {
+        const [{ decodeFogPng }, { FOG_MASK_PX_PER_CELL }] = await Promise.all([
+          import('../js/vision/fog.js'),
+          import('../js/core/constants.js'),
+        ]);
+        const canvas = await decodeFogPng(b64, 10, 10);
+        /** @type {Uint8Array} */
+        const alpha = canvas.maskAlpha;
+        let revele = 0;
+        for (let i = 0; i < alpha.length; i++) if (alpha[i] > 127) revele++;
+
+        const largeur = 10 * FOG_MASK_PX_PER_CELL;
+        /** Alpha au centre d'une case. @param {number} a @param {number} b */
+        const auCentre = (a, b) => {
+          const x = a * FOG_MASK_PX_PER_CELL + Math.floor(FOG_MASK_PX_PER_CELL / 2);
+          const y = b * FOG_MASK_PX_PER_CELL + Math.floor(FOG_MASK_PX_PER_CELL / 2);
+          return alpha[y * largeur + x];
+        };
+
+        return {
+          revele,
+          surLePion: auCentre(4, 4) > 127,
+          derriereLeMur: auCentre(4, 1) > 127,
+        };
+      }, png);
+
+    // Les deux `expect(...).not.toBeNull()` ci-dessus ont déjà tranché ; le transtypage ne fait
+    // que le dire au vérificateur, qui ne suit pas les assertions de Playwright.
+    const avant = await mesurer(/** @type {string} */ (visionBefore));
+    const apres = await mesurer(/** @type {string} */ (visionAfter));
+
+    // ── Ce que ce bloc ajoute, et pourquoi il a fallu l'ajouter ────────────────────────────────
+    // Jusqu'au 06/08/2026, ce test s'arrêtait à `not.toEqual` : il affirmait que le masque
+    // **change**, jamais qu'il **diminue**. Dette consignée le 03/08 à la clôture de L-07 et
+    // relevée dans ETAT.md. Un défaut qui *augmenterait* ce que les joueurs voient — un mur qui
+    // ouvrirait la vision au lieu de la fermer — passait donc la porte, et c'est le sens qui
+    // compte : le fog décide de ce que la table a le droit de savoir.
+
+    // 1. La vision se RESTREINT. C'est la direction, et c'est le point de la correction.
+    expect(apres.revele).toBeLessThan(avant.revele);
+
+    // 2. ⚠ Garde-fou indispensable au premier : un masque intégralement vierge satisferait aussi
+    //    « diminue ». Le pion doit continuer de voir sa propre case — sans quoi « moins » ne
+    //    voudrait dire que « plus rien ».
+    expect(avant.surLePion).toBe(true);
+    expect(apres.surLePion).toBe(true);
+
+    // 3. Et la perte tombe DERRIÈRE le mur, pas n'importe où. La case (4, 1) est à trois cases du
+    //    pion, donc dans sa portée claire de 4, et le mur horizontal en y = 3 s'interpose. Une
+    //    perte globale sans localisation laisserait passer un masque rogné du mauvais côté.
+    expect(avant.derriereLeMur).toBe(true);
+    expect(apres.derriereLeMur).toBe(false);
   });
 });

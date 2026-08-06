@@ -694,13 +694,34 @@ arrière-plan n'obtiendrait aucune frame ». Une seule devrait survivre, et c'es
 pas supprimer l'autre sans relire le bloc d'initialisation qui l'entoure : c'est lui qui a
 révélé la zone morte temporelle de `gmPanel` au contrôle de L-06.
 
-**3. Le test de vision de L-07 assure un changement, pas une direction.**
-`tests/wallEditor.spec.mjs` vérifie que le masque de vision publié **diffère** après l'ajout
-d'un mur, non qu'il **diminue**. La garde est réelle — éprouvée par mutation : privée des murs,
-`extractBlockedSegments` fait échouer ce test — mais un hypothétique bug qui *augmenterait* la
-zone visible passerait. Pinner la direction demanderait de décoder le masque et de compter les
-pixels ; le faire par la longueur du base64 serait fragile, la taille d'un PNG dépendant de la
-complexité du contour autant que de l'aire. Le choix est assumé, pas ignoré.
+**3. Le test de vision de L-07 assurait un changement, pas une direction. ✅ Réglé le 06/08/2026.**
+`tests/wallEditor.spec.mjs` ne vérifiait que la **différence** du masque publié après l'ajout d'un
+mur, jamais sa **diminution** : un défaut qui *augmenterait* la zone visible passait la porte. Or
+c'est le sens qui compte — le fog décide de ce que la table a le droit de savoir.
+
+La difficulté annoncée — « pinner la direction demanderait de décoder le masque et de compter les
+pixels » — s'est révélée moins coûteuse que prévu : le masque encode le vu dans le canal **alpha**,
+et `decodeFogPng` attache déjà le tableau `maskAlpha` au canvas qu'il rend. Il n'y avait rien à
+extraire. La piste écartée à l'époque, mesurer la longueur du base64, restait la mauvaise pour la
+raison écrite alors.
+
+Trois assertions désormais, et la troisième est la vraie :
+
+1. la surface révélée **diminue** ;
+2. le pion continue de voir **sa propre case** — sans ce garde-fou, un masque intégralement vierge
+   satisferait aussi « diminue », et « moins » voudrait dire « plus rien » ;
+3. la perte tombe **derrière le mur** : la case (4, 1), à trois cases du pion donc dans sa portée
+   claire de 4, était visible et ne l'est plus.
+
+⭐ **Deux leçons de la vérification, plus utiles que le correctif.** La mutation qui isole la
+troisième assertion — échanger les coordonnées du mur, pour qu'il bloque perpendiculairement —
+**passait avant** ce renforcement : le masque changeait bien, seulement du mauvais côté. Et le
+premier essai de cette mutation a été un **no-op** : `extractBlockedSegments` a deux branches, et
+elle avait été appliquée à celle **sans** grille alors que `syncVision` appelle celle **avec**. Son
+vert ne valait rien. Une ancre qui existe ne prouve pas qu'elle soit sur le chemin emprunté.
+
+⚠ L'assertion 2 n'est pas prouvée isolément : la mutation qui vide le masque échoue par expiration
+en amont, pas sur elle. Elle est conservée pour sa fonction logique, pas sur la foi d'un rouge.
 
 ## Images Google Drive : le lien de partage n'est pas une image
 
