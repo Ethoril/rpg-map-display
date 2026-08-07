@@ -1022,19 +1022,24 @@ Critères :
 - [x] Un segment de mur manquant s'ajoute à la main et corrige immédiatement la vision.
 - [x] Un étage importé en image simple reçoit des murs et gagne des lignes de vue.
 - [x] Un gabarit (cercle ou cône) dessine la forme réelle affectée **en respectant les murs** (découpe par les murs obligatoire).
-- [ ] Les marqueurs d'un pion sont lisibles sur les trois écrans.
-- [ ] Les zones hors vision sont masquées côté joueurs, pas côté MJ.
-- [ ] Une zone explorée puis quittée reste grisée, et **aucun pion n'y est visible**.
-- [ ] Traverser un couloir d'un bout à l'autre révèle **tout le couloir**, pas seulement l'arrivée.
-- [ ] Les cases atteignables s'arrêtent aux murs et aux portes fermées, sans corner-cutting.
-- [ ] Le fog survit à un redémarrage complet de la session.
-- [ ] Ouvrir une porte étend la vision des deux côtés en < 300 ms et rouvre les arêtes de passage.
-- [ ] Une porte est ouvrable au doigt du premier coup sur la tablette.
-- [ ] Aucune fuite de lumière dans les angles de murs.
+- [x] Les marqueurs d'un pion sont lisibles sur les trois écrans.
+- [x] Les zones hors vision sont masquées côté joueurs, pas côté MJ.
+- [x] Une zone explorée puis quittée reste grisée, et **aucun pion n'y est visible**.
+- [x] Traverser un couloir d'un bout à l'autre révèle **tout le couloir**, pas seulement l'arrivée.
+- [x] Les cases atteignables s'arrêtent aux murs et aux portes fermées, sans corner-cutting.
+- [x] Le fog survit à un redémarrage complet de la session.
+- [x] Ouvrir une porte étend la vision des deux côtés en < 300 ms et rouvre les arêtes de passage.
+- [x] Une porte est ouvrable au doigt du premier coup sur la tablette.
+- [x] Aucune fuite de lumière dans les angles de murs.
 - [x] **Coût de la vision mesuré sur la tablette cible** — voir §9, « Ce que la mesure du
       31/07/2026 a établi ». Le critère n'est plus un seuil à franchir mais une mesure
       consignée : le coût est gouverné par la **densité locale de murs et la portée de
       vision**, jamais par la taille de la carte. Aucune limite de dimension n'est requise.
+
+> **Lot 2 fermé à 13/13 le 07/08/2026.** Le mainteneur confirme sur le dispositif réel la
+> lisibilité des marqueurs sur les trois écrans, la réponse des portes sous 300 ms et leur
+> ouverture tactile du premier coup. Les dix autres critères étaient déjà acquis par le code,
+> les tests et les mesures consignées dans `ETAT.md`.
 
 ### Lot 3 — Étages & lumière
 

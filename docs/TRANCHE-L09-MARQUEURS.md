@@ -4,9 +4,9 @@
 > Ne dépend d'aucune autre tranche : ni du fog, ni des murs, ni des gabarits.
 >
 > Elle adresse le **critère 4** — « les marqueurs d'un pion sont lisibles sur les trois
-> écrans ». **Elle ne le cochera pas**, et ce n'est pas un aveu d'échec : « lisible sur les
-> trois écrans » se constate sur les trois écrans. Le mécanisme se vérifie en machine, le
-> critère attend la table, comme les critères 10 et 11 de L-05.
+> écrans ». La tranche ne pouvait pas le cocher à la livraison du code : « lisible sur les
+> trois écrans » se constate sur les trois écrans. **Clôture du 07/08/2026 :** cette lisibilité
+> est confirmée par le mainteneur et le critère 4 est validé.
 >
 > Spécification de référence : CdC §5.2 (`markers`) et §12 Q7, **tranchée le 04/08/2026**. Le
 > vocabulaire est clos : quatorze valeurs, listées dans
@@ -451,7 +451,7 @@ et idempotent. Un tableau de marqueurs **est** une valeur absolue. Il n'y a donc
 | `CAHIER-DES-CHARGES.md` §5.2 | **déjà fait** (`3e57ef9`) — jeu de marqueurs nommé clos, `SOURCES.md` cité, « concentré » retiré des exemples |
 | `CAHIER-DES-CHARGES.md` §12 | **déjà fait** (`3e57ef9`) — Q7 barrée, tranchée le 04/08/2026 |
 | `PLAN-LOT2.md` §7 | **déjà fait** (`3e57ef9`) |
-| `ETAT.md` | **partiellement fait** (`3e57ef9`) : le critère 4 décoché y est déjà expliqué. Reste, **à la livraison seule**, à basculer « L-09 à écrire » vers « L-09 écrite » |
+| `ETAT.md` | **fait** : L-09 est livrée et le critère 4, resté ouvert à la livraison du code, est confirmé sur les trois écrans le 07/08/2026 |
 
 > ⚠ **Quatre de ces six lignes sont déjà commitées.** Elles restent au tableau parce qu'un
 > brief doit dire l'état complet de ce qu'il exige, mais les refaire produirait une entrée de
@@ -511,9 +511,9 @@ et idempotent. Un tableau de marqueurs **est** une valeur absolue. Il n'y a donc
    > Elle redeviendrait requise si les badges touchaient le chemin du geste de la vue joueurs,
    > ce qui n'est pas le cas : ils se dessinent, ils ne se tapent pas.
 
-**Le critère 4 du CdC ne se coche pas ici.** « Lisibles sur les trois écrans » exige la
-tablette et l'écran de cast. Le mécanisme sera vérifié, la lisibilité constatée à la table —
-et le seuil de 14 px est précisément le nombre qu'une vraie séance peut démentir.
+**À la livraison de la tranche, le critère 4 du CdC ne se cochait pas ici.** « Lisibles sur les
+trois écrans » exigeait la tablette et l'écran de cast. La table a depuis confirmé cette
+lisibilité le 07/08/2026 ; le seuil de 14 px devient une valeur validée à préserver.
 
 ---
 
@@ -539,9 +539,9 @@ badge dessiné, et la mesure de taille écran à deux zooms du critère 1.
 
 ## 10. Ce qu'il restera quand cette tranche sera livrée
 
-**Tout le lot 2 sera écrit, et trois critères resteront décochés — aucun n'attendant du
-code :** le 10 (seuil de 300 ms) et le 11 (tactile) attendent la Tab S9 FE, le 4 attend une
-partie jouée. L'interdiction n°14 les réserve tous les trois au mainteneur.
+**À la livraison, tout le lot 2 était écrit et trois critères restaient réservés au dispositif
+réel. Ils sont fermés le 07/08/2026 :** le 10 sous le seuil de 300 ms, le 11 au premier geste
+tactile et le 4 par jugement de lisibilité sur les trois écrans. Le lot 2 atteint 13/13.
 
 Deux questions que seule la table tranchera, à rouvrir ce jour-là et pas avant : l'**ordre
 canonique** du §3, dont la troncature dépend, et le **seuil de 14 px**, qui décide à partir de

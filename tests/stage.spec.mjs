@@ -22,6 +22,7 @@ test('la pile appelle les vraies fonctions de rendu dans l’ordre canonique', a
     'templates',
     'tokens',
     'fog',
+    'feedback',
   ]);
 });
 

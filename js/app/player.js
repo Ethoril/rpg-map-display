@@ -412,6 +412,12 @@ export async function bootstrapPlayerApp(options = {}) {
             visibleCanvas: getPlayerVisibleCanvas(activeLevel),
           }
         ),
+      feedback: () => {
+        animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
+          now: Date.now(),
+          zoom: camera.zoom,
+        });
+      },
     });
 
     stage.context.restore();
@@ -538,6 +544,10 @@ export async function bootstrapPlayerApp(options = {}) {
     element: canvas,
     camera,
     transport: transport || undefined,
+    onDestinationRejected: (cell, kind) => {
+      moveZoneLayer.showDestinationFeedback(cell, kind);
+      requestRender();
+    },
   });
   const versionBadge = mountPlayerVersionBadge({
     transport: transport || undefined,

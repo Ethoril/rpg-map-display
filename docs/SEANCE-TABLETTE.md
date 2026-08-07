@@ -151,9 +151,9 @@ Tap pion → tap destination.
 
 **4.3 — Ouvrir une porte**
 
-☐ La vision s'étend **des deux côtés**.
-☐ Les arêtes de passage se rouvrent — le pion peut franchir la porte ouverte.
-☐ Sans délai perceptible (même règle qu'en 4.2 ; la part chiffrée est au point 1.4).
+☒ La vision s'étend **des deux côtés**.
+☒ Les arêtes de passage se rouvrent — le pion peut franchir la porte ouverte.
+☒ Sans délai perceptible et sous le budget de 300 ms — confirmation du mainteneur, 07/08/2026.
 
 **4.4 — Le fog en usage**
 
@@ -181,11 +181,17 @@ Un pion avec une élévation non nulle (+N / −N).
 
 **5.3 — Critère 11 : une porte est ouvrable au doigt**
 
-☐ **À un zoom de jeu**, au plus une vingtaine de cases visibles en largeur. La bande tactile fait
+☒ **À un zoom de jeu**, au plus une vingtaine de cases visibles en largeur. La bande tactile fait
    15 à 20 px CSS au zoom d'ensemble contre 44 px recommandés pour un doigt : **le critère est faux
    au zoom d'ensemble, et ce n'est pas contournable.** Vérifier avec la largeur de viewport relevée
    en 1.1, qui donne le nombre exact de cases.
-☐ Une porte s'ouvre au doigt, du premier coup, sans viser.
+☒ Une porte s'ouvre au doigt, du premier coup, sans viser — confirmation du mainteneur,
+   07/08/2026.
+
+**5.4 — Critère 4 : lisibilité des marqueurs**
+
+☒ Les marqueurs sont lisibles sur le poste MJ, la tablette et le téléviseur casté — confirmation
+   du mainteneur, 07/08/2026.
 
 > **Si l'essai échoue, le remède est un zoom minimum sur la vue joueurs**, pas une bande plus large :
 > une bande tapable au zoom d'ensemble mesurerait plus de deux cases et rendrait le déplacement
@@ -235,6 +241,6 @@ critère de performance déclaré réussi sans mesure est précisément ce que l
 proscrit — et ce document existe pour rendre ces mesures possibles, pas pour rendre les cases
 faciles à cocher.
 
-Trois critères du lot 2 sont en jeu, et **deux d'entre eux se ferment demain si les points 4.3, 5.3
-et 1.4 passent** : le 10 et le 11. Le troisième, le critère 4 (marqueurs, L-09), attend une partie
-jouée et non une mesure.
+**Résultat consolidé le 07/08/2026 : les trois critères du lot 2 engagés par cette séance sont
+fermés.** Les points 1.4, 4.3 et 5.3 valident les critères 10 et 11 ; la partie jouée valide le
+critère 4 des marqueurs. Le lot 2 est à 13/13.

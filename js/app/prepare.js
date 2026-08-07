@@ -71,7 +71,7 @@ async function api(route, body) {
 function afficherDetails() {
   const src = sources.find((s) => s.file === selSource.value);
   if (!src) {
-    details.innerHTML = '';
+    details.replaceChildren();
     return;
   }
   // Chaque compte confronte le retenu au déclaré. Sur un export venu d'un outil qu'on n'a
@@ -103,13 +103,28 @@ function afficherDetails() {
   if (src.warnings.length > 0) {
     lignes.push([
       'À la lecture',
-      src.warnings.map((/** @type {string} */ w) => `⚠ ${w}`).join('<br>'),
+      src.warnings.map((/** @type {string} */ w) => `⚠ ${w}`),
     ]);
   }
 
-  details.innerHTML = lignes
-    .map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`)
-    .join('');
+  details.replaceChildren(
+    ...lignes.map(([label, value]) => {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = label;
+      const td = document.createElement('td');
+      if (Array.isArray(value)) {
+        value.forEach((warning, index) => {
+          if (index > 0) td.appendChild(document.createElement('br'));
+          td.appendChild(document.createTextNode(warning));
+        });
+      } else {
+        td.textContent = value;
+      }
+      tr.append(th, td);
+      return tr;
+    })
+  );
 }
 
 /** @param {any} v résultat de /api/preview */
@@ -195,7 +210,7 @@ btnPreview.addEventListener('click', () =>
 );
 
 btnVider.addEventListener('click', () => {
-  variantes.innerHTML = '';
+  variantes.replaceChildren();
   btnVider.disabled = true;
   dire('Variantes retirées de l’affichage. Les fichiers restent dans maps/.preview/.');
 });
@@ -262,10 +277,14 @@ function afficherTokens(tokens) {
 
     const tdInfo = document.createElement('td');
     const maxHpStr = typeof t.maxHp === 'number' && t.maxHp >= 1 ? `${t.maxHp} PV` : 'sans PV';
-    tdInfo.innerHTML =
-      `<strong>${t.name}</strong><br><span style="opacity:.7;font-size:.85em">` +
+    const name = document.createElement('strong');
+    name.textContent = t.name;
+    const metadata = document.createElement('span');
+    metadata.style.cssText = 'opacity:.7;font-size:.85em';
+    metadata.textContent =
       `${t.id} · ${t.kind === 'pc' ? 'PJ' : 'PNJ'} · taille ${t.sizeCells} · ` +
-      `vitesse ${t.speedCells} · vision ${t.visionBright}/${t.visionDim} · ${maxHpStr}</span>`;
+      `vitesse ${t.speedCells} · vision ${t.visionBright}/${t.visionDim} · ${maxHpStr}`;
+    tdInfo.append(name, document.createElement('br'), metadata);
 
     const tdActions = document.createElement('td');
     tdActions.style.whiteSpace = 'nowrap';
@@ -387,9 +406,14 @@ btnTokenSave.addEventListener('click', () =>
     champQual.value = String(data.defaults.quality);
 
     sources = data.sources;
-    selSource.innerHTML = sources
-      .map((s) => `<option value="${s.file}">${s.name} — ${s.file}</option>`)
-      .join('');
+    selSource.replaceChildren(
+      ...sources.map((s) => {
+        const option = document.createElement('option');
+        option.value = s.file;
+        option.textContent = `${s.name} — ${s.file}`;
+        return option;
+      })
+    );
 
     outil.classList.remove('cache');
     afficherDetails();

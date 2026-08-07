@@ -1,5 +1,9 @@
 # TRANCHE L-08 — gabarits de zone d'effet
 
+> **Mise à jour du 07/08/2026 :** le §14 ci-dessous décrit l'état au moment de la livraison de
+> L-08. Les critères 4, 10 et 11 ont depuis été validés sur le dispositif réel ; le lot 2 est
+> fermé à 13/13.
+
 > Huitième tranche du **Lot 2 du CdC §11**. Découpage : `PLAN-LOT2.md` §4. Dépend de **L-02**
 > (`vision/sweep.js`), livrée. Ne dépend ni de L-01, ni de L-04 à L-07.
 >

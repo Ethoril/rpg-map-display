@@ -1,9 +1,18 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 6 août 2026 — **le lot 2 du CdC est à 9 critères sur 13, et l'intégralité de son code est écrite.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
+> Dernière mise à jour : 7 août 2026 — **le lot 2 du CdC est fermé à 13 critères sur 13.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
 > L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
-> de fog du MJ, L-07 éditeur de murs, L-08 gabarits de zone d'effet, L-09 marqueurs d'état. Les trois critères
-> restants : les 10 et 11 attendent la Tab S9 FE, le 4 (marqueurs) attend la table.
+> de fog du MJ, L-07 éditeur de murs, L-10 gabarits libres, L-09 marqueurs d'état. Le mainteneur
+> confirme le 07/08/2026 les trois derniers critères matériels : marqueurs lisibles sur les trois
+> écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup.
+>
+> **Phase R0 de la feuille de route complémentaire fermée le 7 août 2026.** La zone morte entre
+> tap et appui long est supprimée ; une destination refusée ou occupée reçoit un retour Canvas
+> transitoire ; le mode local ne charge plus Firebase ; le panneau MJ tient à 1024 et 1280 px avec
+> une navigation d'onglets accessible ; les textes issus des imports sont rendus sans interprétation
+> HTML ; les séparateurs NUL/SOH de `panel.js` ont disparu. Vérification d'intégration : **289 tests
+> unitaires, 142 tests navigateur et 3 gestes diagnostiques réussis** ; 2 scénarios Firebase réels
+> restent ignorés localement faute de secret.
 >
 > **Chantier Q, 6 août 2026 — code livré, trois vérifications de table ouvertes.** Points de vie,
 > hors CdC et demandé par le mainteneur : compteur `courant/max` saisi par le MJ, **anneau
@@ -52,17 +61,16 @@
 >
 > **L-09 est livrée le 5 août 2026.** Le jeu de marqueurs (Q7) comporte quatorze états, liste close,
 > les trois paliers d'affichage (icônes à 3 emplacements, points de catégorie, point unique) et la correction
-> de géométrie d'écran pour l'élévation (rayon de 8 à 14 px écran, seuil bas D < 40 px) et les marqueurs sous tout zoom. Le critère 4 reste malgré
-> tout décoché à sa livraison : « lisibles sur les trois écrans » se constate sur les trois
-> écrans.
+> de géométrie d'écran pour l'élévation (rayon de 8 à 14 px écran, seuil bas D < 40 px) et les
+> marqueurs sous tout zoom. Resté ouvert à la livraison du code, le critère 4 est **validé sur les
+> trois écrans le 07/08/2026** par confirmation du mainteneur.
 >
 > Les lots 1a et 1b sont complets côté code — chantiers H (révélation d'image), I et M
 > (bibliothèque de pions), J (page d'accueil et vue MJ sur `gm.html`), K (badge d'élévation) et
 > L (outil local de préparation des cartes), après la bibliothèque UVTT (U-00 à U-06 de
-> `PLAN-BIBLIOTHEQUE-UVTT.md`). Ne reste ouvert, sur ces deux lots, que des **mesures
-> matérielles** — voir « Ce qui reste à vérifier manuellement ». Deux critères de L-05, le 10 et
-> le 11, sont dans le même cas : le mécanisme est vérifié en machine, les seuils attendent la
-> Tab S9 FE.
+> `PLAN-BIBLIOTHEQUE-UVTT.md`). Les validations de longue durée encore ouvertes sont suivies
+> séparément dans « Ce qui reste à vérifier manuellement ». Les critères 10 et 11 de L-05 sont
+> **fermés le 07/08/2026** : réponse sous 300 ms et ouverture tactile du premier coup.
 >
 > **C'est la table « Suite produit », en fin de document, qui fait foi sur l'avancement** ; ce
 > chapeau ne la résume que pour la reprise. En cas de désaccord entre les deux, croire la table
@@ -75,8 +83,8 @@
 > bibliothèque est une tranche du Lot 1b du CdC. De même, le « chantier L » est l'outil de
 > préparation des cartes, tandis que `L-01`…`L-10` sont les tranches du Lot 2.
 >
-> Les mesures physiques sur tablette et les scénarios Firebase réels restent à valider dans
-> leur environnement.
+> Les autres mesures physiques de longue durée sur tablette et les scénarios Firebase réels
+> restent à valider dans leur environnement.
 
 ## État courant
 
@@ -886,6 +894,10 @@ décroche, ça se verra sans instrumentation.
 
 ## Retour de table du 5 août 2026 — première séance réelle sur la Tab S9 FE
 
+> **Clôture du 7 août 2026.** Les observations ci-dessous conservent l'état de la séance du 5 août.
+> Depuis, le mainteneur a confirmé les trois validations qui restaient attachées au lot 2 : les
+> critères 4, 10 et 11 sont acquis et le lot passe à 13/13.
+
 Ce que la table a dit, et ce qu'il en reste. **Deux points sont corrigés, trois restent
 ouverts**, et l'un des trois change une conception plutôt qu'un réglage.
 
@@ -899,18 +911,15 @@ côté. Si la mesure le confirme, le correctif est un `ImageBitmap` décodé une
 navigateur ne peut pas redécoder. ⚠ Cela se mesure **par couche, sur la tablette** : une sonde
 posée sur la machine de développement ne reproduira pas l'éviction du cache.
 
-**Le badge d'élévation est lisible, les marqueurs fonctionnent.** Le critère 4 reste néanmoins
-décoché : le mainteneur signale que le **visuel** des six icônes changées le 05/08 n'a pas encore
-été jugé sur la tablette, seulement leur mécanique. Ordre de contrôle dans
-`assets/icons/status/SOURCES.md`.
+**Le badge d'élévation est lisible, les marqueurs fonctionnent.** Le jugement visuel qui restait
+ouvert le 05/08 a été confirmé par le mainteneur le 07/08 sur les trois écrans. Le critère 4 est
+donc fermé. L'ordre de contrôle des icônes reste consigné dans `assets/icons/status/SOURCES.md`.
 
 **Les mesures sous cast sont validées — confirmation du mainteneur, 05/08/2026.** Ce qui ferme
 les points « tenue à 30 fps sous cast » et « lisibilité du badge d'élévation sous cast » de la
-liste ci-dessus, ouverts depuis le lot 1a. Deux choses ne sont **pas** couvertes par cette
-confirmation et restent donc ouvertes, parce qu'elles n'étaient pas l'objet de la séance : la
-**tenue thermique** sur 45 minutes puis quatre heures, qui est une mesure de durée et non
-d'affichage, et le **jugement visuel des six icônes changées** (critère 4), que le mainteneur a
-lui-même remis à plus tard.
+liste ci-dessus, ouverts depuis le lot 1a. La **tenue thermique** sur 45 minutes puis quatre heures
+reste ouverte : c'est une mesure de durée et non d'affichage. Le jugement visuel des six icônes,
+encore ouvert à cette date, a été confirmé le 07/08/2026.
 
 **L'état verrouillé des portes : il l'était, on ne le voyait pas.** Le mainteneur a cru l'état
 non implanté. Il l'était — appui long de 500 ms côté MJ, avec son test e2e — et **le geste est
@@ -1168,14 +1177,14 @@ que la session **courante**. Rien ne permet aujourd'hui de faire le ménage sur 
 
 ## Suite produit
 
-Avancement mesuré contre les lots du cahier des charges §11, au 3 août 2026.
+Avancement mesuré contre les lots du cahier des charges §11, au 7 août 2026.
 Relevé pour éviter de confondre « le plateau est solide » et « le produit est proche ».
 
 | Lot du CdC §11 | État |
 |---|---|
 | **1a — Le plateau** | Code complet. **10 critères sur 11** : les 30 fps sous cast sont validés le 05/08/2026, première séance réelle. Deux restent ouverts, et ce sont des **mesures matérielles** : tenue thermique sur la durée, limite de texture réelle (carte `testbig150` prête) |
 | **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). **Le dernier point ouvert est fermé** : la lisibilité du badge d’élévation sous cast est validée le 05/08/2026, séance réelle. Le lot 1b est donc complet, code **et** mesures |
-| **2 — Lignes de vue, portes & tactique** | **10 sur 13 validés, neuf tranches livrées — l'intégralité du code du lot est écrite.** L-01 ferme le **critère 8** (arêtes bloquées par croisement centre-à-centre, cache par étage). L-02 livre `js/vision/sweep.js` et **la mesure du critère 13, faite sur la tablette** (voir plus bas). L-03 rend l’union des champs de vision des PJ côté MJ, sans fermer de critère à elle seule. **L-04 (01/08) ferme les critères 5, 6, 7, 9 et 12** : fog persistant, trois états de rendu, masquage joueurs — le fog porte la fonction que les toits assuraient, l’intérieur d’un bâtiment non visité étant opaque tant qu’on n’y entre pas (`ANALYSE-DD2VTT-GRILLES.md` §9, hypothèse validée par critère d’acceptation). **L-05 (03/08) livre les portes à trois états, interactives** — `state` remplace `closed` sur les 182 portails commités, normalisés à la lecture ; `portal.toggle` porte l’état absolu ; l’autorisation joue sur la transition et non sur l’acteur ; le tap ouvre au doigt dans une capsule d’un **quart** de case — une demi-case à la livraison, réduite le 05/08 après la première vraie table, voir « Retour de table » plus bas ; l’indicateur d’état se dessine sous le fog, donc invisible en zone non explorée — et ses épaisseurs, écrites en pixels carte à la livraison, sont passées en pixels écran le 05/08 : elles tombaient à 1 px à la vue « carte entière ». **Ses deux critères, 10 et 11, restent décochés, et ce n’est pas un oubli** : le 10 porte un seuil de 300 ms, le 11 est tactile — l’interdiction n°14 exige la Tab S9 FE pour les deux. Le mécanisme est vérifié en machine, les deux seuils attendent la table. **L-06 (03/08) livre les outils de fog du MJ** — tout révéler, tout masquer, pinceaux de 1, 3 ou 5 cases, undo de dix pas par étage. Elle ne ferme **aucun** des treize critères, et ferme en revanche celui d’undo du **lot 4** (voir plus bas) : le découpage l’a placée ici parce que l’undo n'a de sens qu’avec le fog. **L-07 (03/08) ferme les critères 1 et 2** : éditeur minimal de murs, accrochage double — extrémités existantes prioritaires, sinon coins de case entiers, jamais de point libre. La mesure préalable en donne la raison : le même mur posé sur une ligne de centres bloque **deux** frontières de grille au lieu d’une, et décalé de 0,1 il laisse passer une diagonale à chacune de ses extrémités. Les murs se dessinent enfin, en vue MJ seule. **L-08 (04/08) fermait le critère 3**, et est **remplacée par L-10 (05/08)** : forme réelle déplaçable et pivotable (cercle & cône à 60°) découpée par les murs via sweep. Plus d'énumération de cases. `origin` passe en `MapPoint` carte, la pointe du cône est l'ancre fixe des rotations, et les joueurs manipulent les gabarits marqués `visibleToPlayers`. **L-09 (05/08) est livrée** — quatorze états, liste close, trois paliers d'affichage, correction de géométrie écran pour les marqueurs et l'élévation. **Ne restent que trois critères décochés** — 10 et 11 attendent la tablette, et 4 (marqueurs) attend la table de jeu. Le critère 4 restera **décoché** à la livraison : « lisibles sur les trois écrans » exige la tablette et l'écran de cast, comme 10 et 11, interdiction n°14 |
+| **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
 | **3 — Étages & lumière** | **3 sur 6**, nuit du 6 au 7 août 2026 — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. **Critère 3 acquis sans écrire une ligne de code applicatif** : le fog était déjà indexé et persisté par étage, mais aucun test n'utilisait deux étages — « probablement juste, jamais vérifié » n'est pas « acquis », et une implémentation ignorant `levelId` passait tous les tests de fog existants. **Critères 2 et 4 livrés** : `level.select` porte enfin la bascule au réseau — elle était purement locale depuis le lot 1a, le MJ montait à l'étage et la table restait en bas —, une barre d'étage apparaît hors des onglets dès qu'il y a plusieurs étages, et les liaisons fonctionnent : le typedef `Link` existait complet depuis le lot 1a, **jamais câblé**. Le franchissement se fait en **deux temps** (se poster, retaper) et sur la **case exacte**, sans la tolérance du chantier O — un escalier pris par accident oblige à revenir, et la table a vu l'autre étage entre-temps. Le cadenas suspend la bascule sans retenir les pions, et reste **local au poste MJ** : c'est une conduite de séance, pas un fait de jeu. ⚠ **Trois réserves à ne pas oublier** — il n'existe **aucun éditeur de liaisons** (elles ne naissent que dans les données, donc le critère 2 est mécanique et pas utilisable en séance) ; le **critère 1 n'est pas vérifié à trois étages importés** ; et **S-05, les lumières, n'est pas commencée** — `emitsLight`, `lights` et `ambient.level` restent parsés puis jetés. Quatre mutations attrapées |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |

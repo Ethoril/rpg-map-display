@@ -69,7 +69,7 @@ export function createGMPanel(container, options = {}) {
          quitter depuis l'interface. -->
     <div class="gm-session-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; background: #232323; border-bottom: 1px solid #333;">
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Session</span>
-      <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.2em; color: #4a90e2;">${sessionId || '—'}</code>
+      <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.2em; color: #4a90e2;"></code>
       <button id="gm-evict-others" style="margin-left: auto; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Déconnecte les autres écrans MJ de cette session">Autres MJ</button>
       <button id="gm-leave-session" style="padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
     </div>
@@ -90,45 +90,45 @@ export function createGMPanel(container, options = {}) {
     </div>
 
     <!-- Barre d'onglets du panneau MJ -->
-    <div class="gm-tabs-header" style="display: flex; background: #2a2a2a; border-bottom: 1px solid #333;">
-      <button class="gm-tab-btn" data-tab="scene-library" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">📂 Cartes</button>
-      <button class="gm-tab-btn active" data-tab="import-uvtt" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #333; color: #fff; border: none; border-bottom: 2px solid #4a90e2; cursor: pointer;">UVTT</button>
-      <button class="gm-tab-btn" data-tab="import-image" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Image</button>
-      <button class="gm-tab-btn" data-tab="token-maker" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Pions</button>
-      <button class="gm-tab-btn" data-tab="handouts" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Handouts</button>
-      <button class="gm-tab-btn" data-tab="fog-tools" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🌫️ Fog</button>
-      <button class="gm-tab-btn" data-tab="wall-editor" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">🧱 Murs</button>
-      <button class="gm-tab-btn" data-tab="template-tools" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">📐 Gabarits</button>
-      <button class="gm-tab-btn" data-tab="grid-settings" style="flex: 1; padding: 0.6rem 0.25rem; font-size: 0.8rem; background: #2a2a2a; color: #aaa; border: none; border-bottom: 2px solid transparent; cursor: pointer;">Grille</button>
+    <div class="gm-tabs-header" role="tablist" aria-label="Outils du meneur de jeu">
+      <button class="gm-tab-btn" type="button" id="gm-tab-scene-library" role="tab" data-tab="scene-library" aria-controls="tab-content-scene-library" aria-selected="false" tabindex="-1">📂 Cartes</button>
+      <button class="gm-tab-btn active" type="button" id="gm-tab-import-uvtt" role="tab" data-tab="import-uvtt" aria-controls="tab-content-import-uvtt" aria-selected="true" tabindex="0">UVTT</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-import-image" role="tab" data-tab="import-image" aria-controls="tab-content-import-image" aria-selected="false" tabindex="-1">Image</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-token-maker" role="tab" data-tab="token-maker" aria-controls="tab-content-token-maker" aria-selected="false" tabindex="-1">Pions</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-handouts" role="tab" data-tab="handouts" aria-controls="tab-content-handouts" aria-selected="false" tabindex="-1">Handouts</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-fog-tools" role="tab" data-tab="fog-tools" aria-controls="tab-content-fog-tools" aria-selected="false" tabindex="-1">🌫️ Fog</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-wall-editor" role="tab" data-tab="wall-editor" aria-controls="tab-content-wall-editor" aria-selected="false" tabindex="-1">🧱 Murs</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-template-tools" role="tab" data-tab="template-tools" aria-controls="tab-content-template-tools" aria-selected="false" tabindex="-1">📐 Gabarits</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-grid-settings" role="tab" data-tab="grid-settings" aria-controls="tab-content-grid-settings" aria-selected="false" tabindex="-1">Grille</button>
     </div>
 
     <!-- Conteneurs de contenu des onglets -->
     <div class="gm-tabs-content" style="flex: 1; overflow-y: auto; padding: 1rem;">
-      <div id="tab-content-scene-library" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-scene-library" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-scene-library" hidden>
         <div id="scene-library-mount"></div>
       </div>
 
-      <div id="tab-content-fog-tools" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-fog-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-fog-tools" hidden>
         <div id="fog-tools-mount"></div>
       </div>
 
-      <div id="tab-content-wall-editor" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-wall-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-wall-editor" hidden>
         <div id="wall-editor-mount"></div>
       </div>
 
-      <div id="tab-content-template-tools" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-template-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-template-tools" hidden>
         <div id="template-tools-mount"></div>
       </div>
 
-      <div id="tab-content-import-uvtt" class="gm-tab-pane" style="display: block;">
+      <div id="tab-content-import-uvtt" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-uvtt">
         <div id="import-uvtt-mount"></div>
       </div>
 
-      <div id="tab-content-import-image" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-import-image" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-image" hidden>
         <div id="import-image-mount"></div>
       </div>
 
-      <div id="tab-content-token-maker" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-token-maker" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-token-maker" hidden>
         <div class="token-elevation-section" style="margin-bottom: 1.5rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
           <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Pion sélectionné</h3>
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -221,11 +221,11 @@ export function createGMPanel(container, options = {}) {
         </div>
       </div>
 
-      <div id="tab-content-handouts" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-handouts" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-handouts" hidden>
         <div id="handouts-mount"></div>
       </div>
 
-      <div id="tab-content-grid-settings" class="gm-tab-pane" style="display: none;">
+      <div id="tab-content-grid-settings" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-grid-settings" hidden>
         <div class="grid-settings-form" style="display: flex; flex-direction: column; gap: 1rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
           <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Réglages de la Grille</h3>
 
@@ -254,6 +254,9 @@ export function createGMPanel(container, options = {}) {
     <div class="gm-panel-footer" style="padding: 0.5rem 1rem; background: #181818; border-top: 1px solid #333; font-size: 0.75rem; color: #777; text-align: center;"></div>
   `;
 
+  const sessionCode = /** @type {HTMLElement} */ (container.querySelector('#gm-session-code'));
+  sessionCode.textContent = sessionId || '—';
+
   const footerEl = /** @type {HTMLElement} */ (container.querySelector('.gm-panel-footer'));
   /** @type {ReturnType<typeof mountGMVersionBadge>|null} */
   let versionBadge = null;
@@ -262,8 +265,10 @@ export function createGMPanel(container, options = {}) {
   }
 
   // --- Gestion de la navigation par onglets & outil actif centralisé (CORRECTIF DESARMEMENT §3.1) ---
-  const tabButtons = container.querySelectorAll('.gm-tab-btn');
-  const tabPanes = container.querySelectorAll('.gm-tab-pane');
+  const tabButtons = /** @type {NodeListOf<HTMLButtonElement>} */ (
+    container.querySelectorAll('.gm-tab-btn')
+  );
+  const tabPanes = /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.gm-tab-pane'));
 
   /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place'} */
   let activeToolName = 'none';
@@ -333,32 +338,56 @@ export function createGMPanel(container, options = {}) {
     setActiveTool('none');
   }
 
+  /** @param {HTMLElement} btn */
+  function activateTab(btn) {
+    // Désarmer l'outil actif à tout changement d'onglet (Amendement A3)
+    if (activeToolName !== 'none') {
+      disarmActiveTool();
+    }
+
+    const targetTab = btn.dataset.tab;
+    tabButtons.forEach((button) => {
+      const isTarget = button === btn;
+      button.setAttribute('aria-selected', String(isTarget));
+      /** @type {HTMLButtonElement} */ (button).tabIndex = isTarget ? 0 : -1;
+      if (isTarget) button.classList.add('active');
+      else button.classList.remove('active');
+    });
+
+    tabPanes.forEach((pane) => {
+      const isTarget = pane.id === `tab-content-${targetTab}`;
+      /** @type {HTMLElement} */ (pane).hidden = !isTarget;
+    });
+  }
+
+  const tabList = Array.from(tabButtons);
   tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      // Désarmer l'outil actif à tout changement d'onglet (Amendement A3)
-      if (activeToolName !== 'none') {
-        disarmActiveTool();
-      }
-
-      const targetTab = btn.getAttribute('data-tab');
-      tabButtons.forEach((b) => {
-        const isTarget = b === btn;
-        /** @type {HTMLElement} */ (b).style.background = isTarget ? '#333' : '#2a2a2a';
-        /** @type {HTMLElement} */ (b).style.color = isTarget ? '#fff' : '#aaa';
-        /** @type {HTMLElement} */ (b).style.borderBottomColor = isTarget ? '#4a90e2' : 'transparent';
-        if (isTarget) b.classList.add('active');
-        else b.classList.remove('active');
-      });
-
-      tabPanes.forEach((pane) => {
-        const paneId = pane.id;
-        if (paneId === `tab-content-${targetTab}`) {
-          /** @type {HTMLElement} */ (pane).style.display = 'block';
+    btn.addEventListener('click', () => activateTab(/** @type {HTMLElement} */ (btn)), {
+      signal: listeners.signal,
+    });
+    btn.addEventListener(
+      'keydown',
+      /** @param {KeyboardEvent} event */ (event) => {
+        const currentIndex = tabList.indexOf(btn);
+        let nextIndex = currentIndex;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+          nextIndex = (currentIndex + 1) % tabList.length;
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+          nextIndex = (currentIndex - 1 + tabList.length) % tabList.length;
+        } else if (event.key === 'Home') {
+          nextIndex = 0;
+        } else if (event.key === 'End') {
+          nextIndex = tabList.length - 1;
         } else {
-          /** @type {HTMLElement} */ (pane).style.display = 'none';
+          return;
         }
-      });
-    }, { signal: listeners.signal });
+        event.preventDefault();
+        const nextTab = /** @type {HTMLElement} */ (tabList[nextIndex]);
+        nextTab.focus();
+        activateTab(nextTab);
+      },
+      { signal: listeners.signal }
+    );
   });
 
   // --- Montage des sous-composants ---
@@ -1042,7 +1071,8 @@ export function createGMPanel(container, options = {}) {
     levelBar.style.display = etages.length > 1 ? 'flex' : 'none';
     if (etages.length === 0) return;
 
-    const signature = etages.map((l) => `${l.id} ${l.name}`).join('');
+    // Signature explicite, lisible et sans caractères de contrôle littéraux.
+    const signature = JSON.stringify(etages.map((l) => [l.id, l.name]));
     if (levelSelect.dataset.signature !== signature) {
       levelSelect.dataset.signature = signature;
       levelSelect.replaceChildren(

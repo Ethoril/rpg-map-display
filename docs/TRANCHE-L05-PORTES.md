@@ -7,6 +7,9 @@
 > en moins de 300 ms et rouvre les arêtes de passage) et **11** (une porte est ouvrable au doigt
 > du premier coup sur la tablette). Le lot passe de 6/13 à 8/13.
 >
+> **Clôture matérielle du 07/08/2026 :** le mainteneur confirme la réponse sous 300 ms et
+> l'ouverture tactile du premier coup. Les critères 10 et 11 sont validés.
+>
 > ⚠ « Tranche L-05 » ≠ « chantier L » (outil de cartes). Le préfixe L des tranches désigne le
 > lot 2, celui du chantier désigne son rang alphabétique. Collision de nommage héritée, non
 > réparable sans casser les renvois déjà écrits.
@@ -612,8 +615,7 @@ Tous se font délibérément, avec justification écrite, pas au fil de l'eau.
   pas retenu.
 - **§7, tableau des événements** : préciser que `portal.toggle` porte l'état absolu
   `{levelId, portalId, state}`, et reporter la règle d'autorisation par transition du §6.3.
-- **§11 lot 2** : cocher les critères 10 et 11 une fois vérifiés, en notant pour le 11 le zoom
-  auquel il a été vérifié (§7.5).
+- **§11 lot 2** : critères 10 et 11 cochés le 07/08/2026 après confirmation sur la tablette cible.
 - **§12** : Q3 (« portes ouvrables par les joueurs ou MJ uniquement ? ») est tranchée — les
   deux, avec la règle par transition du §6.3. La marquer comme telle.
 

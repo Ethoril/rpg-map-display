@@ -36,6 +36,7 @@ renderLayerStack({
   templates: () => layerOrder.push('templates'),
   tokens: () => layerOrder.push('tokens'),
   fog: () => layerOrder.push('fog'),
+  feedback: () => layerOrder.push('feedback'),
 });
 
 const camera = new Camera(stage.width, stage.height);
@@ -297,6 +298,27 @@ const probe = {
       }
     }
     return { cellAlphaMap, renderedCells };
+  },
+  testMoveZoneFeedbackRender: (/** @type {any} */ {
+    levelOverrides = {},
+    cell,
+    kind,
+    elapsed = 0,
+  }) => {
+    const level = createLevel(levelOverrides);
+    const width = level.grid.offsetX + level.widthCells * level.pxPerCell;
+    const height = level.grid.offsetY + level.heightCells * level.pxPerCell;
+    resetCanvas(width, height);
+    const grid = new SquareGrid(level);
+    moveZoneLayer.showDestinationFeedback(cell, kind);
+    const active = moveZoneLayer.renderDestinationFeedback(context, grid, {
+      now: Date.now() + elapsed,
+      zoom: 1,
+    });
+    const p0 = grid.mapFromCellPoint({ cellX: cell.a, cellY: cell.b });
+    const p1 = grid.mapFromCellPoint({ cellX: cell.a + 1, cellY: cell.b + 1 });
+    const center = pixelAt(width, height, context.getImageData(0, 0, width, height).data, (p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
+    return { active, center };
   },
 };
 

@@ -97,3 +97,37 @@ test('MoveZoneLayer : surlignage exact des cases atteignables et non-interactivi
     }
   }
 });
+
+test('MoveZoneLayer : le refus de destination est dessiné brièvement puis disparaît', async ({ page }) => {
+  await mountStage(page);
+
+  const levelOverrides = {
+    pxPerCell: 140,
+    widthCells: 4,
+    heightCells: 4,
+  };
+
+  const refused = await page.evaluate(
+    (args) => /** @type {any} */ (window).__stageProbe.testMoveZoneFeedbackRender(args),
+    { levelOverrides, cell: { a: 1, b: 1 }, kind: 'refused' }
+  );
+  expect(refused.active).toBe(true);
+  expect(refused.center.a).toBeGreaterThan(0);
+  expect(refused.center.r).toBeGreaterThan(refused.center.g);
+
+  const occupied = await page.evaluate(
+    (args) => /** @type {any} */ (window).__stageProbe.testMoveZoneFeedbackRender(args),
+    { levelOverrides, cell: { a: 1, b: 1 }, kind: 'occupied' }
+  );
+  expect(occupied.active).toBe(true);
+  expect(occupied.center.a).toBeGreaterThan(0);
+  expect(occupied.center.r).toBeGreaterThan(occupied.center.g);
+  expect(occupied.center.g).toBeGreaterThan(refused.center.g);
+
+  const expired = await page.evaluate(
+    (args) => /** @type {any} */ (window).__stageProbe.testMoveZoneFeedbackRender(args),
+    { levelOverrides, cell: { a: 1, b: 1 }, kind: 'refused', elapsed: 700 }
+  );
+  expect(expired.active).toBe(false);
+  expect(expired.center.a).toBe(0);
+});

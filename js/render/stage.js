@@ -10,6 +10,7 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   'templates',
   'tokens',
   'fog',
+  'feedback',
 ]);
 
 /**

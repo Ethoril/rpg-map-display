@@ -208,6 +208,9 @@ F:\rpg-map-display\
     ├─ PLAN-LOT2.md               [2] découpage du lot 2 en tranches, décisions arrêtées
     │                              (portes à trois états, autorité vision/fog) et amendements
     │                              du CdC à faire
+    ├─ FEUILLE-DE-ROUTE-COMPLEMENTAIRE.md
+    │                              travaux transverses issus de l'audit du 07/08/2026 :
+    │                              fiabilité, exploitation, performance et préparation 1.0
     ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
     │                              implantation du pipeline », et pourquoi on compare avec des
     │                              réglages mais publie avec les constantes

@@ -30,6 +30,8 @@ async function mountPlayerViewInPage(page) {
 
       /** @type {any[]} */
       const netEventsPublished = [];
+      /** @type {Array<{cell: {a: number, b: number}, kind: 'refused'|'occupied'}>} */
+      const destinationFeedbacks = [];
       /** @type {Set<(evt: any) => void>} */
       const transportListeners = new Set();
 
@@ -60,6 +62,7 @@ async function mountPlayerViewInPage(page) {
         createToken,
         canvas,
         netEventsPublished,
+        destinationFeedbacks,
         fakeTransport,
         getMounted: () => mounted,
         lastTapLog: null,
@@ -69,6 +72,7 @@ async function mountPlayerViewInPage(page) {
             mounted.detach();
           }
           netEventsPublished.length = 0;
+          destinationFeedbacks.length = 0;
           camera.setPan(canvas.width / 2, canvas.height / 2);
 
           const level = createLevel({
@@ -89,9 +93,20 @@ async function mountPlayerViewInPage(page) {
             locked: overrides.locked ?? false,
           });
 
+          const tokens = [tokenPJ];
+          if (overrides.occupied) {
+            tokens.push(createToken({
+              id: 'token-occupied',
+              levelId: 'rdc',
+              cell: { a: 3, b: 3 },
+              sizeCells: 1,
+              kind: 'npc',
+            }));
+          }
+
           const campaign = createCampaign({
             levels: [level],
-            tokens: [tokenPJ],
+            tokens,
           });
 
           store.loadCampaign(campaign);
@@ -100,6 +115,9 @@ async function mountPlayerViewInPage(page) {
             element: canvas,
             camera,
             transport: fakeTransport,
+            onDestinationRejected: (cell, kind) => {
+              destinationFeedbacks.push({ cell: { ...cell }, kind });
+            },
           });
         },
 
@@ -711,4 +729,32 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
       { timeout: 15_000 }
     );
   });
+});
+
+test('Vue joueurs : une destination refusée ou occupée déclenche un retour transitoire ciblé', async ({ page }) => {
+  await mountPlayerViewInPage(page);
+
+  await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__playerProbe;
+    probe.initFixture({ occupied: true });
+    probe.dispatchTap(350, 350); // sélection du PJ en (2,2)
+    probe.dispatchTap(490, 490); // case (3,3), occupée par un PNJ
+  });
+
+  const occupied = await page.evaluate(
+    () => /** @type {any} */ (window).__playerProbe.destinationFeedbacks
+  );
+  expect(occupied).toEqual([{ cell: { a: 3, b: 3 }, kind: 'occupied' }]);
+
+  await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__playerProbe;
+    probe.initFixture();
+    probe.dispatchTap(350, 350); // sélection du PJ en (2,2)
+    probe.dispatchTap(1190, 350); // case (8,2), valide mais hors portée
+  });
+
+  const refused = await page.evaluate(
+    () => /** @type {any} */ (window).__playerProbe.destinationFeedbacks
+  );
+  expect(refused).toEqual([{ cell: { a: 8, b: 2 }, kind: 'refused' }]);
 });

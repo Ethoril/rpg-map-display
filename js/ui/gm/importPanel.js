@@ -140,6 +140,25 @@ export function createImportPanel(container, options = {}) {
   /** @type {ReturnType<typeof parseUvtt>|null} */
   let pendingUvtt = null;
 
+  /**
+   * Affiche un statut d'import sans interpréter le contenu du fichier importé comme du HTML.
+   *
+   * @param {HTMLElement|null} status
+   * @param {string} color
+   * @param {Node[]} nodes
+   */
+  function setImportStatus(status, color, nodes) {
+    if (!status) return;
+    status.style.display = 'block';
+    status.style.color = color;
+    status.replaceChildren(...nodes);
+  }
+
+  /** @param {string} message */
+  function statusText(message) {
+    return document.createTextNode(message);
+  }
+
   function refreshUvttButton() {
     if (btnValidateUvtt) {
       // Plus de champ URL : le bouton s'active dès qu'une UVTT est parsée.
@@ -197,24 +216,31 @@ export function createImportPanel(container, options = {}) {
           }
           refreshUvttButton();
 
-          if (uvttStatus) {
-            uvttStatus.style.display = 'block';
-            uvttStatus.style.color = '#f1c40f';
-            let statusHtml = `<strong>Aperçu UVTT local chargé.</strong><br>Dimensions : ${parsed.level.widthCells}×${parsed.level.heightCells} cases (${parsed.level.pxPerCell} px/case). Indiquez l'URL publiée pour ajouter cet étage à la campagne.`;
-
-            if (parsed.warnings && parsed.warnings.length > 0) {
-              statusHtml += `<br><span style="color: #f1c40f;">Avertissement : ${parsed.warnings.join(' ; ')}</span>`;
-            }
-            uvttStatus.innerHTML = statusHtml;
+          const title = document.createElement('strong');
+          title.textContent = 'Aperçu UVTT local chargé.';
+          const statusNodes = [
+            title,
+            document.createElement('br'),
+            statusText(
+              `Dimensions : ${parsed.level.widthCells}×${parsed.level.heightCells} cases (${parsed.level.pxPerCell} px/case). Indiquez l'URL publiée pour ajouter cet étage à la campagne.`
+            ),
+          ];
+          if (parsed.warnings && parsed.warnings.length > 0) {
+            const warning = document.createElement('span');
+            warning.style.color = '#f1c40f';
+            warning.textContent = `Avertissement : ${parsed.warnings.join(' ; ')}`;
+            statusNodes.push(document.createElement('br'), warning);
           }
+          setImportStatus(uvttStatus, '#f1c40f', statusNodes);
         } catch (err) {
           pendingUvtt = null;
           refreshUvttButton();
-          if (uvttStatus) {
-            uvttStatus.style.display = 'block';
-            uvttStatus.style.color = '#e74c3c';
-            uvttStatus.innerHTML = `<strong>Erreur d'importation UVTT :</strong> ${err instanceof Error ? err.message : String(err)}`;
-          }
+          const title = document.createElement('strong');
+          title.textContent = "Erreur d'importation UVTT :";
+          setImportStatus(uvttStatus, '#e74c3c', [
+            title,
+            statusText(` ${err instanceof Error ? err.message : String(err)}`),
+          ]);
         }
       };
       reader.readAsText(file);
@@ -235,18 +261,24 @@ export function createImportPanel(container, options = {}) {
       store.addLevel(level);
       const publishedResult = { ...pendingUvtt, level };
 
-      if (uvttStatus) {
-        uvttStatus.style.display = 'block';
-        uvttStatus.style.color = '#2ecc71';
-        uvttStatus.innerHTML = `<strong>✓ Étage "${level.name}" chargé (aperçu local — pas d'image).</strong><br><span style="font-size: 0.8rem; color: #aaa;">Pour publier avec image, utilisez : <code style="background: #1a1a1a; padding: 0.2rem 0.4rem; border-radius: 3px;">pnpm maps:prepare</code></span>`;
-      }
+      const title = document.createElement('strong');
+      title.textContent = `✓ Étage "${level.name}" chargé (aperçu local — pas d'image).`;
+      const help = document.createElement('span');
+      help.style.cssText = 'font-size:0.8rem;color:#aaa';
+      help.append('Pour publier avec image, utilisez : ');
+      const command = document.createElement('code');
+      command.style.cssText = 'background:#1a1a1a;padding:0.2rem 0.4rem;border-radius:3px';
+      command.textContent = 'pnpm maps:prepare';
+      help.appendChild(command);
+      setImportStatus(uvttStatus, '#2ecc71', [title, document.createElement('br'), help]);
       options.onImportUvtt?.(publishedResult);
     } catch (err) {
-      if (uvttStatus) {
-        uvttStatus.style.display = 'block';
-        uvttStatus.style.color = '#e07070';
-        uvttStatus.innerHTML = `<strong>Erreur :</strong> ${err instanceof Error ? err.message : String(err)}`;
-      }
+      const title = document.createElement('strong');
+      title.textContent = 'Erreur :';
+      setImportStatus(uvttStatus, '#e07070', [
+        title,
+        statusText(` ${err instanceof Error ? err.message : String(err)}`),
+      ]);
     }
   });
 
@@ -376,11 +408,15 @@ export function createImportPanel(container, options = {}) {
 
       store.addLevel(level);
 
-      if (imageStatus) {
-        imageStatus.style.display = 'block';
-        imageStatus.style.color = '#2ecc71';
-        imageStatus.innerHTML = `<strong>✓ Image calibrée chargée (aperçu local uniquement).</strong><br>Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case)`;
-      }
+      const title = document.createElement('strong');
+      title.textContent = '✓ Image calibrée chargée (aperçu local uniquement).';
+      setImportStatus(imageStatus, '#2ecc71', [
+        title,
+        document.createElement('br'),
+        statusText(
+          `Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case)`
+        ),
+      ]);
 
       if (options.onImportImage) {
         options.onImportImage(level);

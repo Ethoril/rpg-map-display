@@ -440,8 +440,6 @@ export class PointerInput {
       }
 
       const dist = distanceBetween(this.startScreenPos, screenPos);
-      const duration = timeStamp - this.startTime;
-
       if (this.mode === 'brushing') {
         const mapPos = this.camera.screenToMap(screenPos);
         this.emit({
@@ -483,10 +481,11 @@ export class PointerInput {
       } else if (
         this.mode === 'tapCandidate' &&
         !this.longPressTriggered &&
-        duration < this.dragHoldMs &&
         dist < this.dragDistanceThreshold
       ) {
-        // C'est un TAP !
+        // C'est un TAP ! Une pression immobile reste un tap tant qu'elle n'a pas atteint
+        // l'appui long. `dragHoldMs` décide seulement quand un *mouvement* devient un drag ;
+        // l'employer ici créait une zone morte entre 150 et 500 ms.
         this.emit({
           type: 'tap',
           screenPos: this.startScreenPos,

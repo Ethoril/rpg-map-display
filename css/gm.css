@@ -21,6 +21,7 @@ html, body {
 
 #canvas-container {
   flex: 1;
+  min-width: 0;
   height: 100%;
   position: relative;
   overflow: hidden;
@@ -45,6 +46,44 @@ html, body {
   display: flex;
   flex-direction: column;
   z-index: 10;
+}
+
+/* Les neuf outils doivent rester directement atteignables, même sur un écran 1024 px. */
+.gm-tabs-header {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: #2a2a2a;
+  border-bottom: 1px solid #333;
+}
+
+.gm-tab-btn {
+  min-width: 0;
+  padding: 0.55rem 0.25rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  background: #2a2a2a;
+  color: #aaa;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.gm-tab-btn.active {
+  background: #333;
+  color: #fff;
+  border-bottom-color: #4a90e2;
+}
+
+.gm-tab-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid #f5a623;
+  outline-offset: -3px;
+}
+
+.gm-tabs-content {
+  min-width: 0;
 }
 
 /* Controls and Inputs */

@@ -28,6 +28,8 @@ import {
  * @property {HTMLElement} element Élément HTML à écouter (canvas)
  * @property {InputCamera} camera Instance de la caméra pour conversions d'écran vers carte
  * @property {Transport} [transport] Transport réseau optionnel pour la synchronisation
+ * @property {(cell: Cell, kind: 'refused'|'occupied') => void} [onDestinationRejected]
+ *   Retour transitoire demandé par la vue pour une destination qui ne peut pas recevoir le pion.
  */
 
 /**
@@ -38,6 +40,7 @@ import {
  */
 export function bootstrapPlayerView(options) {
   const { element, camera, transport } = options;
+  const onDestinationRejected = options.onDestinationRejected ?? (() => {});
 
   /** @type {{ templateId: string, startMapPos: import('../../core/types.js').MapPoint, initialOrigin: import('../../core/types.js').MapPoint, initialDirectionDeg: number }|null} */
   let playerTemplateDragState = null;
@@ -188,6 +191,7 @@ export function bootstrapPlayerView(options) {
 
     if (exactTappedToken && exactTappedToken.id !== selectedToken.id) {
       // Un PNJ ou un pion interdit présent exactement sur la case n'est jamais une destination de mouvement implicite.
+      onDestinationRejected(targetCell, 'occupied');
       store.selectToken(null);
       return;
     }
@@ -209,7 +213,7 @@ export function bootstrapPlayerView(options) {
         try {
           store.traverseLink(selectedToken.id, liaison.link.id);
         } catch {
-          // Refus silencieux côté geste : le store a déjà dit pourquoi. Le pion reste où il est.
+          onDestinationRejected(targetCell, 'refused');
           return;
         }
         transport?.publish({
@@ -227,12 +231,14 @@ export function bootstrapPlayerView(options) {
       selectedToken.locked ||
       selectedToken.playerMovable === false
     ) {
+      onDestinationRejected(targetCell, 'refused');
       store.selectToken(null);
       return;
     }
 
     const targetKey = cellKey(targetCell);
     if (!reachableCells.has(targetKey)) {
+      onDestinationRejected(targetCell, 'refused');
       store.selectToken(null);
       return;
     }

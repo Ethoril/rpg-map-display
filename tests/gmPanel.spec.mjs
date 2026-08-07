@@ -39,6 +39,92 @@ async function setupGMView(page) {
   expect(errors).toEqual([]);
 }
 
+test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
+  test('les neuf onglets restent accessibles sans débordement à 1280 et 1024 px', async ({ page }) => {
+    for (const width of [1280, 1024]) {
+      await page.setViewportSize({ width, height: 800 });
+      await setupGMView(page);
+
+      const layout = await page.evaluate(() => {
+        const header = /** @type {HTMLElement} */ (document.querySelector('.gm-tabs-header'));
+        const panel = /** @type {HTMLElement} */ (document.querySelector('#gm-panel'));
+        const headerRect = header.getBoundingClientRect();
+        const tabs = [...header.querySelectorAll('.gm-tab-btn')].map((tab) => {
+          const rect = tab.getBoundingClientRect();
+          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+        });
+        return {
+          documentFits: document.documentElement.scrollWidth <= window.innerWidth,
+          panelFits: panel.scrollWidth <= panel.clientWidth,
+          headerFits: header.scrollWidth <= header.clientWidth,
+          allTabsVisible: tabs.every(
+            (tab) =>
+              tab.left >= headerRect.left &&
+              tab.right <= headerRect.right &&
+              tab.top >= headerRect.top &&
+              tab.bottom <= headerRect.bottom
+          ),
+        };
+      });
+      expect(layout).toEqual({ documentFits: true, panelFits: true, headerFits: true, allTabsVisible: true });
+    }
+  });
+
+  test('les onglets exposent leur relation aux panneaux et se pilotent au clavier', async ({ page }) => {
+    await setupGMView(page);
+    const tabs = page.getByRole('tab');
+    await expect(tabs).toHaveCount(9);
+    await expect(page.locator('.gm-tabs-header')).toHaveAttribute('role', 'tablist');
+    await expect(page.locator('#gm-tab-import-uvtt')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#tab-content-import-uvtt')).toHaveAttribute(
+      'aria-labelledby',
+      'gm-tab-import-uvtt'
+    );
+
+    await page.locator('#gm-tab-import-uvtt').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#gm-tab-import-image')).toBeFocused();
+    await expect(page.locator('#gm-tab-import-image')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#tab-content-import-image')).not.toHaveAttribute('hidden', '');
+    await expect(page.locator('#tab-content-import-uvtt')).toHaveAttribute('hidden', '');
+  });
+
+  test('un nom ou avertissement UVTT hostile reste du texte, y compris après chargement', async ({ page }) => {
+    await setupGMView(page);
+    const hostile = '<img data-r0-xss="uvtt" src=x>';
+    const uvtt = JSON.stringify({
+      name: hostile,
+      resolution: { map_size: { x: 10, y: 8 }, pixels_per_grid: 64 },
+      lights: [{ id: hostile, position: { x: 1, y: 1 }, color: hostile }],
+    });
+
+    await page.setInputFiles('#uvtt-file-input', {
+      name: 'hostile.uvtt',
+      mimeType: 'application/json',
+      buffer: Buffer.from(uvtt, 'utf-8'),
+    });
+    await expect(page.locator('#uvtt-status')).toContainText(hostile);
+    await expect(page.locator('#uvtt-status [data-r0-xss="uvtt"]')).toHaveCount(0);
+
+    await page.click('#btn-validate-uvtt-import');
+    await expect(page.locator('#uvtt-status')).toContainText(hostile);
+    await expect(page.locator('#uvtt-status [data-r0-xss="uvtt"]')).toHaveCount(0);
+
+    const overlay = await page.evaluate(async (label) => {
+      const { showEvictionOverlay } = await import('../js/app/session.js');
+      const result = showEvictionOverlay({ label, sessionId: label, onReconnect: () => {} });
+      const element = result?.element;
+      const proof = {
+        text: element?.textContent ?? '',
+        injected: Boolean(element?.querySelector('[data-r0-xss="uvtt"]')),
+      };
+      result?.remove();
+      return proof;
+    }, hostile);
+    expect(overlay).toEqual({ text: expect.stringContaining(hostile), injected: false });
+  });
+});
+
 test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
   test('Diagnostic UVTT : aucun champ URL, la base64 reste en aperçu et n entre pas dans le store', async ({
     page,

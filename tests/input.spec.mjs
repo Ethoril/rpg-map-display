@@ -409,3 +409,45 @@ test('Correctif — Appui long immobile (700 ms) émet exactement UN longPress a
 // viewport). C'est donc porté par la liste des vérifications manuelles d'`ETAT.md`, pas par un
 // test qui ferait semblant.
 
+test('Une pression immobile entre 150 et 500 ms reste un tap, jamais une zone morte', async ({ page }) => {
+  await mountInputStage(page, 'players');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  for (const duration of [200, 350]) {
+    await page.evaluate(() => /** @type {any} */ (window).__stageProbe.clearIntentions());
+    await page.mouse.move(canvasBox.x + 400, canvasBox.y + 400);
+    await page.mouse.down();
+    await page.waitForTimeout(duration);
+    await page.mouse.up();
+    await waitForIntention(page, 'tap');
+
+    const intentions = await page.evaluate(
+      () => /** @type {any} */ (window).__stageProbe.getIntentions()
+    );
+    expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(1);
+    expect(intentions.filter((/** @type {any} */ item) => item.type === 'longPress')).toHaveLength(0);
+  }
+});
+
+test('Vue MJ — un appui long immobile conserve l intention longPress', async ({ page }) => {
+  await mountInputStage(page, 'gm');
+
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  await page.mouse.move(canvasBox.x + 400, canvasBox.y + 400);
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await page.mouse.up();
+  await waitForIntention(page, 'longPress');
+
+  const intentions = await page.evaluate(
+    () => /** @type {any} */ (window).__stageProbe.getIntentions()
+  );
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'longPress')).toHaveLength(1);
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(0);
+});

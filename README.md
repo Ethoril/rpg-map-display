@@ -17,6 +17,7 @@ Lire avant une modification importante :
 4. [Architecture](docs/ARCHITECTURE.md)
 5. [Plan de stabilisation Canvas](docs/PLAN-STABILISATION-CANVAS.md)
 6. [État courant](docs/ETAT.md)
+7. [Feuille de route complémentaire](docs/FEUILLE-DE-ROUTE-COMPLEMENTAIRE.md)
 
 Les règles essentielles :
 

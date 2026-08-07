@@ -1,9 +1,9 @@
 // @ts-check
 
-import { FirebaseTransport } from '../transport/FirebaseTransport.js';
 import { resolveFirebaseConfig } from './runtimeConfig.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
+/** @typedef {import('../transport/FirebaseTransport.js').FirebaseTransport} FirebaseTransport */
 
 /**
  * Alphabet des codes de session : 30 caractères, sans `0`, `1`, `I`, `L`, `O` ni `U`.
@@ -154,6 +154,22 @@ async function requestGoogleSignIn(role, host, transport) {
 }
 
 /**
+ * Charge Firebase seulement après avoir établi qu'une configuration est disponible.
+ *
+ * Les pages MJ et joueurs gardent une import map vers le CDN pour le chemin Firebase, mais
+ * l'importer statiquement ici faisait tout de même résoudre ses quatre modules dès le
+ * démarrage local. Cette frontière laisse le mode local utilisable sans réseau, tout en
+ * gardant `FirebaseTransport` comme unique propriétaire des imports `firebase/*`.
+ *
+ * @param {Record<string, any>} config
+ * @returns {Promise<FirebaseTransport>}
+ */
+async function createFirebaseTransport(config) {
+  const { FirebaseTransport } = await import('../transport/FirebaseTransport.js');
+  return new FirebaseTransport(config);
+}
+
+/**
  * Écran de fin pour un MJ congédié par un autre poste.
  *
  * Il n'est pas décoratif. Une session MJ congédiée cesse de recevoir et de publier : sans
@@ -180,16 +196,24 @@ export function showEvictionOverlay(options = {}) {
     'position:fixed;inset:0;z-index:1100;display:grid;place-items:center;text-align:center;' +
     'background:#12161c;color:#e7ebf2;font:15px/1.6 system-ui,sans-serif;padding:24px';
 
-  const source = options.label ? ` depuis « ${options.label} »` : '';
-  const code = options.sessionId ? ` ${options.sessionId}` : '';
   const inner = document.createElement('div');
   inner.style.cssText = 'max-width:44ch;display:grid;gap:14px;justify-items:center';
-  inner.innerHTML =
-    `<strong style="font-size:19px">Session MJ reprise ailleurs</strong>` +
-    `<p style="margin:0;color:#a8b3c4">Un autre poste MJ a demandé la déconnexion des sessions` +
-    ` concurrentes${source}. Cet écran ne reçoit plus la partie${code} et ne publie plus rien.</p>` +
-    `<p style="margin:0;color:#8b97aa;font-size:13px">Reprendre la main ici déconnectera l'autre` +
-    ` poste à son tour : à ne faire que si c'est bien celui-ci qui doit mener.</p>`;
+  const title = document.createElement('strong');
+  title.style.fontSize = '19px';
+  title.textContent = 'Session MJ reprise ailleurs';
+
+  const description = document.createElement('p');
+  description.style.cssText = 'margin:0;color:#a8b3c4';
+  description.textContent =
+    'Un autre poste MJ a demandé la déconnexion des sessions concurrentes' +
+    (options.label ? ` depuis « ${options.label} »` : '') +
+    `. Cet écran ne reçoit plus la partie${options.sessionId ? ` ${options.sessionId}` : ''}` +
+    ' et ne publie plus rien.';
+
+  const advice = document.createElement('p');
+  advice.style.cssText = 'margin:0;color:#8b97aa;font-size:13px';
+  advice.textContent =
+    "Reprendre la main ici déconnectera l'autre poste à son tour : à ne faire que si c'est bien celui-ci qui doit mener.";
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -204,7 +228,7 @@ export function showEvictionOverlay(options = {}) {
     else window.location.reload();
   });
 
-  inner.appendChild(button);
+  inner.append(title, description, advice, button);
   overlay.appendChild(inner);
   document.body.appendChild(overlay);
 
@@ -248,7 +272,7 @@ export async function connectSession(options) {
     return null;
   }
 
-  const transport = new FirebaseTransport(config);
+  const transport = await createFirebaseTransport(config);
   transport.onError((error) => onStatus('error', error));
 
   try {

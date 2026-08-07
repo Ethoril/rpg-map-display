@@ -197,9 +197,9 @@ font délibérément, avec justification écrite, pas au fil de l'eau.
 
 ---
 
-## 7. Ce qui reste ouvert
+## 7. Clôture du lot
 
-**Q7 — le jeu de marqueurs d'état. Tranchée le 04/08/2026, plus rien n'est ouvert ici.**
+**Lot 2 fermé à 13/13 le 07/08/2026.**
 
 Le CdC la repoussait « après une séance réelle, pas avant », et L-09 était de ce fait la seule
 tranche du lot à dépendre d'un événement extérieur au code. Le mainteneur a arbitré avant la
@@ -207,8 +207,12 @@ séance, sur les quatorze états qu'il voit effectivement à sa table — ce qui
 l'objet de l'attente, la séance ne servant qu'à connaître cette liste. **L-09 peut donc être
 écrite** : brief dans `TRANCHE-L09-MARQUEURS.md`.
 
-Ce que la séance dira encore, et qu'il ne faut pas confondre avec la question tranchée : deux
-**constantes**, l'ordre de troncature au-delà de trois marqueurs et le seuil de 14 px du
-passage de l'icône au point coloré. Le **critère 4** reste donc décoché après L-09 — « lisibles
-sur les trois écrans » se constate sur les trois écrans — au même titre que les critères 10
-et 11, et pour la même raison : l'interdiction n°14.
+Les trois critères qui ne pouvaient pas être fermés par le code seul sont désormais confirmés par
+le mainteneur sur le dispositif réel :
+
+- critère 4 : marqueurs lisibles sur les trois écrans ;
+- critère 10 : ouverture d'une porte et mise à jour de la vision sous 300 ms ;
+- critère 11 : ouverture tactile du premier coup sur la tablette.
+
+L'ordre de troncature et le seuil de 14 px deviennent des constantes éprouvées à protéger par les
+tests de non-régression, et non plus des questions ouvertes.
