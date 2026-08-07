@@ -231,6 +231,7 @@ export function parseUvtt(jsonInput) {
   if (Array.isArray(data.lights)) {
     let lightIdx = 1;
     let lumieresRejetees = 0;
+    let lumieresNormalisees = 0;
     for (const l of data.lights) {
       if (
         !l || !l.position ||
@@ -245,11 +246,16 @@ export function parseUvtt(jsonInput) {
       if (parsedColor.warning) {
         warnings.push(`Lumière "${lightId}" : ${parsedColor.warning}`);
       }
+      const rawRange = l.range ?? 5;
+      const rawIntensity = l.intensity ?? 1;
+      const range = Number.isFinite(rawRange) ? Math.min(Math.max(rawRange, 0), 20) : 5;
+      const intensity = Number.isFinite(rawIntensity) ? Math.min(Math.max(rawIntensity, 0), 1) : 1;
+      if (range !== rawRange || intensity !== rawIntensity) lumieresNormalisees++;
       lights.push({
         id: lightId,
         at: { cellX: l.position.x, cellY: l.position.y },
-        range: l.range ?? 5,
-        intensity: l.intensity ?? 1,
+        range,
+        intensity,
         color: parsedColor.color,
         shadows: l.shadows ?? true,
       });
@@ -257,7 +263,13 @@ export function parseUvtt(jsonInput) {
     if (lumieresRejetees > 0) {
       warnings.push(
         `${lumieresRejetees} lumière(s) ignorée(s) sur ${data.lights.length} : ` +
-          `position absente ou non numérique (attendu position: {x, y}).`
+        `position absente ou non numérique (attendu position: {x, y}).`
+      );
+    }
+    if (lumieresNormalisees > 0) {
+      warnings.push(
+        `${lumieresNormalisees} lumière(s) normalisée(s) vers les bornes du moteur ` +
+          '(portée 0..20 cases, intensité 0..1).'
       );
     }
   }

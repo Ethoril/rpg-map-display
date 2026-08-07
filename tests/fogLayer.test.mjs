@@ -253,7 +253,10 @@ test('Critère 1 & 1bis : Le voile s applique aux zones non vues et laisse le fo
 test('Critère 1 : deux PJ éloignés donnent deux zones disjointes, rapprochés une seule zone connexe', () => {
   /** @param {{a: number, b: number}} cellA @param {{a: number, b: number}} cellB */
   function rendre(cellA, cellB) {
-    const level = createLevel({ id: 'rdc', widthCells: 40, heightCells: 10, pxPerCell: 10 });
+    const level = createLevel({
+      id: 'rdc', widthCells: 40, heightCells: 10, pxPerCell: 10,
+      ambient: { color: '#ffffff', level: 0, baked: false },
+    });
     const grid = gridFor(level);
     const pcA = createToken({ id: 'pjA', levelId: 'rdc', kind: 'pc', cell: cellA, visionDim: 4 });
     const pcB = createToken({ id: 'pjB', levelId: 'rdc', kind: 'pc', cell: cellB, visionDim: 4 });
@@ -305,6 +308,7 @@ test('Critère 2 : PNJ, visionDim: 0 et pions d un autre étage ne contribuent p
     widthCells: 10,
     heightCells: 10,
     pxPerCell: 10,
+    ambient: { color: '#ffffff', level: 0, baked: false },
   });
   const grid = gridFor(level);
 
@@ -480,6 +484,18 @@ test('Critère 5 : la signature couvre l axe b, l état des portes et la géomé
   });
   fogLayer.render(/** @type {any} */ (ctx), grid, avecMur, [pcVertical], defaultOptions());
   assert.equal(getVisionComputeCount(), 5, 'Changer la géométrie des murs déclenche un recalcul');
+
+  // Réimporter le même fichier remplace l'étage en conservant son id. Les polygones étant en
+  // pixels carte, une nouvelle densité ou origine doit invalider le cache même si les murs sont
+  // encore déclarés dans les mêmes cases.
+  const reimporte = etage({
+    pxPerCell: 20,
+    grid: { type: 'square', offsetX: 7, offsetY: 11, color: '#000000', opacity: 0.25, visible: true },
+    portals: avecMur.portals,
+    walls: avecMur.walls,
+  });
+  fogLayer.render(/** @type {any} */ (ctx), gridFor(reimporte), reimporte, [pcVertical], defaultOptions());
+  assert.equal(getVisionComputeCount(), 6, 'Réimporter un même id avec une grille différente déclenche un recalcul');
 });
 
 test('La signature de vision distingue deux visions différentes — c est elle qui évite un encodage PNG par image', () => {
@@ -526,4 +542,65 @@ test('Critère 6 : Helper extractBlockedSegments est partagé', () => {
   const segmentsCell = extractBlockedSegments(level);
   assert.equal(segmentsCell.length, 1);
   assert.deepEqual(segmentsCell[0], { A: { x: 0, y: 0 }, B: { x: 5, y: 0 } });
+});
+
+test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalident la vision', () => {
+  const level = createLevel({
+    id: 'rdc', widthCells: 12, heightCells: 10, pxPerCell: 10,
+    ambient: { color: '#ffffff', level: 0, baked: false },
+    walls: [[{ cellX: 5, cellY: 0 }, { cellX: 5, cellY: 10 }]],
+    lights: [{
+      id: 'fixed', at: { cellX: 2.5, cellY: 5.5 }, range: 3, intensity: 1,
+      color: '#ffffff', shadows: true,
+    }],
+  });
+  const grid = gridFor(level);
+  const darkPc = createToken({ id: 'pc-dark', levelId: 'rdc', kind: 'pc', cell: { a: 9, b: 5 }, visionDim: 0 });
+  const torch = createToken({
+    id: 'torch', levelId: 'rdc', kind: 'npc', cell: { a: 8, b: 5 }, visionDim: 0,
+    emitsLight: { range: 2, intensity: 1, color: '#ffcc66' },
+  });
+
+  const { ctx } = createMockCanvas(120, 100);
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 120, 100);
+  const fogLayer = createTestFogLayer();
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [darkPc], defaultOptions());
+  assert.equal(ctx.getImageData(25, 55).data[0], 100, 'la lumière fixe révèle son côté du mur');
+  assert.ok(ctx.getImageData(70, 55).data[0] < 100, 'le mur bloque la lumière fixe');
+
+  fogLayer.updateVision(grid, level, [darkPc, torch], { extractSegments: extractBlockedSegments });
+  const before = fogLayer.getVisionSignature();
+  const movedTorch = { ...torch, cell: { a: 10, b: 5 } };
+  assert.equal(
+    fogLayer.updateVision(grid, level, [darkPc, movedTorch], { extractSegments: extractBlockedSegments }),
+    true,
+    'déplacer une torche invalide immédiatement le cache sans attendre rAF'
+  );
+  assert.notEqual(fogLayer.getVisionSignature(), before);
+
+  const litLevel = { ...level, ambient: { ...level.ambient, level: 1 } };
+  assert.equal(
+    fogLayer.updateVision(grid, litLevel, [darkPc], { extractSegments: extractBlockedSegments }),
+    true,
+    'une ambiante positive rend le PJ sans vision nocturne contributeur'
+  );
+  assert.ok(fogLayer.getVisiblePolygons().length > 0);
+  assert.equal(
+    fogLayer.updateVision(
+      grid,
+      litLevel,
+      [{ ...darkPc, cell: { a: 8, b: 5 } }],
+      { extractSegments: extractBlockedSegments }
+    ),
+    true,
+    'en ambiance éclairée, le déplacement d’un PJ visionDim=0 invalide aussi la signature'
+  );
+
+  const bakedLevel = { ...level, ambient: { ...level.ambient, baked: true } };
+  assert.equal(
+    fogLayer.updateVision(grid, bakedLevel, [darkPc], { extractSegments: extractBlockedSegments }),
+    true,
+    'baked force la même ambiante éclairée sans modifier le niveau importé'
+  );
 });

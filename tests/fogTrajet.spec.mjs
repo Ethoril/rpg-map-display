@@ -44,7 +44,9 @@ const LEVEL = {
   walls: [],
   portals: [],
   lights: [],
-  ambient: { color: '#ffffff', level: 1, baked: false },
+  // Le scénario mesure le trajet dans l'obscurité. En ambiance pleine, le milieu
+  // est déjà visible avant tout mouvement et l'assertion n'a plus de sens.
+  ambient: { color: '#ffffff', level: 0, baked: false },
 };
 
 const TOKEN = {

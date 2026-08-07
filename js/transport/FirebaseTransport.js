@@ -27,7 +27,13 @@ import {
   onDisconnect,
   serverTimestamp,
 } from 'firebase/database';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  deleteField,
+  runTransaction as runFirestoreTransaction,
+} from 'firebase/firestore';
 import { isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
@@ -103,12 +109,12 @@ function estimateFirestoreValueBytes(value) {
  * Taille documentée du document `campaigns/{sessionId}` : nom du document, champs et 32 octets.
  *
  * @param {object} document
- * @param {string} sessionId
+ * @param {string} sessionId chemin ou identifiant réel du document
  */
 function estimateFirestoreDocumentBytes(document, sessionId) {
   /** @param {string} text */
   const stringBytes = (text) => new TextEncoder().encode(text).byteLength + 1;
-  const documentNameBytes = stringBytes('campaigns') + stringBytes(sessionId) + 16;
+  const documentNameBytes = sessionId.split('/').filter(Boolean).reduce((total, segment) => total + stringBytes(segment), 16);
   const fieldsBytes = Object.entries(document).reduce(
     (total, [name, value]) => total + stringBytes(name) + estimateFirestoreValueBytes(value),
     0
@@ -159,6 +165,34 @@ export function measureFirestoreSnapshot(snapshot, sessionId = 'measure') {
     conservativeBytes,
     severity,
     message,
+  };
+}
+
+/**
+ * Pré-vol générique d'un document v3 déjà adapté à Firestore.
+ *
+ * @param {object} documentFirestore
+ * @param {string} documentPath
+ * @returns {{encodedJsonBytes: number, firestoreEstimatedBytes: number, conservativeBytes: number, severity: 'ok'|'warning'|'error', message: string}}
+ */
+export function measureFirestoreDocument(documentFirestore, documentPath) {
+  assertNoNestedArrays(documentFirestore, documentPath);
+  const encodedJsonBytes = encodedJsonByteLength(documentFirestore);
+  const firestoreEstimatedBytes = estimateFirestoreDocumentBytes(documentFirestore, documentPath);
+  const conservativeBytes = Math.ceil(Math.max(encodedJsonBytes, firestoreEstimatedBytes) * 1.1) + 2048;
+  const severity = conservativeBytes > FIRESTORE_SNAPSHOT_MAX_BYTES
+    ? 'error'
+    : conservativeBytes >= FIRESTORE_SNAPSHOT_WARNING_BYTES ? 'warning' : 'ok';
+  return {
+    encodedJsonBytes,
+    firestoreEstimatedBytes,
+    conservativeBytes,
+    severity,
+    message: severity === 'error'
+      ? `Document Firestore v3 refusé avant écriture : ${documentPath} atteint ${formatKib(conservativeBytes)} (plafond ${formatKib(FIRESTORE_SNAPSHOT_MAX_BYTES)}).`
+      : severity === 'warning'
+        ? `Document Firestore v3 proche du plafond : ${documentPath} atteint ${formatKib(conservativeBytes)}.`
+        : `Document Firestore v3 : ${documentPath}, ${formatKib(conservativeBytes)}.`,
   };
 }
 // La r\u00e9tention ne repose pas sur ces d\u00e9lais pour d\u00e9cider qu'un \u00e9v\u00e9nement est
@@ -460,6 +494,220 @@ export function encodeSnapshotForFirestore(snapshot) {
  */
 export function decodeSnapshotFromFirestore(data) {
   return mapLevelWalls(data, decodeWalls);
+}
+
+export const FIRESTORE_V3_SCHEMA_VERSION = 3;
+export const FIRESTORE_BATCH_MAX_OPERATIONS = 500;
+
+/**
+ * Révision monotone du parent v3. Une transaction Firestore rejoue son callback après une
+ * écriture concurrente : dériver le numéro du parent relu rend donc chaque commit observable
+ * et évite les collisions de `Date.now()`.
+ *
+ * @param {any} parent
+ * @returns {number}
+ */
+export function nextFirestoreV3Revision(parent) {
+  if (!parent || parent.schemaVersion !== FIRESTORE_V3_SCHEMA_VERSION) return 1;
+  if (!Number.isSafeInteger(parent.revision) || parent.revision < 0) {
+    throw new Error('Parent Firestore v3 corrompu : révision entière requise');
+  }
+  if (parent.revision >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Parent Firestore v3 : révision maximale atteinte');
+  }
+  return parent.revision + 1;
+}
+
+/**
+ * Découpe un instantané applicatif en documents Firestore v3. Cette fonction pure est la
+ * frontière de schéma : le parent léger ne contient jamais `levels` ni `tokens`.
+ *
+ * @param {any} snapshot
+ * @param {string} sessionId
+ * @param {number} [revision]
+ * @returns {{parent: any, levels: Array<{id: string, data: any}>, tokens: Array<{id: string, data: any}>, state: any, diagnostics: Array<{path: string, severity: string, conservativeBytes: number}>}}
+ */
+export function splitSnapshotForFirestoreV3(snapshot, sessionId, revision = Date.now()) {
+  if (!snapshot || typeof snapshot !== 'object' || !snapshot.campaign || typeof snapshot.campaign !== 'object') {
+    throw new Error('Snapshot v3 invalide : campaign requis');
+  }
+  assertNoTransientAssetUrls(snapshot, 'snapshot');
+  /** @type {any} */
+  const campaign = snapshot.campaign;
+  if (!Array.isArray(campaign.levels) || !Array.isArray(campaign.tokens)) {
+    throw new Error('Snapshot v3 invalide : levels et tokens requis');
+  }
+  const levelIds = campaign.levels.map((/** @type {any} */ level) => level?.id);
+  const tokenIds = campaign.tokens.map((/** @type {any} */ token) => token?.id);
+  if (levelIds.some((/** @type {any} */ id) => typeof id !== 'string' || !id) || new Set(levelIds).size !== levelIds.length) {
+    throw new Error('Snapshot v3 invalide : identifiants d’étage uniques requis');
+  }
+  if (tokenIds.some((/** @type {any} */ id) => typeof id !== 'string' || !id) || new Set(tokenIds).size !== tokenIds.length) {
+    throw new Error('Snapshot v3 invalide : identifiants de pion uniques requis');
+  }
+
+  const parent = {
+    schemaVersion: FIRESTORE_V3_SCHEMA_VERSION,
+    revision,
+    campaignId: campaign.campaignId,
+    name: campaign.name,
+    links: campaign.links ?? [],
+    settings: campaign.settings ?? {},
+    levelIds,
+    tokenIds,
+    activeLevelId: snapshot.activeLevelId ?? null,
+    selectedTokenId: snapshot.selectedTokenId ?? null,
+    activeHandout: snapshot.activeHandout ?? null,
+  };
+  const levels = campaign.levels.map((/** @type {any} */ level) => ({
+    id: level.id,
+    data: { revision, level: encodeSnapshotForFirestore({ levels: [level] }).levels[0] },
+  }));
+  const tokens = campaign.tokens.map((/** @type {any} */ token) => ({ id: token.id, data: { revision, token: { ...token } } }));
+  const state = {
+    revision,
+    templates: campaign.templates ?? [],
+  };
+
+  const documents = [
+    { path: `campaigns/${sessionId}`, data: parent },
+    ...levels.map((/** @type {any} */ entry) => ({ path: `campaigns/${sessionId}/levels/${entry.id}`, data: entry.data })),
+    ...tokens.map((/** @type {any} */ entry) => ({ path: `campaigns/${sessionId}/tokens/${entry.id}`, data: entry.data })),
+    { path: `campaigns/${sessionId}/state/current`, data: state },
+  ];
+  if (documents.length > FIRESTORE_BATCH_MAX_OPERATIONS) {
+    throw new Error(`Snapshot v3 trop fragmenté : ${documents.length} opérations dépassent la limite de lot ${FIRESTORE_BATCH_MAX_OPERATIONS}.`);
+  }
+  const diagnostics = documents.map((/** @type {{path: string, data: object}} */ { path, data }) => {
+    const measure = measureFirestoreDocument(data, path);
+    if (measure.severity === 'error') throw new Error(measure.message);
+    return { path, severity: measure.severity, conservativeBytes: measure.conservativeBytes };
+  });
+  return { parent, levels, tokens, state, diagnostics };
+}
+
+/**
+ * Construit le parent de transition v2 → v3. Le gros champ `campaign` est volontairement
+ * conservé jusqu'à ce que la révision v3 soit relue avec succès : une coupure entre le batch
+ * et cette vérification laisse alors deux représentations lisibles, jamais une campagne perdue.
+ *
+ * @param {any} legacyV2 document v2 déjà encodé pour Firestore
+ * @param {any} v3Parent métadonnées v3 autoritatives
+ */
+export function createFirestoreV3TransitionParent(legacyV2, v3Parent) {
+  if (!legacyV2 || typeof legacyV2 !== 'object' || !v3Parent || typeof v3Parent !== 'object') {
+    throw new Error('Parent de transition v3 invalide');
+  }
+  return {
+    ...legacyV2,
+    ...v3Parent,
+    migration: {
+      legacyV2CleanupPending: true,
+      revision: v3Parent.revision,
+    },
+  };
+}
+
+/**
+ * Reconstitue le modèle v2 en mémoire depuis les documents v3. Le schéma applicatif reste v2 :
+ * v3 est uniquement une disposition de persistance Firestore.
+ *
+ * @param {any} parent
+ * @param {Array<{id: string, data: any}>} levels
+ * @param {Array<{id: string, data: any}>} tokens
+ * @param {any} state
+ */
+export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
+  if (!parent || parent.schemaVersion !== FIRESTORE_V3_SCHEMA_VERSION) {
+    throw new Error('Parent Firestore v3 invalide');
+  }
+  const expected = Array.isArray(parent.levelIds) ? parent.levelIds : [];
+  const expectedTokens = Array.isArray(parent.tokenIds) ? parent.tokenIds : [];
+  if (expected.some((/** @type {any} */ id) => typeof id !== 'string') || expectedTokens.some((/** @type {any} */ id) => typeof id !== 'string')) {
+    throw new Error('Snapshot v3 corrompu : listes d’identifiants invalides');
+  }
+  if (!state || state.revision !== parent.revision) {
+    throw new Error('Snapshot v3 incohérent : état global d’une autre révision');
+  }
+  const byId = new Map(
+    levels
+      .filter((entry) => entry?.data?.revision === parent.revision && entry.data.level)
+      .map((entry) => [entry.id, decodeSnapshotFromFirestore({ levels: [entry.data.level] }).levels[0]])
+  );
+  if (expected.some((/** @type {any} */ id) => !byId.has(id))) {
+    throw new Error('Snapshot v3 incomplet : un étage référencé manque');
+  }
+  const tokensById = new Map(
+    tokens
+      .filter((entry) => entry?.data?.revision === parent.revision && entry.data.token)
+      .map((entry) => [entry.id, entry.data.token])
+  );
+  if (expectedTokens.some((/** @type {any} */ id) => !tokensById.has(id))) {
+    throw new Error('Snapshot v3 incomplet : un pion référencé manque');
+  }
+  return {
+    campaign: {
+      schemaVersion: 2,
+      campaignId: parent.campaignId,
+      name: parent.name,
+      links: parent.links ?? [],
+      settings: parent.settings ?? {},
+      levels: expected.map((/** @type {any} */ id) => byId.get(id)),
+      tokens: expectedTokens.map((/** @type {any} */ id) => tokensById.get(id)),
+      templates: state?.templates ?? [],
+    },
+    activeLevelId: parent.activeLevelId ?? null,
+    selectedTokenId: parent.selectedTokenId ?? null,
+    activeHandout: parent.activeHandout ?? null,
+  };
+}
+
+/**
+ * Lit une révision v3 cohérente. Les lectures Firestore de sous-documents ne sont pas un
+ * instantané multi-documents ; chaque partie porte donc la révision du parent et une seconde
+ * tentative bornée est faite lorsqu'une sauvegarde concurrente a déplacé ce parent.
+ *
+ * @param {any} parentRef
+ * @param {any} initialParent
+ * @returns {Promise<any>}
+ */
+async function readFirestoreV3Snapshot(parentRef, initialParent) {
+  /** @type {any} */
+  let parent = initialParent;
+  /** @type {unknown} */
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const levelIds = Array.isArray(parent.levelIds) ? parent.levelIds : [];
+    const tokenIds = Array.isArray(parent.tokenIds) ? parent.tokenIds : [];
+    if (levelIds.some((/** @type {any} */ id) => typeof id !== 'string') || tokenIds.some((/** @type {any} */ id) => typeof id !== 'string')) {
+      throw new Error('Snapshot v3 corrompu : listes d’identifiants invalides');
+    }
+    try {
+      const [levelsSnap, tokensSnap, stateSnap] = await Promise.all([
+        Promise.all(levelIds.map((/** @type {any} */ id) => getDoc(doc(parentRef, 'levels', id)))),
+        Promise.all(tokenIds.map((/** @type {any} */ id) => getDoc(doc(parentRef, 'tokens', id)))),
+        getDoc(doc(parentRef, 'state', 'current')),
+      ]);
+      const joined = joinSnapshotFromFirestoreV3(
+        parent,
+        levelsSnap.filter((entry) => entry.exists()).map((entry) => ({ id: entry.id, data: entry.data() })),
+        tokensSnap.filter((entry) => entry.exists()).map((entry) => ({ id: entry.id, data: entry.data() })),
+        stateSnap.exists() ? stateSnap.data() : {}
+      );
+      const confirmedParent = await getDoc(parentRef);
+      if (!confirmedParent.exists() || confirmedParent.data().schemaVersion !== FIRESTORE_V3_SCHEMA_VERSION || confirmedParent.data().revision !== parent.revision) {
+        throw new Error('Snapshot v3 concurrencé pendant sa lecture');
+      }
+      return joined;
+    } catch (err) {
+      lastError = err;
+      if (attempt === 1) break;
+      const retryParent = await getDoc(parentRef);
+      if (!retryParent.exists() || retryParent.data().schemaVersion !== FIRESTORE_V3_SCHEMA_VERSION) throw err;
+      parent = retryParent.data();
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -1043,7 +1291,13 @@ export class FirebaseTransport {
           const docRef = doc(this._firestore, 'campaigns', sessionId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            etat = decodeSnapshotFromFirestore(docSnap.data());
+            const parent = docSnap.data();
+            if (parent.schemaVersion === FIRESTORE_V3_SCHEMA_VERSION) {
+              etat = await readFirestoreV3Snapshot(docRef, parent);
+            } else {
+              // Compatibilité v2 : la migration ne réécrit jamais un parent v2 à la lecture.
+              etat = decodeSnapshotFromFirestore(parent);
+            }
           }
         } catch (err) {
           this._reportError(err, `lecture du snapshot "${sessionId}"`);
@@ -1093,19 +1347,20 @@ export class FirebaseTransport {
     if (!this._sessionId) {
       throw new Error('Transport non connecté');
     }
+    const sessionId = this._sessionId;
     if (!campaignData || typeof campaignData !== 'object') {
       throw new Error('Snapshot invalide pour sauvegarde');
     }
     assertNoTransientAssetUrls(campaignData, 'snapshot');
 
-    // Mesuré et vérifié avant la première écriture, y compris quand Firestore est absent :
-    // un instantané que Firestore refuserait doit être refusé de la même façon en ligne et
-    // hors ligne, sinon le défaut n'apparaît qu'en séance.
-    const measurement = measureFirestoreSnapshot(campaignData, this._sessionId);
-    if (measurement.severity === 'error') {
-      throw new Error(measurement.message);
-    }
-    const documentFirestore = measurement.documentFirestore;
+    // Le diagnostic global v2 reste utile à la migration, mais il ne doit plus refuser une
+    // campagne v3 répartie : ce sont les pré-vols par document de splitSnapshotForFirestoreV3
+    // qui décident de chaque écriture réelle.
+    measureFirestoreSnapshot(campaignData, this._sessionId);
+    // Pré-vol pur avant toute construction de référence ou transaction SDK. La révision 0
+    // n'est qu'un gabarit de taille ; le callback transactionnel recalcule ensuite la révision
+    // monotone réelle et le plafond avec le parent courant.
+    splitSnapshotForFirestoreV3(campaignData, sessionId, 0);
 
     // Les URL HTTP(S) persistantes sont conservées dans le repli local.
     if (typeof localStorage !== 'undefined') {
@@ -1116,10 +1371,73 @@ export class FirebaseTransport {
       }
     }
 
-    // Firestore sauvegarde le complet (avec imageUrl)
+    // Firestore v3 répartit les étages et pions. Le parent et toutes ses parties sont écrits
+    // dans la même transaction optimiste : aucune révision partielle ne devient visible.
     if (this._firestore) {
       try {
-        await setDoc(doc(this._firestore, 'campaigns', this._sessionId), documentFirestore);
+        const parentRef = doc(this._firestore, 'campaigns', sessionId);
+        const written = await runFirestoreTransaction(this._firestore, async (transaction) => {
+          // Toutes les lectures précèdent les écritures. Firestore rejoue le callback si le
+          // parent change : les suppressions et la révision sont donc dérivées de la version
+          // réellement validée, jamais d'une énumération périmée de sous-collection.
+          const previousParentSnap = await transaction.get(parentRef);
+          const existingParent = previousParentSnap.exists() ? previousParentSnap.data() : null;
+          const v3 = splitSnapshotForFirestoreV3(
+            campaignData,
+            sessionId,
+            nextFirestoreV3Revision(existingParent)
+          );
+          const oldLevelIds = existingParent?.schemaVersion === FIRESTORE_V3_SCHEMA_VERSION
+            ? existingParent.levelIds : [];
+          const oldTokenIds = existingParent?.schemaVersion === FIRESTORE_V3_SCHEMA_VERSION
+            ? existingParent.tokenIds : [];
+          if (!Array.isArray(oldLevelIds) || !Array.isArray(oldTokenIds) ||
+              oldLevelIds.some((id) => typeof id !== 'string') || oldTokenIds.some((id) => typeof id !== 'string')) {
+            throw new Error('Parent Firestore v3 corrompu : listes d’identifiants invalides');
+          }
+          const knownLevelIds = new Set(v3.levels.map((entry) => entry.id));
+          const knownTokenIds = new Set(v3.tokens.map((entry) => entry.id));
+          const deletes = [
+            ...oldLevelIds.filter((id) => !knownLevelIds.has(id)).map((id) => doc(parentRef, 'levels', id)),
+            ...oldTokenIds.filter((id) => !knownTokenIds.has(id)).map((id) => doc(parentRef, 'tokens', id)),
+          ];
+          const operations = 2 + v3.levels.length + v3.tokens.length + deletes.length;
+          if (operations > FIRESTORE_BATCH_MAX_OPERATIONS) {
+            throw new Error(`Snapshot v3 trop fragmenté : ${operations} opérations (dont suppressions) dépassent ${FIRESTORE_BATCH_MAX_OPERATIONS}.`);
+          }
+          // Une sauvegarde concurrente peut avoir déjà posé le parent v3 tout en laissant le
+          // secours v2 en attente de nettoyage. Il doit alors survivre aussi à cette révision.
+          const mustPreserveV2 = existingParent?.campaign && typeof existingParent.campaign === 'object';
+          const parentForBatch = mustPreserveV2
+            ? createFirestoreV3TransitionParent(existingParent, v3.parent)
+            : v3.parent;
+          const parentMeasure = measureFirestoreDocument(parentForBatch, `campaigns/${sessionId}`);
+          if (parentMeasure.severity === 'error') throw new Error(parentMeasure.message);
+          for (const entry of v3.levels) transaction.set(doc(parentRef, 'levels', entry.id), entry.data);
+          for (const entry of v3.tokens) transaction.set(doc(parentRef, 'tokens', entry.id), entry.data);
+          transaction.set(doc(parentRef, 'state', 'current'), v3.state);
+          for (const entry of deletes) transaction.delete(entry);
+          transaction.set(parentRef, parentForBatch);
+          return { v3, mustPreserveV2 };
+        });
+        const v3 = written.v3;
+        const mustPreserveV2 = written.mustPreserveV2;
+
+        if (mustPreserveV2) {
+          // Déletion ciblée et conditionnelle : une écriture concurrente laisse le secours v2.
+          await runFirestoreTransaction(this._firestore, async (transaction) => {
+            const current = await transaction.get(parentRef);
+            if (!current.exists()) throw new Error('Transition v3 interrompue avant le nettoyage');
+            const currentParent = current.data();
+            // Une révision plus récente possède son propre nettoyage conditionnel. Ne jamais
+            // supprimer son secours v2 avec la révision qui vient d'être remplacée.
+            if (currentParent.schemaVersion !== FIRESTORE_V3_SCHEMA_VERSION || currentParent.revision !== v3.parent.revision) return;
+            transaction.update(parentRef, {
+              campaign: deleteField(),
+              migration: deleteField(),
+            });
+          });
+        }
       } catch (err) {
         this._reportError(err, `sauvegarde du snapshot "${this._sessionId}"`);
         throw err;
@@ -1134,7 +1452,35 @@ export class FirebaseTransport {
    */
   getSnapshotSizeDiagnostic(campaignData) {
     assertNoTransientAssetUrls(campaignData, 'snapshot');
-    return measureFirestoreSnapshot(campaignData, this._sessionId || 'measure');
+    try {
+      const { diagnostics } = splitSnapshotForFirestoreV3(
+        campaignData,
+        this._sessionId || 'measure',
+        0
+      );
+      const warningDocuments = diagnostics.filter((entry) => entry.severity === 'warning');
+      const largest = diagnostics.reduce(
+        (current, entry) => entry.conservativeBytes > current.conservativeBytes ? entry : current,
+        { path: '', severity: 'ok', conservativeBytes: 0 }
+      );
+      return {
+        documents: diagnostics,
+        conservativeBytes: largest.conservativeBytes,
+        severity: warningDocuments.length > 0 ? 'warning' : 'ok',
+        message: warningDocuments.length > 0
+          ? `Snapshot Firestore v3 : ${warningDocuments.length} document(s) proche(s) du plafond ; ` +
+            `le plus volumineux est ${largest.path} (${formatKib(largest.conservativeBytes)}).`
+          : `Snapshot Firestore v3 : ${diagnostics.length} documents ; le plus volumineux est ` +
+            `${largest.path} (${formatKib(largest.conservativeBytes)}).`,
+      };
+    } catch (error) {
+      return {
+        documents: [],
+        conservativeBytes: 0,
+        severity: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   /**

@@ -16,9 +16,9 @@
 | Lot 1a — plateau | Code complet ; les validations de longue durée restent des contrôles d'exploitation |
 | Lot 1b — préparation MJ | 4 critères sur 4 |
 | Lot 2 — lignes de vue, portes et tactique | **13 critères sur 13** ; les critères 4, 10 et 11 ont été confirmés par le mainteneur le 07/08/2026 |
-| Lot 3 — étages et lumière | 3 critères sur 6 ; pas d'éditeur de liaisons, pas de campagne réelle à trois étages, lumières non exploitées |
+| Lot 3 — étages et lumière | **5 critères sur 6** ; éditeur et parcours multi-étages livrés, lumières exploitées ; la campagne réelle à trois étages reste à fournir |
 | Lot 4 — hexagone et confort | 1 critère sur 6 ; seul l'undo du fog est acquis |
-| Vérification automatisée | 304 tests unitaires réussis ; 144 tests navigateur réussis ; 2 scénarios Firebase réels conditionnés par le secret CI ; 3 gestes bloquants réussis |
+| Vérification automatisée | 324 tests unitaires réussis ; 148 tests navigateur réussis ; 2 scénarios Firebase réels conditionnés par le secret CI ; 3 gestes bloquants réussis |
 
 Le projet est jouable, mais la 1.0 reste bloquée principalement par la persistance Firebase,
 le fonctionnement local réellement hors ligne, les performances du store sur les campagnes
@@ -161,17 +161,23 @@ outillage ne vaut pas verdict physique.
 
 ## 6. Phase 3 — terminer le lot 3
 
-| ID | Travail | Critère de sortie |
-|---|---|---|
-| R3-01 | Créer l'éditeur de liaisons | Le MJ pose, associe, oriente et supprime deux extrémités sans éditer le JSON |
-| R3-02 | Créer une campagne réelle à trois étages | Les trois étages s'importent, se sélectionnent et persistent sans alignement manuel |
-| R3-03 | Tester le parcours multi-étages de bout en bout | Téléportation, suivi de la vue, cadenas et fog indépendant sont vérifiés dans un même scénario |
-| R3-04 | Implémenter l'ambiance et les lumières fixes | Les sources UVTT et l'ambiance de niveau alimentent la vision sans fuite aux angles |
-| R3-05 | Implémenter `emitsLight` | Déplacer un pion lumineux met à jour la vision dans le budget accepté |
-| R3-06 | Traiter `baked_lighting` | Une carte déjà éclairée est signalée et ne reçoit pas un second assombrissement incohérent |
+| ID | Travail | Critère de sortie | État au 07/08/2026 |
+|---|---|---|---|
+| R3-01 | Créer l'éditeur de liaisons | Le MJ pose, associe, oriente et supprime deux extrémités sans éditer le JSON | **Fait** — extrémités sur deux étages distincts, sens unique, `gmOnly`, sélection, suppression et rendu MJ/joueurs |
+| R3-02 | Créer une campagne réelle à trois étages | Les trois étages s'importent, se sélectionnent et persistent sans alignement manuel | **Partiel** — persistance Firestore v3 transactionnelle et fixture synthétique trois étages acquises ; trois cartes réelles licenciées manquent encore |
+| R3-03 | Tester le parcours multi-étages de bout en bout | Téléportation, suivi de la vue, cadenas et fog indépendant sont vérifiés dans un même scénario | **Fait** — scénario deux pages, trois niveaux déclarés, traversée, suivi, cadenas, fog distinct et restauration après F5 |
+| R3-04 | Implémenter l'ambiance et les lumières fixes | Les sources UVTT et l'ambiance de niveau alimentent la vision sans fuite aux angles | **Fait côté code et tests** — modèle binaire, sources bornées et occultées par le sweep commun |
+| R3-05 | Implémenter `emitsLight` | Déplacer un pion lumineux met à jour la vision dans le budget accepté | **Code fait, mesure matérielle ouverte** — republication sans `rAF` prouvée ; profil bureau indicatif, budget tablette à constater |
+| R3-06 | Traiter `baked_lighting` | Une carte déjà éclairée est signalée et ne reçoit pas un second assombrissement incohérent | **Fait** — pleine ambiance forcée, avertissement MJ visible et réglage désactivé |
 
 **Dépendances obligatoires :** R1-04/R1-05 pour la taille Firestore, puis R2-01 pour la marge de
-performance. Le lot 3 ne doit pas contourner ces deux portes.
+performance. Le schéma v3 décidé par l'ADR-012 est désormais implanté : parent léger, documents
+par étage et pion, révisions cohérentes et écriture transactionnelle.
+
+**Porte R3 non fermée au 07/08/2026.** Le comportement automatisable porte le lot à 5 critères sur
+6. Il reste à importer trois vraies cartes autorisées, puis à relever sur la tablette cible le coût
+d'une mutation lumineuse représentative. Une fixture synthétique et un profil de bureau ne valent
+ni campagne jouée, ni verdict matériel.
 
 ## 7. Phase 4 — contenu et confort de table
 

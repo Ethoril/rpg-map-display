@@ -14,6 +14,18 @@ service cloud.firestore {
 
     match /campaigns/{sessionId} {
       allow read, write: if isTableUser();
+
+      // Schéma Firestore v3 : aucune règle récursive. Les trois sous-collections
+      // connues restent accessibles à la table, tout autre sous-chemin est refusé.
+      match /levels/{levelId} {
+        allow read, write: if isTableUser();
+      }
+      match /tokens/{tokenId} {
+        allow read, write: if isTableUser();
+      }
+      match /state/current {
+        allow read, write: if isTableUser();
+      }
     }
   }
 }

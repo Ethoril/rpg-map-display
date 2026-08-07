@@ -9,6 +9,7 @@ import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
+import { LinksLayer } from '../render/layers/links.js';
 import { WallsLayer } from '../render/layers/walls.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 
@@ -105,6 +106,7 @@ export async function bootstrapGMApp(options = {}) {
   const gridLayer = new GridLayer();
   const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
+  const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -254,6 +256,10 @@ export async function bootstrapGMApp(options = {}) {
     lastVisibleSignatureMap.set(levelId, signature);
 
     void visibleFog.exportPng().then((png) => {
+      // `encodeFogPng` est asynchrone. Une mutation plus récente peut avoir changé la
+      // signature pendant la compression ; dans ce cas publier ce PNG réinstallerait une
+      // vision ancienne chez les joueurs après la vision récente.
+      if (lastVisibleSignatureMap.get(levelId) !== signature) return;
       store.setSessionVision(levelId, png);
       transport?.publish({
         type: 'vision.update',
@@ -440,6 +446,7 @@ export async function bootstrapGMApp(options = {}) {
     grid: 0,
     walls: 0,
     portals: 0,
+    links: 0,
     moveZone: 0,
     templates: 0,
     tokens: 0,
@@ -501,6 +508,7 @@ export async function bootstrapGMApp(options = {}) {
     layerDurations.grid = 0;
     layerDurations.walls = 0;
     layerDurations.portals = 0;
+    layerDurations.links = 0;
     layerDurations.moveZone = 0;
     layerDurations.templates = 0;
     layerDurations.tokens = 0;
@@ -532,6 +540,13 @@ export async function bootstrapGMApp(options = {}) {
         });
         animationActive ||= result.animationActive;
         layerDurations.portals = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      links: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        linksLayer.render(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
+          role: 'gm', zoom: camera.zoom, selectedLinkId: gmPanel?.linkEditor?.getSelectedLinkId() ?? null,
+        });
+        layerDurations.links = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       moveZone: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -861,6 +876,12 @@ export async function bootstrapGMApp(options = {}) {
             });
           }
         },
+        onAddLink: (link) => {
+          transport?.publish({ type: 'link.add', payload: { link }, at: Date.now(), by: 'gm' });
+        },
+        onRemoveLink: (linkId) => {
+          transport?.publish({ type: 'link.delete', payload: { linkId }, at: Date.now(), by: 'gm' });
+        },
         // Le panneau affiche et demande ; il ne connaît ni le registre de présence ni le
         // `clientId` du transport. Les deux restent ici.
         getOtherGmSessions: () => listOtherGmClients(transportExtended?.clientId ?? ''),
@@ -992,6 +1013,13 @@ export async function bootstrapGMApp(options = {}) {
           gmPanel.templateTools.disarm();
           requestRender();
         }
+        return;
+      }
+
+      if (activeToolName === 'link-place') {
+        const grid = gridFor(activeLevel);
+        const cell = grid.cellFromPoint(intention.mapPos);
+        if (cell) gmPanel?.linkEditor?.setEndpointA(activeLevel.id, cell);
         return;
       }
 

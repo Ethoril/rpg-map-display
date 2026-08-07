@@ -60,7 +60,7 @@
  * @property {string} id
  * @property {CellPoint} at
  * @property {number} range
- * @property {number} intensity Échelle indéterminée (valeurs mesurées entre 2.5 et 3.0 sur le corpus réel UVTT)
+ * @property {number} intensity Intensité normalisée entre 0 et 1
  * @property {string} color
  * @property {boolean} shadows
  */

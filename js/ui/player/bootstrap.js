@@ -210,15 +210,16 @@ export function bootstrapPlayerView(options) {
         !selectedToken.locked &&
         selectedToken.playerMovable !== false
       ) {
+        let destination;
         try {
-          store.traverseLink(selectedToken.id, liaison.link.id);
+          destination = store.traverseLink(selectedToken.id, liaison.link.id);
         } catch {
           onDestinationRejected(targetCell, 'refused');
           return;
         }
         transport?.publish({
           type: 'link.traverse',
-          payload: { tokenId: selectedToken.id, linkId: liaison.link.id },
+          payload: { tokenId: selectedToken.id, linkId: liaison.link.id, destination },
           at: Date.now(),
           by: 'players',
         });

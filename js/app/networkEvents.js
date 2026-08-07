@@ -5,6 +5,24 @@ import { isPersistableAssetUrl } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
 
+/** Les événements de traversée sont petits mais non commutatifs : mémoriser un
+ * nombre borné d'identifiants évite qu'un rejeu ne fasse redescendre un pion. */
+const SEEN_LINK_TRAVERSE_EVENT_IDS_LIMIT = 256;
+const seenLinkTraverseEventIds = new Set();
+/** @type {string[]} */
+const seenLinkTraverseEventIdsOrder = [];
+
+/** @param {string} eventId */
+function rememberLinkTraverseEventId(eventId) {
+  if (seenLinkTraverseEventIds.has(eventId)) return;
+  seenLinkTraverseEventIds.add(eventId);
+  seenLinkTraverseEventIdsOrder.push(eventId);
+  if (seenLinkTraverseEventIdsOrder.length > SEEN_LINK_TRAVERSE_EVENT_IDS_LIMIT) {
+    const expired = seenLinkTraverseEventIdsOrder.shift();
+    if (expired) seenLinkTraverseEventIds.delete(expired);
+  }
+}
+
 /**
  * Applique un événement réseau au store de façon idempotente.
  * Firebase reste entièrement hors de ce module.
@@ -58,6 +76,19 @@ export function applyNetworkEvent(event) {
       store.updateLevel(payload.levelId, { grid: payload.grid });
       return true;
     }
+    case 'level.ambient': {
+      if (!payload.levelId || !payload.ambient || typeof payload.ambient !== 'object') return false;
+      if (!campaign?.levels.some((level) => level.id === payload.levelId)) return false;
+      try {
+        store.updateLevel(payload.levelId, { ambient: payload.ambient });
+      } catch (err) {
+        console.error(
+          `Événement "level.ambient" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
     // ── Lot 3, S-02 : la bascule d'étage traverse le réseau ────────────────────────────────
     //
     // Elle ne le faisait pas. `level.add` et `level.grid` existaient depuis le lot 1a, mais changer
@@ -95,8 +126,42 @@ export function applyNetworkEvent(event) {
         console.error('Événement "link.traverse" refusé : payload malformé');
         return false;
       }
+      const eventId = typeof event.eventId === 'string' && event.eventId.length > 0
+        ? event.eventId
+        : null;
+      if (eventId && seenLinkTraverseEventIds.has(eventId)) return false;
+      const destination = payload.destination;
+      if (
+        destination !== undefined &&
+        (!destination ||
+          typeof destination.levelId !== 'string' ||
+          !destination.cell ||
+          !Number.isInteger(destination.cell.a) ||
+          !Number.isInteger(destination.cell.b))
+      ) {
+        console.error('Événement "link.traverse" refusé : destination malformée');
+        return false;
+      }
+      // Un nouvel onglet peut avoir obtenu un instantané déjà postérieur à
+      // l'événement, puis recevoir ce delta pendant le rattrapage. Le pion est
+      // alors déjà à la destination absolue : retenir l'id et converger sans
+      // tenter le sens inverse de la liaison.
+      const tokenAtDestination = destination && campaign?.tokens.find((token) =>
+        token.id === payload.tokenId &&
+        token.levelId === destination.levelId &&
+        token.cell.a === destination.cell.a &&
+        token.cell.b === destination.cell.b
+      );
+      if (tokenAtDestination) {
+        if (eventId) rememberLinkTraverseEventId(eventId);
+        return false;
+      }
       try {
-        store.traverseLink(payload.tokenId, payload.linkId);
+        store.traverseLink(payload.tokenId, payload.linkId, {
+          // Les anciens événements sans destination restent applicables : le
+          // store déduit alors la destination canonique depuis la liaison.
+          expectedDestination: destination,
+        });
       } catch (err) {
         // Un franchissement impossible — pion déplacé entre-temps, liaison retirée — est refusé
         // avec sa raison. Le laisser lever emporterait le réducteur et, avec lui, tous les
@@ -106,7 +171,36 @@ export function applyNetworkEvent(event) {
         );
         return false;
       }
+      if (eventId) rememberLinkTraverseEventId(eventId);
       return true;
+    }
+    // Création absolue : si la liaison est déjà présente, le rejeu est un no-op.
+    case 'link.add': {
+      if (!payload.link || typeof payload.link !== 'object' || typeof payload.link.id !== 'string') {
+        console.error('Événement "link.add" refusé : liaison malformée');
+        return false;
+      }
+      if (campaign?.links.some((link) => link.id === payload.link.id)) return false;
+      try {
+        store.addLink(payload.link);
+      } catch (err) {
+        console.error(`Événement "link.add" refusé : ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+      }
+      return true;
+    }
+    // Supprimer une liaison déjà absente converge vers le même état sans bruit.
+    case 'link.delete': {
+      if (!payload.linkId || typeof payload.linkId !== 'string') {
+        console.error('Événement "link.delete" refusé : identifiant manquant');
+        return false;
+      }
+      try {
+        return store.removeLink(payload.linkId);
+      } catch (err) {
+        console.error(`Événement "link.delete" refusé : ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+      }
     }
     case 'token.add': {
       if (!payload.token) return false;
@@ -404,4 +498,3 @@ export function createSnapshotPayload() {
     activeHandout: state.activeHandout,
   };
 }
-

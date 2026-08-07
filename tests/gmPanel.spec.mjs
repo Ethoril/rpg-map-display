@@ -40,7 +40,7 @@ async function setupGMView(page) {
 }
 
 test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
-  test('les neuf onglets restent accessibles sans débordement à 1280 et 1024 px', async ({ page }) => {
+  test('les dix onglets restent accessibles sans débordement à 1280 et 1024 px', async ({ page }) => {
     for (const width of [1280, 1024]) {
       await page.setViewportSize({ width, height: 800 });
       await setupGMView(page);
@@ -73,7 +73,7 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
   test('les onglets exposent leur relation aux panneaux et se pilotent au clavier', async ({ page }) => {
     await setupGMView(page);
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(9);
+    await expect(tabs).toHaveCount(10);
     await expect(page.locator('.gm-tabs-header')).toHaveAttribute('role', 'tablist');
     await expect(page.locator('#gm-tab-import-uvtt')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#tab-content-import-uvtt')).toHaveAttribute(

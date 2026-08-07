@@ -232,6 +232,22 @@ export function normalizeCampaignColors(campaign) {
 export function normalizeLevel(level) {
   if (!level || typeof level !== 'object') return level;
 
+  // Le corpus UVTT historique encode des intensités arbitraires (souvent 2 à
+  // 5), alors que le contrat R3 les borne à 0..1. C'est une normalisation de
+  // chargement uniquement : une mutation réseau hors bornes reste refusée par
+  // validateCampaign.
+  if (Array.isArray(level.lights)) {
+    for (const light of level.lights) {
+      if (!light || typeof light !== 'object') continue;
+      if (Number.isFinite(light.intensity)) {
+        light.intensity = Math.min(Math.max(light.intensity, 0), 1);
+      }
+      if (Number.isFinite(light.range)) {
+        light.range = Math.min(Math.max(light.range, 0), 20);
+      }
+    }
+  }
+
   if (Array.isArray(level.portals)) {
     const levelId = level.id || 'inconnu';
     for (const portal of level.portals) {
@@ -278,6 +294,20 @@ export function normalizeToken(token) {
   }
   if (token.health === undefined) {
     token.health = 'unharmed';
+  }
+  // Les premières campagnes utilisaient parfois `false` pour « aucune lumière ».
+  // Le contrat actuel est explicite : `null` ou un objet borné. La normalisation
+  // ne rend pas les mutations réseau permissives, celles-ci repassent par la
+  // validation stricte de `updateToken`.
+  if (token.emitsLight === undefined || token.emitsLight === false) {
+    token.emitsLight = null;
+  } else if (token.emitsLight && typeof token.emitsLight === 'object' && !Array.isArray(token.emitsLight)) {
+    if (Number.isFinite(token.emitsLight.range)) {
+      token.emitsLight.range = Math.min(Math.max(token.emitsLight.range, 0), 20);
+    }
+    if (Number.isFinite(token.emitsLight.intensity)) {
+      token.emitsLight.intensity = Math.min(Math.max(token.emitsLight.intensity, 0), 1);
+    }
   }
   return token;
 }
@@ -367,8 +397,8 @@ function isValidLinkEndpoint(extremite) {
       typeof extremite.levelId === 'string' &&
       extremite.levelId.length > 0 &&
       extremite.at &&
-      Number.isFinite(extremite.at.cellX) &&
-      Number.isFinite(extremite.at.cellY)
+      Number.isInteger(extremite.at.cellX) &&
+      Number.isInteger(extremite.at.cellY)
   );
 }
 
@@ -403,12 +433,35 @@ export function validateLinks(campaign) {
     if (vus.has(lien.id)) erreurs.push(`Liaison ${nom} : identifiant en double`);
     vus.add(lien.id);
 
+    if (!['stairs', 'elevator', 'ladder', 'hatch', 'passage'].includes(lien.kind)) {
+      erreurs.push(`Liaison ${nom} : type invalide`);
+    }
+    if (typeof lien.label !== 'string') erreurs.push(`Liaison ${nom} : libellé invalide`);
+    if (typeof lien.bidirectional !== 'boolean') erreurs.push(`Liaison ${nom} : sens invalide`);
+    if (typeof lien.gmOnly !== 'boolean') erreurs.push(`Liaison ${nom} : visibilité MJ invalide`);
+
     for (const cote of /** @type {const} */ (['a', 'b'])) {
       if (!isValidLinkEndpoint(lien[cote])) {
         erreurs.push(`Liaison ${nom} : extrémité "${cote}" invalide`);
       } else if (etages.size > 0 && !etages.has(lien[cote].levelId)) {
         erreurs.push(`Liaison ${nom} : étage inconnu "${lien[cote].levelId}" à l'extrémité "${cote}"`);
+      } else {
+        const level = (campaign.levels ?? []).find((/** @type {any} */ level) => level?.id === lien[cote].levelId);
+        if (
+          level &&
+          (lien[cote].at.cellX < 0 || lien[cote].at.cellY < 0 ||
+            lien[cote].at.cellX >= level.widthCells || lien[cote].at.cellY >= level.heightCells)
+        ) {
+          erreurs.push(`Liaison ${nom} : extrémité "${cote}" hors limites de l'étage "${level.id}"`);
+        }
       }
+    }
+    if (
+      isValidLinkEndpoint(lien.a) &&
+      isValidLinkEndpoint(lien.b) &&
+      lien.a.levelId === lien.b.levelId
+    ) {
+      erreurs.push(`Liaison ${nom} : les extrémités doivent appartenir à deux étages distincts`);
     }
   }
 
@@ -791,16 +844,56 @@ export function validateCampaign(campaign) {
           }
         }
 
-        // Validation des couleurs de lumière
+        // Les lumières fixes sont partagées par le réseau : valider chaque
+        // propriété séparément rend le refus actionnable côté MJ.
+        const knownLightIds = new Set();
         for (const light of level.lights) {
-          if (!light || !isValidHexColor(light.color)) {
-            const lightColor = light?.color;
-            errors.push(`Étage "${levelId || 'inconnu'}" : lumière "${light?.id || 'inconnue'}" a une couleur invalide "${lightColor}" (format #RRGGBB attendu)`);
+          const lightId = light?.id || 'inconnue';
+          const lightPrefix = `Étage "${levelId || 'inconnu'}" : lumière "${lightId}"`;
+          if (!light || typeof light !== 'object') {
+            errors.push(`${lightPrefix} doit être un objet`);
+            continue;
+          }
+          if (typeof light.id !== 'string' || light.id.trim() === '') {
+            errors.push(`${lightPrefix} : id doit être une chaîne non vide`);
+          } else if (knownLightIds.has(light.id)) {
+            errors.push(`${lightPrefix} : id dupliqué`);
+          } else {
+            knownLightIds.add(light.id);
+          }
+          if (
+            !light.at ||
+            !Number.isFinite(light.at.cellX) ||
+            !Number.isFinite(light.at.cellY) ||
+            light.at.cellX < 0 ||
+            light.at.cellX > level.widthCells ||
+            light.at.cellY < 0 ||
+            light.at.cellY > level.heightCells
+          ) {
+            errors.push(`${lightPrefix} : coordonnées hors limites de l'étage`);
+          }
+          if (!Number.isFinite(light.range) || light.range < 0 || light.range > 20) {
+            errors.push(`${lightPrefix} : range invalide (nombre entre 0 et 20 attendu)`);
+          }
+          if (!Number.isFinite(light.intensity) || light.intensity < 0 || light.intensity > 1) {
+            errors.push(`${lightPrefix} : intensity invalide (nombre entre 0 et 1 attendu)`);
+          }
+          if (!isValidHexColor(light.color)) {
+            errors.push(`${lightPrefix} : color invalide "${light.color}" (format #RRGGBB attendu)`);
+          }
+          if (typeof light.shadows !== 'boolean') {
+            errors.push(`${lightPrefix} : shadows doit être un booléen`);
           }
         }
         // Validation de la couleur d'ambiance
         if (!isValidHexColor(level.ambient.color)) {
           errors.push(`Étage "${levelId || 'inconnu'}" : éclairage ambiant a une couleur invalide "${level.ambient.color}" (format #RRGGBB attendu)`);
+        }
+        if (!Number.isFinite(level.ambient.level) || level.ambient.level < 0 || level.ambient.level > 1) {
+          errors.push(`Étage "${levelId || 'inconnu'}" : niveau ambiant invalide (nombre entre 0 et 1 attendu)`);
+        }
+        if (typeof level.ambient.baked !== 'boolean') {
+          errors.push(`Étage "${levelId || 'inconnu'}" : indicateur baked ambiant invalide`);
         }
         // Validation des portails de l'étage
         for (const portal of level.portals) {
@@ -894,8 +987,21 @@ export function validateCampaign(campaign) {
         errors.push(`Pion "${tokenId}" : borderColor invalide "${token.borderColor}" (format #RRGGBB attendu)`);
       }
 
-      if (token.emitsLight && !isValidHexColor(token.emitsLight.color)) {
-        errors.push(`Pion "${tokenId}" : emitsLight.color invalide "${token.emitsLight.color}" (format #RRGGBB attendu)`);
+      if (token.emitsLight !== null) {
+        const emitted = token.emitsLight;
+        if (!emitted || typeof emitted !== 'object' || Array.isArray(emitted)) {
+          errors.push(`Pion "${tokenId}" : emitsLight doit être null ou un objet`);
+        } else {
+          if (!Number.isFinite(emitted.range) || emitted.range < 0 || emitted.range > 20) {
+            errors.push(`Pion "${tokenId}" : emitsLight.range invalide (nombre entre 0 et 20 attendu)`);
+          }
+          if (!Number.isFinite(emitted.intensity) || emitted.intensity < 0 || emitted.intensity > 1) {
+            errors.push(`Pion "${tokenId}" : emitsLight.intensity invalide (nombre entre 0 et 1 attendu)`);
+          }
+          if (!isValidHexColor(emitted.color)) {
+            errors.push(`Pion "${tokenId}" : emitsLight.color invalide "${emitted.color}" (format #RRGGBB attendu)`);
+          }
+        }
       }
 
       if (
@@ -1035,6 +1141,8 @@ export function validateCampaign(campaign) {
       }
     }
   }
+
+  errors.push(...validateLinks(campaign));
 
   return errors;
 }

@@ -18,7 +18,7 @@ import {
     normalizeExplicitSessionIds,
 } from '../js/transport/FirebaseTransport.js';
 import { LocalSocketTransport } from '../js/transport/LocalSocketTransport.js';
-import { TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
+import { createCampaign, TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
 import {
     checkBuildMismatch,
     listBuildMismatches,
@@ -248,6 +248,28 @@ test('la garde Firestore nomme le chemin du tableau imbriqué', () => {
     assert.throws(() => assertNoNestedArrays([[1]], 'payload'), /^Error: payload contient/);
 });
 
+test('le diagnostic de sauvegarde mesure les documents v3 séparément', () => {
+    const transport = new FirebaseTransport(validConfig);
+    transport._sessionId = 'session-distribuee';
+    const snapshot = {
+        campaign: {
+            campaignId: 'distribuee', name: 'Campagne distribuée', links: [], settings: {}, templates: [],
+            levels: [
+                { id: 'niveau-a', notes: 'a'.repeat(450 * 1024) },
+                { id: 'niveau-b', notes: 'b'.repeat(450 * 1024) },
+            ],
+            tokens: [],
+        },
+        activeLevelId: 'niveau-a', selectedTokenId: null, activeHandout: null,
+    };
+
+    assert.equal(measureFirestoreSnapshot(snapshot).severity, 'error', 'le document v2 global dépasserait le plafond');
+    const diagnostic = transport.getSnapshotSizeDiagnostic(snapshot);
+    assert.equal(diagnostic.severity, 'ok', 'chaque document v3 reste sous son plafond propre');
+    assert.equal(diagnostic.documents.length, 4, 'parent, deux étages et état global');
+    assert.match(diagnostic.message, /Snapshot Firestore v3 : 4 documents/);
+});
+
 test('saveSnapshot refuse un tableau imbriqué et accepte des murs de carte réelle', async () => {
     const transport = new FirebaseTransport(validConfig);
     transport._sessionId = 'session-murs';
@@ -262,7 +284,13 @@ test('saveSnapshot refuse un tableau imbriqué et accepte des murs de carte rée
     // Un instantané de carte ordinaire, lui, franchit la garde : c'est précisément le cas
     // qui échouait — « Nested arrays are not supported » à la pose d'une carte.
     const walls = [[{ cellX: 0, cellY: 0 }, { cellX: 2, cellY: 0 }]];
-    await transport.saveSnapshot({ campaign: { levels: [{ id: 'rdc', walls }] } });
+    await transport.saveSnapshot({
+        campaign: {
+            campaignId: 'test-murs', name: 'Test murs', links: [], settings: {}, templates: [],
+            levels: [{ id: 'rdc', walls }], tokens: [],
+        },
+        activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+    });
 });
 
 test('la mesure Firestore compte les octets UTF-8 réellement encodés après adaptation des murs', () => {
@@ -281,7 +309,7 @@ test('la mesure Firestore compte les octets UTF-8 réellement encodés après ad
     assert.deepEqual(measurement.documentFirestore, encoded);
 });
 
-test('la garde de taille avertit avant 1 Mio et refuse avant tout setDoc', async () => {
+test('la garde de taille avertit avant 1 Mio et refuse un document v3 surdimensionné avant le SDK', async () => {
     const warning = measureFirestoreSnapshot({ payload: 'a'.repeat(700 * 1024) });
     assert.equal(warning.severity, 'warning');
     assert.ok(warning.conservativeBytes >= FIRESTORE_SNAPSHOT_WARNING_BYTES);
@@ -289,12 +317,18 @@ test('la garde de taille avertit avant 1 Mio et refuse avant tout setDoc', async
 
     const transport = new FirebaseTransport(validConfig);
     transport._sessionId = 'session-trop-grande';
+    transport.onError(() => {});
     // Une fausse instance rendrait `doc()` invalide si la garde atteignait le SDK. Le message
     // de plafond prouve donc que le refus survient avant setDoc, sans réseau Firebase.
     transport._firestore = /** @type {any} */ ({});
     await assert.rejects(
-        transport.saveSnapshot({ payload: 'a'.repeat(850 * 1024) }),
-        /refusé avant écriture.*plafond applicatif.*migre la campagne vers le schéma v3/s
+        transport.saveSnapshot({
+            campaign: createCampaign({ name: 'a'.repeat(850 * 1024) }),
+            activeLevelId: 'rdc',
+            selectedTokenId: null,
+            activeHandout: null,
+        }),
+        /Document Firestore v3 refusé avant écriture.*plafond/s
     );
 });
 

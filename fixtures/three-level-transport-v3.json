@@ -1,0 +1,38 @@
+{
+  "campaign": {
+    "schemaVersion": 2,
+    "campaignId": "transport-three-levels",
+    "name": "Fixture de transport a trois etages",
+    "settings": { "ambientLevel": 1 },
+    "levels": [
+      {
+        "id": "cave", "name": "Cave", "order": -1, "imageUrl": "synthetic/cave.webp", "videoUrl": null,
+        "animatedOverlays": [], "pxPerCell": 140, "widthCells": 12, "heightCells": 8,
+        "grid": { "type": "square", "offsetX": 0, "offsetY": 0, "color": "#000000", "opacity": 0.25, "visible": true },
+        "terrainCost": null, "walls": [], "portals": [], "lights": [], "ambient": { "color": "#ffffff", "level": 1, "baked": false }
+      },
+      {
+        "id": "rdc", "name": "Rez-de-chaussee", "order": 0, "imageUrl": "synthetic/rdc.webp", "videoUrl": null,
+        "animatedOverlays": [], "pxPerCell": 140, "widthCells": 12, "heightCells": 8,
+        "grid": { "type": "square", "offsetX": 0, "offsetY": 0, "color": "#000000", "opacity": 0.25, "visible": true },
+        "terrainCost": null, "walls": [], "portals": [{ "id": "cave-door", "cellX": 2, "cellY": 2, "locked": true }], "lights": [], "ambient": { "color": "#ffffff", "level": 1, "baked": false }
+      },
+      {
+        "id": "etage", "name": "Etage", "order": 1, "imageUrl": "synthetic/etage.webp", "videoUrl": null,
+        "animatedOverlays": [], "pxPerCell": 140, "widthCells": 12, "heightCells": 8,
+        "grid": { "type": "square", "offsetX": 0, "offsetY": 0, "color": "#000000", "opacity": 0.25, "visible": true },
+        "terrainCost": null, "walls": [], "portals": [], "lights": [], "ambient": { "color": "#ffffff", "level": 1, "baked": false }
+      }
+    ],
+    "links": [
+      { "id": "stairs-up", "kind": "stairs", "label": "Escalier", "a": { "levelId": "rdc", "at": { "cellX": 2, "cellY": 2 } }, "b": { "levelId": "etage", "at": { "cellX": 2, "cellY": 2 } }, "bidirectional": true, "gmOnly": false }
+    ],
+    "tokens": [
+      { "id": "hero", "levelId": "rdc", "cell": { "a": 2, "b": 2 }, "sizeCells": 1, "kind": "pc", "imageUrl": "synthetic/hero.webp", "borderColor": "#ffffff", "label": "Hero", "hidden": false, "visionBright": 5, "visionDim": 10, "emitsLight": null, "speedCells": 6, "playerMovable": true, "locked": false, "elevation": 0, "markers": [], "hp": null, "health": "unharmed" }
+    ],
+    "templates": [{ "id": "fog-probe", "levelId": "cave", "shape": "circle", "origin": { "x": 280, "y": 280 }, "radiusCells": 2, "directionDeg": 0, "widthCells": 1, "color": "#ff0000", "visibleToPlayers": true }]
+  },
+  "activeLevelId": "rdc",
+  "selectedTokenId": "hero",
+  "activeHandout": { "id": "transport-note" }
+}

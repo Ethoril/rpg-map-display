@@ -6,6 +6,7 @@ import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
 import { createFogTools } from './fogTools.js';
 import { createWallEditor } from './wallEditor.js';
+import { createLinkEditor } from './linkEditor.js';
 import { createTemplateTools } from './templateTools.js';
 import { VERSION } from '../../core/version.js';
 import { GM_SESSION_STORAGE_KEY, STATUS_MARKER_IDS, STATUS_MARKER_LABEL_FR } from '../../core/constants.js';
@@ -27,6 +28,8 @@ import * as store from '../../state/store.js';
  * @property {() => void} [requestRender]
  * @property {(levelId: string, wall: import('../../core/types.js').CellPoint[]) => void} [onAddWall]
  * @property {(levelId: string, wall: import('../../core/types.js').CellPoint[]) => void} [onRemoveWall]
+ * @property {(link: import('../../core/types.js').Link) => void} [onAddLink]
+ * @property {(linkId: string) => void} [onRemoveLink]
  * @property {() => import('../../state/presence.js').ClientPresence[]} [getOtherGmSessions]
  * @property {() => boolean} [onEvictOtherGms]
  */
@@ -36,7 +39,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{isLevelFollowLocked: () => boolean, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{isLevelFollowLocked: () => boolean, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -74,6 +77,13 @@ export function createGMPanel(container, options = {}) {
       <button id="gm-leave-session" style="padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
     </div>
 
+    <div id="gm-light-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.75rem; background: #2a2518; border-bottom: 1px solid #4d4224;">
+      <label for="gm-ambient-level" style="font-size: 0.78rem; color: #ead59a; white-space: nowrap;">Ambiance</label>
+      <input id="gm-ambient-level" type="range" min="0" max="1" step="0.05" value="1" style="flex: 1; accent-color: #e0ad32;" />
+      <output id="gm-ambient-value" for="gm-ambient-level" style="min-width: 2.4rem; font: 0.75rem ui-monospace, monospace; color: #ead59a;">1.00</output>
+      <span id="gm-baked-warning" role="status" style="display: none; font-size: 0.75rem; color: #ffd166;">⚠ Éclairage déjà cuit : ambiante forcée</span>
+    </div>
+
     <!--
       Barre d'étage — Lot 3, S-02.
 
@@ -98,6 +108,7 @@ export function createGMPanel(container, options = {}) {
       <button class="gm-tab-btn" type="button" id="gm-tab-handouts" role="tab" data-tab="handouts" aria-controls="tab-content-handouts" aria-selected="false" tabindex="-1">Handouts</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-fog-tools" role="tab" data-tab="fog-tools" aria-controls="tab-content-fog-tools" aria-selected="false" tabindex="-1">🌫️ Fog</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-wall-editor" role="tab" data-tab="wall-editor" aria-controls="tab-content-wall-editor" aria-selected="false" tabindex="-1">🧱 Murs</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-link-editor" role="tab" data-tab="link-editor" aria-controls="tab-content-link-editor" aria-selected="false" tabindex="-1">↕ Liaisons</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-template-tools" role="tab" data-tab="template-tools" aria-controls="tab-content-template-tools" aria-selected="false" tabindex="-1">📐 Gabarits</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-grid-settings" role="tab" data-tab="grid-settings" aria-controls="tab-content-grid-settings" aria-selected="false" tabindex="-1">Grille</button>
     </div>
@@ -114,6 +125,9 @@ export function createGMPanel(container, options = {}) {
 
       <div id="tab-content-wall-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-wall-editor" hidden>
         <div id="wall-editor-mount"></div>
+      </div>
+      <div id="tab-content-link-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-link-editor" hidden>
+        <div id="link-editor-mount"></div>
       </div>
 
       <div id="tab-content-template-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-template-tools" hidden>
@@ -271,11 +285,13 @@ export function createGMPanel(container, options = {}) {
   );
   const tabPanes = /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.gm-tab-pane'));
 
-  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place'} */
+  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'} */
   let activeToolName = 'none';
 
   /** @type {ReturnType<typeof createWallEditor>|null} */
   let wallEditor = null;
+  /** @type {ReturnType<typeof createLinkEditor>|null} */
+  let linkEditor = null;
   /** @type {ReturnType<typeof createTemplateTools>|null} */
   let templateTools = null;
   /** @type {ReturnType<typeof createFogTools>|null} */
@@ -289,6 +305,8 @@ export function createGMPanel(container, options = {}) {
       if (tabName === 'fog-tools' && (activeToolName === 'fog-reveal' || activeToolName === 'fog-hide')) {
         isToolTabArmed = true;
       } else if (tabName === 'wall-editor' && (activeToolName === 'wall-draw' || activeToolName === 'wall-delete')) {
+        isToolTabArmed = true;
+      } else if (tabName === 'link-editor' && activeToolName === 'link-place') {
         isToolTabArmed = true;
       } else if (tabName === 'template-tools' && activeToolName === 'template-place') {
         isToolTabArmed = true;
@@ -308,7 +326,7 @@ export function createGMPanel(container, options = {}) {
     return activeToolName;
   }
 
-  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'template-place'} toolName */
+  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'} toolName */
   function setActiveTool(toolName) {
     if (activeToolName === toolName) return;
 
@@ -321,6 +339,9 @@ export function createGMPanel(container, options = {}) {
     if (prevTool.startsWith('wall-') && !toolName.startsWith('wall-')) {
       wallEditor?.setArmed(false);
     }
+    if (prevTool === 'link-place' && toolName !== 'link-place' && linkEditor?.isArmed()) {
+      linkEditor.setArmed(false);
+    }
     if (prevTool === 'template-place' && toolName !== 'template-place') {
       templateTools?.disarm();
     }
@@ -328,6 +349,7 @@ export function createGMPanel(container, options = {}) {
     if (toolName === 'none') {
       if (fogTools?.getActiveTool() !== 'none') fogTools?.disarm();
       if (wallEditor?.isArmed()) wallEditor?.setArmed(false);
+      if (linkEditor?.isArmed()) linkEditor?.setArmed(false);
       if (templateTools?.isArmed()) templateTools?.disarm();
     }
 
@@ -406,6 +428,7 @@ export function createGMPanel(container, options = {}) {
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
   const wallEditorMount = /** @type {HTMLElement} */ (container.querySelector('#wall-editor-mount'));
+  const linkEditorMount = /** @type {HTMLElement} */ (container.querySelector('#link-editor-mount'));
   const templateToolsMount = /** @type {HTMLElement} */ (container.querySelector('#template-tools-mount'));
 
   // Initialisation du composant FogTools
@@ -445,6 +468,17 @@ export function createGMPanel(container, options = {}) {
           setActiveTool('none');
         }
       },
+      requestRender,
+    });
+  }
+
+  if (linkEditorMount) {
+    linkEditor = createLinkEditor(linkEditorMount, {
+      getLevels: () => store.getLevelSummaries(),
+      getLinks: () => store.getLinks(),
+      onAdd: (link) => { store.addLink(link); options.onAddLink?.(link); },
+      onRemove: (linkId) => { if (store.removeLink(linkId)) options.onRemoveLink?.(linkId); },
+      onArmChange: (armed) => setActiveTool(armed ? 'link-place' : 'none'),
       requestRender,
     });
   }
@@ -1052,6 +1086,45 @@ export function createGMPanel(container, options = {}) {
   const levelBar = /** @type {HTMLElement} */ (container.querySelector('#gm-level-bar'));
   const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
   const levelStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-level-status'));
+  const ambientInput = /** @type {HTMLInputElement} */ (container.querySelector('#gm-ambient-level'));
+  const ambientValue = /** @type {HTMLOutputElement} */ (container.querySelector('#gm-ambient-value'));
+  const bakedWarning = /** @type {HTMLElement} */ (container.querySelector('#gm-baked-warning'));
+
+  function updateLightBarFromStore() {
+    const level = store.getRenderSnapshot().activeLevel;
+    const baked = Boolean(level?.ambient?.baked);
+    const value = baked ? 1 : Math.max(0, Math.min(1, Number(level?.ambient?.level) || 0));
+    if (document.activeElement !== ambientInput) ambientInput.value = String(value);
+    ambientValue.value = value.toFixed(2);
+    ambientValue.textContent = value.toFixed(2);
+    ambientInput.disabled = !level || baked;
+    bakedWarning.style.display = baked ? 'inline' : 'none';
+  }
+
+  ambientInput.addEventListener(
+    'change',
+    () => {
+      const level = store.getRenderSnapshot().activeLevel;
+      if (!level || level.ambient?.baked) return;
+      const ambient = {
+        ...level.ambient,
+        level: Math.max(0, Math.min(1, Number(ambientInput.value))),
+      };
+      try {
+        store.updateLevel(level.id, { ambient });
+        transport?.publish({
+          type: 'level.ambient',
+          payload: { levelId: level.id, ambient },
+          at: Date.now(),
+          by: 'gm',
+        });
+      } catch (err) {
+        console.error('Mise à jour de l’ambiance refusée :', err);
+        updateLightBarFromStore();
+      }
+    },
+    { signal: listeners.signal }
+  );
 
   /**
    * Reflète les étages de la campagne et l'étage actif.
@@ -1145,10 +1218,12 @@ export function createGMPanel(container, options = {}) {
   );
 
   updateLevelBarFromStore();
+  updateLightBarFromStore();
 
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
     updateLevelBarFromStore();
+    updateLightBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();
     updateTokenEditUIFromStore();
@@ -1168,6 +1243,7 @@ export function createGMPanel(container, options = {}) {
     tokenMaker,
     fogTools,
     wallEditor,
+    linkEditor,
     templateTools,
     getActiveToolName,
     setActiveTool,

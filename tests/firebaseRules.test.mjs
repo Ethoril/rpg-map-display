@@ -21,6 +21,9 @@ test('les deux moteurs Firebase déploient les règles versionnées du dépôt',
 test('les règles Firestore refusent statiquement l’anonyme, le compte non listé et les autres collections', () => {
   assert.match(firestoreRules, /rules_version\s*=\s*'2'/);
   assert.match(firestoreRules, /match\s+\/campaigns\/\{sessionId\}/);
+  assert.match(firestoreRules, /match\s+\/levels\/\{levelId\}/);
+  assert.match(firestoreRules, /match\s+\/tokens\/\{tokenId\}/);
+  assert.match(firestoreRules, /match\s+\/state\/current/);
   assert.match(firestoreRules, /request\.auth\s*!=\s*null/);
   assert.match(firestoreRules, /auth\.token\.email\s*==\s*'ethoril@gmail\.com'/);
   assert.match(firestoreRules, /auth\.token\.email_verified\s*==\s*true/);

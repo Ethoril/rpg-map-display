@@ -1049,11 +1049,17 @@ bascule auto avec cadenas, lumières portées, ambiante et cycle jour/nuit.
 
 Critères :
 - [ ] Trois étages importés indépendamment, sans alignement manuel.
-- [ ] Taper une case d'escalier téléporte le pion et bascule la vue de la tablette.
-- [ ] Le fog de chaque étage est indépendant et persistant.
-- [ ] Le cadenas empêche la bascule auto quand le groupe est séparé.
-- [ ] Un pion « Torche » éclaire et son déplacement met la vision à jour.
-- [ ] Une carte `baked_lighting: true` est signalée et n'est pas double-éclairée.
+- [x] Taper une case d'escalier téléporte le pion et bascule la vue de la tablette.
+- [x] Le fog de chaque étage est indépendant et persistant.
+- [x] Le cadenas empêche la bascule auto quand le groupe est séparé.
+- [x] Un pion « Torche » éclaire et son déplacement met la vision à jour.
+- [x] Une carte `baked_lighting: true` est signalée et n'est pas double-éclairée.
+
+> **Lot 3 porté à 5/6 le 07/08/2026.** Le parcours complet, le fog et le cadenas sont réunis dans
+> un scénario multi-pages ; l'éditeur de liaisons rend ce parcours préparatoire utilisable sans
+> JSON. Les lumières partagent le sweep borné du lot 2 et `baked_lighting` force une ambiance pleine
+> signalée au MJ. Le premier critère reste ouvert : la persistance v3 et la fixture synthétique à
+> trois étages ne remplacent pas l'import de trois cartes réelles autorisées.
 
 ### Lot 4 — Grille hexagonale & confort de table
 

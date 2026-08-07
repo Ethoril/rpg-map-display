@@ -51,14 +51,16 @@ test('émulateurs : les règles autorisent seulement les deux identités et les 
 
     for (const context of [main, technical]) {
       await assertSucceeds(setDoc(doc(context.firestore(), 'campaigns', 'autorise'), { ok: true }));
+      await assertSucceeds(setDoc(doc(context.firestore(), 'campaigns', 'autorise', 'levels', 'rdc'), { ok: true }));
+      await assertSucceeds(setDoc(doc(context.firestore(), 'campaigns', 'autorise', 'tokens', 'hero'), { ok: true }));
+      await assertSucceeds(setDoc(doc(context.firestore(), 'campaigns', 'autorise', 'state', 'current'), { ok: true }));
       await assertSucceeds(set(ref(context.database(), 'session/autorise/events/e1'), { ok: true }));
       await assertSucceeds(getDoc(doc(context.firestore(), 'campaigns', 'autorise')));
       await assertSucceeds(get(ref(context.database(), 'session/autorise/events')));
 
       await assertFails(setDoc(doc(context.firestore(), 'autre', 'interdit'), { ok: false }));
-      await assertFails(
-        setDoc(doc(context.firestore(), 'campaigns', 'autorise', 'levels', 'interdit'), { ok: false })
-      );
+      await assertFails(setDoc(doc(context.firestore(), 'campaigns', 'autorise', 'other', 'interdit'), { ok: false }));
+      await assertFails(setDoc(doc(context.firestore(), 'campaigns', 'autorise', 'state', 'historique'), { ok: false }));
       await assertFails(set(ref(context.database(), 'hors-session/interdit'), { ok: false }));
     }
   } finally {

@@ -79,11 +79,11 @@ l'éclairage est déjà peint dans l'image ne doit pas recevoir une seconde couc
 
 ## 2. Les tranches, dans l'ordre où elles se débloquent
 
-> **État au 7 août 2026, 0 h 30.** S-01 à S-04 **livrées et éprouvées par mutation**. S-05 **non
-> commencée**. Deux manques nommés au §4.
+> **État au 7 août 2026.** S-01 à S-06 **livrées et éprouvées par mutation**. Les limites
+> de contenu réel et de mesure matérielle restent nommées au §4.
 >
-> Critères du lot : **3 sur 6** — le 3 (fog par étage), le 2 (téléportation et bascule) et le 4
-> (cadenas). Le 1 est partiellement acquis, le 5 et le 6 restent entiers.
+> Critères du lot : **5 sur 6**. Les critères 2 à 6 sont couverts par les tranches livrées. Le
+> critère 1 reste ouvert faute de trois cartes réelles autorisées et importées ensemble.
 
 ### S-01 — Le fog par étage est indépendant *(critère 3)*
 
@@ -109,8 +109,37 @@ Bascule du MJ qui suspend la bascule automatique.
 
 ### S-05 — Lumières et ambiante *(critères 5 et 6)*
 
-`token.emitsLight` et `level.lights` alimentent le masque de vision ; `ambient.level` décide de la
-vision sans lumière ; `baked_lighting` force la pleine lumière et le signale.
+**Livré le 07/08/2026 — modèle volontairement binaire.** `ambient.level > 0` rend l'étage éclairé :
+chaque PJ voit alors jusqu'au plafond technique de 20 cases, découpé par les murs et portes. À
+`ambient.level === 0`, un PJ ne contribue que par son `visionDim` (vision dans le noir), également
+plafonné à 20. Les valeurs intermédiaires ne créent ni dégradé ni coût par pixel.
+
+`level.lights[]` et tout pion dont `emitsLight.range > 0` ajoutent chacun un polygone de sweep à la
+vision courante, même dans le noir. Les sources sont bornées à 20 cases et occultées par exactement
+les mêmes segments que les PJ. Déplacer une torche modifie la signature, recalcule depuis la mutation
+du store et republie la vision sans attendre `requestAnimationFrame`; aucun `getImageData` n'est lu
+sur ce chemin.
+
+`baked_lighting: true` force l'état éclairé, sans réécrire la valeur importée de `ambient.level`, et
+affiche un avertissement persistant dans le bandeau MJ. Le curseur Ambiance est alors désactivé : il
+ne peut donc pas assombrir une image déjà éclairée. Les couleurs et intensités restent conservées et
+signées, mais ne produisent pas encore de rendu coloré — la visibilité joueurs demeure binaire.
+Les intensités UVTT historiques, dont l'échelle dépassait 1, sont rabattues à l'import vers 0..1 ;
+les mutations partagées hors de ces bornes sont refusées avec un message précis.
+
+Le champ UVTT `shadows` est conservé et validé, mais n'ouvre pas deux modèles d'occlusion dans ce
+lot : toutes les sources utilisent les murs et portes du sweep commun. Ce choix protège l'absence
+de fuite aux angles ; un éclairage décoratif traversant les murs relèverait d'un rendu futur.
+
+### S-06 — Éditeur de liaisons *(critère 2, usage en séance)*
+
+**Livré le 07/08/2026.** Le MJ pose l'extrémité A sur la carte, choisit l'étage et la case B,
+le type, le sens et la visibilité, puis sélectionne ou supprime la liaison sans éditer le JSON.
+Les deux extrémités doivent appartenir à des étages distincts. Les joueurs voient un repère discret,
+jamais une liaison `gmOnly`; l'entrée interdite d'un sens unique n'est pas affichée.
+
+Les traversées réseau portent une destination absolue, la valident avant mutation et mémorisent un
+nombre borné d'identifiants d'événements. Un rejeu ne renvoie donc plus le pion à son étage de départ.
 
 ---
 
@@ -127,20 +156,21 @@ vision sans lumière ; `baked_lighting` force la pleine lumière et le signale.
 
 ## 4. Ce qui n'est pas fait, et qu'il ne faut pas croire acquis
 
-**S-05 — lumières et ambiante : non commencée.** Les critères 5 et 6 restent entiers.
-`token.emitsLight`, `level.lights` et `level.ambient.level` sont toujours **parsés puis jetés** :
-aucun module ne les consomme. Une carte `baked_lighting: true` n'est signalée qu'à la préparation.
+**S-05 — lumières et ambiante : livré avec une limite assumée.** Le modèle ne mélange pas les
+couleurs, ne produit pas de pénombre et ne dessine pas de halo : il ne répond qu'à la visibilité
+actuelle, qui est le contrat de ce lot. La performance sur tablette et endurance physique restent à
+consigner sur matériel réel ; les tests couvrent la géométrie, les mutations et le transport local,
+pas une mesure thermique.
 
 ⚠ C'est la tranche qui touche au **modèle de vision**, donc la plus risquée du lot : elle rouvre
 le sweep, le masque publié et la question de la vision dans le noir — dont le champ existe depuis
 le lot 1a, et qu'`ETAT.md` interdit de régler à 0 sur un PJ avant ce lot précisément.
 
-**Il n'existe aucun éditeur de liaisons.** `traverseLink` fonctionne, mais une liaison ne peut
-naître que dans les **données** de la campagne — import ou instantané. Le MJ ne peut pas en poser
-une depuis le panneau. Le critère 2 est donc satisfait *mécaniquement* et pas *utilisable en
-séance* : c'est une tranche S-06 à écrire, sur le modèle de l'éditeur de murs.
+**Le critère 1 — « trois étages importés indépendamment, sans alignement manuel » — reste ouvert.**
+La persistance Firestore v3 et une fixture synthétique à trois étages vérifient le transport, la
+sélection et la coexistence structurelle. Elles ne remplacent pas trois UVTT réels, avec provenance
+et droit de diffusion documentés, importés à la suite puis utilisés en partie.
 
-⚠ **Le critère 1 — « trois étages importés indépendamment, sans alignement manuel » — n'est pas
-vérifié.** Le sélecteur d'étage et la bascule fonctionnent à deux étages dans les tests, mais
-personne n'a importé trois UVTT à la suite pour constater qu'ils coexistent sans retouche. Ne pas
-le compter acquis sur la foi de S-02.
+**La mesure lumière sur matériel reste ouverte.** Le profil de bureau sur `testbig150`, six PJ,
+huit sources fixes et trois torches prouve que le chemin est mesurable et qu'il ne dépend pas de la
+boucle de rendu. Il ne prouve ni la marge de la tablette, ni l'endurance thermique sous cast.

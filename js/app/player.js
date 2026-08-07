@@ -10,6 +10,7 @@ import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
+import { LinksLayer } from '../render/layers/links.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { decodeFogPng } from '../vision/fog.js';
 import { gridFor } from '../grid/index.js';
@@ -228,6 +229,7 @@ export async function bootstrapPlayerApp(options = {}) {
   const backgroundLayer = new BackgroundLayer({ invalidate: requestRender });
   const gridLayer = new GridLayer();
   const portalsLayer = new PortalsLayer();
+  const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -240,6 +242,7 @@ export async function bootstrapPlayerApp(options = {}) {
     background: 0,
     grid: 0,
     portals: 0,
+    links: 0,
     moveZone: 0,
     templates: 0,
     tokens: 0,
@@ -265,6 +268,9 @@ export async function bootstrapPlayerApp(options = {}) {
     }
 
     void decodeFogPng(png, level.widthCells, level.heightCells).then((canvas) => {
+      // Plusieurs PNG peuvent décoder dans le désordre. Ne jamais laisser un ancien masque
+      // écraser la valeur que le transport a déjà remplacée dans le store.
+      if (store.getSessionFog(level.id) !== png) return;
       playerExploredCanvasMap.set(level.id, { png, canvas });
       requestRender();
     });
@@ -289,6 +295,9 @@ export async function bootstrapPlayerApp(options = {}) {
     }
 
     void decodeFogPng(png, level.widthCells, level.heightCells).then((canvas) => {
+      // Même garde que pour le fog exploré : une torche ou une porte peut générer plusieurs
+      // `vision.update` successifs alors que les décompressions précédentes sont encore actives.
+      if (store.getSessionVision(level.id) !== png) return;
       playerVisibleCanvasMap.set(level.id, { png, canvas });
       requestRender();
     });
@@ -375,6 +384,7 @@ export async function bootstrapPlayerApp(options = {}) {
     layerDurations.background = 0;
     layerDurations.grid = 0;
     layerDurations.portals = 0;
+    layerDurations.links = 0;
     layerDurations.moveZone = 0;
     layerDurations.templates = 0;
     layerDurations.tokens = 0;
@@ -399,6 +409,11 @@ export async function bootstrapPlayerApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         portalsLayer.render(stage.context, grid, activeLevel, { zoom: camera.zoom });
         layerDurations.portals = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      links: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        linksLayer.render(stage.context, grid, activeLevel, state.campaign?.links ?? [], { role: 'players', zoom: camera.zoom });
+        layerDurations.links = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       moveZone: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();

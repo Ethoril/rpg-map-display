@@ -31,7 +31,10 @@ test('Vue MJ : les trois états valent exactement les opacités déclarées', as
       import { FOG_VEIL_GM_UNEXPLORED, FOG_VEIL_GM_EXPLORED } from './js/core/constants.js';
 
       // Carte plate et sans mur : la géométrie n'est pas le sujet, l'opacité l'est.
-      const level = createLevel({ id: 'rdc', widthCells: 30, heightCells: 10, pxPerCell: 10 });
+      const level = createLevel({
+        id: 'rdc', widthCells: 30, heightCells: 10, pxPerCell: 10,
+        ambient: { color: '#ffffff', level: 0, baked: false },
+      });
       const grid = gridFor(level);
       // Le PJ voit autour de la case (2,5) ; le reste de la carte lui est inconnu.
       const pc = createToken({ id: 'pj', levelId: 'rdc', kind: 'pc', cell: { a: 2, b: 5 }, visionDim: 4 });

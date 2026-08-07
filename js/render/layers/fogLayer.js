@@ -38,13 +38,29 @@ export function resetVisionComputeCount() {
  *
  * @param {Level} level
  * @param {Token[]} tokens
+ * @param {GridAdapter} grid
  * @returns {string}
  */
-function buildVisionSignature(level, tokens) {
+function buildVisionSignature(level, tokens, grid) {
   if (!level) return '';
 
   /** @type {string[]} */
   const parts = [`level:${level.id || 'default'}`];
+  // Les polygones sont en pixels carte. Un réimport qui garde le même id mais change la
+  // densité, l'origine, la topologie ou les dimensions doit donc invalider le cache, même si
+  // murs, pions et lumières conservent exactement les mêmes coordonnées en cases.
+  const gridOrigin = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+  const gridAxisA = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  const gridAxisB = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+  parts.push(
+    `grid:type=${level.grid?.type}:hex=${level.grid?.hexOrientation}:` +
+    `map=${gridOrigin.x},${gridOrigin.y}|${gridAxisA.x},${gridAxisA.y}|${gridAxisB.x},${gridAxisB.y}:` +
+    `size=${level.widthCells}x${level.heightCells}`
+  );
+  // Modèle binaire : une ambiante non nulle éclaire l'étage ; baked force ce même état pour
+  // éviter d'assombrir une image dont la lumière est déjà peinte.
+  const ambientLit = Boolean(level.ambient?.baked) || Number(level.ambient?.level) > 0;
+  parts.push(`ambient:${ambientLit ? 'lit' : 'dark'}:level=${level.ambient?.level}:baked=${level.ambient?.baked}`);
 
   if (Array.isArray(level.walls)) {
     for (let i = 0; i < level.walls.length; i++) {
@@ -67,8 +83,21 @@ function buildVisionSignature(level, tokens) {
     }
   }
 
+  const levelLights = Array.isArray(level.lights) ? [...level.lights] : [];
+  levelLights.sort((a, b) => String(a?.id).localeCompare(String(b?.id)));
+  for (const light of levelLights) {
+    if (!light) continue;
+    parts.push(
+      `l:${light.id}:at=${light.at?.cellX},${light.at?.cellY}:range=${light.range}:intensity=${light.intensity}:color=${light.color}:shadows=${light.shadows}`
+    );
+  }
+
   const pcTokens = tokens.filter(
-    (t) => t && t.levelId === level.id && t.kind === 'pc' && typeof t.visionDim === 'number' && t.visionDim > 0
+    (t) =>
+      t &&
+      t.levelId === level.id &&
+      t.kind === 'pc' &&
+      (ambientLit || (typeof t.visionDim === 'number' && t.visionDim > 0))
   );
   pcTokens.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -82,7 +111,34 @@ function buildVisionSignature(level, tokens) {
     }
   }
 
+  const emittingTokens = tokens.filter(
+    (t) => t && t.levelId === level.id && Number(t.emitsLight?.range) > 0
+  );
+  emittingTokens.sort((a, b) => a.id.localeCompare(b.id));
+  for (const t of emittingTokens) {
+    const size = Math.max(1, t.sizeCells || 1);
+    parts.push(
+      `light-token:${t.id}:cell=${t.cell?.a},${t.cell?.b}:size=${size}:range=${t.emitsLight?.range}:intensity=${t.emitsLight?.intensity}:color=${t.emitsLight?.color}`
+    );
+  }
+
   return parts.join(';');
+}
+
+/**
+ * L'ambiante est volontairement binaire pour cette première version : toute valeur strictement
+ * positive donne la visibilité « éclairée », zéro laisse uniquement les portées de vision dans le
+ * noir et les sources. `baked` force l'état éclairé sans modifier les données importées.
+ *
+ * @param {Level} level
+ */
+function isAmbientLit(level) {
+  return Boolean(level?.ambient?.baked) || Number(level?.ambient?.level) > 0;
+}
+
+/** @param {number|undefined} range */
+function cappedRange(range) {
+  return Math.min(Math.max(0, Number(range) || 0), VISION_MAX_RANGE_CELLS);
 }
 
 /**
@@ -188,16 +244,19 @@ export class FogLayer {
   updateVision(grid, level, tokens, options = {}) {
     if (!grid || !level) return false;
 
-    const signature = buildVisionSignature(level, tokens || []);
+    const signature = buildVisionSignature(level, tokens || [], grid);
     if (signature === this._lastSignature) return false;
     this._lastSignature = signature;
     computeCount++;
 
-    const pcTokens = (tokens || []).filter(
-      (t) => t && t.levelId === level.id && t.kind === 'pc' && typeof t.visionDim === 'number' && t.visionDim > 0
+    const ambientLit = isAmbientLit(level);
+    const pcTokens = (tokens || []).filter((t) => t && t.levelId === level.id && t.kind === 'pc');
+    const levelLights = Array.isArray(level.lights) ? level.lights : [];
+    const emittingTokens = (tokens || []).filter(
+      (t) => t && t.levelId === level.id && cappedRange(t.emitsLight?.range) > 0
     );
 
-    if (pcTokens.length === 0) {
+    if (pcTokens.length === 0 && levelLights.length === 0 && emittingTokens.length === 0) {
       this._cachedPolygons = [];
       return true;
     }
@@ -211,8 +270,10 @@ export class FogLayer {
 
     /** @type {MapPoint[][]} */
     const polygons = [];
+    // Une ambiante active laisse chaque PJ voir jusqu'au plafond technique. Dans le noir, sa
+    // portée propre (`visionDim`) est conservée : c'est la vision nocturne déclarée par le pion.
     for (const t of pcTokens) {
-      const rangeCells = Math.min(t.visionDim, VISION_MAX_RANGE_CELLS);
+      const rangeCells = ambientLit ? VISION_MAX_RANGE_CELLS : cappedRange(t.visionDim ?? 0);
       if (rangeCells <= 0) continue;
 
       const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
@@ -228,6 +289,29 @@ export class FogLayer {
       if (Array.isArray(poly) && poly.length > 0) {
         polygons.push(poly);
       }
+    }
+
+    // Les sources fixes UVTT et les torches portées sont des disques de visibilité additionnels.
+    // Elles passent toutes par le même sweep que les PJ : murs et portes fermées restent donc des
+    // obstacles identiques, sans lecture de pixels ni travail dépendant de rAF.
+    /**
+     * @param {import('../../core/types.js').CellPoint|undefined} at
+     * @param {number|undefined} range
+     */
+    const addSource = (at, range) => {
+      const rangeCells = cappedRange(range);
+      if (!at || !Number.isFinite(at.cellX) || !Number.isFinite(at.cellY) || rangeCells <= 0) return;
+      const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
+      const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
+      const centerPoint = grid.mapFromCellPoint(at);
+      const poly = sweep(centerPoint, segments, rangePx);
+      if (Array.isArray(poly) && poly.length > 0) polygons.push(poly);
+    };
+
+    for (const light of levelLights) addSource(light?.at, light?.range);
+    for (const t of emittingTokens) {
+      const size = Math.max(1, t.sizeCells || 1);
+      addSource({ cellX: t.cell.a + size / 2, cellY: t.cell.b + size / 2 }, t.emitsLight?.range);
     }
     this._cachedPolygons = polygons;
     return true;

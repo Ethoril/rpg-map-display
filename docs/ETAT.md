@@ -34,6 +34,15 @@
 > remplissable couvrent 120 s d'inactivité, 45 min de cast et 4 h de session. **R2-03, R2-05 et
 > R2-06 ne sont pas validés** : leurs essais sur la tablette et la TV restent à exécuter.
 >
+> **Phase R3 automatisable implantée le 7 août 2026 ; lot 3 à 5 critères sur 6.** Le MJ dispose
+> d'un éditeur de liaisons utilisable sans JSON ; la traversée, le suivi de vue, le cadenas et le
+> fog indépendant sont réunis dans un même scénario multi-pages. Firestore persiste désormais la
+> campagne en v3 distribuée, avec transaction optimiste, révision monotone et lecture v2 conservée.
+> L'ambiante, les lumières fixes, les torches mobiles et `baked_lighting` alimentent le même sweep
+> borné, sans calcul dans `requestAnimationFrame`. **La porte R3 reste ouverte** : aucune campagne
+> réelle et licenciée à trois étages n'est disponible dans le dépôt, et le profil lumière doit
+> encore être confirmé sur la tablette cible sous cast.
+>
 > **Chantier Q, 6 août 2026 — code livré, trois vérifications de table ouvertes.** Points de vie,
 > hors CdC et demandé par le mainteneur : compteur `courant/max` saisi par le MJ, **anneau
 > proportionnel bleu `#2563eb` sur les PJ seulement**, **anneau d'état à trois crans manuels sur les
@@ -170,6 +179,23 @@ publiées en artefact en cas d'échec, sans second job qui rejouerait les mêmes
 La cohérence des import maps et de la version Firebase reste bloquante à chaque `verify`.
 La disponibilité des CDN et le signalement des versions npm récentes passent dans un contrôle
 hebdomadaire séparé : une indisponibilité extérieure ponctuelle ne bloque donc pas un push.
+
+Résultat de la passe d'intégration R3 du 7 août 2026 sur le poste Windows de reprise :
+
+- typage, cohérence des import maps et `git diff --check` : verts ;
+- tests unitaires : **324 réussis**, 1 test de règles ignoré hors émulateurs ;
+- tests navigateur : **148 réussis**, 2 scénarios Firebase réels ignorés faute de secret ;
+- gestes bloquants : **3 réussis** ;
+- Firestore v3 : split/join, migration v2, révisions, concurrence, plafond par document et fixture
+  synthétique trois étages couverts ; l'émulateur réel reste à la CI, Java 21 étant absent du poste ;
+- lumière sur `testbig150`, six PJ, huit sources fixes et trois torches : environ **28 à 49 ms**
+  suivant la passe de bureau, 17 polygones ; cette plage n'est pas un verdict tablette ;
+- le premier passage navigateur a mis au jour quatre fixtures anciennes devenues ambiguës : trois
+  sondes de fog déclaraient une ambiance pleine tout en supposant l'obscurité, et le panneau comptait
+  encore neuf onglets. Après correction explicite, les **16 scénarios ciblés concernés réussissent** ;
+- Playwright imprime encore les verdicts puis garde son processus ouvert sous Windows. Les suites
+  complètes et ciblées ont atteint la limite du wrapper après leurs résultats, sans scénario restant
+  en échec.
 
 Résultat de la passe d'intégration R2 du 7 août 2026 sur le poste Windows de reprise :
 
@@ -554,7 +580,7 @@ C'est le prix assumé de l'algorithme naïf retenu en L-02. **Le plafond de 20 c
 une faiblesse de l'implantation, pas une réalité du jeu**, et il faut l'écrire ainsi : le
 jour où les rayons seront accélérés, il redeviendra un pur choix de jeu.
 
-### Vision dans le noir par pion — besoin confirmé, champ déjà là, piège d'ici le lot 3
+### Historique avant le lot 3 — vision dans le noir par pion
 
 Besoin exprimé par le mainteneur le 31/07 : **certains PJ voient dans le noir, à une distance
 propre** — 5 cases en première intention. C'est un vrai besoin de sa table.
@@ -564,18 +590,15 @@ propre** — 5 cases en première intention. C'est un vrai besoin de sa table.
 en cases, `0 = aucune vision`. Ils sont validés, voyagent par la bibliothèque de pions et
 s'éditent dans l'outil. Rien à ajouter au schéma.
 
-Ce qui manque est **la couche d'éclairage du lot 3**, qui donnera un sens à « dans le noir » :
-`ambient.level` de l'étage, `emitsLight` des pions, `lights` de la carte. Sans elle, la
-distinction clair/pénombre n'a rien sur quoi s'appuyer.
+Ce qui manquait alors était **la couche d'éclairage du lot 3** : `ambient.level` de l'étage,
+`emitsLight` des pions et `lights` de la carte. Ce manque est désormais comblé par le chantier S :
+un étage éclairé donne la portée plafonnée commune, tandis qu'un étage sombre emploie la portée
+`visionDim` propre au pion ; les sources fixes et mobiles utilisent le même calcul d'occlusion.
 
-> ⚠ **Piège d'ici là, à ne pas déclencher en séance.** Pendant le lot 2, la vision est un
-> rayon plat : `visionDim` sert de portée à tout le monde, faute d'éclairage. Donc **un PJ
-> réglé à 0 ne contribue à rien du tout** — il ne verrait rien et n'ajouterait rien à l'union.
->
-> Autrement dit : **ne pas régler à 0 les PJ dépourvus de vision nocturne** en attendant le
-> lot 3. Leur donner une valeur ordinaire ; la distinction ne deviendra signifiante qu'avec
-> l'éclairage, et c'est à ce moment-là que `visionBright` à 5 prendra son sens de « voit dans
-> le noir jusqu'à 5 cases ».
+> **Note historique.** Pendant le lot 2, `visionDim` servait de rayon plat à tout le monde et
+> une valeur à `0` retirait donc entièrement le PJ de l'union de vision. Cette précaution n'est
+> plus d'actualité sur un étage éclairé. Sur un étage sombre, `0` conserve volontairement son
+> sens : aucune vision nocturne propre, hors zone couverte par une source de lumière.
 
 ### La piste d'accélération, pour ne pas la redécouvrir de travers
 
@@ -1225,7 +1248,7 @@ Relevé pour éviter de confondre « le plateau est solide » et « le produit e
 | **1a — Le plateau** | Code complet. **10 critères sur 11** : les 30 fps sous cast sont validés le 05/08/2026, première séance réelle. Deux restent ouverts, et ce sont des **mesures matérielles** : tenue thermique sur la durée, limite de texture réelle (carte `testbig150` prête) |
 | **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). **Le dernier point ouvert est fermé** : la lisibilité du badge d’élévation sous cast est validée le 05/08/2026, séance réelle. Le lot 1b est donc complet, code **et** mesures |
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
-| **3 — Étages & lumière** | **3 sur 6**, nuit du 6 au 7 août 2026 — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. **Critère 3 acquis sans écrire une ligne de code applicatif** : le fog était déjà indexé et persisté par étage, mais aucun test n'utilisait deux étages — « probablement juste, jamais vérifié » n'est pas « acquis », et une implémentation ignorant `levelId` passait tous les tests de fog existants. **Critères 2 et 4 livrés** : `level.select` porte enfin la bascule au réseau — elle était purement locale depuis le lot 1a, le MJ montait à l'étage et la table restait en bas —, une barre d'étage apparaît hors des onglets dès qu'il y a plusieurs étages, et les liaisons fonctionnent : le typedef `Link` existait complet depuis le lot 1a, **jamais câblé**. Le franchissement se fait en **deux temps** (se poster, retaper) et sur la **case exacte**, sans la tolérance du chantier O — un escalier pris par accident oblige à revenir, et la table a vu l'autre étage entre-temps. Le cadenas suspend la bascule sans retenir les pions, et reste **local au poste MJ** : c'est une conduite de séance, pas un fait de jeu. ⚠ **Trois réserves à ne pas oublier** — il n'existe **aucun éditeur de liaisons** (elles ne naissent que dans les données, donc le critère 2 est mécanique et pas utilisable en séance) ; le **critère 1 n'est pas vérifié à trois étages importés** ; et **S-05, les lumières, n'est pas commencée** — `emitsLight`, `lights` et `ambient.level` restent parsés puis jetés. Quatre mutations attrapées |
+| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. La mesure lumière sur tablette/cast reste aussi une porte matérielle, sans retirer les critères fonctionnels 5 et 6 acquis. |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
 | Spike vidéo 1080p sous cast | non fait — à planifier avant de concevoir autour d’`animatedOverlays` |
 | §12 Questions ouvertes | 8, dont plusieurs conditionnent des choix de conception du lot 2 |

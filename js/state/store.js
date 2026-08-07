@@ -577,6 +577,44 @@ export function getLinks() {
 }
 
 /**
+ * Ajoute une liaison complète de façon transactionnelle.
+ *
+ * @param {import('../core/types.js').Link} linkData
+ */
+export function addLink(linkData) {
+  if (!campaign) throw new Error('Aucune campagne chargée');
+  if (!linkData || typeof linkData.id !== 'string' || linkData.id.length === 0) {
+    throw new Error('Liaison invalide : identifiant requis');
+  }
+  if (campaign.links.some((link) => link.id === linkData.id)) {
+    throw new Error(`Liaison déjà existante : "${linkData.id}"`);
+  }
+  const candidate = structuredClone(campaign);
+  candidate.links.push(structuredClone(linkData));
+  assertValidCampaign(candidate, `Ajout de la liaison "${linkData.id}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
+/**
+ * Supprime une liaison. L'absence est idempotente et ne notifie pas.
+ *
+ * @param {string} linkId
+ * @returns {boolean}
+ */
+export function removeLink(linkId) {
+  if (!campaign) throw new Error('Aucune campagne chargée');
+  const index = campaign.links.findIndex((link) => link.id === linkId);
+  if (index < 0) return false;
+  const candidate = structuredClone(campaign);
+  candidate.links.splice(index, 1);
+  assertValidCampaign(candidate, `Suppression de la liaison "${linkId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
  * La liaison dont une extrémité tombe exactement sur cette case de cet étage, s'il y en a une.
  *
  * ⚠ **Le franchissement exige la case exacte**, sans la tolérance de désignation du chantier O.
@@ -618,9 +656,10 @@ export function findLinkAtCell(levelId, cell, options = {}) {
  *
  * @param {string} tokenId
  * @param {string} linkId
+ * @param {{ expectedDestination?: {levelId: string, cell: {a: number, b: number}} }} [options]
  * @returns {{ levelId: string, cell: {a: number, b: number} }} La destination effectivement appliquée
  */
-export function traverseLink(tokenId, linkId) {
+export function traverseLink(tokenId, linkId, options = {}) {
   if (!campaign) {
     throw new Error('Aucune campagne chargée');
   }
@@ -651,6 +690,16 @@ export function traverseLink(tokenId, linkId) {
   }
 
   const vers = surA ? lien.b : lien.a;
+  const destination = { levelId: vers.levelId, cell: { a: vers.at.cellX, b: vers.at.cellY } };
+  const expected = options.expectedDestination;
+  if (
+    expected &&
+    (expected.levelId !== destination.levelId ||
+      expected.cell?.a !== destination.cell.a ||
+      expected.cell?.b !== destination.cell.b)
+  ) {
+    throw new Error(`Destination contradictoire pour la liaison "${linkId}"`);
+  }
 
   const candidate = structuredClone(campaign);
   const cible = candidate.tokens.find((/** @type {any} */ t) => t.id === tokenId);
@@ -659,20 +708,20 @@ export function traverseLink(tokenId, linkId) {
     // est fidèle. Écrit quand même : une copie qui perdrait un pion doit se dire, pas se deviner.
     throw new Error(`Pion "${tokenId}" perdu à la copie de la campagne`);
   }
-  cible.levelId = vers.levelId;
-  cible.cell = { a: vers.at.cellX, b: vers.at.cellY };
+  cible.levelId = destination.levelId;
+  cible.cell = destination.cell;
   assertValidCampaign(candidate, `Franchissement de la liaison "${linkId}"`);
   replaceCampaign(candidate);
 
   // La sélection ne survit pas au changement d'étage : le pion n'est plus sur l'étage affiché.
   // La laisser produirait une zone de déplacement calculée sur un étage, dessinée sur un autre.
   const selId = getSelectedTokenId();
-  if (selId === tokenId && getActiveLevelId() !== vers.levelId) {
+  if (selId === tokenId && getActiveLevelId() !== destination.levelId) {
     clearSelectionState();
   }
 
   notifySubscribers();
-  return { levelId: vers.levelId, cell: { a: vers.at.cellX, b: vers.at.cellY } };
+  return destination;
 }
 
 /**
@@ -918,6 +967,7 @@ const ALLOWED_TOKEN_PATCH_KEYS = new Set([
   'locked',
   'visionBright',
   'visionDim',
+  'emitsLight',
   'elevation',
   'markers',
   'hp',

@@ -122,6 +122,7 @@ F:\rpg-map-display\
 │   │       ├─ gridLayer.js       [1a] délègue le tracé à GridAdapter.renderGrid
 │   │       ├─ walls.js           [2]  tracé des murs de l'étage (vue MJ seule)
 │   │       ├─ portals.js         [2]  indicateur d'état des trois états
+│   │       ├─ links.js           [3]  marqueurs de liaisons MJ/joueurs
 │   │       ├─ moveZone.js        [1a] cases atteignables — NON interactif
 │   │       ├─ tokens.js          [1a] pions, badges élévation/marqueurs
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
@@ -145,6 +146,7 @@ F:\rpg-map-display\
 │   │   │   ├─ handouts.js        [1b] révélation d'image
 │   │   │   ├─ fogTools.js        [2]  pinceaux révéler/masquer, reset
 │   │   │   ├─ wallEditor.js      [2]  éditeur minimal de murs
+│   │   │   ├─ linkEditor.js      [3]  pose, association et suppression de liaisons
 │   │   │   ├─ templateTools.js   [2]  gabarits de zone d'effet (choix forme/rayon, armement, effacement)
 │   │   │   └─ levelSelector.js   [3]  sélecteur d'étage MJ
 │   │   └─ player/
