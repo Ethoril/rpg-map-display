@@ -1042,6 +1042,36 @@ espace — après le chantier K, L-09 et les portes — cette fois sur le liser�
 sélection, tous deux en pixels carte, donc à 0,7 et 0,6 px écran à la vue « carte entière ». Ils
 sont dans la zone de travail de la châsse et se corrigent au passage.
 
+## À faire avant la 1.0 — dette d'exploitation Firebase
+
+Relevé le 7 août 2026 sur question du mainteneur : « il me faudra un truc pour détruire toutes
+les sessions passées, sauf si ça prend tellement peu de place qu'on s'en fout ». **Ni l'un ni
+l'autre n'est critique aujourd'hui ; les deux doivent être faits avant la 1.0.**
+
+La réponse mesurée sépare deux coûts très inégaux :
+
+- **Les documents de campagne sont négligeables.** Une scène complète pèse 352 Kio
+  (`testbig150.scene.json`), et Firestore plafonne de toute façon à 1 Mio par document. Le palier
+  gratuit offre 1 Gio : des milliers de sessions tiennent sans qu'on s'en aperçoive. ⛔ Ne pas
+  écrire d'outil pour ça, ce serait du travail contre un problème qui n'existe pas.
+- **Le canal d'événements grossit sans limite, et c'est lui le sujet.** Chaque événement est
+  empilé dans `session/<id>/events` et **rien ne l'efface jamais**. Or `fog.update` et
+  `vision.update` transportent des masques PNG en base64 — **13,4 Kio mesurés** sur la plus grande
+  carte, plafond à 50 Kio (`FOG_MAX_ENCODED_BYTES`). Le fog est throttlé à 1 Hz ; la vision ne
+  l'est **pas**, le critère 10 exigeant moins de 300 ms pour l'ouverture d'une porte.
+
+⚠ Ces chiffres viennent des tailles mesurées dans le code, **pas d'un relevé de la console
+Firebase** : personne n'a encore regardé la consommation réelle du projet.
+
+**1. Rétention automatique du canal d'événements** — la vraie correction, et elle est à la source.
+Les événements passés ne servent à **personne** : `FirebaseTransport` borne son écoute strictement
+après la dernière clé connue à la connexion, et ne relit donc jamais l'histoire. Ne garder qu'une
+fenêtre récente supprime le problème au lieu de le rattraper.
+
+**2. Outil de ménage des sessions passées** — utile en complément, jamais en remplacement.
+`transport.purgeEvents()` **existe déjà** mais n'est câblé que dans `js/app/diag.js`, et ne vide
+que la session **courante**. Rien ne permet aujourd'hui de faire le ménage sur les anciennes.
+
 ## Suite produit
 
 Avancement mesuré contre les lots du cahier des charges §11, au 3 août 2026.

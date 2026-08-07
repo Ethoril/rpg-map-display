@@ -1031,8 +1031,11 @@ export function createGMPanel(container, options = {}) {
    * sous le doigt du MJ en pleine sélection, et ferait clignoter le champ pendant les animations.
    */
   function updateLevelBarFromStore() {
-    const campagne = store.getCampaign();
-    const etages = campagne?.levels ?? [];
+    // ⚠ `getLevelSummaries()` et surtout PAS `getCampaign()`. Ce dernier clone et gèle toute la
+    // campagne — 2,49 ms mesurés sur une carte de 65 × 71 et 1338 murs — et cette fonction tourne
+    // à **chaque mutation du store**, donc à chaque déplacement de pion. La première version
+    // payait le clonage de tous les murs pour n'en tirer qu'une liste de noms.
+    const etages = store.getLevelSummaries();
     const actif = store.getActiveLevelId();
 
     // Un seul étage : la barre n'apporte rien, elle disparaît.

@@ -493,6 +493,27 @@ export function addToken(tokenData) {
 }
 
 /**
+ * Identifiant et nom de chaque étage, sans cloner la campagne.
+ *
+ * ⚠ **`getCampaign()` coûte cher, et le prix se paie à chaque mutation.** Il fait
+ * `deepFreeze(structuredClone(campaign))` : **2,49 ms mesurés dans le navigateur** sur une carte
+ * de 65 × 71 cases et 1338 murs, contre 5,15 ms pour `getState()`. Un abonné du store qui
+ * l'appelle pour lire trois champs paie donc le clonage de toute la géométrie de l'étage —
+ * murs, portails, lumières — à chaque déplacement de pion.
+ *
+ * C'est exactement la faute commise par la barre d'étage du lot 3 : elle appelait `getCampaign()`
+ * en première ligne de la souscription du panneau MJ, pour n'en tirer qu'une liste de noms.
+ *
+ * ⛔ Ne pas rendre les objets `Level` eux-mêmes ici : ce serait rouvrir la porte au clonage, ou
+ * pire, laisser fuir une référence mutable sur l'état interne.
+ *
+ * @returns {{ id: string, name: string }[]}
+ */
+export function getLevelSummaries() {
+  return (campaign?.levels ?? []).map((l) => ({ id: l.id, name: l.name }));
+}
+
+/**
  * Les liaisons de la campagne.
  *
  * @returns {import('../core/types.js').Link[]}
