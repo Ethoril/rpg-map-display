@@ -4,7 +4,7 @@
   "name": "Manoir — RDC",
   "levels": [
     {
-      "id": "uvtt-level",
+      "id": "manoir-rdc",
       "name": "Manoir — RDC",
       "order": 0,
       "imageUrl": "maps/generated/manoir-rdc.webp",
@@ -1345,6 +1345,7 @@
             "cellX": 10,
             "cellY": 29
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1358,6 +1359,7 @@
             "cellX": 15,
             "cellY": 18
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1371,6 +1373,7 @@
             "cellX": 15,
             "cellY": 25
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1384,6 +1387,7 @@
             "cellX": 15,
             "cellY": 28
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1397,6 +1401,7 @@
             "cellX": 17,
             "cellY": 31
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1410,6 +1415,7 @@
             "cellX": 18,
             "cellY": 19
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1423,6 +1429,7 @@
             "cellX": 21,
             "cellY": 9
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1436,6 +1443,7 @@
             "cellX": 22,
             "cellY": 25
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1449,6 +1457,7 @@
             "cellX": 22,
             "cellY": 33
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1462,6 +1471,7 @@
             "cellX": 25,
             "cellY": 30
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1475,6 +1485,7 @@
             "cellX": 27,
             "cellY": 11
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1488,6 +1499,7 @@
             "cellX": 26,
             "cellY": 19
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1501,6 +1513,7 @@
             "cellX": 26,
             "cellY": 25
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1514,6 +1527,7 @@
             "cellX": 27,
             "cellY": 9
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1527,6 +1541,7 @@
             "cellX": 34,
             "cellY": 17
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1540,6 +1555,7 @@
             "cellX": 38,
             "cellY": 18
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1553,6 +1569,7 @@
             "cellX": 38,
             "cellY": 21
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1566,6 +1583,7 @@
             "cellX": 38,
             "cellY": 25
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1579,6 +1597,7 @@
             "cellX": 38,
             "cellY": 29
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1592,6 +1611,7 @@
             "cellX": 38,
             "cellY": 33
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1605,6 +1625,7 @@
             "cellX": 38,
             "cellY": 37
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1618,6 +1639,7 @@
             "cellX": 43,
             "cellY": 30
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1631,6 +1653,7 @@
             "cellX": 7,
             "cellY": 33
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1644,6 +1667,7 @@
             "cellX": 9,
             "cellY": 20
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1657,6 +1681,7 @@
             "cellX": 11,
             "cellY": 16
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1670,6 +1695,7 @@
             "cellX": 11,
             "cellY": 33
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1683,6 +1709,7 @@
             "cellX": 16,
             "cellY": 22
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1696,6 +1723,7 @@
             "cellX": 18,
             "cellY": 33
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1709,6 +1737,7 @@
             "cellX": 19,
             "cellY": 28
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1722,6 +1751,7 @@
             "cellX": 22,
             "cellY": 15
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1735,6 +1765,7 @@
             "cellX": 23,
             "cellY": 7
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1748,6 +1779,7 @@
             "cellX": 23,
             "cellY": 28
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1761,6 +1793,7 @@
             "cellX": 27,
             "cellY": 7
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1774,6 +1807,7 @@
             "cellX": 28,
             "cellY": 32
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1787,6 +1821,7 @@
             "cellX": 30,
             "cellY": 14
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1800,6 +1835,7 @@
             "cellX": 32,
             "cellY": 7
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1813,6 +1849,7 @@
             "cellX": 34,
             "cellY": 27
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1826,6 +1863,7 @@
             "cellX": 36,
             "cellY": 32
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1839,6 +1877,7 @@
             "cellX": 36,
             "cellY": 39
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -1852,6 +1891,7 @@
             "cellX": 39,
             "cellY": 34
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         }

@@ -4,7 +4,7 @@
   "name": "Testbig150",
   "levels": [
     {
-      "id": "uvtt-level",
+      "id": "testbig150",
       "name": "Testbig150",
       "order": 0,
       "imageUrl": "maps/generated/testbig150.webp",
@@ -13415,6 +13415,7 @@
             "cellX": 60.01005,
             "cellY": 60.0033836
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13428,6 +13429,7 @@
             "cellX": 60.01005,
             "cellY": 65.0033951
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13441,6 +13443,7 @@
             "cellX": 15.980031,
             "cellY": 54.0133743
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13454,6 +13457,7 @@
             "cellX": 15.980031,
             "cellY": 55.0133743
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13467,6 +13471,7 @@
             "cellX": 15.980031,
             "cellY": 56.0233765
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13480,6 +13485,7 @@
             "cellX": 15.980031,
             "cellY": 48.0133629
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13493,6 +13499,7 @@
             "cellX": 50.0300331,
             "cellY": 9.953353
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13506,6 +13513,7 @@
             "cellX": 52.0200348,
             "cellY": 4.953343
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13519,6 +13527,7 @@
             "cellX": 59.03005,
             "cellY": 10.9633541
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13532,6 +13541,7 @@
             "cellX": 50.0300331,
             "cellY": 9.953353
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13545,6 +13555,7 @@
             "cellX": 50.0300331,
             "cellY": 11.9533567
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13558,6 +13569,7 @@
             "cellX": 52.0200348,
             "cellY": 13.9633608
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13571,6 +13583,7 @@
             "cellX": 50.0300331,
             "cellY": 13.9633608
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13584,6 +13597,7 @@
             "cellX": 19.9800377,
             "cellY": 7.95334864
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13597,6 +13611,7 @@
             "cellX": 19.9800377,
             "cellY": 10.9533548
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13610,6 +13625,7 @@
             "cellX": 25.99005,
             "cellY": 11.9533567
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13623,6 +13639,7 @@
             "cellX": 24.9900475,
             "cellY": 11.9533567
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13636,6 +13653,7 @@
             "cellX": 25.99005,
             "cellY": 7.95334864
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13649,6 +13667,7 @@
             "cellX": 25.99005,
             "cellY": 11.9533567
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13662,6 +13681,7 @@
             "cellX": 47.0200272,
             "cellY": 9.953353
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13675,6 +13695,7 @@
             "cellX": 45.03002,
             "cellY": 67.06333
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13688,6 +13709,7 @@
             "cellX": 64.06999,
             "cellY": 52.0333672
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13701,6 +13723,7 @@
             "cellX": 59.0600471,
             "cellY": 53.03337
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13714,6 +13737,7 @@
             "cellX": 62.0700531,
             "cellY": 57.0433769
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13727,6 +13751,7 @@
             "cellX": 53.0500374,
             "cellY": 66.06339
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13740,6 +13765,7 @@
             "cellX": 45.03002,
             "cellY": 65.06339
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13753,6 +13779,7 @@
             "cellX": 45.03002,
             "cellY": 63.05339
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13766,6 +13793,7 @@
             "cellX": 52.0400352,
             "cellY": 61.0533867
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13779,6 +13807,7 @@
             "cellX": 44.03002,
             "cellY": 69.06334
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13792,6 +13821,7 @@
             "cellX": 42.0200157,
             "cellY": 67.06333
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13805,6 +13835,7 @@
             "cellX": 43.02002,
             "cellY": 63.05339
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13818,6 +13849,7 @@
             "cellX": 47.0300255,
             "cellY": 70.07334
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13831,6 +13863,7 @@
             "cellX": 50.04003,
             "cellY": 70.07334
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13844,6 +13877,7 @@
             "cellX": 53.0500374,
             "cellY": 70.07334
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13857,6 +13891,7 @@
             "cellX": 56.050045,
             "cellY": 66.06339
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13870,6 +13905,7 @@
             "cellX": 54.05004,
             "cellY": 66.06339
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13883,6 +13919,7 @@
             "cellX": 59.0600471,
             "cellY": 50.023365
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13896,6 +13933,7 @@
             "cellX": 37.010006,
             "cellY": 60.0433846
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13909,6 +13947,7 @@
             "cellX": 28.98999,
             "cellY": 60.0433846
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13922,6 +13961,7 @@
             "cellX": 28.98999,
             "cellY": 61.0533867
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13935,6 +13975,7 @@
             "cellX": 30.9999943,
             "cellY": 61.0533867
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -13948,6 +13989,7 @@
             "cellX": 29.9899921,
             "cellY": 59.04338
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13961,6 +14003,7 @@
             "cellX": 30.9999943,
             "cellY": 59.04338
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13974,6 +14017,7 @@
             "cellX": 34,
             "cellY": 59.04338
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -13987,6 +14031,7 @@
             "cellX": 28.98999,
             "cellY": 58.04338
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14000,6 +14045,7 @@
             "cellX": 28.98999,
             "cellY": 51.023365
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14013,6 +14059,7 @@
             "cellX": 22.9800453,
             "cellY": 48.02336
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14026,6 +14073,7 @@
             "cellX": 21.9800434,
             "cellY": 48.02336
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14039,6 +14087,7 @@
             "cellX": 26.9900513,
             "cellY": 45.0133553
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14052,6 +14101,7 @@
             "cellX": 26.9900513,
             "cellY": 47.0233574
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14065,6 +14115,7 @@
             "cellX": 26.9900513,
             "cellY": 50.023365
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14078,6 +14129,7 @@
             "cellX": 25.99005,
             "cellY": 53.03337
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14091,6 +14143,7 @@
             "cellX": 22.9800453,
             "cellY": 53.03337
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14104,6 +14157,7 @@
             "cellX": 23.9800472,
             "cellY": 53.03337
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14117,6 +14171,7 @@
             "cellX": 18.9700375,
             "cellY": 51.023365
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14130,6 +14185,7 @@
             "cellX": 37.010006,
             "cellY": 56.0433769
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14143,6 +14199,7 @@
             "cellX": 36.010006,
             "cellY": 27.9733868
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14156,6 +14213,7 @@
             "cellX": 34,
             "cellY": 25.9733829
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14169,6 +14227,7 @@
             "cellX": 34,
             "cellY": 22.963377
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14182,6 +14241,7 @@
             "cellX": 23.9800472,
             "cellY": 56.0433769
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14195,6 +14255,7 @@
             "cellX": 25.99005,
             "cellY": 58.04338
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14208,6 +14269,7 @@
             "cellX": 17.9700356,
             "cellY": 59.04338
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14221,6 +14283,7 @@
             "cellX": 36.010006,
             "cellY": 48.02336
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14234,6 +14297,7 @@
             "cellX": 37.010006,
             "cellY": 49.02336
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14247,6 +14311,7 @@
             "cellX": 50.04003,
             "cellY": 61.0533867
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14260,6 +14325,7 @@
             "cellX": 49.04003,
             "cellY": 61.0533867
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14273,6 +14339,7 @@
             "cellX": 47.0300255,
             "cellY": 61.0533867
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14286,6 +14353,7 @@
             "cellX": 64.06999,
             "cellY": 55.0333748
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14299,6 +14367,7 @@
             "cellX": 26.9900513,
             "cellY": 45.0133553
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14312,6 +14381,7 @@
             "cellX": 6.94001341,
             "cellY": 62.0533867
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14325,6 +14395,7 @@
             "cellX": 7.95001554,
             "cellY": 58.04338
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14338,6 +14409,7 @@
             "cellX": 20.9700413,
             "cellY": 53.03337
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14351,6 +14423,7 @@
             "cellX": 18.9700375,
             "cellY": 56.0433769
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14364,6 +14437,7 @@
             "cellX": 11.9500227,
             "cellY": 61.0533867
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14377,6 +14451,7 @@
             "cellX": 12.9600248,
             "cellY": 61.0533867
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14390,6 +14465,7 @@
             "cellX": 15.980031,
             "cellY": 54.0133743
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14403,6 +14479,7 @@
             "cellX": 9.950019,
             "cellY": 56.0433769
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14416,6 +14493,7 @@
             "cellX": 10.9500208,
             "cellY": 61.0533867
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14429,6 +14507,7 @@
             "cellX": 44.03002,
             "cellY": 26.9733849
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14442,6 +14521,7 @@
             "cellX": 45.03002,
             "cellY": 23.9633789
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14455,6 +14535,7 @@
             "cellX": 38.01001,
             "cellY": 19.9633713
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14468,6 +14549,7 @@
             "cellX": 39.01001,
             "cellY": 27.9733868
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14481,6 +14563,7 @@
             "cellX": 65.06999,
             "cellY": 19.9633713
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14494,6 +14577,7 @@
             "cellX": 65.06999,
             "cellY": 23.9633789
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14507,6 +14591,7 @@
             "cellX": 55.05004,
             "cellY": 4.9233427
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14520,6 +14605,7 @@
             "cellX": 55.05004,
             "cellY": 10.9433546
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14533,6 +14619,7 @@
             "cellX": 64.06999,
             "cellY": 25.9733829
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14546,6 +14633,7 @@
             "cellX": 65.06999,
             "cellY": 26.9733849
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14559,6 +14647,7 @@
             "cellX": 59.0600471,
             "cellY": 27.9733868
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14572,6 +14661,7 @@
             "cellX": 14.9600286,
             "cellY": 58.04338
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14585,6 +14675,7 @@
             "cellX": 63.0699921,
             "cellY": 5.92334461
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14598,6 +14689,7 @@
             "cellX": 63.0699921,
             "cellY": 10.9433546
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14611,6 +14703,7 @@
             "cellX": 59.0600471,
             "cellY": 22.963377
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14624,6 +14717,7 @@
             "cellX": 59.0600471,
             "cellY": 24.973381
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14637,6 +14731,7 @@
             "cellX": 43.02002,
             "cellY": 20.9633732
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14650,6 +14745,7 @@
             "cellX": 42.0200157,
             "cellY": 20.9633732
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14663,6 +14759,7 @@
             "cellX": 62.0700531,
             "cellY": 13.94336
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14676,6 +14773,7 @@
             "cellX": 59.0600471,
             "cellY": 13.94336
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14689,6 +14787,7 @@
             "cellX": 55.05004,
             "cellY": 13.94336
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14702,6 +14801,7 @@
             "cellX": 56.050045,
             "cellY": 13.94336
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14715,6 +14815,7 @@
             "cellX": 19.97004,
             "cellY": 6.93334675
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14728,6 +14829,7 @@
             "cellX": 19.97004,
             "cellY": 4.9233427
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14741,6 +14843,7 @@
             "cellX": 24.98005,
             "cellY": 7.93334866
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14754,6 +14857,7 @@
             "cellX": 24.98005,
             "cellY": 24.973381
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14767,6 +14871,7 @@
             "cellX": 24.98005,
             "cellY": 23.9633789
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14780,6 +14885,7 @@
             "cellX": 24.98005,
             "cellY": 22.963377
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14793,6 +14899,7 @@
             "cellX": 21.9800434,
             "cellY": 26.9733849
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14806,6 +14913,7 @@
             "cellX": 22.9800453,
             "cellY": 26.9733849
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14819,6 +14927,7 @@
             "cellX": 19.97004,
             "cellY": 26.9733849
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14832,6 +14941,7 @@
             "cellX": 10.9500208,
             "cellY": 27.9733868
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14845,6 +14955,7 @@
             "cellX": 11.9500227,
             "cellY": 27.9733868
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14858,6 +14969,7 @@
             "cellX": 29.9899921,
             "cellY": 20.9633732
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14871,6 +14983,7 @@
             "cellX": 29.9899921,
             "cellY": 23.9633789
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14884,6 +14997,7 @@
             "cellX": 25.99005,
             "cellY": 6.93334675
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14897,6 +15011,7 @@
             "cellX": 18.9700375,
             "cellY": 48.02336
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14910,6 +15025,7 @@
             "cellX": 16.9700336,
             "cellY": 18.95337
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14923,6 +15039,7 @@
             "cellX": 19.97004,
             "cellY": 19.9633713
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14936,6 +15053,7 @@
             "cellX": 15.9600306,
             "cellY": 24.973381
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14949,6 +15067,7 @@
             "cellX": 15.9600306,
             "cellY": 23.9633789
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14962,6 +15081,7 @@
             "cellX": 12.9600248,
             "cellY": 19.9633713
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -14975,6 +15095,7 @@
             "cellX": 26.9900513,
             "cellY": 17.9533672
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -14988,6 +15109,7 @@
             "cellX": 25.99005,
             "cellY": 17.9533672
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15001,6 +15123,7 @@
             "cellX": 47.0200272,
             "cellY": 11.9533567
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15014,6 +15137,7 @@
             "cellX": 47.0200272,
             "cellY": 12.9533587
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15027,6 +15151,7 @@
             "cellX": 47.0200272,
             "cellY": 13.9633608
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15040,6 +15165,7 @@
             "cellX": 6.94001341,
             "cellY": 27.9733868
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15053,6 +15179,7 @@
             "cellX": 7.95001554,
             "cellY": 27.9733868
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15066,6 +15193,7 @@
             "cellX": 7.95001554,
             "cellY": 23.9633789
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15079,6 +15207,7 @@
             "cellX": 13.9600267,
             "cellY": 12.9433584
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15092,6 +15221,7 @@
             "cellX": 6.94001341,
             "cellY": 13.94336
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15105,6 +15235,7 @@
             "cellX": 6.94001341,
             "cellY": 17.9533672
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15118,6 +15249,7 @@
             "cellX": 6.94001341,
             "cellY": 15.9533644
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15131,6 +15263,7 @@
             "cellX": 4.94000959,
             "cellY": 12.9433584
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15144,6 +15277,7 @@
             "cellX": 7.95001554,
             "cellY": 12.9433584
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15157,6 +15291,7 @@
             "cellX": 16.9700336,
             "cellY": 15.9533644
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15170,6 +15305,7 @@
             "cellX": 16.9700336,
             "cellY": 13.94336
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15183,6 +15319,7 @@
             "cellX": 21.9800434,
             "cellY": 22.963377
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15196,6 +15333,7 @@
             "cellX": 22.9800453,
             "cellY": 22.963377
           },
+          "state": "closed",
           "closed": true,
           "freestanding": false
         },
@@ -15209,6 +15347,7 @@
             "cellX": 19.97004,
             "cellY": 21.9633751
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15222,6 +15361,7 @@
             "cellX": 29.9899921,
             "cellY": 18.95337
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         },
@@ -15235,6 +15375,7 @@
             "cellX": 50.0300331,
             "cellY": 13.9633608
           },
+          "state": "open",
           "closed": false,
           "freestanding": false
         }
