@@ -233,6 +233,34 @@ export async function decodeFogPng(b64Png, widthCells, heightCells, createCanvas
     try {
       const bytes = base64ToBytes(b64Png);
 
+      // ⛔ **Un masque qui n'a pas la taille de l'étage est écarté, jamais interprété.**
+      //
+      // Défaut de séance du 7 août 2026 : « la zone de vision est là, mais pas le pion ». Un masque
+      // encodé pour une carte de 65 × 71 était relu pour une carte de 20 × 16, parce que les deux
+      // portaient le même `levelId` — `parseUvtt` nomme tout étage importé `uvtt-level`, et la clé
+      // de stockage `rpg_fog_<session>_<levelId>` est donc partagée entre cartes.
+      //
+      // Le fog continuait d'afficher une zone claire, tandis que la couche des pions lisait le même
+      // masque case par case et concluait que **plus aucune case n'est vue** : tous les pions
+      // disparaissaient de la table, en silence. C'est le pire échec possible — le MJ voit ses
+      // pions, la table non, et rien ne le dit.
+      //
+      // Les dimensions sont dans l'en-tête IHDR, aux octets 16 à 23 : 8 de signature, 4 de
+      // longueur, 4 de type. Les comparer coûte quatre lectures et ferme le défaut à la source.
+      const largeurPng =
+        (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+      const hauteurPng =
+        (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+      if (largeurPng !== maskWidth || hauteurPng !== maskHeight) {
+        console.error(
+          `Masque de fog écarté : il mesure ${largeurPng}×${hauteurPng} px alors que l'étage en ` +
+            `attend ${maskWidth}×${maskHeight} (${widthCells}×${heightCells} cases). ` +
+            'Deux cartes partagent probablement le même identifiant d\'étage. ' +
+            'Aucun masque n\'est appliqué : mieux vaut tout montrer que tout cacher sans le dire.'
+        );
+        return null;
+      }
+
       // Découper le chunk IDAT
       let p = 8; // Sauter signature 8 octets
       let compressedData = null;
@@ -319,12 +347,29 @@ export async function decodeFogPng(b64Png, widthCells, heightCells, createCanvas
  */
 export function getOrExtractMaskAlpha(canvas, widthCells, heightCells) {
   if (!canvas || !widthCells || !heightCells) return null;
-  if (canvas.maskAlpha && canvas.maskAlpha instanceof Uint8Array) {
-    return canvas.maskAlpha;
-  }
 
   const maskWidth = widthCells * FOG_MASK_PX_PER_CELL;
   const maskHeight = heightCells * FOG_MASK_PX_PER_CELL;
+
+  // ⚠ Seconde barrière, volontairement redondante avec le contrôle d'en-tête de `decodeFogPng`.
+  // Un tableau d'alpha mis en cache sur un canvas peut provenir d'un étage précédent — le canvas
+  // est réutilisé tant que le PNG ne change pas. Sans cette vérification, l'indexation case par
+  // case se ferait avec la mauvaise largeur et **tous les pions passeraient pour invisibles**.
+  // Le coût est de deux comparaisons ; le prix de l'oubli est une table qui ne voit plus rien.
+  if (
+    Number.isFinite(canvas.maskWidth) &&
+    (canvas.maskWidth !== maskWidth || canvas.maskHeight !== maskHeight)
+  ) {
+    console.error(
+      `Masque de fog écarté à la lecture : ${canvas.maskWidth}×${canvas.maskHeight} px en cache ` +
+        `contre ${maskWidth}×${maskHeight} attendus pour cet étage.`
+    );
+    return null;
+  }
+
+  if (canvas.maskAlpha && canvas.maskAlpha instanceof Uint8Array) {
+    return canvas.maskAlpha;
+  }
   const ctx = canvas.getContext ? canvas.getContext('2d') : canvas._ctx;
   if (!ctx) return null;
 

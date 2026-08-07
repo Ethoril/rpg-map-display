@@ -166,6 +166,25 @@ export function createImportPanel(container, options = {}) {
         try {
           const text = /** @type {string} */ (e.target?.result);
           const parsed = parseUvtt(text);
+
+          // ⛔ **L'identifiant d'étage vient du nom de fichier, jamais du défaut de `parseUvtt`.**
+          //
+          // Un export Dungeondraft ne porte pas d'`id` : le parseur retombe sur `'uvtt-level'`, le
+          // même pour toutes les cartes. `store.addLevel` remplaçant en place à identifiant égal,
+          // importer une seconde carte **écrasait la première en silence** — et les masques de fog,
+          // indexés par `levelId`, se retrouvaient partagés entre cartes de tailles différentes,
+          // ce qui faisait disparaître tous les pions de la vue joueurs (séance du 7 août 2026).
+          //
+          // Même règle que `scripts/prepare-maps.mjs` : réimporter le même fichier remplace,
+          // en importer un autre ajoute.
+          const base = (file.name || '')
+            .replace(/\.[^.]+$/, '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9-]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+          if (base) parsed.level.id = base;
+
           pendingUvtt = parsed;
 
           // La base64 du fichier UVTT est réservée à cet aperçu DOM et ne

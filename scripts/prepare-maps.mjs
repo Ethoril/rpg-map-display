@@ -89,6 +89,25 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
   const { level, imageBase64, warnings: parseWarnings } = parseUvtt(uvttData);
 
   const baseName = path.basename(uvttPath, path.extname(uvttPath));
+
+  // ⛔ **L'identifiant d'étage vient du nom de fichier, jamais du défaut de `parseUvtt`.**
+  //
+  // Un export Dungeondraft ne porte pas d'`id` : `parseUvtt` retombe donc sur `'uvtt-level'`, le
+  // même pour **toutes** les cartes. Trois conséquences, mesurées en séance le 7 août 2026 :
+  //
+  //  1. `store.addLevel` remplace en place quand l'identifiant existe déjà — importer une seconde
+  //     carte **écrasait la première, en silence**. Il n'y avait jamais deux étages, et le
+  //     sélecteur d'étage du lot 3 ne pouvait pas apparaître.
+  //  2. Les masques de fog et de vision sont indexés par `levelId`, **clé `localStorage`
+  //     comprise** : deux cartes se partageaient leurs masques.
+  //  3. Et un masque relu aux mauvaises dimensions faisait **disparaître tous les pions** de la
+  //     vue joueurs, la zone de vision restant dessinée — le MJ voyait ses pions, la table non.
+  //
+  // Le nom de fichier est le bon choix : stable, lisible, et il conserve l'intention de
+  // `addLevel` — réimporter la même carte la remplace, en importer une autre l'ajoute. Un
+  // identifiant tiré au hasard casserait ce remplacement.
+  level.id = baseName;
+
   const generatedDir = path.join(outputDir, 'generated');
   if (!fs.existsSync(generatedDir)) {
     fs.mkdirSync(generatedDir, { recursive: true });
