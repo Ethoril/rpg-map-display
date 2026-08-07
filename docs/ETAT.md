@@ -1064,6 +1064,78 @@ espace — après le chantier K, L-09 et les portes — cette fois sur le liser�
 sélection, tous deux en pixels carte, donc à 0,7 et 0,6 px écran à la vue « carte entière ». Ils
 sont dans la zone de travail de la châsse et se corrigent au passage.
 
+## Retour de table du 7 août 2026 — trois défauts, dont deux invisibles à toute mesure
+
+Première séance après les déploiements du lot 3 et de la châsse. **La châsse est jugée lisible**
+par le mainteneur — le critère 9 est donc atteint, avec l'envie d'explorer une vraie décoration
+plus tard. Trois défauts sérieux ont été trouvés, tous corrigés le jour même.
+
+### 1. Un masque de fog mal dimensionné faisait disparaître TOUS les pions
+
+Rapporté ainsi : « la zone de vision est là, mais pas le pion ». Le MJ voyait ses pions, la table
+non, et rien ne le disait.
+
+`parseUvtt` donnait à **tout** étage importé l'identifiant `'uvtt-level'` — un export Dungeondraft
+ne porte pas d'`id`. Or les masques sont indexés par `levelId`, **clé `localStorage` comprise** :
+deux cartes de tailles différentes partageaient leurs masques, et celui d'une carte de 65 × 71
+était relu pour une carte de 20 × 16. Le fog continuait d'afficher une zone claire — il dessine le
+canvas mis à l'échelle — tandis que la couche des pions lisait le même masque **case par case** et
+concluait qu'aucune case n'est vue.
+
+⭐ Le même identifiant partagé expliquait deux autres symptômes du jour : importer une seconde
+carte **écrasait la première en silence** (`addLevel` remplace à identifiant égal), d'où l'absence
+de sélecteur d'étage et le « critère 1 non vérifié » du lot 3.
+
+Deux barrières, volontairement redondantes : `decodeFogPng` compare les dimensions de l'en-tête
+IHDR et **écarte** le masque si elles diffèrent ; le cache d'alpha refuse un tableau mal
+dimensionné. ⛔ Mieux vaut tout montrer que tout cacher sans le dire. Cause racine corrigée : les
+identifiants viennent du nom de fichier, et `maps/generated/` a été régénéré.
+
+### 2. La « grosse latence » était une horloge, pas un réseau
+
+⭐ **Le défaut le plus instructif de la journée**, parce qu'il était invisible à toute mesure du
+réseau **et** du store, et que deux campagnes de mesure automatisées n'ont rien trouvé.
+
+La sonde `docs/SONDE-LATENCE.md`, passée dans la vraie fenêtre MJ, a tout dit d'un coup :
+
+```
+traitement app  22,1 ms   vers le store  19,9 ms   vers le repaint  22,8 ms
+réseau  −5311 ms
+```
+
+Le poste MJ encaissait et repeignait en **23 ms**. Et la colonne réseau **négative** révélait une
+horloge de tablette **5,3 secondes en avance**.
+
+`tokens.js` calcule `elapsed = Math.max(0, now - move.startedAt)` avec le `now` du **récepteur**,
+alors que `startedAt` était daté par l'**émetteur** : on soustrayait deux horloges. Tablette → MJ,
+la date était dans le futur et l'animation restait figée 5,3 s sur la case de **départ**. MJ →
+tablette, elle était dans le passé et le pion **sautait** — ce que le mainteneur prenait pour de
+l'instantané était l'animation escamotée. Deux symptômes opposés, une seule ligne.
+
+⚠ **C'est l'observation du mainteneur qui a tranché, pas une mesure** : « une porte s'ouvre
+instantanément, seul le déplacement a du retard ». Porte et déplacement empruntent le même canal —
+Firebase était donc innocenté —, et `token.move` est le **seul** événement porteur d'un horodatage
+d'animation. Le bon test était là, et aucune de mes deux campagnes ne l'avait imaginé.
+
+L'instant de départ est désormais **local au récepteur** : l'animation est une affaire de
+présentation, chaque poste la joue à partir du moment où il apprend le déplacement.
+
+### 3. `willReadFrequently` — l'avertissement est un faux problème, et c'est mesuré
+
+Voir le point 1 des « trois points sciemment non traités » : 0,730 ms sans l'attribut contre
+0,775 ms avec, sur un masque de 520 × 568. ⛔ Ne pas l'ajouter pour faire taire la console.
+
+### Ce que la journée dit de la méthode
+
+**Deux sondes fausses ont été écrites et corrigées avant de conclure**, et la première aurait fait
+écrire un correctif sur du vent : un écouteur de mesure abonné **après** celui de l'application
+datait l'arrivée une fois le poste ayant déjà tout traité, et rapportait 613 ms de « réseau » qui
+n'en étaient pas. ⚠ Une sonde se vérifie avant ce qu'elle mesure.
+
+Et **la mesure automatisée a mesuré le mauvais monde** : elle tournait sur le transport de test,
+un canal local du navigateur, et concluait « le réseau n'est pas en cause » sur la foi de 33 ms
+qui ne représentaient rien du réseau réel.
+
 ## À faire avant la 1.0 — dette d'exploitation Firebase
 
 Relevé le 7 août 2026 sur question du mainteneur : « il me faudra un truc pour détruire toutes
