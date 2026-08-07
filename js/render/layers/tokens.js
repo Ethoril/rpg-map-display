@@ -45,6 +45,7 @@ export const TOKEN_MOVE_STEP_MS = 160;
  *   dragPreview?: { tokenId: string, mapPos: import('../../core/types.js').MapPoint }|null,
  *   visibleCanvas?: any,
  *   visibleAlpha?: Uint8Array|null,
+ *   visionPublished?: boolean,
  *   activeLevelWidthCells?: number,
  *   activeLevelHeightCells?: number,
  *   zoom?: number,
@@ -219,9 +220,29 @@ export class TokensLayer {
       }
     }
 
+    // ⛔ **Aucune vision publiée pour cet étage : la vue joueurs n'y montre AUCUN pion.**
+    //
+    // Sans ce garde-fou, l'absence de masque ouvre la porte au lieu de la fermer — le filtre
+    // ci-dessous ne s'applique que `if (maskAlpha)`. C'est sans conséquence tant que la tablette
+    // suit l'étage du MJ, qui publie toujours la vision de l'étage qu'il regarde ; la fenêtre est
+    // alors de quelques centaines de millisecondes au démarrage.
+    //
+    // Elle devient permanente dès que les joueurs peuvent choisir un étage **où aucun PJ ne se
+    // trouve** (lot 3, sélecteur joueurs) : le MJ n'y calcule aucune vision, et la table verrait
+    // alors tous les PNJ qui l'y attendent. L'arbitrage du mainteneur est explicite — sur un tel
+    // étage, on montre « le dernier état connu, le fog tel qu'il était, et aucune zone de vision
+    // directe ». Un pion est une information vive : il n'a pas sa place dans un souvenir.
+    //
+    // ⚠ Le drapeau est **explicite** et non déduit de `maskAlpha == null`, parce que les deux cas
+    // sont indiscernables au niveau de la couche : un appelant qui ne passe simplement pas de
+    // masque — rendu hors fog, contrôle de visibilité par rôle — doit garder l'ancien
+    // comportement. Seule l'application joueurs sait qu'un masque était attendu.
+    const aucuneVisionPubliee = isPlayerView && options.visionPublished === false;
+
     ctx.save();
     for (const token of visibleTokens) {
       if (!token.cell) continue;
+      if (aucuneVisionPubliee) continue;
 
       if (isPlayerView && maskAlpha && options.activeLevelWidthCells && options.activeLevelHeightCells) {
         if (!isCellVisibleInMask(token.cell, maskAlpha, options.activeLevelWidthCells, options.activeLevelHeightCells)) {

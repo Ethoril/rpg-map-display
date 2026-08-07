@@ -380,6 +380,15 @@ export async function bootstrapPlayerApp(options = {}) {
             activeLevelWidthCells: activeLevel.widthCells,
             activeLevelHeightCells: activeLevel.heightCells,
             visibleCanvas,
+            // ⛔ Aucun masque de vision publié pour cet étage ⇒ aucun pion dessiné.
+            //
+            // La couche ne peut pas déduire cette règle de l'absence de masque : un appelant qui
+            // n'en passe pas volontairement — rendu hors fog, contrôle par rôle — doit garder
+            // l'ancien comportement. Seule la vue joueurs sait qu'un masque était **attendu**.
+            //
+            // Le cas devient courant avec le sélecteur d'étage joueurs : sur un étage sans PJ, le
+            // MJ ne calcule aucune vision, et sans ce drapeau la table y verrait tous les PNJ.
+            visionPublished: store.getSessionVision(activeLevel.id) !== null,
             now: Date.now(),
             zoom: camera.zoom,
             resolution: stage.resolution,

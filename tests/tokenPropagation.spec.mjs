@@ -236,3 +236,109 @@ for (const cas of CAS) {
     await context.close();
   });
 }
+
+/**
+ * ⛔ Un étage sans vision publiée ne montre AUCUN pion à la table.
+ *
+ * ⚠ Sans ce garde-fou, l'absence de masque **ouvre** la porte au lieu de la fermer : le filtre de
+ * visibilité de `tokens.js` ne s'applique que si un masque existe. C'est aujourd'hui une fenêtre
+ * de quelques centaines de millisecondes au démarrage — mais elle devient permanente avec le
+ * sélecteur d'étage joueurs du lot 3, où la table pourra regarder un étage **sans PJ**, donc sans
+ * vision calculée par le MJ.
+ *
+ * Elle y verrait alors tous les PNJ qui l'y attendent. L'arbitrage du mainteneur, le 7 août 2026,
+ * est explicite : sur un tel étage on montre « le dernier état connu, le fog tel qu'il était, et
+ * aucune zone de vision directe ». Un pion est une information vive ; il n'a pas sa place dans un
+ * souvenir.
+ */
+test('⛔ un étage sans vision publiée n\'affiche aucun pion côté joueurs', async ({ browser }) => {
+  const context = await browser.newContext();
+  const sessionId = `sans-vision-${Date.now()}`;
+  /** @type {string[]} */
+  const erreurs = [];
+
+  const snapshot = /** @type {any} */ (structuredClone(SNAPSHOT));
+  // Un PNJ bien visible, posé sur la carte. Aucun PJ : le MJ ne publiera donc jamais de vision
+  // pour cet étage, exactement comme un étage que la table va « regarder pour réfléchir ».
+  snapshot.campaign.tokens = [
+    {
+      id: 'pnj-embusque',
+      levelId: 'rdc',
+      cell: { a: 5, b: 4 },
+      sizeCells: 1,
+      kind: 'npc',
+      imageUrl: '',
+      borderColor: '#ff00ff',
+      label: 'Embuscade',
+      hidden: false,
+      visionBright: 0,
+      visionDim: 0,
+      emitsLight: null,
+      speedCells: 6,
+      playerMovable: false,
+      locked: false,
+      elevation: 0,
+      markers: [],
+      hp: null,
+      health: 'unharmed',
+    },
+  ];
+
+  const joueur = await context.newPage();
+  joueur.on('pageerror', (e) => erreurs.push(`joueur: ${e.message}`));
+  await installBrowserTransport(joueur, sessionId, snapshot);
+  await joueur.goto('/player.html');
+  await waitForApp(joueur);
+
+  // ⚠ L'étage est EXPLORÉ, et c'est tout l'enjeu. Une première version de ce test laissait la
+  // zone jamais vue : le voile y est OPAQUE, il recouvrait le pion, et le constat passait sans
+  // rien prouver — la mutation qui retirait le garde-fou restait verte. Sur une zone explorée le
+  // voile n'est qu'à 50 %, et un pion dessiné transparaît. C'est le vrai cas du sélecteur : un
+  // étage que la table a déjà visité, qu'elle regarde pour réfléchir, et où aucun PJ ne se trouve.
+  await joueur.evaluate(async () => {
+    const [store, { ExploredFog }] = await Promise.all([
+      import('../js/state/store.js'),
+      import('../js/vision/fog.js'),
+    ]);
+    const fog = new ExploredFog(12, 10);
+    fog.revealAll();
+    store.setSessionFog('rdc', await fog.exportPng());
+  });
+  await joueur.waitForTimeout(1200);
+
+  const visionPubliee = await joueur.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getSessionVision('rdc');
+  });
+  expect(visionPubliee, 'la référence du test : aucune vision publiée').toBeNull();
+
+  // Le pion est bien dans les données — le réseau ne filtre rien — mais il ne doit PAS être dessiné.
+  expect(await pions(joueur)).toEqual(['pnj-embusque:npc:rdc:false']);
+
+  // On cherche le liseré MAGENTA du PNJ, que rien d'autre ne porte dans cette scène — et non
+  // une couleur de fond, qui varierait avec le voile.
+  const magentaVisible = await joueur.evaluate(async () => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    if (typeof app.invalidate === 'function') app.invalidate();
+    await new Promise((r) => requestAnimationFrame(r));
+    const ctx = app.canvas.getContext('2d');
+    const res = app.stage?.resolution ?? 1;
+    for (let dx = -0.45; dx <= 0.45; dx += 0.05) {
+      for (let dy = -0.45; dy <= 0.45; dy += 0.05) {
+        const e = app.camera.mapToScreen({ x: (5 + 0.5 + dx) * 100, y: (4 + 0.5 + dy) * 100 });
+        const d = ctx.getImageData(Math.round(e.screenX * res), Math.round(e.screenY * res), 1, 1)
+          .data;
+        if (d[0] > 60 && d[2] > 60 && d[0] - d[1] > 30 && d[2] - d[1] > 30) return true;
+      }
+    }
+    return false;
+  });
+
+  expect(
+    magentaVisible,
+    'un PNJ ne doit pas transparaître sur un étage exploré dont aucune vision n est publiée'
+  ).toBe(false);
+
+  expect(erreurs).toEqual([]);
+  await context.close();
+});
