@@ -1,7 +1,7 @@
 // @ts-check
 import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from '../browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
 /**
  * La sonde de `docs/SONDE-LATENCE.md` s'exécute-t-elle réellement ?
@@ -99,7 +99,7 @@ test('la sonde de latence documentée s\'exécute et relève un déplacement', a
 
   // Un déplacement venu du joueur, ce que la sonde guette.
   await joueur.evaluate(async () => {
-    const store = await import('../../js/state/store.js');
+    const store = await import('../js/state/store.js');
     store.moveTokenToCell('pj-1', { a: 5, b: 2 }, null);
     /** @type {any} */ (window).__RPG_APP_OPTIONS__.transport.publish({
       type: 'token.move',

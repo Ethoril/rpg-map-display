@@ -54,13 +54,31 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: '**/manuel/**',
+      testIgnore: ['**/manuel/**', '**/mesures/**'],
     },
     // Lancé explicitement par `pnpm run test:manuel`, jamais par la porte.
     {
       name: 'manuel',
       use: { ...devices['Desktop Chrome'] },
       testMatch: '**/manuel/**/*.spec.mjs',
+    },
+    // ── Mesures : `pnpm run test:mesures`, jamais la porte, jamais la CI ────────────────────
+    //
+    // ⚠ **Une mesure n'est pas une garantie**, et les mélanger coûte des deux côtés. Un relevé
+    // de temps dépend de la charge de la machine : le faire rougir une porte apprend à ignorer
+    // la porte ; l'y faire passer en relâchant ses seuils lui retire tout pouvoir de mesure.
+    // Ces fichiers n'affirment donc aucun seuil — ils impriment des nombres.
+    //
+    // ⭐ La séparation a été créée le 7 août 2026 après une collision instructive : deux
+    // mesures déposées dans `tests/manuel/` ont fait rougir le job `geste-diagnostic`, dont une
+    // garde vérifie que chaque motif `--grep` sélectionne **exactement un** test. Le titre
+    // « … canvas de fog … » en faisait deux pour le motif `fog`. La garde a bien fonctionné ;
+    // c'est le rangement qui était faux — `tests/manuel/` est réservé aux **gestes**, chacun
+    // avec sa raison écrite en tête de fichier et sa ligne dans `ETAT.md`.
+    {
+      name: 'mesures',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: '**/mesures/**/*.spec.mjs',
     },
   ],
   webServer: {
