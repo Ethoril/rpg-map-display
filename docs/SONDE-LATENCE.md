@@ -37,15 +37,13 @@ pour être lisible et vérifiable, mais il n'est plus le chemin recommandé.
 
 ---
 
-## Le bloc, pour lecture — et pour qui préfère coller
+## Ancien bloc retiré — utiliser l'import ci-dessus
 
-⚠ Si tu colles, prends de `(async () => {` jusqu'à `})();` **sans** les lignes de clôture
-Markdown qui les encadrent. C'est exactement le piège qui a produit `js is not defined`.
+Le code est maintenant maintenu dans `js/app/sondeLatence.js` : un second bloc à copier avait fini
+par diverger. L'import recommandé est le seul chemin d'exécution. L'ancien texte ci-dessous est
+conservé uniquement comme historique de l'instrument, et ne doit pas être copié.
 
-Ce bloc et `js/app/sondeLatence.js` sont **le même code**, et un test le vérifie : modifier
-l'un sans l'autre fait rougir.
-
-```js
+```text
 (async () => {
   const store = await import('./js/state/store.js');
   const app = window.__RPG_APP__;
@@ -149,7 +147,7 @@ l'un sans l'autre fait rougir.
 
 ---
 
-## Comment lire les quatre nombres
+## Comment lire les mesures
 
 Ils désignent quatre coupables différents, qui se corrigent à quatre endroits opposés.
 
@@ -158,7 +156,14 @@ Ils désignent quatre coupables différents, qui se corrigent à quatre endroits
 | **réseau** | de la publication par le joueur à l'arrivée chez le MJ | Firebase, ou la file d'événements. C'est le seul poste qui peut se compter en secondes |
 | **traitement app** | le temps que les gestionnaires du MJ passent, **synchrone**, sur cet événement | le réducteur, la vision, la publication du fog |
 | **vers le store** | de l'arrivée à la mutation visible | idem, plus les validations et les clones |
-| **vers le repaint** | de l'arrivée à l'écran repeint | le rendu : couches, fog, décodage de masque |
+| **attente rAF** | du store à la fin de la vraie frame applicative | l'ordonnancement de frame. Ce n'est pas le coût des couches. |
+| **vers la frame exécutée** | de l'arrivée à la fin de `renderAll` | le délai local jusqu'à l'exécution Canvas, sans prétendre mesurer le compositing écran. |
+| **présentation** | qualification de l'échantillon | si l'onglet a été masqué entre mutation et frame, l'affichage n'est pas mesurable : le throttling rAF est signalé, pas attribué au renderer. |
+
+**Important :** une frame exécutée est la fin du JavaScript de rendu, pas un accusé de réception du
+compositeur ou de l'écran. Et quand l'onglet est masqué, le délai avant cette frame est le scheduling
+du navigateur (rAF throttlé ou suspendu), non une « latence de rendu ». Ces échantillons restent
+utiles pour constater une suspension, mais ne se comparent pas à une mesure au premier plan.
 
 ⚠ **La colonne « réseau » compare deux horloges différentes** — celle de la tablette et celle du
 poste MJ. Un décalage entre les deux machines s'y ajoute tel quel. Trois garde-fous pour la lire :
@@ -169,6 +174,7 @@ poste MJ. Un décalage entre les deux machines s'y ajoute tel quel. Trois garde-
 - surtout, **une latence de plusieurs secondes ne s'explique pas par une dérive d'horloge** entre
   deux machines synchronisées : c'est le seuil qui rend cette colonne concluante malgré son défaut.
 
-Si « réseau » est petit et « repaint » énorme, la cause est locale et la sonde automatisée
-reprend la main. Si « réseau » se compte en secondes, le sujet est Firebase — et la question
+Si « réseau » est petit, « attente rAF » courte et « vers la frame exécutée » énorme, la cause est
+locale et la sonde de couches (touche P côté MJ) reprend la main. Si « réseau » se compte en
+secondes, le sujet est Firebase — et la question
 ouverte n°2 du CdC §12, « latence Firebase mesurée à table », trouve enfin sa réponse.

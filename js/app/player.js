@@ -3,6 +3,7 @@
 import { initStage, renderLayerStack } from '../render/stage.js';
 import { Camera } from '../render/camera.js';
 import { FrameLoop } from '../render/frame.js';
+import { FrameProbe } from '../render/probe.js';
 import { BackgroundLayer } from '../render/layers/background.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
@@ -231,6 +232,21 @@ export async function bootstrapPlayerApp(options = {}) {
   const templatesLayer = new TemplatesLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
+  // Passive, comme côté MJ : aucun timer ni rAF ne vient entretenir la tablette au repos.
+  const frameProbe = new FrameProbe();
+  /** @type {Record<string, number>} */
+  const layerDurations = {
+    snapshot: 0,
+    background: 0,
+    grid: 0,
+    portals: 0,
+    moveZone: 0,
+    templates: 0,
+    tokens: 0,
+    fog: 0,
+    feedback: 0,
+  };
+  let lStart = 0;
 
   /** @type {Map<string, { png: string, canvas: any }>} */
   const playerExploredCanvasMap = new Map();
@@ -281,6 +297,7 @@ export async function bootstrapPlayerApp(options = {}) {
   }
 
   const urlParams = new URLSearchParams(window.location.search);
+  const probeOnStart = urlParams.get('probe') === '1';
 
   // Même normalisation que côté MJ : le code est recopié à la main sur la tablette, la
   // casse ne doit pas décider silencieusement d'une autre session.
@@ -310,8 +327,8 @@ export async function bootstrapPlayerApp(options = {}) {
 
   /** @type {string|null} */
   let lastActiveLevelId = null;
-  function fitActiveLevel() {
-    const activeLevel = store.getActiveLevel();
+  /** @param {import('../core/types.js').Level|null} activeLevel */
+  function fitActiveLevel(activeLevel) {
     if (!activeLevel || activeLevel.id === lastActiveLevelId) return;
     lastActiveLevelId = activeLevel.id;
     if (restoredCamera) {
@@ -330,13 +347,17 @@ export async function bootstrapPlayerApp(options = {}) {
   }
 
   function renderAll() {
+    const tStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     stage.context.save();
     stage.context.setTransform(1, 0, 0, 1, 0, 0);
     stage.context.clearRect(0, 0, stage.canvas.width, stage.canvas.height);
     stage.context.restore();
 
-    fitActiveLevel();
-    const state = store.getState();
+    lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const state = store.getRenderSnapshot();
+    layerDurations.snapshot =
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+    fitActiveLevel(state.activeLevel);
     const activeLevel = state.activeLevel;
     if (!activeLevel) return;
 
@@ -351,23 +372,49 @@ export async function bootstrapPlayerApp(options = {}) {
     stage.context.scale(stage.resolution, stage.resolution);
     camera.applyToContext(stage.context);
     let animationActive = false;
+    layerDurations.background = 0;
+    layerDurations.grid = 0;
+    layerDurations.portals = 0;
+    layerDurations.moveZone = 0;
+    layerDurations.templates = 0;
+    layerDurations.tokens = 0;
+    layerDurations.fog = 0;
+    layerDurations.feedback = 0;
     renderLayerStack({
-      background: () =>
+      background: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, {
           role: 'players',
-        }),
-      grid: () => gridLayer.render(stage.context, grid),
+        });
+        layerDurations.background = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      grid: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        gridLayer.render(stage.context, grid);
+        layerDurations.grid = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
       // Pas de battement côté joueurs : verrouiller est réservé au MJ (CdC §12 Q3), donc un
       // tap joueurs sur une porte verrouillée n'a rien à signaler qu'il puisse changer.
-      portals: () => portalsLayer.render(stage.context, grid, activeLevel, { zoom: camera.zoom }),
-      moveZone: () =>
+      portals: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        portalsLayer.render(stage.context, grid, activeLevel, { zoom: camera.zoom });
+        layerDurations.portals = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      moveZone: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
           reachableCells: state.reachableCells,
-        }),
-      templates: () =>
-        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], true),
+        });
+        layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      templates: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], true);
+        layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
       tokens: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const visibleCanvas = getPlayerVisibleCanvas(activeLevel);
         const result = tokensLayer.render(
           stage.context,
@@ -399,8 +446,10 @@ export async function bootstrapPlayerApp(options = {}) {
         // dessinée avant eux. Rien ne s'anime avant eux ici aujourd'hui — c'est justement pour
         // que ce ne soit pas un piège demain.
         animationActive ||= result.animationActive;
+        layerDurations.tokens = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
-      fog: () =>
+      fog: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         fogLayer.render(
           stage.context,
           grid,
@@ -411,19 +460,32 @@ export async function bootstrapPlayerApp(options = {}) {
             exploredCanvas: getPlayerExploredCanvas(activeLevel),
             visibleCanvas: getPlayerVisibleCanvas(activeLevel),
           }
-        ),
+        );
+        layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
       feedback: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
           now: Date.now(),
           zoom: camera.zoom,
         });
+        layerDurations.feedback = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
     });
 
     stage.context.restore();
     if (animationActive) requestRender();
+    const tEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    frameProbe.recordFrame(tEnd, tEnd - tStart, layerDurations);
   }
   frameLoop = new FrameLoop(renderAll);
+  if (probeOnStart) {
+    const showProbeOnce = () => {
+      frameLoop.removeListener(showProbeOnce);
+      frameProbe.toggleOverlay();
+    };
+    frameLoop.addListener(showProbeOnce);
+  }
 
   const networkStatus = createNetworkStatus('players', sessionId);
   /** @type {Transport|null} */
@@ -595,10 +657,19 @@ export async function bootstrapPlayerApp(options = {}) {
     lastActiveLevelId = null;
     requestRender();
   };
+  const onKeyDown = (/** @type {KeyboardEvent} */ event) => {
+    const target = /** @type {HTMLElement|null} */ (event.target);
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      return;
+    }
+    if (event.key === 'p' || event.key === 'P') frameProbe.toggleOverlay();
+  };
+  if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
   window.addEventListener('resize', onResize);
   requestRender();
 
   const destroy = () => {
+    if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     playerControls.detach();
     versionBadge.detach();
     handoutOverlay.detach();
@@ -611,6 +682,7 @@ export async function bootstrapPlayerApp(options = {}) {
     if (snapshotTimer !== null) clearTimeout(snapshotTimer);
     window.removeEventListener('resize', onResize);
     frameLoop.stop();
+    frameProbe.stop();
     transport?.disconnect();
     networkStatus.remove();
   };
@@ -620,6 +692,7 @@ export async function bootstrapPlayerApp(options = {}) {
     context: stage.context,
     camera,
     frameLoop,
+    frameProbe,
     pointerInput: playerControls.pointerInput,
     backgroundLayer,
     tokensLayer,

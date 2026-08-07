@@ -8,24 +8,23 @@
  * lignes à coller dans la console ; le mainteneur a copié la clôture Markdown avec, et a reçu un
  * `ReferenceError: js is not defined`. Une ligne à taper ne peut pas rater de cette façon.
  *
- * Le mode d'emploi et la lecture des quatre nombres sont dans `docs/SONDE-LATENCE.md`.
+ * Le mode d'emploi et la lecture des mesures sont dans `docs/SONDE-LATENCE.md`.
  *
  * ⚠ Aucun autre module ne l'importe : il ne se charge que sur demande explicite, et ne coûte donc
  * rien en séance tant que personne ne le réclame.
  */
 
 (async () => {
-  // ⚠ Chemin relatif au MODULE, alors que le bloc publié dans docs/SONDE-LATENCE.md le résout
-  // depuis la PAGE. C'est la seule ligne par laquelle les deux versions diffèrent, et le test de
-  // parité la neutralise avant de comparer. Une première version avait copié le chemin de la
-  // console dans le module : l'import échouait et la sonde ne s'armait jamais, en silence.
+  // Chemin relatif au module. La documentation ne duplique plus ce code : elle donne uniquement
+  // l'import à exécuter depuis la page, ce qui évite qu'une copie diverge de cette source.
   const store = await import('../state/store.js');
   const app = window.__RPG_APP__;
   const tr = app.transport;
+  const loop = app.frameLoop;
   // Le vrai transport range ses abonnés dans `_subscribers`, celui des tests dans `listeners`.
   // La sonde accepte les deux, pour être éprouvable en local avant d'être collée en séance.
   const abonnes = tr && (tr._subscribers || tr.listeners);
-  if (!abonnes) { console.error('Transport introuvable — la page MJ est-elle connectée ?'); return; }
+  if (!abonnes || !loop) { console.error('Transport ou boucle de rendu introuvable — la page MJ est-elle connectée ?'); return; }
 
   const releves = [];
   let enCours = null;
@@ -46,6 +45,7 @@
       arrivee: Date.now(),      // horloge locale
       t1: performance.now(),
       t1bis: 0, t2: 0, t3: 0,
+      pageMasquee: document.visibilityState !== 'visible',
     };
   };
   abonnes.add(premier);
@@ -60,11 +60,16 @@
 
   // ── t2 : la mutation est visible dans le store.
   const desabonner = store.subscribe(() => {
-    if (enCours && !enCours.t2) enCours.t2 = performance.now();
+    if (enCours && !enCours.t2) {
+      enCours.t2 = performance.now();
+      enCours.pageMasquee ||= document.visibilityState !== 'visible';
+    }
   });
 
   // ── t3 : l'écran s'est repeint.
-  const boucle = () => {
+  // Le callback vient de la boucle applicative, après le rendu réel. La sonde ne crée donc pas
+  // de rAF vivant au repos et ne confond pas son propre rAF avec le rendu de la carte.
+  const renduExecute = () => {
     if (enCours && enCours.t2 && !enCours.t3) {
       enCours.t3 = performance.now();
       const r = enCours;
@@ -74,17 +79,27 @@
         'réseau (ms)': Math.round(decalage),
         'traitement app (ms)': +(r.t1bis - r.t1).toFixed(1),
         'vers le store (ms)': +(r.t2 - r.t1).toFixed(1),
-        'vers le repaint (ms)': +(r.t3 - r.t1).toFixed(1),
+        'attente rAF (ms)': +(r.t3 - r.t2).toFixed(1),
+        'vers la frame exécutée (ms)': +(r.t3 - r.t1).toFixed(1),
+        'présentation': r.pageMasquee
+          ? 'non mesurable : onglet masqué (throttling rAF possible)'
+          : 'frame exécutée ; présentation écran non mesurée',
       });
       console.log(
         `#${releves.length}  réseau ${String(Math.round(decalage)).padStart(6)} ms   ` +
         `app ${(r.t1bis - r.t1).toFixed(1).padStart(6)} ms   ` +
         `store ${(r.t2 - r.t1).toFixed(1).padStart(6)} ms   ` +
-        `repaint ${(r.t3 - r.t1).toFixed(1).padStart(6)} ms`
+        `rAF ${(r.t3 - r.t2).toFixed(1).padStart(6)} ms   ` +
+        `${r.pageMasquee ? 'arrière-plan : non mesurable' : 'frame exécutée'}`
       );
     }
-    if (sonde._actif) requestAnimationFrame(boucle);
   };
+
+  loop.addListener(renduExecute);
+  const noterMasquage = () => {
+    if (enCours && document.visibilityState !== 'visible') enCours.pageMasquee = true;
+  };
+  document.addEventListener('visibilitychange', noterMasquage);
 
   window.sonde = {
     _actif: true,
@@ -102,7 +117,8 @@
         `  réseau            ${med('réseau (ms)')} ms\n` +
         `  traitement app    ${med('traitement app (ms)')} ms\n` +
         `  vers le store     ${med('vers le store (ms)')} ms\n` +
-        `  vers le repaint   ${med('vers le repaint (ms)')} ms\n` +
+        `  attente rAF       ${med('attente rAF (ms)')} ms\n` +
+        `  vers la frame     ${med('vers la frame exécutée (ms)')} ms\n` +
         `  décalage d'horloge serveur connu du transport : ${(tr._serverTimeOffset ?? 0)} ms`
       );
     },
@@ -111,9 +127,10 @@
       abonnes.delete(premier);
       abonnes.delete(dernier);
       desabonner();
+      loop.removeListener(renduExecute);
+      document.removeEventListener('visibilitychange', noterMasquage);
       console.log('Sonde arrêtée.');
     },
   };
-  requestAnimationFrame(boucle);
   console.log('Sonde armée. Fais bouger un pion côté joueur, puis tape sonde.bilan()');
 })();

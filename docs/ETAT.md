@@ -24,6 +24,16 @@
 > La porte R1 ne sera fermée qu'après le premier run CI, le déploiement des règles, la validation
 > RTDB réelle et la preuve des restrictions Firebase Console.
 >
+> **Phase R2 automatisable implantée le 7 août 2026 ; porte matérielle encore ouverte.** Les
+> images de rendu lisent désormais un snapshot stable et immuable au lieu de cloner toute la
+> campagne ; sur `testbig150`, la passe complète mesure 0,0002 ms/image en médiane et 0,0005 ms au
+> pire, pour un seuil de 2 ms. La sonde passive sépare store, vision, fond, grille, portes, pions,
+> fog, autres couches et résidu sur les vues MJ et joueurs. La sonde multipage écoute la vraie
+> boucle applicative et classe un onglet masqué comme présentation non mesurable, au lieu de faire
+> passer le throttling `requestAnimationFrame` pour un coût Canvas. Les protocoles et le rapport
+> remplissable couvrent 120 s d'inactivité, 45 min de cast et 4 h de session. **R2-03, R2-05 et
+> R2-06 ne sont pas validés** : leurs essais sur la tablette et la TV restent à exécuter.
+>
 > **Chantier Q, 6 août 2026 — code livré, trois vérifications de table ouvertes.** Points de vie,
 > hors CdC et demandé par le mainteneur : compteur `courant/max` saisi par le MJ, **anneau
 > proportionnel bleu `#2563eb` sur les PJ seulement**, **anneau d'état à trois crans manuels sur les
@@ -160,6 +170,19 @@ publiées en artefact en cas d'échec, sans second job qui rejouerait les mêmes
 La cohérence des import maps et de la version Firebase reste bloquante à chaque `verify`.
 La disponibilité des CDN et le signalement des versions npm récentes passent dans un contrôle
 hebdomadaire séparé : une indisponibilité extérieure ponctuelle ne bloque donc pas un push.
+
+Résultat de la passe d'intégration R2 du 7 août 2026 sur le poste Windows de reprise :
+
+- typage, cohérence des import maps et `git diff --check` : verts ;
+- tests unitaires : **304 réussis**, 1 test de règles ignoré hors émulateurs ;
+- tests navigateur : **144 réussis**, 2 scénarios Firebase réels ignorés faute de secret ;
+- gestes bloquants : **3 réussis** ;
+- `testbig150` : snapshot de rendu à 0,0002 ms/image en médiane, pire lot 0,0005 ms
+  (`9 × 1 000` lectures, seuil 2 ms) ;
+- la sonde multipage modifiée est comprise dans les 144 tests navigateur et qualifie bien le cas
+  masqué comme non mesurable ; la sonde joueurs `?probe=1` est également montée dans ce scénario ;
+- comme lors de R1, Playwright imprime tous les succès puis garde son processus ouvert sous
+  Windows ; les commandes ont donc atteint leur limite après verdict complet, sans échec de test.
 
 Résultat de la passe d'intégration R1 du 7 août 2026 sur le poste Windows de reprise :
 

@@ -6,16 +6,12 @@ import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs'
 /**
  * La sonde de `docs/SONDE-LATENCE.md` s'exécute-t-elle réellement ?
  *
- * ⭐ Ce test **extrait le bloc du document** et le colle dans une vraie page MJ. Livrer au
- * mainteneur un morceau à coller dans sa console sans l'avoir exécuté une fois, c'est lui faire
- * perdre sa soirée sur une faute de frappe. Et le document et le code ne peuvent plus diverger :
- * si quelqu'un modifie l'un sans l'autre, ce test rougit.
+ * Le document ne duplique plus le module : ce test vérifie la ligne d'import recommandée, puis
+ * exécute le vrai fichier dans une page MJ et qualifie aussi le cas d'un onglet masqué.
  */
 test('la sonde de latence documentée s\'exécute et relève un déplacement', async ({ browser }) => {
   const doc = fs.readFileSync('docs/SONDE-LATENCE.md', 'utf8');
-  const bloc = doc.match(/```js\n([\s\S]*?)```/);
-  expect(bloc, 'le bloc `js` doit exister dans docs/SONDE-LATENCE.md').not.toBeNull();
-  const source = /** @type {RegExpMatchArray} */ (bloc)[1];
+  expect(doc).toContain("import('./js/app/sondeLatence.js')");
 
   const context = await browser.newContext();
   const sessionId = `sonde-${Date.now()}`;
@@ -55,32 +51,17 @@ test('la sonde de latence documentée s\'exécute et relève un déplacement', a
 
   const joueur = await context.newPage();
   await installBrowserTransport(joueur, sessionId, snapshot);
-  await joueur.goto('/player.html');
+  await joueur.goto('/player.html?probe=1');
   await waitForApp(joueur);
+  await expect
+    .poll(() => joueur.evaluate(() => Boolean(document.querySelector('#probe-overlay'))), { timeout: 5000 })
+    .toBe(true);
+  expect(await joueur.evaluate(() => Boolean(/** @type {any} */ (window).__RPG_APP__.frameProbe))).toBe(true);
 
-  // ── 1. Le fichier servi et le bloc publié sont le MÊME code.
-  //
-  // Sans cette égalité, corriger l'un laisserait l'autre faux, et le mainteneur tomberait sur la
-  // version périmée — précisément le genre de piège que ce fichier existe pour fermer.
+  // ── 1. Le module recommandé utilise le callback de la vraie boucle, jamais un rAF autonome.
   const module = fs.readFileSync('js/app/sondeLatence.js', 'utf8');
-  const corpsDuModule = module.slice(module.indexOf('(async () => {'));
-
-  // ⚠ Une seule ligne diffère légitimement : l'import du store se résout depuis la PAGE dans la
-  // console, et depuis le MODULE dans le fichier. On la neutralise des deux côtés avant de
-  // comparer — une première version exigeait l'identité stricte, et la « corriger » aurait
-  // consisté à remettre dans le module un chemin qui n'y marche pas.
-  const neutraliser = (/** @type {string} */ code) =>
-    code
-      .replace(/await import\((['"]).*store\.js\1\)/, 'await import(STORE)')
-      // Le module porte en plus le commentaire qui explique cette différence.
-      .replace(/^\s*\/\/.*$/gm, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-  expect(
-    neutraliser(corpsDuModule),
-    'js/app/sondeLatence.js et le bloc de docs/SONDE-LATENCE.md doivent rester le même code'
-  ).toBe(neutraliser(source));
+  expect(module).toContain('loop.addListener(renduExecute)');
+  expect(module).not.toContain('requestAnimationFrame(');
 
   // ── 2. Le chemin recommandé : une seule ligne, celle que le mainteneur tapera.
   //
@@ -114,10 +95,45 @@ test('la sonde de latence documentée s\'exécute et relève un déplacement', a
 
   const releve = await mj.evaluate(() => /** @type {any} */ (window).sonde.releves[0]);
   console.log('\nRELEVÉ DE LA SONDE :', JSON.stringify(releve));
+  expect(releve['attente rAF (ms)']).toBeGreaterThanOrEqual(0);
+  expect(releve['présentation']).toContain('frame exécutée');
 
   // Le bilan et l'arrêt doivent fonctionner : ce sont les deux gestes que le mainteneur fera.
   await mj.evaluate(() => /** @type {any} */ (window).sonde.bilan());
   await mj.evaluate(() => /** @type {any} */ (window).sonde.stop());
+
+  // Un délai rAF alors que la page est déclarée masquée est un délai de scheduling, pas une
+  // preuve que les couches Canvas sont lentes. Le navigateur de test reste volontairement au
+  // premier plan : on teste ici la qualification de la mesure sans fabriquer une attente lente.
+  await mj.evaluate(async () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    const specifier = `./js/app/sondeLatence.js?masquee=${Date.now()}`;
+    await import(/* @vite-ignore */ specifier);
+  });
+  await expect
+    .poll(() => mj.evaluate(() => Boolean(/** @type {any} */ (window).sonde?._actif)), { timeout: 5000 })
+    .toBe(true);
+  await joueur.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    store.moveTokenToCell('pj-1', { a: 6, b: 2 }, null);
+    /** @type {any} */ (window).__RPG_APP_OPTIONS__.transport.publish({
+      type: 'token.move',
+      payload: { tokenId: 'pj-1', from: { a: 5, b: 2 }, to: { a: 6, b: 2 }, path: [] },
+      at: Date.now(), by: 'players',
+    });
+  });
+  await expect
+    .poll(() => mj.evaluate(() => /** @type {any} */ (window).sonde.releves.length), { timeout: 10000 })
+    .toBeGreaterThan(0);
+  const releveMasque = await mj.evaluate(() => /** @type {any} */ (window).sonde.releves[0]);
+  expect(releveMasque['présentation']).toContain('non mesurable');
+  await mj.evaluate(() => {
+    /** @type {any} */ (window).sonde.stop();
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
 
   expect(erreurs).toEqual([]);
   await context.close();

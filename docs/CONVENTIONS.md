@@ -217,6 +217,9 @@ deux dériveraient.
 - Toute mutation passe par une fonction nommée du store, jamais par affectation directe
   depuis l'extérieur.
 - Le store émet un signal de changement ; le rendu s'y abonne et demande une frame.
+- Le chemin d'une image lit uniquement `getRenderSnapshot()` : il partage une version gelée du
+  store, sans clone complet. Les accesseurs de compatibilité qui renvoient une copie restent hors de
+  la boucle de rendu.
 
 ---
 

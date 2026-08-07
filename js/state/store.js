@@ -32,6 +32,24 @@ let activeLevelId = null;
 /** @type {Handout | null} */
 let activeHandout = null;
 
+/**
+ * Dernier instantané destiné au rendu. Il ne contient aucune copie de la campagne : ses
+ * branches sont celles de l'état interne, gelées au moment où elles entrent dans le store.
+ * Il est invalidé par `notifySubscribers`, donc une frame qui suit une mutation voit un
+ * objet cohérent, tandis que les frames d'animation partagent exactement les mêmes données.
+ *
+ * @type {Readonly<{
+ *   campaign: Campaign | null,
+ *   activeLevelId: string | null,
+ *   activeLevel: Level | null,
+ *   selectedTokenId: string | null,
+ *   selectedToken: Token | null,
+ *   reachableCells: Map<string, number>,
+ *   activeHandout: Handout | null
+ * }> | null}
+ */
+let renderSnapshot = null;
+
 /** @type {Set<() => void>} */
 const subscribers = new Set();
 
@@ -63,6 +81,39 @@ function deepFreeze(obj) {
     }
   }
   return obj;
+}
+
+/**
+ * Retourne une Map lisible, mais dont les trois mutateurs échouent aussi à l'exécution.
+ * `Object.freeze(new Map())` ne suffit pas : les emplacements internes d'une Map restent
+ * modifiables par `.set()`. Cette protection est nécessaire car le renderer reçoit la Map
+ * des cases atteignables directement dans le snapshot partagé.
+ *
+ * @param {Map<string, number>} source
+ * @returns {Map<string, number>}
+ */
+function createReadonlyMap(source) {
+  const snapshot = new Map(source);
+  const immutable = () => {
+    throw new TypeError('Snapshot de rendu en lecture seule');
+  };
+  Object.defineProperties(snapshot, {
+    set: { value: immutable },
+    delete: { value: immutable },
+    clear: { value: immutable },
+  });
+  return Object.freeze(snapshot);
+}
+
+/**
+ * Fige la nouvelle racine de campagne avant qu'elle ne devienne observable par le rendu.
+ * Les mutateurs travaillent déjà sur un `structuredClone`, donc le gel ne les empêche pas
+ * de préparer la prochaine version de l'état.
+ *
+ * @param {Campaign} nextCampaign
+ */
+function replaceCampaign(nextCampaign) {
+  campaign = deepFreeze(nextCampaign);
 }
 
 /** @type {string | null} */
@@ -231,7 +282,7 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     if (errors.length > 0) {
       throw new Error(`Snapshot invalide : ${errors.join(' ; ')}`);
     }
-    campaign = structuredClone(normalise);
+    replaceCampaign(structuredClone(normalise));
   }
 
   const requestedLevelId =
@@ -277,6 +328,9 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
  * Notifie tous les abonnés d'une mutation.
  */
 function notifySubscribers() {
+  // Ne pas reconstruire ici : il n'y a pas de raison de payer même une copie de Map tant
+  // qu'aucune frame ne lit l'état. La prochaine lecture reconstruira un instantané unique.
+  renderSnapshot = null;
   if (currentSessionId) {
     // La sauvegarde automatique est une **commodité**, pas une clause du contrat de mutation.
     // Quand on arrive ici, la mutation est déjà appliquée : laisser l'exception remonter
@@ -341,7 +395,7 @@ export function loadCampaign(campaignData) {
   }
 
   const chargee = structuredClone(normalise);
-  campaign = chargee;
+  replaceCampaign(chargee);
   activeLevelId = chargee.levels.length > 0 ? chargee.levels[0].id : null;
   clearSelectionState();
 
@@ -463,7 +517,7 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
   }
 
   assertValidCampaign(candidate, `Déplacement du pion "${tokenId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
 
   // Si le pion est actuellement sélectionné, mettre à jour les cases atteignables
   if (getSelectedTokenId() === tokenId) {
@@ -488,7 +542,7 @@ export function addToken(tokenData) {
   const candidate = structuredClone(campaign);
   candidate.tokens.push(structuredClone(tokenData));
   assertValidCampaign(candidate, `Ajout du pion "${tokenData?.id || 'inconnu'}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   notifySubscribers();
 }
 
@@ -608,7 +662,7 @@ export function traverseLink(tokenId, linkId) {
   cible.levelId = vers.levelId;
   cible.cell = { a: vers.at.cellX, b: vers.at.cellY };
   assertValidCampaign(candidate, `Franchissement de la liaison "${linkId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
 
   // La sélection ne survit pas au changement d'étage : le pion n'est plus sur l'étage affiché.
   // La laisser produirait une zone de déplacement calculée sur un étage, dessinée sur un autre.
@@ -643,7 +697,7 @@ export function addLevel(levelData) {
     }
   }
   assertValidCampaign(candidate, `Ajout de l'étage "${levelData?.id || 'inconnu'}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   activeLevelId = levelNormalized.id;
   notifySubscribers();
 }
@@ -693,7 +747,7 @@ export function updateLevel(levelId, levelUpdates) {
     },
   };
   assertValidCampaign(candidate, `Mise à jour de l'étage "${levelId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   notifySubscribers();
 }
 
@@ -726,7 +780,7 @@ export function setPortalState(levelId, portalId, state) {
   portal.state = state;
 
   assertValidCampaign(candidate, `Bascule du portail "${portalId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
 
   // Si un pion est sélectionné et qu'il appartient à l'étage muté, rafraîchir ses cases atteignables
   const selectedId = getSelectedTokenId();
@@ -778,7 +832,7 @@ export function addWall(levelId, wall) {
   level.walls.push(structuredClone(wall));
 
   assertValidCampaign(candidate, `Ajout d'un mur sur l'étage "${levelId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
 
   // Si un pion est sélectionné et qu'il appartient à l'étage muté, rafraîchir ses cases atteignables
   const selectedId = getSelectedTokenId();
@@ -821,7 +875,7 @@ export function removeWall(levelId, wall) {
   level.walls.splice(idx, 1);
 
   assertValidCampaign(candidate, `Suppression d'un mur sur l'étage "${levelId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
 
   // Si un pion est sélectionné et qu'il appartient à l'étage muté, rafraîchir ses cases atteignables
   const selectedId = getSelectedTokenId();
@@ -903,7 +957,7 @@ export function updateToken(tokenId, patch) {
   };
 
   assertValidCampaign(candidate, `Mise à jour du pion "${tokenId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   notifySubscribers();
 }
 
@@ -934,7 +988,7 @@ export function removeToken(tokenId) {
   const candidate = structuredClone(campaign);
   candidate.tokens.splice(index, 1);
   assertValidCampaign(candidate, `Suppression du pion "${tokenId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
 
   if (getSelectedTokenId() === tokenId) {
     clearSelectionState();
@@ -970,7 +1024,7 @@ export function placeTemplate(templateData) {
   }
 
   assertValidCampaign(candidate, `Placement du gabarit "${templateData.id || 'inconnu'}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   notifySubscribers();
 }
 
@@ -1005,7 +1059,7 @@ export function moveTemplate(templateId, origin, directionDeg) {
   }
 
   assertValidCampaign(candidate, `Déplacement du gabarit "${templateId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   notifySubscribers();
 }
 
@@ -1031,7 +1085,7 @@ export function clearTemplates(levelId) {
   candidate.templates = (candidate.templates || []).filter((t) => t.levelId !== levelId);
 
   assertValidCampaign(candidate, `Effacement des gabarits de l'étage "${levelId}"`);
-  campaign = candidate;
+  replaceCampaign(candidate);
   notifySubscribers();
 }
 
@@ -1084,6 +1138,52 @@ export function getState() {
     reachableCells: getReachableCells(),
     activeHandout: activeHandout ? structuredClone(activeHandout) : null,
   });
+}
+
+/**
+ * Instantané stable pour une image de rendu.
+ *
+ * Contrairement à `getState()`, cet accès ne clone pas la campagne ni l'étage actif. Les
+ * références sont structurellement partagées avec le store, mais elles sont gelées dès leur
+ * insertion dans celui-ci ; un renderer ne peut donc ni les modifier, ni contaminer une
+ * image suivante. L'objet est mis en cache jusqu'à la prochaine notification de mutation.
+ *
+ * Cet accès est volontairement réservé au chemin de rendu. `getState()` et les accesseurs
+ * historiques restent des copies indépendantes pour préserver leurs contrats publics.
+ *
+ * @returns {Readonly<{
+ *   campaign: Campaign | null,
+ *   activeLevelId: string | null,
+ *   activeLevel: Level | null,
+ *   selectedTokenId: string | null,
+ *   selectedToken: Token | null,
+ *   reachableCells: Map<string, number>,
+ *   activeHandout: Handout | null
+ * }>}
+ */
+export function getRenderSnapshot() {
+  if (renderSnapshot) return renderSnapshot;
+
+  const activeLevel =
+    campaign && activeLevelId
+      ? campaign.levels.find((level) => level.id === activeLevelId) || null
+      : null;
+  const selectedTokenId = getSelectedTokenId();
+  const selectedToken =
+    campaign && selectedTokenId
+      ? campaign.tokens.find((token) => token.id === selectedTokenId) || null
+      : null;
+
+  renderSnapshot = Object.freeze({
+    campaign,
+    activeLevelId,
+    activeLevel,
+    selectedTokenId,
+    selectedToken,
+    reachableCells: createReadonlyMap(getReachableCells()),
+    activeHandout,
+  });
+  return renderSnapshot;
 }
 
 /**
@@ -1303,5 +1403,3 @@ export function setSessionVision(levelId, png) {
   }
   notifySubscribers();
 }
-
-

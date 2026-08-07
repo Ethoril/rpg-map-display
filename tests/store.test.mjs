@@ -2,6 +2,8 @@
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { performance } from 'node:perf_hooks';
 
 import {
   loadCampaign,
@@ -11,6 +13,7 @@ import {
   resetStore,
   subscribe,
   getState,
+  getRenderSnapshot,
   getCampaign,
   getActiveLevel,
   getSelectedToken,
@@ -123,6 +126,77 @@ test('Prouve mécaniquement qu\'une mutation externe directe de l\'état est imp
   assert.strictEqual(freshState.activeLevelId, 'rdc');
   assert.strictEqual(freshState.campaign?.tokens[0].cell.a, 2);
   assert.strictEqual(freshState.campaign?.name, 'Campagne de Test');
+});
+
+test('getRenderSnapshot partage une version figée, puis la remplace après mutation', () => {
+  loadCampaign(makeValidCampaign());
+  setSelection('hero-1');
+
+  const first = getRenderSnapshot();
+  const sameFrameData = getRenderSnapshot();
+  assert.strictEqual(first, sameFrameData, 'une animation relit le même instantané');
+  const firstCampaign = first.campaign;
+  assert.ok(firstCampaign);
+  assert.strictEqual(first.activeLevel, firstCampaign.levels[0]);
+  assert.strictEqual(first.selectedToken, firstCampaign.tokens[0]);
+
+  assert.throws(() => {
+    firstCampaign.tokens[0].cell.a = 99;
+  }, TypeError, 'le renderer ne peut pas muter la campagne partagée');
+  assert.throws(() => {
+    first.reachableCells.set('99,99', 1);
+  }, TypeError, 'le renderer ne peut pas muter la Map partagée');
+
+  moveTokenToCell('hero-1', { a: 3, b: 3 });
+  const next = getRenderSnapshot();
+  assert.notStrictEqual(next, first, 'une mutation publie une nouvelle version au rendu');
+  assert.notStrictEqual(next.campaign, first.campaign, 'la campagne est partagée par version');
+  assert.deepStrictEqual(next.selectedToken?.cell, { a: 3, b: 3 });
+  assert.deepStrictEqual(first.selectedToken?.cell, { a: 2, b: 2 });
+});
+
+test('MESURE R2-01 — le snapshot de rendu testbig150 reste sous 2 ms par image', () => {
+  const scene = JSON.parse(fs.readFileSync('maps/generated/testbig150.scene.json', 'utf8'));
+  loadCampaign(scene);
+
+  // Chauffe la construction du premier instantané et les accès aux propriétés réellement lues
+  // par `renderAll`. Le banc mesure ensuite l'accès stable, pas l'import ou la validation qui
+  // sont hors du chemin d'une image.
+  let checksum = 0;
+  for (let i = 0; i < 100; i++) {
+    const snapshot = getRenderSnapshot();
+    checksum +=
+      (snapshot.activeLevel?.walls.length ?? 0) +
+      (snapshot.campaign?.tokens.length ?? 0) +
+      snapshot.reachableCells.size;
+  }
+
+  const batchMeans = [];
+  const batches = 9;
+  const framesPerBatch = 1_000;
+  for (let batch = 0; batch < batches; batch++) {
+    const start = performance.now();
+    for (let frame = 0; frame < framesPerBatch; frame++) {
+      const snapshot = getRenderSnapshot();
+      checksum +=
+        (snapshot.activeLevel?.walls.length ?? 0) +
+        (snapshot.campaign?.tokens.length ?? 0) +
+        snapshot.reachableCells.size;
+    }
+    batchMeans.push((performance.now() - start) / framesPerBatch);
+  }
+  batchMeans.sort((a, b) => a - b);
+  const medianMs = batchMeans[Math.floor(batchMeans.length / 2)];
+  const worstMs = batchMeans[batchMeans.length - 1];
+
+  assert.ok(checksum > 0, 'empêche une mesure sans lecture effective des données de rendu');
+  assert.ok(
+    worstMs < 2,
+    `snapshot de rendu trop lent sur testbig150 : médiane ${medianMs.toFixed(4)} ms, pire ${worstMs.toFixed(4)} ms`
+  );
+  console.log(
+    `[R2-01] testbig150 — accès snapshot: médiane ${medianMs.toFixed(4)} ms/image, pire ${worstMs.toFixed(4)} ms/image (${batches}×${framesPerBatch})`
+  );
 });
 
 test('Le signal se déclenche exactement une fois par mutation', () => {
@@ -633,5 +707,3 @@ test('une panne de stockage du masque de fog est consignée, jamais avalée (CON
     setSessionId(null);
   }
 });
-
-

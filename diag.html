@@ -41,6 +41,27 @@
   <button id="btn-sweep">6. Sweep &amp; Critère 13 (visibilité 2D)</button>
   <button id="btn-sweep-reel">6bis. Sweep sur les cartes publiées (sans extrapolation)</button>
 
+  <details>
+    <summary>R2 — Décodage froid, cast 45 min et endurance 4 h</summary>
+    <p class="aide">Ces champs sont des constats manuels. Le navigateur ne donne ni température fiable,
+      ni état Google Cast, ni preuve qu’un Wake Lock est encore tenu par une autre page.</p>
+    <label>Image à réchauffer puis mesurer après 2 min sans toucher la page
+      <input id="cold-image-url" type="text" value="maps/generated/testbig150.webp" spellcheck="false">
+    </label>
+    <button id="btn-cold-arm" type="button">Armer le décodage froid (2 min)</button>
+    <button id="btn-cold-measure" type="button">Mesurer après inactivité</button>
+    <p class="aide">Démarrer le journal au début de l’essai. Ajouter un relevé à 0, 15, 30, 45 min puis chaque heure jusqu’à 4 h.</p>
+    <button id="btn-endurance-start" type="button">Démarrer le journal endurance</button>
+    <label>FPS relevés (facultatif) <input id="endurance-fps" type="number" min="0" step="0.1" inputmode="decimal"></label>
+    <label>Température observée à la main <input id="endurance-temperature" type="text" placeholder="ex. dos tiède, chargeur branché"></label>
+    <label>Wake Lock <select id="endurance-wakelock"><option value="not-checked">non vérifié</option><option value="observed">observé</option><option value="not-observed">absent/perdu</option></select></label>
+    <label>Plein écran <select id="endurance-fullscreen"><option value="not-checked">non vérifié</option><option value="observed">observé</option><option value="not-observed">sorti/perdu</option></select></label>
+    <label>Cast <select id="endurance-cast"><option value="not-checked">non vérifié</option><option value="observed">image TV reçue</option><option value="not-observed">interrompu</option></select></label>
+    <label>Reprise après veille/retour <select id="endurance-resume"><option value="not-checked">non vérifié</option><option value="observed">reprise correcte</option><option value="not-observed">défaut observé</option></select></label>
+    <label>Notes <input id="endurance-notes" type="text" placeholder="ralentissement, perte de réseau, etc."></label>
+    <button id="btn-endurance-note" type="button">Ajouter le relevé manuel</button>
+  </details>
+
   <pre id="sortie">Appuyer sur un bouton. Commencer par le 1.</pre>
 
   <details>

@@ -87,6 +87,20 @@ Pour chaque frame, dans un **tampon circulaire de taille fixe** :
 | **durée du seul `drawImage` du fond** | teste l'hypothèse principale directement. |
 | **somme des couches, comparée au total** | ⭐ le champ le plus important, cf. ci-dessous. |
 
+### Ventilation R2
+
+L'overlay (touche `P`) existe côté MJ comme côté joueurs et montre, séparément, **store/snapshot**, **vision**, **fond**,
+**grille**, **portes**, **pions**, **fog**, **autres** (murs, zone de mouvement et gabarits), le
+**total** et le résidu. La vision est calculée hors de `renderAll` pour continuer à être publiée
+quand la fenêtre MJ n'obtient plus de rAF : son temps est donc rapporté avec la première image qui
+suit la mutation, mais n'est pas inclus dans le résidu du Canvas. Aucune de ces mesures ne crée de
+frame, de minuterie ou de tableau qui grandit pendant l'inactivité. Sur la tablette, `vision` vaut
+zéro : le calcul autoritaire reste côté MJ ; le décodage et l'application des masques restent
+mesurés dans les couches pions/fog. Sans clavier, ouvrir `player.html?probe=1` révèle l'overlay après
+la première frame, ou appeler `__RPG_APP__.frameProbe.toggleOverlay()` depuis DevTools. Pour le cas
+froid : ouvrir avec `?probe=1`, laisser la tablette inactive 120 s, faire le geste qui redemande la
+carte, puis **taper l'overlay** pour actualiser l'instantané. Ce tap ne planifie aucune frame.
+
 ⭐ **Le résidu total − somme des couches est ce qui rend la sonde concluante plutôt que
 suggestive.** `drawImage` peut déclencher un décodage que le navigateur exécute **hors** du temps
 JS mesurable : dans ce cas la couche paraît rapide et le retard apparaît ailleurs — compositing,

@@ -18,7 +18,7 @@
 | Lot 2 — lignes de vue, portes et tactique | **13 critères sur 13** ; les critères 4, 10 et 11 ont été confirmés par le mainteneur le 07/08/2026 |
 | Lot 3 — étages et lumière | 3 critères sur 6 ; pas d'éditeur de liaisons, pas de campagne réelle à trois étages, lumières non exploitées |
 | Lot 4 — hexagone et confort | 1 critère sur 6 ; seul l'undo du fog est acquis |
-| Vérification automatisée | 299 tests unitaires réussis ; 143 tests navigateur réussis ; 2 scénarios Firebase réels conditionnés par le secret CI ; 3 gestes bloquants réussis |
+| Vérification automatisée | 304 tests unitaires réussis ; 144 tests navigateur réussis ; 2 scénarios Firebase réels conditionnés par le secret CI ; 3 gestes bloquants réussis |
 
 Le projet est jouable, mais la 1.0 reste bloquée principalement par la persistance Firebase,
 le fonctionnement local réellement hors ligne, les performances du store sur les campagnes
@@ -109,20 +109,55 @@ jointe au même contrôle d'exploitation.
 
 **Priorité : P1, avant les lumières du lot 3.**
 
-| ID | Travail | Critère de sortie |
-|---|---|---|
-| R2-01 | Remplacer les clones complets par un snapshot de rendu stable | L'accès aux données nécessaires à une image reste sous 2 ms sur `testbig150` dans la mesure de référence |
-| R2-02 | Séparer les mesures par couche | Les coûts du store, de la vision, du fog, du fond et des pions sont rapportés séparément |
-| R2-03 | Revalider le décodage froid du fond | Après deux minutes d'inactivité sur la tablette, la couche de fond repasse sous le seuil fixé par le chantier P |
-| R2-04 | Clarifier la mesure multipage | La sonde ne confond plus latence de rendu et throttling `requestAnimationFrame` d'un onglet en arrière-plan |
-| R2-05 | Réaliser l'essai cast de 45 minutes | Framerate, température, Wake Lock, plein écran et reprise après veille sont consignés |
-| R2-06 | Réaliser l'essai longue durée | Une séance de quatre heures ne produit ni ralentissement bloquant ni dérive thermique dangereuse |
+| ID | Travail | Critère de sortie | État au 07/08/2026 |
+|---|---|---|---|
+| R2-01 | Remplacer les clones complets par un snapshot de rendu stable | L'accès aux données nécessaires à une image reste sous 2 ms sur `testbig150` dans la mesure de référence | **Fait** — 0,0002 ms/image en médiane, pire lot 0,0005 ms dans la suite complète |
+| R2-02 | Séparer les mesures par couche | Les coûts du store, de la vision, du fog, du fond et des pions sont rapportés séparément | **Fait** — sonde passive MJ et joueurs, accessible sur tablette par `?probe=1` |
+| R2-03 | Revalider le décodage froid du fond | Après deux minutes d'inactivité sur la tablette, la couche de fond repasse sous le seuil fixé par le chantier P | **Outillé, mesure ouverte** — protocole sans timer et sonde tactile prêts ; constat tablette `< 5 ms` requis |
+| R2-04 | Clarifier la mesure multipage | La sonde ne confond plus latence de rendu et throttling `requestAnimationFrame` d'un onglet en arrière-plan | **Fait** — mesure branchée sur la vraie `FrameLoop` ; présentation masquée qualifiée non mesurable |
+| R2-05 | Réaliser l'essai cast de 45 minutes | Framerate, température, Wake Lock, plein écran et reprise après veille sont consignés | **Protocole fait, essai ouvert** — journal et rapport remplissable prêts |
+| R2-06 | Réaliser l'essai longue durée | Une séance de quatre heures ne produit ni ralentissement bloquant ni dérive thermique dangereuse | **Protocole fait, essai ouvert** — relevés prévus jusqu'à 240 min |
 
 ### Porte de sortie R2
 
 Le moteur dispose d'une marge mesurée avant l'ajout de nouvelles sources de vision. Aucun changement
 de renderer, de framework ou de transport n'est entrepris sans un profil montrant qu'il répond au
 goulot réellement observé.
+
+### Relevé R2-01
+
+`getRenderSnapshot()` est l'accès réservé à une image : il partage la campagne, l'étage actif et le
+pion sélectionné gelés avec le store, et recrée seulement une `Map` de cases atteignables rendue non
+mutable. L'instantané est mis en cache jusqu'à la prochaine notification du store. Les accesseurs
+historiques (`getState()`, `getCampaign()` et `getActiveLevel()`) conservent leurs copies figées pour
+leurs appelants existants.
+
+La mesure reproductible est `node --test tests/store.test.mjs`, test `MESURE R2-01`. Elle charge
+`maps/generated/testbig150.scene.json`, chauffe l'accès, puis mesure neuf lots de 1 000 lectures des
+données utilisées par `renderAll`. Relevé du 07/08/2026 dans la suite complète : médiane
+**0,0002 ms/image**, pire lot **0,0005 ms/image** (seuil : `< 2 ms`). C'est une mesure du chemin
+d'accès au store, pas des couches Canvas, du fog, du fond, ni d'un essai d'endurance ; ceux-ci
+restent respectivement R2-02 à R2-06.
+
+### Instrumentation et validations physiques R2-02 à R2-06
+
+La sonde de frame sépare désormais store/snapshot, vision, fond, grille, portes, pions, fog,
+autres couches, total et résidu. Elle ne demande aucune frame et ne se rafraîchit jamais sur une
+minuterie. Côté joueurs, `player.html?probe=1` l'ouvre après la première image ; toucher l'encart
+actualise seulement les valeurs déjà enregistrées. La vision autoritaire reste mesurée côté MJ,
+hors de `requestAnimationFrame`, puis rattachée une seule fois à l'image suivante.
+
+La sonde multipage écoute la fin de la vraie `FrameLoop`. Elle rapporte séparément l'attente rAF
+et qualifie toute présentation passée par un onglet masqué comme non mesurable, au lieu d'attribuer
+le throttling du navigateur aux couches Canvas.
+
+`docs/PROTOCOLE-ENDURANCE.md` et `docs/RAPPORT-ENDURANCE.md` encadrent le silence de 120 s, l'essai
+cast de 45 min et la session de 4 h. L'outil n'invente ni température, ni état Google Cast, ni preuve
+d'un Wake Lock : ces constats sont saisis manuellement sur l'appareil cible.
+
+**Porte R2 non fermée au 07/08/2026.** R2-01, R2-02 et R2-04 sont acquis côté code et tests.
+R2-03, R2-05 et R2-06 exigent encore les trois campagnes matérielles décrites ci-dessus ; leur
+outillage ne vaut pas verdict physique.
 
 ## 6. Phase 3 — terminer le lot 3
 

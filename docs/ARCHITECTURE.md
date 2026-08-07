@@ -72,7 +72,7 @@ F:\rpg-map-display\
 │   │   └─ LocalSocketTransport.js [stub] lève « non implémenté » jusqu'au besoin réel
 │   │
 │   ├─ state/
-│   │   ├─ store.js               [1a] source de vérité + signal de changement
+│   │   ├─ store.js               [1a, R2-01] source de vérité + signal de changement + snapshot de rendu partagé
 │   │   ├─ selection.js           [1a] pion sélectionné, cases atteignables courantes
 │   │   └─ presence.js            [1a] clients connectés + détection d'écart de build
 │   │
@@ -159,6 +159,8 @@ F:\rpg-map-display\
 │       ├─ gm.js                  [1a] point d'entrée vue MJ
 │       ├─ player.js              [1a] point d'entrée vue joueurs (+ verrous mobiles, bouton plein écran)
 │       ├─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
+│       ├─ endurance.js           [R2] protocole passif : décodage post-inactivité et journal
+│       │                              manuel cast/endurance, sans sondage ni minuterie
 │       ├─ sondeLatence.js       [—]  sonde de latence à charger DEPUIS LA CONSOLE de la vue
 │                                     MJ : `import('./js/app/sondeLatence.js')`. Aucun module
 │                                     ne l'importe, elle ne coûte rien tant qu'on ne la
@@ -215,6 +217,9 @@ F:\rpg-map-display\
     ├─ FEUILLE-DE-ROUTE-COMPLEMENTAIRE.md
     │                              travaux transverses issus de l'audit du 07/08/2026 :
     │                              fiabilité, exploitation, performance et préparation 1.0
+    ├─ PROTOCOLE-ENDURANCE.md     [R2] procédure reproductible tablette : décodage froid,
+    │                                  essai cast 45 min et session 4 h
+    ├─ RAPPORT-ENDURANCE.md       [R2] relevé manuel remplissable des observations physiques
     ├─ CHANTIER-L-OUTIL-CARTES.md [L] outil local de préparation : la règle « une seule
     │                              implantation du pipeline », et pourquoi on compare avec des
     │                              réglages mais publie avec les constantes

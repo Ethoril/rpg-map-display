@@ -42,6 +42,20 @@ export class FrameProbe {
         residual: 0,
       };
     }
+
+    // Travail de vision déclenché par une mutation, avant la prochaine image. Il ne planifie
+    // rien : la souscription applicative existante reste la seule à demander une frame.
+    this.pendingVision = 0;
+  }
+
+  /**
+   * Enregistre le travail de vision produit hors du renderer. Il est consommé une seule fois par
+   * l'image suivante, pour ne pas l'attribuer aux frames ultérieures d'une animation.
+   *
+   * @param {number} duration Durée monotone en millisecondes
+   */
+  recordVision(duration) {
+    if (Number.isFinite(duration) && duration >= 0) this.pendingVision += duration;
   }
 
   /**
@@ -57,6 +71,9 @@ export class FrameProbe {
     // La frame #1 (chargement initial) est exclue des statistiques post-inactivité.
     if (this.frameCount === 1) {
       this.lastFrameTime = timestamp;
+      // Le travail de vision qui a préparé le chargement initial ne doit pas être attribué à la
+      // première interaction suivante, laquelle serait alors faussement qualifiée post-silence.
+      this.pendingVision = 0;
       return;
     }
 
@@ -69,9 +86,16 @@ export class FrameProbe {
     rec.gap = gap;
     rec.total = totalDuration;
 
+    // La vision est volontairement hors de `renderAll`, afin de rester active quand rAF est
+    // suspendu dans un onglet caché. Elle n'entre donc pas dans le résidu du rendu Canvas.
+    rec.layers.vision = this.pendingVision;
+    this.pendingVision = 0;
+
     let sum = 0;
     for (const k in layersBreakdown) {
       rec.layers[k] = layersBreakdown[k];
+      // La vision est la seule mesure hors de `renderAll`; le snapshot, lui, appartient bien au
+      // total de la frame et doit donc contribuer au résidu.
       sum += layersBreakdown[k];
     }
     rec.sumLayers = sum;
@@ -142,18 +166,27 @@ export class FrameProbe {
         box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       `;
       document.body.appendChild(this.overlayEl);
+      // Le relevé est volontairement figé : ce tap ne demande pas de frame, ne démarre pas de
+      // minuterie et ne change donc pas l'inactivité que l'on veut observer.
+      this.overlayEl.addEventListener('click', () => this._updateOverlay());
     }
 
     this.overlayEl.style.display = 'block';
 
-    let html = `<div style="font-weight:bold;margin-bottom:6px;color:#38bdf8;">📊 Sonde Rendu MJ — instantané à ${this.frameCount} frames. P ferme, P deux fois rafraîchit.</div>`;
+    let html = `<div style="font-weight:bold;margin-bottom:6px;color:#38bdf8;">📊 Sonde rendu — instantané à ${this.frameCount} frames. Touchez l'encart pour actualiser ; P le ferme sur desktop.</div>`;
     html += `<table style="width:100%;border-collapse:collapse;">
       <tr style="border-bottom:1px solid #475569;text-align:left;">
         <th>#</th>
         <th>Écart</th>
         <th>Total</th>
+        <th>Store/snapshot</th>
+        <th>Vision</th>
         <th>Fond</th>
+        <th>Grille</th>
+        <th>Portes</th>
+        <th>Pions</th>
         <th>Fog</th>
+        <th>Autres</th>
         <th>Résidu</th>
       </tr>`;
 
@@ -171,16 +204,27 @@ export class FrameProbe {
         rowStyle = 'color:#4ade80;';
       }
 
-      const bg = r.layers.background ? r.layers.background.toFixed(1) : '0';
-      const fog = r.layers.fog ? r.layers.fog.toFixed(1) : '0';
+      /** @param {string} key */
+      const value = (key) => (r.layers[key] || 0).toFixed(1);
+      const others =
+        (r.layers.walls || 0) +
+        (r.layers.moveZone || 0) +
+        (r.layers.templates || 0) +
+        (r.layers.feedback || 0);
       const gapSec = (r.gap / 1000).toFixed(1);
 
       html += `<tr style="${rowStyle}border-bottom:1px solid #334155;">
         <td>${r.frameCount}</td>
         <td>${gapSec}s</td>
         <td>${r.total.toFixed(1)}ms</td>
-        <td>${bg}ms</td>
-        <td>${fog}ms</td>
+        <td>${value('snapshot')}ms</td>
+        <td>${value('vision')}ms</td>
+        <td>${value('background')}ms</td>
+        <td>${value('grid')}ms</td>
+        <td>${value('portals')}ms</td>
+        <td>${value('tokens')}ms</td>
+        <td>${value('fog')}ms</td>
+        <td>${others.toFixed(1)}ms</td>
         <td>${r.residual.toFixed(1)}ms</td>
       </tr>`;
     }

@@ -18,9 +18,12 @@ import { saveFirebaseConfig } from './runtimeConfig.js';
 import { sweep, getLastEvalSegmentCount } from '../vision/sweep.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
+import { ColdDecodeTrial, EnduranceJournal } from './endurance.js';
 
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
+const coldDecodeTrial = new ColdDecodeTrial();
+const enduranceJournal = new EnduranceJournal();
 
 /** @param {string} texte */
 function ecrire(texte) {
@@ -148,6 +151,80 @@ function diagnosticStore() {
         : '→ Coût négligeable : décision n°12 tranchée, on peut lire l\'état par image.',
     ].join('\n')
   );
+}
+
+// --- 2bis. Décodage froid, sans activité pendant l'attente -----------------
+
+async function armerDecodageFroid() {
+  const field = /** @type {HTMLInputElement} */ (document.getElementById('cold-image-url'));
+  const url = field.value.trim();
+  ecrire('Chargement et chauffe initiale de l’image…');
+  await coldDecodeTrial.arm(url);
+  ecrire(
+    [
+      'Décodage froid armé.',
+      '',
+      'Ne touchez plus la page pendant 2 minutes complètes : la sonde ne programme ni minuterie,',
+      'ni frame, ni mise à jour DOM pendant cette attente. Après ce délai, pressez « Mesurer ».',
+      '',
+      'Le résultat mesure le second Image.decode() réellement payé après l’inactivité. Il ne peut',
+      'pas prouver que le navigateur a évincé physiquement le bitmap, ni remplacer la première',
+      'frame réelle de la vue joueurs : noter les deux observations dans le rapport R2.',
+    ].join('\n')
+  );
+}
+
+async function mesurerDecodageFroid() {
+  const result = await coldDecodeTrial.measure();
+  ecrire(
+    [
+      'Décodage post-inactivité terminé.',
+      '',
+      `Inactivité observée : ${arrondi(result.idleMs / 1000, 1)} s`,
+      `Image.decode() :      ${arrondi(result.decodeMs, 1)} ms`,
+      '',
+      'Reporter ce chiffre, le modèle de tablette et le comportement visuel de la première frame',
+      'dans docs/RAPPORT-ENDURANCE.md. Aucun verdict thermique ou cast n’est déduit ici.',
+    ].join('\n')
+  );
+}
+
+// --- 2ter. Journal cast et endurance : uniquement sur action explicite -----
+
+/** @param {string} id */
+function valeurObservation(id) {
+  return /** @type {import('./endurance.js').ObservationState} */ (
+    /** @type {HTMLSelectElement} */ (document.getElementById(id)).value
+  );
+}
+
+function demarrerJournalEndurance() {
+  enduranceJournal.start();
+  ecrire(
+    [
+      'Journal endurance démarré.',
+      '',
+      'Le journal ne déclenche aucun timer, rendu, accès thermique ou accès Cast. À 0, 15, 30,',
+      '45 minutes puis chaque heure jusqu’à 4 h, exécutez au besoin le test FPS 20 s, observez',
+      'manuellement température/cast/Wake Lock/plein écran/reprise et ajoutez un relevé.',
+    ].join('\n')
+  );
+}
+
+function ajouterReleveEndurance() {
+  const fpsField = /** @type {HTMLInputElement} */ (document.getElementById('endurance-fps'));
+  const fpsText = fpsField.value.trim();
+  const fps = fpsText === '' ? null : Number(fpsText);
+  enduranceJournal.record({
+    fps,
+    temperature: /** @type {HTMLInputElement} */ (document.getElementById('endurance-temperature')).value,
+    wakeLock: valeurObservation('endurance-wakelock'),
+    fullscreen: valeurObservation('endurance-fullscreen'),
+    cast: valeurObservation('endurance-cast'),
+    resumed: valeurObservation('endurance-resume'),
+    notes: /** @type {HTMLInputElement} */ (document.getElementById('endurance-notes')).value,
+  });
+  ecrire(enduranceJournal.toText());
 }
 
 // --- Scène de charge pour les mesures d'images ------------------------------
@@ -689,6 +766,10 @@ function brancher(id, action) {
 
 brancher('btn-env', diagnosticEnvironnement);
 brancher('btn-store', diagnosticStore);
+brancher('btn-cold-arm', armerDecodageFroid);
+brancher('btn-cold-measure', mesurerDecodageFroid);
+brancher('btn-endurance-start', demarrerJournalEndurance);
+brancher('btn-endurance-note', ajouterReleveEndurance);
 brancher('btn-fps', () => diagnosticImages(20000, 5000, 'Images par seconde (20 s)'));
 brancher('btn-thermique', () => diagnosticImages(300000, 30000, 'Tenue thermique (5 min)'));
 brancher('btn-firebase', diagnosticFirebase);

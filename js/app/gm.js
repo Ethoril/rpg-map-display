@@ -284,46 +284,52 @@ export async function bootstrapGMApp(options = {}) {
    * MJ diffusait alors un masque de 13 Kio par seconde, indéfiniment, même partie à l'arrêt.
    */
   function syncVision() {
-    const state = store.getState();
-    const activeLevel = state.activeLevel;
-    if (!activeLevel) return;
+    const visionStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    try {
+      const state = store.getRenderSnapshot();
+      const activeLevel = state.activeLevel;
+      if (!activeLevel) return;
 
-    const grid = gridFor(activeLevel);
-    const exploredFog = getExploredFog(activeLevel);
-    if (!exploredFog) return;
+      const grid = gridFor(activeLevel);
+      const exploredFog = getExploredFog(activeLevel);
+      if (!exploredFog) return;
 
-    const change = fogLayer.updateVision(grid, activeLevel, state.campaign?.tokens ?? [], {
-      extractSegments: extractBlockedSegments,
-    });
+      const change = fogLayer.updateVision(grid, activeLevel, state.campaign?.tokens ?? [], {
+        extractSegments: extractBlockedSegments,
+      });
 
-    const polygons = fogLayer.getVisiblePolygons();
-    const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const gridScale = Math.abs(origin1.x - origin0.x);
+      const polygons = fogLayer.getVisiblePolygons();
+      const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+      const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+      const gridScale = Math.abs(origin1.x - origin0.x);
 
-    if (change && polygons.length > 0) {
-      exploredFog.reveal(polygons, origin0, gridScale);
-      // Amendement A1 & A2 : la vision s'est versée dans le masque, vider l'undo de cet étage
-      gmPanel?.fogTools?.clearUndoStack(activeLevel.id);
-      scheduleFogPublish(activeLevel.id, exploredFog);
-    }
-
-    const currentSig = fogLayer.getVisionSignature();
-    if (transport && lastVisibleSignatureMap.get(activeLevel.id) !== currentSig) {
-      let visibleFog = visibleFogMap.get(activeLevel.id);
-      if (
-        !visibleFog ||
-        visibleFog.widthCells !== activeLevel.widthCells ||
-        visibleFog.heightCells !== activeLevel.heightCells
-      ) {
-        visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
-        visibleFogMap.set(activeLevel.id, visibleFog);
+      if (change && polygons.length > 0) {
+        exploredFog.reveal(polygons, origin0, gridScale);
+        // Amendement A1 & A2 : la vision s'est versée dans le masque, vider l'undo de cet étage
+        gmPanel?.fogTools?.clearUndoStack(activeLevel.id);
+        scheduleFogPublish(activeLevel.id, exploredFog);
       }
-      visibleFog.clear();
-      if (polygons.length > 0) {
-        visibleFog.reveal(polygons, origin0, gridScale);
+
+      const currentSig = fogLayer.getVisionSignature();
+      if (transport && lastVisibleSignatureMap.get(activeLevel.id) !== currentSig) {
+        let visibleFog = visibleFogMap.get(activeLevel.id);
+        if (
+          !visibleFog ||
+          visibleFog.widthCells !== activeLevel.widthCells ||
+          visibleFog.heightCells !== activeLevel.heightCells
+        ) {
+          visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
+          visibleFogMap.set(activeLevel.id, visibleFog);
+        }
+        visibleFog.clear();
+        if (polygons.length > 0) {
+          visibleFog.reveal(polygons, origin0, gridScale);
+        }
+        publishVisibleVision(activeLevel.id, visibleFog, currentSig);
       }
-      publishVisibleVision(activeLevel.id, visibleFog, currentSig);
+    } finally {
+      const visionEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      frameProbe.recordVision(visionEnd - visionStart);
     }
   }
 
@@ -429,6 +435,7 @@ export async function bootstrapGMApp(options = {}) {
   const frameProbe = new FrameProbe();
   /** @type {Record<string, number>} */
   const layerDurations = {
+    snapshot: 0,
     background: 0,
     grid: 0,
     walls: 0,
@@ -444,8 +451,8 @@ export async function bootstrapGMApp(options = {}) {
   let lStart = 0;
 
 
-  function fitActiveLevel() {
-    const activeLevel = store.getActiveLevel();
+  /** @param {import('../core/types.js').Level|null} activeLevel */
+  function fitActiveLevel(activeLevel) {
     if (!activeLevel || activeLevel.id === lastActiveLevelId) return;
     lastActiveLevelId = activeLevel.id;
     if (restoredCamera) {
@@ -470,8 +477,11 @@ export async function bootstrapGMApp(options = {}) {
     stage.context.clearRect(0, 0, stage.canvas.width, stage.canvas.height);
     stage.context.restore();
 
-    fitActiveLevel();
-    const state = store.getState();
+    lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const state = store.getRenderSnapshot();
+    layerDurations.snapshot =
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+    fitActiveLevel(state.activeLevel);
     const activeLevel = state.activeLevel;
     if (!activeLevel) return;
 
@@ -1277,6 +1287,7 @@ export async function bootstrapGMApp(options = {}) {
     context: stage.context,
     camera,
     frameLoop,
+    frameProbe,
     pointerInput,
     backgroundLayer,
     tokensLayer,

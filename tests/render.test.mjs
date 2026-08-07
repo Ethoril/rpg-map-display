@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Camera } from '../js/render/camera.js';
 import { FrameLoop } from '../js/render/frame.js';
+import { FrameProbe } from '../js/render/probe.js';
 
 test('Camera: conversion carte <-> écran et roundtrip', () => {
   const camera = new Camera(800, 600);
@@ -141,4 +142,20 @@ test('FrameLoop: les erreurs de rendu remontent sans bloquer son état interne',
     if (previousCancel === undefined) Reflect.deleteProperty(globalThis, 'cancelAnimationFrame');
     else globalThis.cancelAnimationFrame = previousCancel;
   }
+});
+
+test('FrameProbe: la vision hors frame est attribuée une seule fois à la frame suivante', () => {
+  const probe = new FrameProbe(2);
+  probe.recordFrame(10, 1, { snapshot: 0.2, background: 0.4 }); // chargement exclu
+  probe.recordVision(2.5);
+  probe.recordFrame(20, 3, { snapshot: 0.5, background: 1, fog: 0.5 });
+
+  const rec = probe.records[0];
+  assert.equal(rec.layers.vision, 2.5);
+  assert.equal(rec.layers.snapshot, 0.5);
+  assert.equal(rec.residual, 1);
+
+  probe.recordFrame(30, 2, { snapshot: 0.5, background: 1 });
+  const second = probe.records[1];
+  assert.equal(second.layers.vision, 0);
 });
