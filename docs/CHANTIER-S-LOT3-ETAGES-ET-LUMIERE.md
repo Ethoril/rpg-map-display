@@ -79,7 +79,7 @@ l'éclairage est déjà peint dans l'image ne doit pas recevoir une seconde couc
 
 ## 2. Les tranches, dans l'ordre où elles se débloquent
 
-> **État au 7 août 2026, 4 h.** S-01 à S-04 **livrées et éprouvées par mutation**. S-05 **non
+> **État au 7 août 2026, 0 h 30.** S-01 à S-04 **livrées et éprouvées par mutation**. S-05 **non
 > commencée**. Deux manques nommés au §4.
 >
 > Critères du lot : **3 sur 6** — le 3 (fog par étage), le 2 (téléportation et bascule) et le 4
