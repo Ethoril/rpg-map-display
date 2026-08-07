@@ -252,6 +252,7 @@ export function createGMPanel(container, options = {}) {
 
     <!-- Pied de panneau : Affichage de la version -->
     <div class="gm-panel-footer" style="padding: 0.5rem 1rem; background: #181818; border-top: 1px solid #333; font-size: 0.75rem; color: #777; text-align: center;"></div>
+    <a href="./attributions.html" style="padding: 0 1rem 0.55rem; background: #181818; color: #8bbdf0; font-size: 0.75rem; text-align: center;">Attributions</a>
   `;
 
   const sessionCode = /** @type {HTMLElement} */ (container.querySelector('#gm-session-code'));

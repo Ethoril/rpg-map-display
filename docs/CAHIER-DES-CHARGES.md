@@ -689,6 +689,7 @@ compiler** plutôt que simplement déconseillé.
 ```
 /session/{sid}/events             → flux d'événements en append (§7), tous domaines confondus
 /session/{sid}/presence/{cid}     → { role, at, build, label }
+/session/{sid}/retentionClients/{cid} → { state: joining|active, eventCursor?, at } barrière et accusé de réception éphémères
 ```
 
 Plus, hors RTDB, un unique document Firestore `campaigns/{sid}` portant **toute** la campagne,
@@ -697,8 +698,8 @@ réécrit par `saveSnapshot` à chaque mutation.
 > **Amendement du 03/08/2026 — ce tableau décrivait une disposition qui n'a jamais été
 > construite.** Il listait sept chemins par domaine — `/tokens`, `/portals`, `/view`,
 > `/vision`, `/fog`, `/pings`, `/presence`. Vérifié dans `js/transport/FirebaseTransport.js` :
-> **deux existent**, `session/{sid}/events` et `session/{sid}/presence/{cid}`, et le premier
-> n'était pas documenté alors qu'il porte tout le trafic.
+> **trois existent**, `session/{sid}/events`, `session/{sid}/presence/{cid}` et le curseur
+> éphémère `session/{sid}/retentionClients/{cid}` ; le premier porte tout le trafic de jeu.
 >
 > **Ce n'est pas une dérive, c'est une simplification qui a bien tourné.** Un flux d'événements
 > unique donne l'ordre total et le rejeu gratuitement, là où sept branches par domaine

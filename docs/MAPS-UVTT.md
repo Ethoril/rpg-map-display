@@ -76,10 +76,13 @@ Le mainteneur ne doit pas :
 - saisir une URL ;
 - réimporter la carte depuis son ordinateur pendant une séance.
 
-GitHub Pages héberge les artefacts placés dans `maps/` avec le reste du site. Le catalogue
-permet à l’application de connaître leur liste, car un site statique ne peut pas parcourir
-directement le contenu d’un répertoire. Les **sources** d’export, elles, ne sont plus
-commitées : elles ne sont jamais téléchargées à l’exécution, et elles pèsent lourd.
+Le serveur local héberge les artefacts placés dans `maps/`, et le catalogue permet à
+l’application de connaître leur liste car un site statique ne peut pas parcourir directement un
+répertoire. Le paquet GitHub Pages construit par R1-06 les exclut provisoirement : aucune carte du
+dépôt ne possède encore une provenance et une autorisation de diffusion documentées. Pour publier
+un asset autorisé, ajouter explicitement ses fichiers à la liste blanche de
+`scripts/build-site.mjs`, conserver son entrée dans le catalogue construit et compléter
+`attributions.html`. Les **sources** d’export, elles, ne sont jamais nécessaires à l’exécution.
 
 ### Les deux façons de préparer
 
@@ -131,4 +134,3 @@ intacts dans le store. Elle ne suffit pas, à elle seule, à produire :
 
 Ces fonctions devront consommer les données UVTT déjà conservées, sans demander une nouvelle
 importation de la carte.
-

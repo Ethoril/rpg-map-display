@@ -22,6 +22,8 @@ F:\rpg-map-display\
 │                                      des versions), reste de la page construit en T-22
 ├─ player.html                    [1a] vue joueurs — URL autonome, zéro UI. Import map
 │                                      IDENTIQUE à gm.html (T-23)
+├─ attributions.html               [R1] attribution des assets tiers et statut de publication
+│                                      des cartes ; liée depuis l'accueil et la vue MJ
 ├─ firebase-config.js            [1b] configuration Firebase Web publique. Script CLASSIQUE,
 │                                      pas un module : chargé par gm/player/diag AVANT les
 │                                      modules différés. Ne s'applique pas sous navigateur
@@ -178,9 +180,11 @@ F:\rpg-map-display\
 │   ├─ prepare-server.mjs         [L]  serveur LOCAL de l'outil de cartes (127.0.0.1 seul) :
 │                                      sert prepare.html et expose l'API qui appelle
 │                                      prepareMap(). Distinct de serve.mjs à dessein
-│   └─ check-deps.mjs             [1a] vérifie les URLs de l'import map (HEAD 200 + registre
-│                                      + cohérence avec les devDependencies + import maps
-│                                      IDENTIQUES entre toutes les pages de la racine)
+│   ├─ check-deps.mjs             [1a] vérifie la cohérence import map/devDependencies à chaque
+│   │                                  porte, et la disponibilité CDN/versions lors du contrôle
+│   │                                  hebdomadaire séparé
+│   └─ build-site.mjs             [R1] paquet GitHub Pages déterministe dans `_site`, par
+│                                      liste blanche ; ne bundle ni ne transforme le runtime
 │
 ├─ fixtures/                      [1a] cf. docs/FIXTURES.md
 ├─ maps/                          [1a] images traitées, commitées
@@ -430,8 +434,26 @@ export {}
 >   contrat (l'appelant n'attend pas le réseau, l'animation est déterministe côté client) ;
 >   sans ce canal, une écriture refusée serait invisible et l'écran ne suivrait pas, sans le
 >   moindre indice. En l'absence d'abonné, l'erreur est relancée hors pile pour rester visible.
-> - `purgeEvents()` — le canal d'événements est en **ajout pur** : il grossit tant qu'on ne le
->   purge pas. Geste de fin de séance.
+> - `purgeEvents()` — geste de fin de séance pour la session courante : il se refuse si un autre
+>   consommateur actif est encore protégé.
+> - `inspectSessions(sessionIds)` et `purgeSessionEvents(sessionId, options)` — ménage borné des
+>   anciennes sessions. Les identifiants sont obligatoirement explicites (20 au plus), la purge
+>   est un *dry-run* par défaut et exige `{ confirm: true, dryRun: false }` après inspection.
+>   Il n'y a volontairement pas de liste globale : les règles RTDB autorisent les descendants
+>   `session/$sessionId`, pas la lecture de `/session`. Une énumération globale exige donc une
+>   règle et un outil d'administration distincts ; l'interface Web ne feint pas de la fournir.
+>
+> **Rétention des événements.** Chaque `FirebaseTransport` écrit d'abord une barrière éphémère
+> `retentionClients/{clientId}` à l'état `joining`, avant de lire le dernier événement. Après le
+> branchement de l'écoute, elle devient `active` avec le dernier curseur reçu ; elle est datée par
+> `serverTimestamp()` et retirée avec `onDisconnect`. Au plus 32 événements sont effacés après 32
+> publications et 30 s, seulement jusqu'au plus petit curseur de tous les clients actifs. Le
+> contrôle des leases et la suppression sont une même transaction au niveau de la session : une
+> arrivée ou un ACK concurrent force une réévaluation. Le temps serveur (offset RTDB) ne sert qu'à
+> écarter une trace périmée après 120 s ; il ne date jamais les événements.
+> Une `presence` active sans curseur homologue — notamment une ancienne version cliente — bloque
+> intégralement le ménage. Cela privilégie une file qui reste trop longue à une suppression
+> douteuse.
 >
 > **L'authentification n'est PAS dans l'interface**, à dessein : elle est propre à Firebase
 > (un transport LAN n'a pas de compte Google). `FirebaseTransport` expose `signInWithGoogle()`,

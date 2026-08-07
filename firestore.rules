@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // La tablette partagée et le MJ se connectent avec l'un de ces deux comptes.
+    // Il n'existe volontairement aucun accès anonyme ni aucune collection publique.
+    function isTableUser() {
+      return request.auth != null
+        && (
+          (request.auth.token.email == 'ethoril@gmail.com'
+            && request.auth.token.email_verified == true)
+          || request.auth.token.email == 'et.horil@gmail.com'
+        );
+    }
+
+    match /campaigns/{sessionId} {
+      allow read, write: if isTableUser();
+    }
+  }
+}

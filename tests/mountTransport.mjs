@@ -64,4 +64,6 @@ abonner();
     return true;
   },
   purge: () => transport.purgeEvents(),
+  purgeSession: () =>
+    transport.purgeSessionEvents(params.sessionId, { dryRun: false, confirm: true }),
 };

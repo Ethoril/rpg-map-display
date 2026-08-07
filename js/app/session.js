@@ -76,7 +76,7 @@ export function normalizeSessionId(brut) {
  *
  * @param {'gm'|'players'} role
  * @param {string} [sessionId]
- * @returns {{element: HTMLElement, update: (status: 'local'|'auth'|'connecting'|'connected'|'error', detail?: unknown) => void, remove: () => void}}
+ * @returns {{element: HTMLElement, update: (status: 'local'|'auth'|'connecting'|'connected'|'warning'|'error', detail?: unknown) => void, remove: () => void}}
  */
 export function createNetworkStatus(role, sessionId = '') {
   const element = document.createElement('div');
@@ -94,6 +94,7 @@ export function createNetworkStatus(role, sessionId = '') {
         auth: 'Connexion Google requise',
         connecting: 'Connexion Firebase…',
         connected: 'Firebase connecté',
+        warning: `Attention persistance — ${/** @type {any} */ (detail)?.message || detail || 'snapshot proche de la limite Firestore'}`,
         error: `Erreur réseau — ${/** @type {any} */ (detail)?.message || detail || 'inconnue'}`,
       };
       const sessionSuffix = role === 'gm' && sessionId ? ` · session ${sessionId}` : '';
@@ -101,7 +102,7 @@ export function createNetworkStatus(role, sessionId = '') {
       element.dataset.status = status;
       element.dataset.sessionId = sessionId;
       element.style.background =
-        status === 'error' ? '#8b1e1e' : status === 'connected' ? '#174f2a' : '#3d3520';
+        status === 'error' ? '#8b1e1e' : status === 'warning' ? '#775510' : status === 'connected' ? '#174f2a' : '#3d3520';
       element.style.display =
         role === 'players' && status === 'connected' ? 'none' : 'block';
     },

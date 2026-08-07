@@ -81,7 +81,23 @@ async function ouvrirClient(browser, sessionId, role) {
     snapshot: () => page.evaluate(() => /** @type {any} */ (window).__probe.snapshot()),
     reconnect: () => page.evaluate(() => /** @type {any} */ (window).__probe.reconnect()),
     purge: () => page.evaluate(() => /** @type {any} */ (window).__probe.purge()),
+    purgeSession: () => page.evaluate(() => /** @type {any} */ (window).__probe.purgeSession()),
   };
+}
+
+/**
+ * Après la fermeture des autres contextes, `onDisconnect` peut demander un bref aller-retour
+ * serveur. La première tentative termine volontairement le transport MJ ; les suivantes passent
+ * par l'API de session explicite, qui reste disponible sur sa connexion Firebase initialisée.
+ *
+ * @param {Awaited<ReturnType<typeof ouvrirClient>>} client
+ */
+async function purgerQuandLesLeasesOntDisparu(client) {
+  try {
+    await client.purge();
+  } catch {
+    await expect(async () => client.purgeSession()).toPass({ timeout: 15_000, intervals: [500] });
+  }
 }
 
 test('deux clients : rien n\'est livré avant snapshot(), tout l\'est après', async ({
@@ -118,9 +134,9 @@ test('deux clients : rien n\'est livré avant snapshot(), tout l\'est après', a
     expect(await joueurs.erreurs(), 'aucun échec asynchrone attendu').toEqual([]);
     expect(await mj.erreurs(), 'aucun échec asynchrone attendu').toEqual([]);
   } finally {
-    await mj.purge();
-    await mj.context.close();
     await joueurs.context.close();
+    await purgerQuandLesLeasesOntDisparu(mj);
+    await mj.context.close();
   }
 });
 
@@ -129,6 +145,8 @@ test('une reconnexion ne rejoue pas l\'historique de la session', async ({ brows
 
   const sessionId = `test-reconnexion-${Date.now()}`;
   const mj = await ouvrirClient(browser, sessionId, 'gm');
+  /** @type {Awaited<ReturnType<typeof ouvrirClient>>|null} */
+  let joueurs = null;
 
   try {
     await mj.snapshot();
@@ -139,30 +157,33 @@ test('une reconnexion ne rejoue pas l\'historique de la session', async ({ brows
 
     // Un client qui arrive après coup ne doit PAS se voir resservir les trois événements :
     // `onChildAdded` non borné les rejouerait tous, et le client rejouerait toute la séance.
-    const joueurs = await ouvrirClient(browser, sessionId, 'players');
-    await joueurs.snapshot();
+    const clientJoueurs = await ouvrirClient(browser, sessionId, 'players');
+    joueurs = clientJoueurs;
+    await clientJoueurs.snapshot();
     await new Promise((r) => setTimeout(r, 2000));
     expect(
-      await joueurs.recus(),
+      await clientJoueurs.recus(),
       'l\'historique antérieur à la connexion ne doit pas être rejoué'
     ).toEqual([]);
 
     // Seuls les événements postérieurs arrivent.
     await mj.publish('token.move');
-    await expect.poll(() => joueurs.recus(), { timeout: 10000 }).toEqual(['token.move']);
+    await expect.poll(() => clientJoueurs.recus(), { timeout: 10000 }).toEqual(['token.move']);
 
     // Même discipline après une reconnexion du même client.
-    await joueurs.reconnect();
-    await joueurs.snapshot();
+    await clientJoueurs.reconnect();
+    await clientJoueurs.snapshot();
     await new Promise((r) => setTimeout(r, 2000));
     expect(
-      await joueurs.recus(),
+      await clientJoueurs.recus(),
       'une reconnexion ne doit pas rejouer les événements déjà passés'
     ).toEqual([]);
 
-    await joueurs.context.close();
+    await clientJoueurs.context.close();
+    joueurs = null;
   } finally {
-    await mj.purge();
+    await joueurs?.context.close();
+    await purgerQuandLesLeasesOntDisparu(mj);
     await mj.context.close();
   }
 });

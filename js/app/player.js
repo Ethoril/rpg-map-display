@@ -451,7 +451,10 @@ export async function bootstrapPlayerApp(options = {}) {
     if (snapshotTimer !== null) clearTimeout(snapshotTimer);
     snapshotTimer = setTimeout(() => {
       snapshotTimer = null;
-      Promise.resolve(transportExtended.saveSnapshot(createSnapshotPayload())).catch((error) =>
+      const snapshot = createSnapshotPayload();
+      const diagnostic = transportExtended.getSnapshotSizeDiagnostic?.(snapshot);
+      if (diagnostic?.severity === 'warning') networkStatus.update('warning', diagnostic.message);
+      Promise.resolve(transportExtended.saveSnapshot(snapshot)).catch((error) =>
         networkStatus.update('error', error)
       );
     }, 250);

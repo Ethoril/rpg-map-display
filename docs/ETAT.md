@@ -14,6 +14,16 @@
 > unitaires, 142 tests navigateur et 3 gestes diagnostiques réussis** ; 2 scénarios Firebase réels
 > restent ignorés localement faute de secret.
 >
+> **Phase R1 implantée dans le dépôt le 7 août 2026 ; porte d'exploitation encore ouverte.**
+> Le canal RTDB possède une rétention transactionnelle protégée par leases et curseurs ACK ; le
+> ménage est explicite, borné et en dry-run par défaut ; les règles Firebase sont versionnées et
+> testées par émulateurs dans la CI ; Firestore avertit à 750 Kio et refuse à 900 Kio ; l'ADR-012
+> impose un schéma v3 réparti avant la campagne réelle à trois étages. GitHub Pages publie désormais
+> `_site` par liste blanche. Faute de droits documentés, aucune carte ni aucun portrait n'y entre ;
+> les quatorze icônes CC BY 3.0 portent sources, auteurs et modifications dans la page d'attribution.
+> La porte R1 ne sera fermée qu'après le premier run CI, le déploiement des règles, la validation
+> RTDB réelle et la preuve des restrictions Firebase Console.
+>
 > **Chantier Q, 6 août 2026 — code livré, trois vérifications de table ouvertes.** Points de vie,
 > hors CdC et demandé par le mainteneur : compteur `courant/max` saisi par le MJ, **anneau
 > proportionnel bleu `#2563eb` sur les PJ seulement**, **anneau d'état à trois crans manuels sur les
@@ -111,7 +121,7 @@ Les blocs C-01 à C-11 du plan de stabilisation sont implémentés :
 
 ```text
 pnpm install
-pnpm run verify        # typecheck + test:unit + test:e2e, arrêt à la première erreur
+pnpm run verify        # typecheck + cohérence CDN + unit + e2e + gestes, arrêt à la première erreur
 pnpm run check-deps
 ```
 
@@ -141,19 +151,29 @@ laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 > dérivée de la constante et non choisie. L'absence est réelle — sonde à l'appui, le couloir
 > reste noir sur 10 s — elle est maintenant aussi **prouvée**.
 
-Depuis le 4 août 2026, `test:e2e` ne lance que le projet `chromium` : les trois scénarios de
-geste réel vivent dans le projet `manuel`, **hors de la porte**, à lancer par
-`pnpm run test:manuel` (voir « Ce qui reste à vérifier manuellement »). Un `verify` vert ne dit
-donc plus rien de ces trois-là. Leur cause d'instabilité est trouvée et corrigée depuis le
-4 août 2026 — c'était un défaut du test, pas de l'application —, **mais le rapatriement dans la
-porte n'est pas fait** : il attend une décision du mainteneur.
+Depuis R1-08, `test:e2e` garde le projet `chromium` et les trois scénarios de geste réel sont
+exécutés ensuite via le projet `manuel` (`pnpm run test:gestes`) dans `pnpm run verify`. Leur
+cause d'instabilité avait été trouvée et corrigée le 4 août 2026 — défaut du test, pas de
+l'application — ; leur succès est désormais requis avant tout déploiement. Les traces restent
+publiées en artefact en cas d'échec, sans second job qui rejouerait les mêmes scénarios.
 
-Un job `geste-diagnostic` les exécute néanmoins à chaque push, hors de toute chaîne de dépendance,
-donc sans pouvoir bloquer ni retarder un déploiement. Il publie son verdict en **annotations**
-GitHub Actions — le seul canal de diagnostic lisible sans authentification, les journaux répondant
-403 et les artefacts 401. ⚠ **Ne pas lire les conclusions d'étape comme un verdict** :
-`continue-on-error` réécrit une étape en échec en `success`, ce qui a fait rapporter le run 75
-comme entièrement vert alors que deux étapes avaient échoué.
+La cohérence des import maps et de la version Firebase reste bloquante à chaque `verify`.
+La disponibilité des CDN et le signalement des versions npm récentes passent dans un contrôle
+hebdomadaire séparé : une indisponibilité extérieure ponctuelle ne bloque donc pas un push.
+
+Résultat de la passe d'intégration R1 du 7 août 2026 sur le poste Windows de reprise :
+
+- typage et cohérence des import maps : verts ;
+- tests unitaires : **299 réussis**, 1 test de règles ignoré hors émulateurs ;
+- tests navigateur : **143 réussis**, 2 scénarios Firebase réels ignorés faute de secret ;
+- gestes bloquants : **3 réussis** ;
+- paquet `_site` : **82 fichiers**, déterministe, plus un smoke test navigateur MJ/joueurs ;
+- mesure Firestore : 302 918 octets prudents sur `testbig150`, 904 038 sur trois étages ;
+- le lanceur Playwright local Windows imprime tous les succès puis garde son processus ouvert ;
+  les commandes ont donc atteint leur limite après verdict. Ce défaut de terminaison n'a produit
+  aucun échec de scénario, mais le premier run Ubuntu de la CI reste à constater ;
+- la cible `test:firebase-rules` est prête et bloquante en CI avec Java 21. Elle ne peut pas être
+  exécutée sur ce poste tant que Java 21 n'est pas installé.
 
 Résultat de la passe d’intégration du 4 août 2026 (après L-08 et le correctif de désarmement
 des outils MJ), mesuré sur le poste Windows de reprise :
@@ -162,21 +182,19 @@ des outils MJ), mesuré sur le poste Windows de reprise :
 - tests unitaires : **227 tests, 226 réussis, 1 ignoré** en 5 s ;
 - tests navigateur : **100 réussis**, 2 Firebase ignorés faute de configuration externe, en 41 s ;
 - `pnpm run check-deps` : vert, import maps identiques entre `gm.html`, `player.html` et
-  `diag.html`. Il avertit que `firebase` est figée en 12.16.0 alors que npm publie 12.17.0 :
-  c'est le comportement voulu, `STACK.md` épinglant les versions ;
+  `diag.html`, avec version Firebase cohérente. La disponibilité CDN et les versions npm récentes
+  sont relevées séparément chaque semaine ; l'épinglage de `STACK.md` reste la référence ;
 - les scénarios couvrent rendu, imports, bibliothèque de cartes, bibliothèque de pions,
   pions, gestes, élévation, révélation d'image, page d'accueil, plusieurs pages,
   reconnexion, remplacement de scène synchronisé, et depuis le lot 2 : arêtes bloquées, fog
   (temps réel, voile, trajet, outils MJ), portails, éditeur de murs, gabarits de zone d'effet
   et mécanisme de désarmement des outils MJ.
 
-> **L'unique test unitaire ignoré dépend de la machine, pas du code.** C'est
-> `realUvtt.test.mjs`, qui s'auto-ignore quand `fixtures/real/` est vide — et ce dossier est
-> **exclu du dépôt par `.gitignore`** (seul son `.gitkeep` voyage), les exports réels du
-> mainteneur n'ayant pas à être publiés. La passe du 30 juillet annonçait « aucun ignoré » parce
-> qu'elle a été lancée sur le Mac, où le corpus est déposé. Sur tout autre poste, le parsing des
-> UVTT réels n'est donc **validé qu'en théorie** : y déposer un export avant de conclure quoi
-> que ce soit sur l'import (`docs/FIXTURES.md` §1).
+> **L'unique test unitaire ignoré localement est désormais celui des règles Firebase réelles.**
+> `firebaseRules.emulator.test.mjs` exige les émulateurs Firestore et RTDB ; la CI les démarre avec
+> Java 21 dans un projet `demo-*`. `realUvtt.test.mjs`, lui, ne s'ignore plus sur un dépôt intact :
+> il utilise aussi les exports Dungeondraft versionnés dans `maps/`, tandis que `fixtures/real/`
+> reste le complément privé du mainteneur (`docs/FIXTURES.md` §1).
 
 Historique, pour situer : la passe du 30 juillet 2026 (fin du lot 1b) donnait 103 tests
 unitaires et 64 navigateur. Le lot 2 a donc doublé la couverture.
@@ -603,8 +621,8 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   La carte `testbig150` est au catalogue pour ça (65 × 71 cases, 1338 murs, 141 portes,
   185 lumières, 13,7 Mio de WebP). Si elle ne tient pas, le pas suivant est de redescendre
   `MAX_PREPARED_TEXTURE_PX`, pas de bricoler le rendu ;
-- **`pnpm run test:manuel` — le glisser réel du désarmement des outils MJ. ✅ Cause trouvée le
-  4 août 2026, correctif livré ; il reste à décider du rapatriement dans la porte.**
+- **`pnpm run test:gestes` — le glisser réel du désarmement des outils MJ. ✅ Cause trouvée le
+  4 août 2026, correctif livré ; R1-08 l'a rapatrié dans la porte de vérification.**
   `tests/manuel/gmToolDisarmGeste.spec.mjs` était vert en local et rouge sur le runner GitHub, sur
   le seul scénario des gabarits, des runs 69 à 76. **C'était un défaut du test, et de lui seul :**
   `camera.mapToScreen` rend des coordonnées relatives au canvas, `page.mouse` en attend du viewport,
@@ -616,8 +634,7 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   conversion explicite **et une précondition exprimée** — le point de pression doit tomber sur la
   case de départ, vérifié par le calcul même de l'application —, avec preuve par mutation des deux
   côtés. Détail complet et les deux erreurs de méthode qui ont coûté quatre tours :
-  `docs/DIAGNOSTIC-GESTE-GABARITS.md` §10 à §12. **Le rapatriement dans la porte est donc ouvert,
-  et c'est une décision du mainteneur** ; d'ici là un `verify` vert ne dit rien de ces trois
+  `docs/DIAGNOSTIC-GESTE-GABARITS.md` §10 à §12. Un `verify` vert couvre désormais ces trois
   scénarios ;
 - **le débordement horizontal du panneau des gabarits, non corrigé** — sous-produit du diagnostic
   ci-dessus, et sans rapport avec la justesse du hit-test. Un panneau MJ qui provoque un défilement

@@ -18,7 +18,7 @@
 | Lot 2 — lignes de vue, portes et tactique | **13 critères sur 13** ; les critères 4, 10 et 11 ont été confirmés par le mainteneur le 07/08/2026 |
 | Lot 3 — étages et lumière | 3 critères sur 6 ; pas d'éditeur de liaisons, pas de campagne réelle à trois étages, lumières non exploitées |
 | Lot 4 — hexagone et confort | 1 critère sur 6 ; seul l'undo du fog est acquis |
-| Vérification automatisée | 289 tests unitaires réussis ; 142 tests navigateur réussis ; 2 scénarios Firebase réels conditionnés par le secret CI ; 3 gestes diagnostiques réussis |
+| Vérification automatisée | 299 tests unitaires réussis ; 143 tests navigateur réussis ; 2 scénarios Firebase réels conditionnés par le secret CI ; 3 gestes bloquants réussis |
 
 Le projet est jouable, mais la 1.0 reste bloquée principalement par la persistance Firebase,
 le fonctionnement local réellement hors ligne, les performances du store sur les campagnes
@@ -66,17 +66,32 @@ phase sauf si l'usage réel montre une ambiguïté.
 **Priorité : P0 1.0.** Cette phase peut commencer en parallèle des validations matérielles, mais
 doit être terminée avant d'étiqueter une 1.0.
 
-| ID | Travail | Critère de sortie |
-|---|---|---|
-| R1-01 | Ajouter une rétention automatique au canal RTDB `events` | Une session active conserve seulement la fenêtre utile ; les événements expirés ne s'accumulent plus sans limite |
-| R1-02 | Ajouter le ménage des anciennes sessions | Un outil borné liste puis purge explicitement une session choisie ; aucune suppression globale implicite |
-| R1-03 | Versionner les règles Firebase | Les règles RTDB et Firestore vivent dans le dépôt et des tests négatifs prouvent les refus d'accès |
-| R1-04 | Mesurer la taille persistée d'une campagne | L'interface ou le store avertit avant la limite Firestore ; la taille encodée réelle est testée, pas seulement estimée |
-| R1-05 | Décider le schéma de persistance multi-étages | Si trois scènes denses approchent 1 Mio, un schéma v3 sépare les métadonnées et les étages avant la fin du lot 3 |
-| R1-06 | Publier une arborescence contrôlée | GitHub Pages reçoit un dossier `_site` construit par liste blanche, sans tests, briefs, scripts ni sources UVTT |
-| R1-07 | Fermer le sujet des licences | Les cartes publiées sont autorisées et les attributions requises sont accessibles depuis l'application |
-| R1-08 | Renforcer la CI | Les gestes manuels deviennent bloquants après stabilisation ; la cohérence des modules CDN est vérifiée régulièrement |
-| R1-09 | Protéger les quotas Firebase | Les restrictions d'origine et d'API sont vérifiées dans la console du projet |
+| ID | Travail | Critère de sortie | État au 07/08/2026 |
+|---|---|---|---|
+| R1-01 | Ajouter une rétention automatique au canal RTDB `events` | Une session active conserve seulement la fenêtre utile ; les événements expirés ne s'accumulent plus sans limite | **Code fait** — barrière `joining`, curseurs ACK et suppression transactionnelle par lots de 32 ; validation Firebase réelle à constater |
+| R1-02 | Ajouter le ménage des anciennes sessions | Un outil borné liste puis purge explicitement une session choisie ; aucune suppression globale implicite | **Fait** — inspection de 1 à 20 identifiants explicites, dry-run par défaut, confirmation et purge transactionnelle ; aucune énumération globale |
+| R1-03 | Versionner les règles Firebase | Les règles RTDB et Firestore vivent dans le dépôt et des tests négatifs prouvent les refus d'accès | **Code fait** — règles, tests statiques et cible émulateurs bloquante en CI ; déploiement externe à constater |
+| R1-04 | Mesurer la taille persistée d'une campagne | L'interface ou le store avertit avant la limite Firestore ; la taille encodée réelle est testée, pas seulement estimée | **Fait** — JSON UTF-8 mesuré, taille logique Firestore calculée, avertissement 750 Kio et refus 900 Kio |
+| R1-05 | Décider le schéma de persistance multi-étages | Si trois scènes denses approchent 1 Mio, un schéma v3 sépare les métadonnées et les étages avant la fin du lot 3 | **Décision faite** — ADR-012 impose v3 avant R3-02 ; implémentation rattachée au lot 3 |
+| R1-06 | Publier une arborescence contrôlée | GitHub Pages reçoit un dossier `_site` construit par liste blanche, sans tests, briefs, scripts ni sources UVTT | **Fait** — paquet déterministe de 82 fichiers et smoke test navigateur depuis `_site` |
+| R1-07 | Fermer le sujet des licences | Les cartes publiées sont autorisées et les attributions requises sont accessibles depuis l'application | **Fait pour le paquet actuel** — icônes, sources, auteurs, licence et modifications publiés ; cartes/portraits exclus faute de droits documentés |
+| R1-08 | Renforcer la CI | Les gestes manuels deviennent bloquants après stabilisation ; la cohérence des modules CDN est vérifiée régulièrement | **Code fait** — gestes dans `verify`, cohérence bloquante, disponibilité hebdomadaire ; premier run GitHub à constater |
+| R1-09 | Protéger les quotas Firebase | Les restrictions d'origine et d'API sont vérifiées dans la console du projet | **Procédure faite, console ouverte** — configuration et preuves externes restent au mainteneur |
+
+### Détails et limites R1
+
+- Une lease RTDB `joining` est créée avant la lecture initiale du flux. La rétention automatique
+  et la purge explicite utilisent une transaction au niveau de la session : une arrivée ou un ACK
+  concurrent force une nouvelle évaluation, sans fenêtre « contrôler puis supprimer ».
+- L'outil de ménage n'invente pas une liste globale que les règles actuelles ne permettent pas de
+  lire. Il inspecte au plus 20 identifiants connus ; une console d'administration globale serait
+  un chantier distinct avec des droits distincts.
+- La mesure reproductible donne 302 918 octets prudents pour `testbig150` et 904 038 octets pour
+  trois étages synthétiques. La migration v3 est donc requise avant la campagne réelle R3-02.
+- `pnpm run test:firebase-rules` utilise les vrais émulateurs dans un projet `demo-*`. Le poste
+  courant n'a pas Java 21 ; la CI l'installe et rend cette cible bloquante.
+- Le paquet public ne contient provisoirement aucune carte ni aucun portrait. Un contenu ne pourra
+  entrer dans la liste blanche qu'avec provenance, droit de diffusion et attribution documentés.
 
 ### Porte de sortie R1
 
@@ -84,6 +99,11 @@ doit être terminée avant d'étiqueter une 1.0.
 - Une campagne trop grande est refusée ou répartie avant l'écriture Firestore.
 - Les règles et leurs tests appartiennent au même changement que le code qui les requiert.
 - Le contenu du site publié est explicite et licencié.
+
+**Porte R1 non fermée au 07/08/2026.** Le dépôt est prêt, mais il reste à constater le premier run
+CI avec émulateurs, déployer les règles versionnées, appliquer les restrictions de clé/origine/API
+et consigner leur preuve. La validation de la rétention sur deux vrais clients Firebase doit être
+jointe au même contrôle d'exploitation.
 
 ## 5. Phase 2 — performance et endurance
 

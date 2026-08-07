@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 test-results/
 playwright-report/
+_site/
 fixtures/real/*
 !fixtures/real/.gitkeep
 
@@ -9,8 +10,8 @@ fixtures/real/*
 #
 # Seuls les artefacts de maps/generated/ sont servis ; `sourceUrl` du catalogue
 # n'est qu'une chaîne validée par `js/import/catalog.js`, jamais suivie. Le
-# workflow publie le dépôt entier (`path: '.'`), donc une source commitée part
-# aussi sur le web et compte dans la limite de 1 Go de GitHub Pages.
+# le paquet Pages est construit par liste blanche dans `_site`, donc une source
+# commitée ne part plus automatiquement sur le web.
 #
 # Deux conséquences à connaître :
 # - `manoir-rdc.uvtt` reste suivi, car .gitignore ne désuit pas un fichier déjà

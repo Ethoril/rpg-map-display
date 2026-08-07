@@ -174,7 +174,7 @@ function publierAnnotation(testInfo, browserJournal) {
   process.stdout.write(`::${niveau} title=geste-${outil}::${message}\n`);
 }
 
-test.describe('GESTE — Désarmement des outils MJ, glisser réel (hors porte de vérification)', () => {
+test.describe('GESTE R1-08 — Désarmement des outils MJ, glisser réel bloquant', () => {
   /** @type {Array<any>} */
   let nodeJournal = [];
 

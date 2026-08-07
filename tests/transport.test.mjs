@@ -8,7 +8,14 @@ import {
     assertNoNestedArrays,
     assertNoTransientAssetUrls,
     decodeSnapshotFromFirestore,
+    encodedJsonByteLength,
     encodeSnapshotForFirestore,
+    EVENT_RETENTION_CLIENT_STALE_AFTER_MS,
+    FIRESTORE_SNAPSHOT_MAX_BYTES,
+    FIRESTORE_SNAPSHOT_WARNING_BYTES,
+    getAcknowledgedEventFrontier,
+    measureFirestoreSnapshot,
+    normalizeExplicitSessionIds,
 } from '../js/transport/FirebaseTransport.js';
 import { LocalSocketTransport } from '../js/transport/LocalSocketTransport.js';
 import { TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
@@ -28,6 +35,76 @@ const validConfig = {
     projectId: 'mock-project',
     appId: 'mock-app',
 };
+
+test('la rétention ne franchit que le plus petit curseur confirmé de tous les clients actifs', () => {
+    const now = 10_000_000;
+    const status = getAcknowledgedEventFrontier(
+        {
+            mj: { at: now - 1_000, eventCursor: '-key-020' },
+            table: { at: now - 2_000, eventCursor: '-key-017' },
+            disparu: { at: now - EVENT_RETENTION_CLIENT_STALE_AFTER_MS - 1, eventCursor: '-key-001' },
+        },
+        now,
+        {
+            mj: { at: now - 1_000 },
+            table: { at: now - 2_000 },
+        }
+    );
+
+    assert.deepEqual(status, {
+        frontier: '-key-017',
+        activeClientIds: ['mj', 'table'],
+        blocked: false,
+    });
+});
+
+test('une présence legacy active sans curseur de rétention bloque toute suppression', () => {
+    const now = 10_000_000;
+    const blocked = getAcknowledgedEventFrontier(
+        { nouveau: { at: now, eventCursor: '-key-020' } },
+        now,
+        {
+            nouveau: { at: now },
+            ancienClient: { at: now - 1_000 },
+        }
+    );
+    assert.equal(blocked.frontier, null);
+    assert.equal(blocked.blocked, true, 'zéro suppression tant que l’ancien client peut recevoir un delta');
+
+    const staleLegacy = getAcknowledgedEventFrontier(
+        { nouveau: { at: now, eventCursor: '-key-020' } },
+        now,
+        { ancienClient: { at: now - EVENT_RETENTION_CLIENT_STALE_AFTER_MS - 1 } }
+    );
+    assert.equal(staleLegacy.frontier, '-key-020');
+    assert.equal(staleLegacy.blocked, false);
+});
+
+test('une lease joining bloque la purge même si un curseur a déjà été observé', () => {
+    const now = 10_000_000;
+    const joining = getAcknowledgedEventFrontier(
+        {
+            mj: { state: 'active', at: now, eventCursor: '-key-020' },
+            nouveau: { state: 'joining', at: now, eventCursor: '-key-021' },
+        },
+        now,
+        { mj: { at: now }, nouveau: { at: now } }
+    );
+
+    assert.equal(joining.frontier, null);
+    assert.equal(joining.blocked, true);
+    assert.deepEqual(joining.activeClientIds, ['mj', 'nouveau']);
+});
+
+test('l’outillage de ménage exige des sessions explicites et reste borné', () => {
+    assert.deepEqual(normalizeExplicitSessionIds(['ancienne-a', 'ancienne-b']), ['ancienne-a', 'ancienne-b']);
+    assert.throws(() => normalizeExplicitSessionIds([]), /au moins un identifiant/i);
+    assert.throws(() => normalizeExplicitSessionIds(['doublon', 'doublon']), /distincts/i);
+    assert.throws(
+        () => normalizeExplicitSessionIds(Array.from({ length: 21 }, (_, i) => `s-${i}`)),
+        /limitée/i
+    );
+});
 
 test('FirebaseTransport exige une configuration valide à la construction', () => {
     // Config absente
@@ -186,6 +263,39 @@ test('saveSnapshot refuse un tableau imbriqué et accepte des murs de carte rée
     // qui échouait — « Nested arrays are not supported » à la pose d'une carte.
     const walls = [[{ cellX: 0, cellY: 0 }, { cellX: 2, cellY: 0 }]];
     await transport.saveSnapshot({ campaign: { levels: [{ id: 'rdc', walls }] } });
+});
+
+test('la mesure Firestore compte les octets UTF-8 réellement encodés après adaptation des murs', () => {
+    const snapshot = {
+        campaign: {
+            levels: [{ id: 'étage-😀', walls: [[{ cellX: 0, cellY: 0 }, { cellX: 1, cellY: 0 }]] }],
+        },
+    };
+    const encoded = encodeSnapshotForFirestore(snapshot);
+    const measurement = measureFirestoreSnapshot(snapshot);
+
+    // La référence est l'encodage UTF-8 du document EXACT livré au SDK, non la longueur JS.
+    assert.equal(measurement.encodedJsonBytes, Buffer.byteLength(JSON.stringify(encoded), 'utf8'));
+    assert.equal(encodedJsonByteLength(encoded), measurement.encodedJsonBytes);
+    assert.ok(measurement.conservativeBytes >= measurement.encodedJsonBytes);
+    assert.deepEqual(measurement.documentFirestore, encoded);
+});
+
+test('la garde de taille avertit avant 1 Mio et refuse avant tout setDoc', async () => {
+    const warning = measureFirestoreSnapshot({ payload: 'a'.repeat(700 * 1024) });
+    assert.equal(warning.severity, 'warning');
+    assert.ok(warning.conservativeBytes >= FIRESTORE_SNAPSHOT_WARNING_BYTES);
+    assert.ok(warning.conservativeBytes <= FIRESTORE_SNAPSHOT_MAX_BYTES);
+
+    const transport = new FirebaseTransport(validConfig);
+    transport._sessionId = 'session-trop-grande';
+    // Une fausse instance rendrait `doc()` invalide si la garde atteignait le SDK. Le message
+    // de plafond prouve donc que le refus survient avant setDoc, sans réseau Firebase.
+    transport._firestore = /** @type {any} */ ({});
+    await assert.rejects(
+        transport.saveSnapshot({ payload: 'a'.repeat(850 * 1024) }),
+        /refusé avant écriture.*plafond applicatif.*migre la campagne vers le schéma v3/s
+    );
 });
 
 test('isOwnEvent identifie un écho sans casser les anciens NetEvent', () => {

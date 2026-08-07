@@ -4,8 +4,10 @@ VTT minimaliste pour une table de jeu de rôle hybride : le MJ pilote depuis un 
 les joueurs utilisent une tablette tactile dont l’écran peut être casté vers une TV.
 
 Le lot actuel fournit le plateau Canvas 2D, les cartes calibrées, les pions, le déplacement,
-la persistance locale et la synchronisation Firebase. Les images partagées sont des fichiers
-publiés dans `maps/` : une URL `data:` ou `blob:` n’entre jamais dans la campagne durable.
+la persistance locale et la synchronisation Firebase. En développement local, les images
+partagées sont des fichiers servis depuis `maps/` : une URL `data:` ou `blob:` n’entre jamais
+dans la campagne durable. Le paquet public Pages exclut provisoirement les cartes et portraits
+du dépôt, faute de droits de diffusion documentés.
 
 ## Documents de référence
 
@@ -45,7 +47,7 @@ configuration Firebase Web, publique par nature, peut être injectée via
 `window.RPG_FIREBASE_CONFIG` ou `localStorage["rpg-firebase-config"]`. Aucun mot de passe
 ni compte de test ne doit y figurer.
 
-## Publier une carte
+## Préparer une carte locale
 
 Le fichier image doit être copié ou généré dans `maps/`, puis l’étage référence son chemin
 canonique, par exemple `maps/manoir-rdc.webp`. L’aperçu local d’un fichier choisi dans le
@@ -56,6 +58,12 @@ Pour un export UVTT :
 ```text
 node scripts/import-uvtt.mjs chemin/vers/carte.uvtt
 ```
+
+Pour rendre ensuite cette carte publique, il faut documenter son auteur, sa provenance, sa
+licence ou son autorisation de diffusion, ajouter ses fichiers à la liste blanche de
+`scripts/build-site.mjs`, conserver son entrée de catalogue dans le paquet construit et compléter
+`attributions.html`. Tant que ces étapes ne sont pas faites, `pnpm run build:site` publie des
+catalogues de cartes et de portraits vides.
 
 ## Créer un pion
 
@@ -91,6 +99,7 @@ exemple — ne mute rien et le champ revient à la valeur du store, avec la rais
 ```text
 pnpm run typecheck
 pnpm run test:unit
+pnpm run test:firebase-rules  # exige Java 21 ; obligatoire dans la CI
 pnpm run test:e2e
 pnpm run check-deps
 pnpm test
@@ -110,7 +119,10 @@ Le projet reste sans build : ES Modules natifs, JavaScript vérifié par JSDoc/T
 et pages statiques compatibles GitHub Pages. Les scripts sont en Node et doivent fonctionner
 sous Windows comme sous macOS.
 
-## Licence
+## Licence et publication
 
-Projet personnel. Les cartes déposées dans `maps/` et `fixtures/real/` peuvent être soumises
-à des licences tierces ; les vérifier avant publication.
+Le code est un projet personnel : aucune licence générale de redistribution n’est déclarée.
+Les icônes d’état sont attribuées sous CC BY 3.0 dans
+[`attributions.html`](attributions.html). Les cartes et portraits présents dans le dépôt ne
+portent pas de provenance ou d’autorisation de diffusion vérifiable ; ils sont donc exclus du
+paquet GitHub Pages jusqu’à documentation de leurs droits.

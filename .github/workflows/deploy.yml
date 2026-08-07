@@ -2,28 +2,14 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
-  # Les pull requests exécutent la vérification sans jamais déployer.
+    branches: [main]
   pull_request:
-    branches:
-      - main
-  # Déclenchement manuel, depuis l'onglet Actions ou `gh workflow run deploy.yml`.
-  #
-  # Ajouté le 06/08/2026, pendant la panne majeure de GitHub Actions. Ce jour-là, un push a été
-  # accepté sans créer **aucune** course : les webhooks étaient bridés à environ 15 %, si bien que
-  # l'événement a été perdu. Sans `workflow_dispatch`, il n'existait alors plus aucun moyen de
-  # réamorcer — `gh run rerun` exige une course existante, et il n'y en avait pas. La seule issue
-  # était de fabriquer un commit vide pour rejouer l'événement.
-  #
-  # ⚠ Ce déclencheur ne rend pas la porte optionnelle : le job `verify` s'exécute de la même façon,
-  # et `deploy` reste conditionné à son succès. Il rend seulement l'amorçage indépendant de la
-  # bonne livraison d'un webhook.
-  #
-  # ⛔ Ne pas ajouter ce déclencheur ici sans étendre aussi la condition du job `build`, plus bas :
-  # elle filtre sur `github.event_name == 'push'`, et le déclenchement manuel serait alors vérifié
-  # puis jamais publié, sans que rien ne le signale.
+    branches: [main]
   workflow_dispatch:
+  # La disponibilité des CDN et les nouvelles versions sont observées sans rendre
+  # un déploiement dépendant d'un service tiers momentané.
+  schedule:
+    - cron: '13 5 * * 1'
 
 permissions:
   contents: read
@@ -31,12 +17,10 @@ permissions:
   id-token: write
 
 jobs:
-  # Porte de vérification. Rien ne part en production sans elle.
-  #
-  # Elle existe parce qu'un lot a été déclaré « terminé » alors que le typecheck
-  # sortait 10 erreurs et que 4 tests e2e étaient rouges, avec un déploiement
-  # automatique et sans filet. Cf. docs/CONVENTIONS.md §9.
   verify:
+    # Le run planifié ne lance pas la suite applicative complète : son unique objet
+    # est le contrôle de disponibilité ci-dessous.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,8 +29,6 @@ jobs:
         with:
           version: 11
 
-      # Même version majeure que le poste de développement, pour que « vert en
-      # local » et « vert en CI » signifient la même chose.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -54,26 +36,24 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Playwright pilote un vrai Chromium : il faut le navigateur et ses
-      # dépendances système.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Refus anonymes/authentifiés et autorisations des deux comptes, exercés contre les
+      # vrais moteurs de règles. Le projet `demo-*` interdit tout repli accidentel en production.
+      - run: pnpm run test:firebase-rules
+
       - run: pnpm exec playwright install --with-deps chromium
 
-      # typecheck → unit → e2e, du moins coûteux au plus coûteux.
-      #
-      # RPG_FIREBASE_CONFIG active les deux scénarios Firebase réels de
-      # tests/firebaseTransport.spec.mjs, seuls tests du dépôt qui ne tournaient jamais.
-      # Ils exigent 7 champs : les 5 publics plus testEmail/testPassword d'un compte
-      # technique. Le secret absent, les deux tests se sautent d'eux-mêmes au lieu
-      # d'échouer — un fork sans secret reste donc vert.
-      #
-      # Ces tests écrivent dans le vrai projet Firebase : décision assumée du mainteneur
-      # de ne pas séparer un projet de test, séances et CI partageant la même base.
+      # Ordre du moins coûteux au plus coûteux. La cohérence statique des import
+      # maps est bloquante, et les trois gestes auparavant diagnostiques le sont
+      # désormais après leur stabilisation.
       - run: pnpm run verify
         env:
           RPG_FIREBASE_CONFIG: ${{ secrets.RPG_FIREBASE_CONFIG }}
 
-      # Traces des tests navigateur en échec, pour diagnostiquer sans rejouer
-      # la séance à l'aveugle.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -81,98 +61,27 @@ jobs:
           path: test-results/
           retention-days: 7
 
-  # Job de diagnostic autonome pour observer le glisser réel des gabarits.
-  # Aucun lien avec deploy (ne bloque pas et ne retarde pas les déploiements).
-  geste-diagnostic:
-    if: github.event_name == 'push'
+  dependency-availability:
+    # Service séparé : il contrôle les réponses CDN et signale les versions npm
+    # récentes, mais une indisponibilité extérieure ne bloque jamais un push.
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+      - run: node scripts/check-deps.mjs --availability
 
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm exec playwright install --with-deps chromium
-
-      # ⚠ `pnpm exec playwright test` et non `pnpm run test:manuel -- …`. Mesuré sur pnpm 11 :
-      # `pnpm run test:manuel -- --grep "fog" --list` perd **silencieusement** ses arguments et
-      # lance les trois tests. Le job serait resté vert, l'artefact présent, et le
-      # discriminateur ci-dessous n'aurait rien discriminé — chaque étape exécutant les trois
-      # scénarios et écrasant le journal de la précédente faute de `--output`.
-
-      # Sans `continue-on-error` : une sélection fausse doit casser le job, pas se déguiser en
-      # échec de scénario. Un motif qui ne correspond à rien sort en 1 ; un motif qui en
-      # correspond à deux sortirait en 0, d'où le contrôle du compte.
-      - name: Contrôle de la sélection des motifs grep
-        run: |
-          for motif in fog murs gabarits; do
-            total="$(pnpm exec playwright test --project=manuel --grep "$motif" --list | grep -E '^Total: ')"
-            echo "$motif -> $total"
-            if [ "$total" != "Total: 1 test in 1 file" ]; then
-              echo "ERREUR : le motif '$motif' ne sélectionne pas exactement un test."
-              exit 1
-            fi
-          done
-
-      - name: geste — pinceau de fog
-        run: pnpm exec playwright test --project=manuel --grep "fog" --output=test-results/geste-fog
-        continue-on-error: true
-
-      - name: geste — éditeur de murs
-        run: pnpm exec playwright test --project=manuel --grep "murs" --output=test-results/geste-murs
-        continue-on-error: true
-
-      - name: geste — gabarits seul
-        run: pnpm exec playwright test --project=manuel --grep "gabarits" --output=test-results/geste-gabarits
-        continue-on-error: true
-
-      - name: geste — les trois en série
-        run: pnpm exec playwright test --project=manuel --output=test-results/geste-serie
-        continue-on-error: true
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: geste-journal
-          path: test-results/
-          retention-days: 7
-
-  # Fabrique l'artefact publiable. Séparée de `deploy` à dessein, et ce n'est pas
-  # une élégance : un job qui **uploade** l'artefact et le **déploie** dans la même
-  # foulée n'est pas réexécutable. Le 06/08/2026, un déploiement Pages a pendu dix
-  # minutes puis abandonné sur « Timeout reached » — panne côté GitHub, artefact
-  # inchangé à 22,6 Mio, `verify` vert. Le « Re-run failed jobs » qui aurait dû le
-  # rattraper a réuploadé un second artefact nommé `github-pages` dans le même run,
-  # et `deploy-pages` a refusé de choisir : « Multiple artifacts named github-pages
-  # were unexpectedly found ». Le run était alors définitivement mort, et il fallait
-  # un commit neuf pour publier quoi que ce soit.
-  #
-  # Séparés, `deploy` ne porte plus qu'une étape et consomme l'artefact déjà présent :
-  # un timeout passager se rattrape en quelques secondes, sans commit et sans doublon.
   build:
-    # LA garde : rien ne se fabrique si la vérification échoue.
     needs: verify
-    # Les pull requests sont vérifiées mais jamais publiées.
-    #
-    # ⚠ `workflow_dispatch` doit figurer ici, et pas seulement dans `on:`. Sans lui, un
-    # déclenchement manuel passait la porte puis **ne déployait rien, en silence** : `build` était
-    # sauté faute de `github.event_name == 'push'`, et `deploy` avec lui puisqu'il en dépend. Le
-    # bouton aurait donc paru fonctionner tout en ne publiant jamais — le pire des deux mondes.
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
-      # fetch-depth: 0 est requis : le numéro de build est dérivé du nombre de commits,
-      # que le clone superficiel par défaut tronquerait à 1.
+      # Le numéro de build est le compte réel des commits : un clone superficiel
+      # le remplacerait silencieusement par 1.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -181,20 +90,13 @@ jobs:
         with:
           node-version: 24
 
-      # Estampille la version dans l'artefact déployé, sans rien commiter.
-      #
-      # Cette étape existe parce que `pnpm stamp` était un geste manuel : il a été oublié
-      # pendant plusieurs déploiements, laissant `js/core/version.js` sur un build et un
-      # commit périmés. Or la détection de désynchronisation (T-24b) compare les numéros
-      # de build entre clients : un numéro figé la neutralise en silence, et une tablette
-      # gardant l'ancienne page en cache n'était plus signalée.
-      #
-      # Le compte de commits est monotone par construction et ne demande aucun compteur
-      # commité, donc aucun push de retour et aucune boucle de workflow.
       - name: Estamper la version
         run: |
           RPG_BUILD="$(git rev-list --count HEAD)" node scripts/stamp-version.mjs
           cat js/core/version.js
+
+      - name: Construire le paquet Pages
+        run: node scripts/build-site.mjs
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -202,23 +104,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # Sérialise les déploiements **entre runs**, ce qui manquait au 06/08/2026 : deux
-    # poussées à neuf minutes d'écart, et le second déploiement refusé en 9 secondes
-    # sur « due to in progress deployment. Please cancel … first or wait for it to
-    # complete ». Avec ce groupe, il attend son tour au lieu d'échouer.
-    #
-    # Le groupe est sur le **job** et non sur le workflow : `verify` doit continuer de
-    # tourner en parallèle entre deux poussées, sinon on perd le retour rapide des
-    # tests, qui n'a aucune raison de se sérialiser.
-    #
-    # `cancel-in-progress: false` et non `true` : annuler un déploiement Pages en vol
-    # peut laisser le site à moitié publié. Attendre coûte une minute, c'est aussi le
-    # choix du modèle Pages de GitHub.
     concurrency:
       group: pages-deploy
       cancel-in-progress: false

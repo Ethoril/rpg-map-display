@@ -8,16 +8,10 @@ sous licence **[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)**.
 Treize sur quatorze sont attribuables à un auteur nommé ; la quatorzième (`surprised`) vient
 du dossier `badges/` du dépôt, couvert par la même licence mais sans auteur individuel.
 
-**L'attribution est due à la diffusion, pas à l'usage privé.** L'application n'est pas
-destinée à être diffusée — décision du mainteneur, 04/08/2026 — et cette ligne suffit donc
-tant qu'elle reste sur la table de jeu. **Si elle vient à être publiée**, sous quelque forme
-que ce soit, il faudra alors la faire apparaître dans l'application elle-même, ce qui
-suppose un écran « à propos » que rien ne prévoit aujourd'hui : ni le cahier des charges, ni
-le manifeste, ni aucun lot. C'est une dette conditionnelle, consignée ici pour qu'elle ne se
-découvre pas le jour de la mise en ligne.
-
-Elle ne justifie pas d'ajouter un écran maintenant : l'interdiction n°2 ferme la vue joueurs,
-et la vue MJ n'a pas à porter une mention pour un événement qui n'est pas prévu.
+Depuis R1-07, l'application publiée expose `attributions.html` depuis l'accueil et la vue MJ.
+Cette page reprend les sources, les auteurs, la licence et les transformations appliquées aux
+SVG. La présente table reste la source de maintenance détaillée ; la page publique est la preuve
+d'attribution livrée avec les fichiers.
 
 ## Table
 
