@@ -680,12 +680,34 @@ Consignés le 3 août 2026 à la clôture de L-05, L-06 et L-07. Aucun n'est un 
 chacun est un choix assumé ou une dette bornée, et chacun se perdrait s'il n'était écrit — il
 ne vit dans aucun test et dans aucun commentaire de code.
 
-**1. `getImageData` sans `willReadFrequently`.** Chromium émet un avertissement de performance
-au démarrage de la vue MJ : c'est l'encodeur de fog qui relit son canvas à chaque publication
-(`js/vision/fog.js`, le seul `getImageData` du module, délibérément placé à la publication et
-non sur le chemin de déplacement — critère 8). Antérieur à L-06, sans effet fonctionnel. À
-regarder **le jour où le fog coûtera trop cher sur la tablette**, pas avant : y toucher
-maintenant serait optimiser sans mesure, ce que l'interdiction n°14 proscrit dans l'autre sens.
+**1. `getImageData` sans `willReadFrequently`. ✅ Mesuré le 7 août 2026 — l'attribut n'apporte
+rien, et le point est clos.** Chromium émet un avertissement de performance au démarrage de la
+vue MJ : c'est l'encodeur de fog qui relit son canvas à chaque publication (`js/vision/fog.js`,
+le seul `getImageData` du module, délibérément placé à la publication et non sur le chemin de
+déplacement — critère 8). Antérieur à L-06, sans effet fonctionnel.
+
+Ce point demandait d'y revenir « le jour où le fog coûtera trop cher, pas avant ». Le jour est
+venu par un autre chemin — la chasse à la latence joueur → MJ, ce `getImageData` étant sur le
+chemin de publication, donc exactement là où le poste MJ travaille quand un joueur bouge. La
+consigne a été tenue : **mesure d'abord**, `tests/manuel/fogReadback.spec.mjs`, sur un masque de
+520 × 568 px — la taille réelle de `testbig150`, 65 × 71 cases à 8 px/case.
+
+| | coût moyen d'une lecture |
+|---|---|
+| sans `willReadFrequently` | **0,730 ms** |
+| avec `willReadFrequently` | **0,775 ms** |
+
+⭐ **L'écart est négatif** : l'attribut est très légèrement plus lent, dans le bruit. Les deux
+bancs sont alternés pour ne pas attribuer à l'attribut une dérive de la machine, et une écriture
+s'intercale entre deux lectures pour reproduire le vrai régime plutôt qu'un cache.
+
+Et surtout, **0,73 ms n'est un contributeur de rien** : une mutation complète du store en coûte
+21. L'avertissement de Chromium est une heuristique déclenchée par la répétition des lectures,
+pas un diagnostic de leur coût.
+
+⛔ **Ne pas ajouter l'attribut pour faire taire la console.** Ce serait modifier le code sur la
+foi d'un message, contre une mesure qui dit le contraire. Si le message gêne, c'est lui qu'on
+documente — c'est fait ici.
 
 **2. Deux `syncVision()` au démarrage de `js/app/gm.js`. Relu le 06/08/2026 : la redondance est
 conservée sciemment, et la mise en garde ci-dessous était périmée.** Aujourd'hui lignes 846 et

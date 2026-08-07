@@ -121,7 +121,30 @@ export function applyNetworkEvent(event) {
         from: payload.from,
         to: payload.to,
         path: payload.path,
-        startedAt: payload.startedAt ?? event.at,
+        // ⛔ **L'instant de départ de l'animation est LOCAL, jamais celui de l'émetteur.**
+        //
+        // Ce champ ne servait qu'à une chose — `tokens.js` calcule `elapsed = now - startedAt`
+        // avec le `now` du **récepteur**. Y mettre `payload.startedAt`, daté par l'horloge de
+        // l'émetteur, revenait à soustraire deux horloges différentes.
+        //
+        // ⭐ Mesuré en séance le 7 août 2026, et c'est la cause de la « grosse latence » :
+        // l'horloge de la tablette était **5,3 secondes en avance** sur celle du poste MJ.
+        //   — tablette → MJ : `startedAt` dans le futur, donc `Math.max(0, now - startedAt)`
+        //     restait à 0 pendant 5,3 s. Le pion demeurait affiché à sa case de DÉPART, alors
+        //     que le store avait la bonne case depuis 23 ms. Une latence purement visuelle,
+        //     invisible à toute mesure du réseau ou du store.
+        //   — MJ → tablette : `startedAt` dans le passé, donc `elapsed` dépassait aussitôt la
+        //     durée et le pion SAUTAIT à destination. Ce que le mainteneur percevait comme
+        //     « quasiment instantané » était l'animation entièrement escamotée.
+        //
+        // L'animation est une affaire de **présentation** : chaque poste la joue à partir du
+        // moment où il apprend le déplacement. Le trajet et sa durée sont dans la charge utile ;
+        // l'instant absolu n'y a jamais eu sa place.
+        //
+        // ⚠ Ne pas « améliorer » en corrigeant par le décalage d'horloge serveur : cela ferait
+        // dépendre l'animation d'une horloge distante, ne marcherait pas hors Firebase, et
+        // rendrait un défaut d'affichage tributaire d'un aléa réseau.
+        startedAt: Date.now(),
       });
       return true;
     }
