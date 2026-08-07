@@ -58,9 +58,44 @@ test('la sonde de latence documentée s\'exécute et relève un déplacement', a
   await joueur.goto('/player.html');
   await waitForApp(joueur);
 
-  // La sonde est collée telle qu'elle est publiée, sans retouche.
-  await mj.evaluate(source);
-  expect(await mj.evaluate(() => Boolean(/** @type {any} */ (window).sonde))).toBe(true);
+  // ── 1. Le fichier servi et le bloc publié sont le MÊME code.
+  //
+  // Sans cette égalité, corriger l'un laisserait l'autre faux, et le mainteneur tomberait sur la
+  // version périmée — précisément le genre de piège que ce fichier existe pour fermer.
+  const module = fs.readFileSync('js/app/sondeLatence.js', 'utf8');
+  const corpsDuModule = module.slice(module.indexOf('(async () => {'));
+
+  // ⚠ Une seule ligne diffère légitimement : l'import du store se résout depuis la PAGE dans la
+  // console, et depuis le MODULE dans le fichier. On la neutralise des deux côtés avant de
+  // comparer — une première version exigeait l'identité stricte, et la « corriger » aurait
+  // consisté à remettre dans le module un chemin qui n'y marche pas.
+  const neutraliser = (/** @type {string} */ code) =>
+    code
+      .replace(/await import\((['"]).*store\.js\1\)/, 'await import(STORE)')
+      // Le module porte en plus le commentaire qui explique cette différence.
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  expect(
+    neutraliser(corpsDuModule),
+    'js/app/sondeLatence.js et le bloc de docs/SONDE-LATENCE.md doivent rester le même code'
+  ).toBe(neutraliser(source));
+
+  // ── 2. Le chemin recommandé : une seule ligne, celle que le mainteneur tapera.
+  //
+  // ⭐ La version « bloc à coller » lui a valu un `ReferenceError: js is not defined` — il avait
+  // copié la clôture Markdown avec le code. Ce constat vérifie la ligne, pas seulement le code.
+  // ⚠ L'import rend la main AVANT que la sonde soit armée : le module lance une fonction
+  // asynchrone qu'il n'attend pas. C'est sans conséquence en console — le message « Sonde armée »
+  // dit quand c'est prêt — mais un test qui vérifierait dans la foulée échouerait à tort.
+  // Le spécificateur passe par une variable : écrit en clair, TypeScript le résoudrait depuis ce
+  // fichier de test alors qu'il se résout depuis la page. C'est la ligne exacte que le mainteneur
+  // tape dans sa console.
+  await mj.evaluate((chemin) => import(/* @vite-ignore */ chemin), './js/app/sondeLatence.js');
+  await expect
+    .poll(() => mj.evaluate(() => Boolean(/** @type {any} */ (window).sonde)), { timeout: 5000 })
+    .toBe(true);
 
   // Un déplacement venu du joueur, ce que la sonde guette.
   await joueur.evaluate(async () => {

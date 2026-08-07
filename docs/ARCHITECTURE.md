@@ -157,6 +157,11 @@ F:\rpg-map-display\
 │       ├─ gm.js                  [1a] point d'entrée vue MJ
 │       ├─ player.js              [1a] point d'entrée vue joueurs (+ verrous mobiles, bouton plein écran)
 │       ├─ diag.js                [1a] point d'entrée de diag.html (mesures matérielles)
+│       ├─ sondeLatence.js       [—]  sonde de latence à charger DEPUIS LA CONSOLE de la vue
+│                                     MJ : `import('./js/app/sondeLatence.js')`. Aucun module
+│                                     ne l'importe, elle ne coûte rien tant qu'on ne la
+│                                     réclame pas. Mode d'emploi : `docs/SONDE-LATENCE.md`,
+│                                     dont un test vérifie qu'il ne diverge pas de ce fichier
 │       └─ prepare.js             [L]  point d'entrée de prepare.html. Ne parle qu'à l'API
 │                                      locale : il ne décode ni ne rééchantillonne aucune
 │                                      image, le pipeline n'ayant qu'une implantation, en Node

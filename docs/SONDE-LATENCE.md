@@ -15,19 +15,35 @@
 
 ---
 
-## Mode d'emploi
+## Mode d'emploi — une seule ligne
 
 1. Ouvre la fenêtre MJ, connectée à la session, avec la carte chargée.
-2. Ouvre la console du navigateur (F12).
-3. Colle le bloc ci-dessous, valide.
-4. Fais déplacer un pion **par le joueur**, plusieurs fois.
-5. Tape `sonde.bilan()` pour le résumé.
+2. Ouvre la console du navigateur (F12) et tape **cette ligne** :
+
+   ```
+   import('./js/app/sondeLatence.js')
+   ```
+
+3. Fais déplacer un pion **par le joueur**, plusieurs fois.
+4. Tape `sonde.bilan()` pour le résumé.
 
 Pour arrêter : `sonde.stop()`.
 
+⭐ **Pourquoi une ligne et non un bloc à coller.** La première version de ce document ne
+proposait que le bloc ci-dessous. Le mainteneur a copié la clôture Markdown avec le code et a
+reçu `Uncaught ReferenceError: js is not defined` — la ligne ` ```js ` interprétée comme du
+JavaScript. Une ligne à taper ne peut pas rater de cette façon. Le bloc reste publié plus bas
+pour être lisible et vérifiable, mais il n'est plus le chemin recommandé.
+
 ---
 
-## Le bloc à coller
+## Le bloc, pour lecture — et pour qui préfère coller
+
+⚠ Si tu colles, prends de `(async () => {` jusqu'à `})();` **sans** les lignes de clôture
+Markdown qui les encadrent. C'est exactement le piège qui a produit `js is not defined`.
+
+Ce bloc et `js/app/sondeLatence.js` sont **le même code**, et un test le vérifie : modifier
+l'un sans l'autre fait rougir.
 
 ```js
 (async () => {
