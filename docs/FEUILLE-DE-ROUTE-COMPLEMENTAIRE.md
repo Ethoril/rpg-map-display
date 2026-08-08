@@ -70,12 +70,12 @@ doit être terminée avant d'étiqueter une 1.0.
 |---|---|---|---|
 | R1-01 | Ajouter une rétention automatique au canal RTDB `events` | Une session active conserve seulement la fenêtre utile ; les événements expirés ne s'accumulent plus sans limite | **Code fait** — barrière `joining`, curseurs ACK et suppression transactionnelle par lots de 32 ; validation Firebase réelle à constater |
 | R1-02 | Ajouter le ménage des anciennes sessions | Un outil borné liste puis purge explicitement une session choisie ; aucune suppression globale implicite | **Fait** — inspection de 1 à 20 identifiants explicites, dry-run par défaut, confirmation et purge transactionnelle ; aucune énumération globale |
-| R1-03 | Versionner les règles Firebase | Les règles RTDB et Firestore vivent dans le dépôt et des tests négatifs prouvent les refus d'accès | **Code fait** — règles, tests statiques et cible émulateurs bloquante en CI ; déploiement externe à constater |
+| R1-03 | Versionner les règles Firebase | Les règles RTDB et Firestore vivent dans le dépôt et des tests négatifs prouvent les refus d'accès | **Exécuté le 08/08/2026** — la cible émulateurs a tourné contre les vrais moteurs Firestore et RTDB et elle est verte ; déploiement externe à constater |
 | R1-04 | Mesurer la taille persistée d'une campagne | L'interface ou le store avertit avant la limite Firestore ; la taille encodée réelle est testée, pas seulement estimée | **Fait** — JSON UTF-8 mesuré, taille logique Firestore calculée, avertissement 750 Kio et refus 900 Kio |
 | R1-05 | Décider le schéma de persistance multi-étages | Si trois scènes denses approchent 1 Mio, un schéma v3 sépare les métadonnées et les étages avant la fin du lot 3 | **Décision faite** — ADR-012 impose v3 avant R3-02 ; implémentation rattachée au lot 3 |
 | R1-06 | Publier une arborescence contrôlée | GitHub Pages reçoit un dossier `_site` construit par liste blanche, sans tests, briefs, scripts ni sources UVTT | **Fait** — paquet déterministe de 82 fichiers et smoke test navigateur depuis `_site` |
 | R1-07 | Fermer le sujet des licences | Les cartes publiées sont autorisées et les attributions requises sont accessibles depuis l'application | **Fait pour le paquet actuel** — icônes, sources, auteurs, licence et modifications publiés ; cartes/portraits exclus faute de droits documentés |
-| R1-08 | Renforcer la CI | Les gestes manuels deviennent bloquants après stabilisation ; la cohérence des modules CDN est vérifiée régulièrement | **Code fait** — gestes dans `verify`, cohérence bloquante, disponibilité hebdomadaire ; premier run GitHub à constater |
+| R1-08 | Renforcer la CI | Les gestes manuels deviennent bloquants après stabilisation ; la cohérence des modules CDN est vérifiée régulièrement | **Fait, constaté le 08/08/2026** — premier run GitHub complet vert : `verify` en 2 min 28 s puis `build` et `deploy` |
 | R1-09 | Protéger les quotas Firebase | Les restrictions d'origine et d'API sont vérifiées dans la console du projet | **Procédure faite, console ouverte** — configuration et preuves externes restent au mainteneur |
 
 ### Détails et limites R1
@@ -89,7 +89,18 @@ doit être terminée avant d'étiqueter une 1.0.
 - La mesure reproductible donne 302 918 octets prudents pour `testbig150` et 904 038 octets pour
   trois étages synthétiques. La migration v3 est donc requise avant la campagne réelle R3-02.
 - `pnpm run test:firebase-rules` utilise les vrais émulateurs dans un projet `demo-*`. Le poste
-  courant n'a pas Java 21 ; la CI l'installe et rend cette cible bloquante.
+  courant n'a pas Java 21 ; la CI l'installe et rend cette cible bloquante. **Elle a tourné pour la
+  première fois le 08/08/2026 et elle est verte** : les refus et autorisations sont désormais
+  exercés contre les moteurs de règles réels, et non plus seulement contre des tests statiques.
+- ⚠ **Le premier run a d'abord échoué, et sur une cause qu'aucune vérification locale ne pouvait
+  attraper.** `pnpm install --frozen-lockfile` sortait en code 1 sur `ERR_PNPM_IGNORED_BUILDS`
+  pour `re2@1.26.1`, dépendance **optionnelle** de `superstatic` tirée par le `firebase-tools`
+  ajouté ici. Son `engines` l'exclut du poste Windows et l'inclut sur le runner Node 24 : la même
+  commande était donc verte en local et rouge en CI. `re2` est désormais **explicitement refusé**
+  dans `allowBuilds` — `superstatic/lib/utils/patterns.js` le charge dans un `try/catch` et se
+  replie sur la `RegExp` native, et ces motifs ne servent qu'à l'émulateur *hosting*, que cette
+  cible ne démarre pas. Construire un module natif dont rien ne dépend, pour faire taire une
+  erreur d'installation, aurait été le mauvais sens.
 - Le paquet public ne contient provisoirement aucune carte ni aucun portrait. Un contenu ne pourra
   entrer dans la liste blanche qu'avec provenance, droit de diffusion et attribution documentés.
 
@@ -100,10 +111,11 @@ doit être terminée avant d'étiqueter une 1.0.
 - Les règles et leurs tests appartiennent au même changement que le code qui les requiert.
 - Le contenu du site publié est explicite et licencié.
 
-**Porte R1 non fermée au 07/08/2026.** Le dépôt est prêt, mais il reste à constater le premier run
-CI avec émulateurs, déployer les règles versionnées, appliquer les restrictions de clé/origine/API
-et consigner leur preuve. La validation de la rétention sur deux vrais clients Firebase doit être
-jointe au même contrôle d'exploitation.
+**Porte R1 non fermée au 08/08/2026 ; un item sur quatre est tombé.** Le premier run CI avec
+émulateurs est constaté et vert, `build` et `deploy` compris. Restent trois constats qui ne se font
+pas depuis le dépôt : déployer les règles versionnées sur le vrai projet, appliquer les restrictions
+de clé/origine/API et consigner leur preuve, valider la rétention sur deux vrais clients Firebase.
+Les trois relèvent du même contrôle d'exploitation en console.
 
 ## 5. Phase 2 — performance et endurance
 

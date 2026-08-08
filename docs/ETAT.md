@@ -1,6 +1,7 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 7 août 2026 — **le lot 2 du CdC est fermé à 13 critères sur 13.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
+> Dernière mise à jour : 8 août 2026 — **premier run CI complet vert, émulateurs Firebase compris**
+> (voir « Premier run CI complet »). **Le lot 2 du CdC est fermé à 13 critères sur 13.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
 > L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
 > de fog du MJ, L-07 éditeur de murs, L-10 gabarits libres, L-09 marqueurs d'état. Le mainteneur
 > confirme le 07/08/2026 les trois derniers critères matériels : marqueurs lisibles sur les trois
@@ -21,8 +22,12 @@
 > impose un schéma v3 réparti avant la campagne réelle à trois étages. GitHub Pages publie désormais
 > `_site` par liste blanche. Faute de droits documentés, aucune carte ni aucun portrait n'y entre ;
 > les quatorze icônes CC BY 3.0 portent sources, auteurs et modifications dans la page d'attribution.
-> La porte R1 ne sera fermée qu'après le premier run CI, le déploiement des règles, la validation
-> RTDB réelle et la preuve des restrictions Firebase Console.
+> **Le premier run CI complet est constaté vert le 8 août 2026** — `verify` en 2 min 28 s, puis
+> `build` et `deploy`. `test:firebase-rules` a donc exercé pour la première fois les refus et les
+> autorisations contre les **vrais** moteurs Firestore et RTDB, et les trois gestes rapatriés par
+> R1-08 tiennent sur le runner, là précisément où ils étaient rouges aux runs 69 à 76. La porte R1
+> ne sera fermée qu'après les trois constats restants, tous hors dépôt : déploiement des règles,
+> validation RTDB réelle et preuve des restrictions en console Firebase.
 >
 > **Phase R2 automatisable implantée le 7 août 2026 ; porte matérielle encore ouverte.** Les
 > images de rendu lisent désormais un snapshot stable et immuable au lieu de cloner toute la
@@ -195,7 +200,7 @@ Résultat de la passe d'intégration R3 du 7 août 2026 sur le poste Windows de 
   encore neuf onglets. Après correction explicite, les **16 scénarios ciblés concernés réussissent** ;
 - Playwright imprime encore les verdicts puis garde son processus ouvert sous Windows. Les suites
   complètes et ciblées ont atteint la limite du wrapper après leurs résultats, sans scénario restant
-  en échec.
+  en échec. **Propre au poste Windows** — voir la passe R1 ci-dessous, tranchée le 08/08/2026.
 
 Résultat de la passe d'intégration R2 du 7 août 2026 sur le poste Windows de reprise :
 
@@ -209,6 +214,7 @@ Résultat de la passe d'intégration R2 du 7 août 2026 sur le poste Windows de 
   masqué comme non mesurable ; la sonde joueurs `?probe=1` est également montée dans ce scénario ;
 - comme lors de R1, Playwright imprime tous les succès puis garde son processus ouvert sous
   Windows ; les commandes ont donc atteint leur limite après verdict complet, sans échec de test.
+  **Propre au poste Windows** — voir la passe R1 ci-dessous, tranchée le 08/08/2026.
 
 Résultat de la passe d'intégration R1 du 7 août 2026 sur le poste Windows de reprise :
 
@@ -219,10 +225,13 @@ Résultat de la passe d'intégration R1 du 7 août 2026 sur le poste Windows de 
 - paquet `_site` : **82 fichiers**, déterministe, plus un smoke test navigateur MJ/joueurs ;
 - mesure Firestore : 302 918 octets prudents sur `testbig150`, 904 038 sur trois étages ;
 - le lanceur Playwright local Windows imprime tous les succès puis garde son processus ouvert ;
-  les commandes ont donc atteint leur limite après verdict. Ce défaut de terminaison n'a produit
-  aucun échec de scénario, mais le premier run Ubuntu de la CI reste à constater ;
+  les commandes ont donc atteint leur limite après verdict. ✅ **Tranché le 08/08/2026 : le défaut
+  est propre au poste Windows.** Sur le runner Ubuntu, le job `verify` se termine normalement en
+  2 min 28 s. Ce n'est donc pas un doute sur la suite, et les trois passes ci-dessous portent la
+  même note pour la même raison ;
 - la cible `test:firebase-rules` est prête et bloquante en CI avec Java 21. Elle ne peut pas être
-  exécutée sur ce poste tant que Java 21 n'est pas installé.
+  exécutée sur ce poste tant que Java 21 n'est pas installé. ✅ **Exécutée et verte en CI le
+  08/08/2026.**
 
 Résultat de la passe d’intégration du 4 août 2026 (après L-08 et le correctif de désarmement
 des outils MJ), mesuré sur le poste Windows de reprise :
@@ -1207,6 +1216,47 @@ n'en étaient pas. ⚠ Une sonde se vérifie avant ce qu'elle mesure.
 Et **la mesure automatisée a mesuré le mauvais monde** : elle tournait sur le transport de test,
 un canal local du navigateur, et concluait « le réseau n'est pas en cause » sur la foi de 33 ms
 qui ne représentaient rien du réseau réel.
+
+## Premier run CI complet — 8 août 2026, et le défaut qu'aucune vérification locale ne voyait
+
+Les quatre commits de phase R0 à R3 étaient restés **locaux** ; leur poussée a déclenché le premier
+run GitHub qui exécute réellement `test:firebase-rules`. Résultat final : `verify` vert en 2 min
+28 s, puis `build` et `deploy`.
+
+**Trois choses tombent avec ce run, et elles n'étaient jusqu'ici que des espoirs :**
+
+- les règles Firebase sont exercées contre les **vrais** moteurs Firestore et RTDB, dans un projet
+  `demo-*` avec Java 21 — la cible ne peut pas tourner sur ce poste, Java 21 en étant absent ;
+- les trois gestes rapatriés dans `verify` par R1-08 tiennent **sur le runner**, c'est-à-dire à
+  l'endroit exact où ils étaient rouges aux runs 69 à 76 ;
+- ⭐ le défaut de terminaison de Playwright, signalé trois fois plus haut dans ce document, est
+  **propre au poste Windows**. Le job Ubuntu se termine normalement. Ce n'était pas un doute sur la
+  suite de tests, et il ne faut plus le lire comme tel.
+
+### Le premier run a d'abord échoué, et la cause mérite d'être retenue
+
+`pnpm install --frozen-lockfile` installait ses 714 paquets, imprimait la liste des devDependencies,
+puis sortait en **code 1** :
+
+```text
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: re2@1.26.1
+```
+
+`re2` arrive par le `firebase-tools` ajouté en phase R1, comme dépendance **optionnelle** de
+`superstatic`. Elle déclare `engines: node ^22.22.2 || ^24.15.0 || >=26.0.0` : elle n'est donc **pas
+résolue sur ce poste Windows**, et l'est sur le runner Node 24.
+
+⚠ **La même commande était verte en local et rouge en CI, et aucun `pnpm install` local ne pouvait
+attraper ça.** C'est la leçon du jour : quand une dépendance est optionnelle et bornée par son
+`engines`, un poste qui ne la résout pas ne prouve rien sur un runner qui la résout.
+
+**Le correctif refuse la construction plutôt que de l'autoriser**, et ce choix est vérifié et non
+supposé : `superstatic/lib/utils/patterns.js` charge `re2` dans un `try/catch`, met `RE2 = null` en
+cas d'échec et se replie sur la `RegExp` native ; ces motifs ne servent qu'aux réécritures de
+l'émulateur **hosting**, que `test:firebase-rules` ne démarre pas (`--only firestore,database`).
+`re2: false` rejoint donc `@firebase/util` et `protobufjs` dans `allowBuilds` de
+`pnpm-workspace.yaml`. ⛔ Compiler ou télécharger un module natif dont rien ne dépend, pour faire
+taire une erreur d'installation, aurait été le mauvais sens.
 
 ## À faire avant la 1.0 — dette d'exploitation Firebase
 
