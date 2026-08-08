@@ -230,7 +230,24 @@ porteur d'un horodatage d'animation, est en cause.
 ☒ Les arêtes de passage se rouvrent, le pion peut franchir — 07/08/2026.
 ☒ Sous le budget de 300 ms — 07/08/2026.
 
-**5.4 — Le fog en usage**
+**5.4 — Le relevé d'usage des onglets MJ** (décision n°3 du chantier T)
+
+Une croix à chaque fois qu'un onglet est **ouvert en cours de partie**, pas pendant la préparation.
+Rien à mesurer, rien à chronométrer : c'est le constat qui décidera du regroupement, plutôt qu'une
+intuition.
+
+```
+Cartes    ___   Fog       ___
+UVTT      ___   Murs      ___
+Image     ___   Liaisons  ___
+Pions     ___   Gabarits  ___
+Handouts  ___   Grille    ___
+```
+
+☐ Grille remplie en fin de partie, même si certaines lignes restent à zéro — un zéro est une
+   information, et c'est même la plus utile ici.
+
+**5.5 — Le fog en usage**
 
 ☐ L'intérieur d'un bâtiment non visité reste **opaque** tant qu'on n'y entre pas.
 ☐ Aucun pion n'apparaît en zone explorée mais hors vision courante (interdiction n°3).

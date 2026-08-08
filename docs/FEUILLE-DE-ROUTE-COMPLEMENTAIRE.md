@@ -233,6 +233,13 @@ ni campagne jouée, ni verdict matériel.
 | R4-04 | Regrouper les outils MJ par tâche | Contenu, terrain, visibilité, effets et réglages sont identifiables sans parcourir neuf onglets plats |
 | R4-05 | Améliorer l'accessibilité MJ | Navigation clavier, focus, contrastes et libellés sont testés sur les contrôles hors canvas |
 
+⭐ **R4-03, R4-04 et R4-05 sont briefés dans `docs/CHANTIER-T-ERGONOMIE-MJ.md` (08/08/2026).** Le
+brief corrige deux intitulés de ce tableau : le panneau compte **dix** onglets et non neuf depuis
+l'ajout des liaisons par le lot 3, et le regroupement en cinq familles laisserait **trois familles
+à un seul membre** — donc un clic de plus sans rien regrouper. Il relève aussi que « expliquer la
+règle appliquée » suppose une règle d'occupation qui **n'existe pas** : `computeReachable` ne reçoit
+aucun pion. Trois décisions de table sont à trancher avant de coder.
+
 Les marqueurs et les portes ne sont plus des critères ouverts : leur lisibilité, leur réponse sous
 300 ms et l'ouverture tactile du premier coup sont des acquis à protéger contre les régressions,
 pas des travaux à replanifier.
