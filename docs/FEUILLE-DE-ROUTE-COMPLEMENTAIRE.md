@@ -174,6 +174,11 @@ le throttling du navigateur aux couches Canvas.
 cast de 45 min et la session de 4 h. L'outil n'invente ni température, ni état Google Cast, ni preuve
 d'un Wake Lock : ces constats sont saisis manuellement sur l'appareil cible.
 
+⭐ **Depuis le 08/08/2026, l'ordre exécutable est unique** : `docs/SEANCE-TABLETTE.md` fusionne ces
+protocoles en une seule séance et y ajoute R3-05 et R1-01, absents des deux documents précédents.
+Le découpage précédent coûtait trois soirées pour une, R2-06 contenant R2-05, qui contient le
+silence de R2-03. `PROTOCOLE-ENDURANCE.md` garde la méthode et les limites de chaque mesure.
+
 **Porte R2 non fermée au 07/08/2026.** R2-01, R2-02 et R2-04 sont acquis côté code et tests.
 R2-03, R2-05 et R2-06 exigent encore les trois campagnes matérielles décrites ci-dessus ; leur
 outillage ne vaut pas verdict physique.
@@ -186,8 +191,28 @@ outillage ne vaut pas verdict physique.
 | R3-02 | Créer une campagne réelle à trois étages | Les trois étages s'importent, se sélectionnent et persistent sans alignement manuel | **Partiel** — persistance Firestore v3 transactionnelle et fixture synthétique trois étages acquises ; trois cartes réelles licenciées manquent encore |
 | R3-03 | Tester le parcours multi-étages de bout en bout | Téléportation, suivi de la vue, cadenas et fog indépendant sont vérifiés dans un même scénario | **Fait** — scénario deux pages, trois niveaux déclarés, traversée, suivi, cadenas, fog distinct et restauration après F5 |
 | R3-04 | Implémenter l'ambiance et les lumières fixes | Les sources UVTT et l'ambiance de niveau alimentent la vision sans fuite aux angles | **Fait côté code et tests** — modèle binaire, sources bornées et occultées par le sweep commun |
-| R3-05 | Implémenter `emitsLight` | Déplacer un pion lumineux met à jour la vision dans le budget accepté | **Code fait, mesure matérielle ouverte** — republication sans `rAF` prouvée ; profil bureau indicatif, budget tablette à constater |
+| R3-05 | Implémenter `emitsLight` | Déplacer un pion lumineux met à jour la vision dans le budget accepté | **Code fait, mesure matérielle ouverte** — republication sans `rAF` prouvée ; ⚠ le cadrage « budget tablette » était faux, voir ci-dessous |
 | R3-06 | Traiter `baked_lighting` | Une carte déjà éclairée est signalée et ne reçoit pas un second assombrissement incohérent | **Fait** — pleine ambiance forcée, avertissement MJ visible et réglage désactivé |
+
+### ⚠ Correction de cadrage sur R3-05, relevée le 08/08/2026
+
+Ce tableau demandait « le budget tablette » pour une mutation lumineuse. **C'est le mauvais monde.**
+La vue joueurs ne calcule aucune vision : elle décode un masque PNG publié par le MJ
+(`js/app/player.js`, aucun appel de sweep ; la vision autoritaire est chronométrée dans
+`js/app/gm.js`). Le coût du sweep se paie donc sur la machine qui porte la vue MJ, pas sur la
+tablette.
+
+La mesure se sépare en deux, et les deux comptent :
+
+- **le calcul**, sur le poste MJ — colonne `Vision` de la sonde, ouverte par la touche `P` sur
+  `gm.html` ; l'écart entre un déplacement ordinaire et celui d'un pion `emitsLight` est le coût
+  propre de la lumière ;
+- **la réception**, sur la tablette — colonnes `Fond`, `Fog` et `Pions` de `player.html?probe=1`,
+  la colonne `Vision` y restant vide par construction.
+
+⭐ C'est la même classe d'erreur que la « grosse latence » du 7 août, mesurée sur un transport de
+test au lieu du réseau réel : une mesure prise dans le mauvais monde ne se dénonce pas toute seule.
+Le protocole corrigé est la phase 6 de `SEANCE-TABLETTE.md`.
 
 **Dépendances obligatoires :** R1-04/R1-05 pour la taille Firestore, puis R2-01 pour la marge de
 performance. Le schéma v3 décidé par l'ADR-012 est désormais implanté : parent léger, documents

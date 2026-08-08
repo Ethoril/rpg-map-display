@@ -649,7 +649,10 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
 ## Ce qui reste à vérifier manuellement
 
 > **Pour une séance de mesure, suivre `docs/SEANCE-TABLETTE.md`** : il reprend les points
-> ci-dessous **dans un ordre exécutable**, avec le geste exact et le critère de chacun. Trois d'entre
+> ci-dessous **dans un ordre exécutable**, avec le geste exact et le critère de chacun. ⭐ **Refondu
+> le 08/08/2026** : il absorbe `PROTOCOLE-ENDURANCE.md` et couvre désormais **sept critères ouverts
+> sur trois lots et deux portes** en une seule séance — dont R3-05 et la rétention R1-01, qui
+> n'étaient dans aucun protocole. Trois d'entre
 > eux en conditionnent d'autres — la largeur du viewport avant le critère 11, la grosse carte avant
 > le jeu réel, et la tenue thermique qui court *pendant* le reste et non après. La liste ci-dessous
 > reste la référence de **ce qui est ouvert** ; l'autre document dit **dans quel ordre le fermer**.

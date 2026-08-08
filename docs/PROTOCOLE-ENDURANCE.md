@@ -1,5 +1,11 @@
 # Protocole R2 — décodage froid, cast et endurance
 
+> ⚠ **Ce document dit la méthode et ses limites, plus l'ordre.** Depuis le 8 août 2026, l'ordre
+> exécutable d'une séance vit dans `SEANCE-TABLETTE.md`, qui intègre ces trois mesures parmi les
+> sept que la même séance peut fermer. Les faire isolément coûterait trois soirées au lieu d'une :
+> R2-06 contient R2-05, qui contient le silence de R2-03. Venir ici pour comprendre **pourquoi** une
+> mesure est faite ainsi et ce qu'elle ne prouve pas ; aller là-bas pour l'exécuter.
+
 Ce protocole ferme les observations physiques de R2-03, R2-05 et R2-06. Il se réalise sur la
 tablette joueuse Samsung Galaxy Tab S9 FE, branchée, avec la version et la carte notées dans le
 rapport. Il ne remplace aucun test automatisé : il mesure précisément ce que le navigateur de
