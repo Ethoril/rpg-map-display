@@ -1,3 +1,14 @@
 allowBuilds:
   '@firebase/util': false
   protobufjs: false
+  # Dépendance optionnelle de `superstatic`, tirée par `firebase-tools`. Elle
+  # n'est résolue que sur les plateformes que son `engines` accepte, d'où son
+  # absence sur le poste Windows et sa présence sur le runner Node 24 — un
+  # `pnpm install` vert en local ne prouve donc rien ici.
+  # `superstatic/lib/utils/patterns.js` la charge dans un `try/catch` et se
+  # replie sur la `RegExp` native ; elle ne sert qu'aux motifs de réécriture de
+  # l'émulateur *hosting*, que `test:firebase-rules` ne démarre pas
+  # (`--only firestore,database`). On refuse donc explicitement de construire un
+  # module natif dont rien ne dépend, plutôt que de l'autoriser pour faire taire
+  # une erreur d'installation.
+  re2: false
