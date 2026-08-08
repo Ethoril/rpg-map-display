@@ -1288,6 +1288,34 @@ l'émulateur **hosting**, que `test:firebase-rules` ne démarre pas (`--only fir
 `pnpm-workspace.yaml`. ⛔ Compiler ou télécharger un module natif dont rien ne dépend, pour faire
 taire une erreur d'installation, aurait été le mauvais sens.
 
+## Réconciliation des décomptes — 8 août 2026
+
+La définition du « prêt pour la 1.0 » comporte, mot pour mot, la condition *« ETAT.md et le cahier
+des charges portent le même nombre de critères validés »*. Ils ne le portaient pas. C'est la seule
+des conditions manquantes qui ne demandait ni matériel, ni décision, ni droits d'image.
+
+**Trois écarts, dont un impossible :**
+
+1. **Aucune** des 11 cases du lot 1a ni des 4 cases du lot 1b n'était cochée dans le CdC, alors que
+   les deux lots étaient déclarés complets ici depuis le 5 août. Les lots 2, 3 et 4, eux, étaient
+   à jour — l'écart tenait aux deux lots les plus anciens, cochés nulle part parce que personne
+   n'était repassé dessus après leur clôture.
+2. Le lot 1a annonçait **« 10 critères sur 11 »** tout en nommant **deux** points ouverts. Dix plus
+   deux ne font pas onze : le décompte était faux par construction, et il l'était depuis assez
+   longtemps pour avoir été recopié dans les résumés.
+3. Les deux points en question — tenue thermique sur la durée, limite de texture réelle —
+   **n'appartiennent pas au lot 1a**. Aucun des onze critères ne les mentionne. Ce sont **R2-06** de
+   la feuille de route complémentaire et la **question ouverte n°1 du §12**.
+
+⭐ **La règle qui manquait, et qui évite la rechute : un critère n'appartient qu'à une seule
+liste.** Une mesure suivie par la feuille de route ou par le §12 ne se recompte pas dans un lot du
+§11. Recompter donne l'illusion d'un lot incomplet et fait disparaître le vrai propriétaire de la
+mesure — ici, la tenue thermique semblait retenir le lot 1a alors qu'elle attend la séance R2.
+
+**État après réconciliation : 34 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
+lot 3 5/6, lot 4 1/6, spike vidéo 0/1. Les sept restants tiennent en trois causes : trois cartes
+réelles licenciées, la grille hexagonale entière, et un spike vidéo que rien ne bloque.
+
 ## À faire avant la 1.0 — dette d'exploitation Firebase
 
 Relevé le 7 août 2026 sur question du mainteneur : « il me faudra un truc pour détruire toutes
@@ -1320,13 +1348,18 @@ que la session **courante**. Rien ne permet aujourd'hui de faire le ménage sur 
 
 ## Suite produit
 
-Avancement mesuré contre les lots du cahier des charges §11, au 7 août 2026.
-Relevé pour éviter de confondre « le plateau est solide » et « le produit est proche ».
+Avancement mesuré contre les lots du cahier des charges §11, au **8 août 2026** :
+**34 critères acquis sur 41.** Relevé pour éviter de confondre « le plateau est solide » et
+« le produit est proche ».
+
+> ⚠ **Le décompte fait foi dans le §11 du CdC, pas ici.** Cette table le reprend ; en cas de
+> désaccord, corriger cette table sur le §11. C'est l'inverse du réflexe naturel, et c'est
+> précisément l'erreur qui a produit le « 10 sur 11 » du lot 1a.
 
 | Lot du CdC §11 | État |
 |---|---|
-| **1a — Le plateau** | Code complet. **10 critères sur 11** : les 30 fps sous cast sont validés le 05/08/2026, première séance réelle. Deux restent ouverts, et ce sont des **mesures matérielles** : tenue thermique sur la durée, limite de texture réelle (carte `testbig150` prête) |
-| **1b — La prépa MJ** | **Code complet, 4 critères sur 4** depuis le chantier M. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K). **Le dernier point ouvert est fermé** : la lisibilité du badge d’élévation sous cast est validée le 05/08/2026, séance réelle. Le lot 1b est donc complet, code **et** mesures |
+| **1a — Le plateau** | **11 critères sur 11, fermé le 08/08/2026 par réconciliation.** Les onze étaient acquis, le dernier — 30 fps sous cast — depuis le 05/08/2026 ; aucune case du CdC ne le disait. ⚠ **Ce lot annonçait « 10 sur 11 » en citant deux points ouverts**, ce qui est un décompte impossible : la tenue thermique est **R2-06** et la limite de texture réelle la **question n°1 du §12**. Elles restent ouvertes, mais **ailleurs** |
+| **1b — La prépa MJ** | **4 critères sur 4**, fermé depuis le chantier M et la séance du 05/08/2026 ; cases du CdC cochées le 08/08. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K) |
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
 | **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. La mesure lumière sur tablette/cast reste aussi une porte matérielle, sans retirer les critères fonctionnels 5 et 6 acquis. |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |

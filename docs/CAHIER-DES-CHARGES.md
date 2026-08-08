@@ -967,6 +967,14 @@ entre les lots — prévoir le chemin de migration dès le lot 1.
 
 ## 11. Lots & critères d'acceptation
 
+> **Décompte au 08/08/2026 : 34 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
+> lot 3 5/6, lot 4 1/6, spike vidéo 0/1.
+>
+> ⚠ **Ce §11 fait foi sur le décompte, et les cases de ce document en sont la seule preuve.** Un
+> résumé qui annonce un autre nombre est à corriger sur celui-ci, jamais l'inverse. La règle qui a
+> manqué jusqu'ici : **un critère n'appartient qu'à une seule liste** — une mesure suivie par la
+> feuille de route complémentaire ou par le §12 ne se recompte pas dans un lot.
+
 ### Lot 1a — Le plateau (première séance jouable)
 
 Import UVTT **et** image simple avec calibration (§5.1), `GridAdapter` + `SquareGrid`,
@@ -979,17 +987,27 @@ générateur de pions, déplacement plateau avec cases atteignables, les trois v
 est un refactor transverse.
 
 Critères :
-- [ ] Une carte UVTT s'importe et s'affiche alignée sur sa grille sur les trois postes.
-- [ ] Un JPG quelconque se calibre en moins d'une minute et devient jouable.
-- [ ] Tap pion → tap destination déplace le pion ; le Mac l'affiche en < 300 ms.
-- [ ] Le drag à un doigt sur la tablette pan la carte et ne déplace **jamais** un pion.
-- [ ] Les cases atteignables respectent `speedCells`, propre à chaque pion.
-- [ ] Un F5 sur la tablette en cours de partie restaure l'état complet en < 3 s.
-- [ ] La vue joueurs n'affiche aucun élément d'UI.
-- [ ] Le cast vers la TV tient 30 fps pendant une animation de déplacement.
-- [ ] La boucle rAF est à l'arrêt mesurable quand le plateau est immobile.
-- [ ] Un pion `sizeCells: 2` occupe 2×2 cases et ses coordonnées restent entières.
-- [ ] Un grep de `pxPerCell` hors du fichier `GridAdapter` revient vide (test automatisé).
+- [x] Une carte UVTT s'importe et s'affiche alignée sur sa grille sur les trois postes.
+- [x] Un JPG quelconque se calibre en moins d'une minute et devient jouable.
+- [x] Tap pion → tap destination déplace le pion ; le Mac l'affiche en < 300 ms.
+- [x] Le drag à un doigt sur la tablette pan la carte et ne déplace **jamais** un pion.
+- [x] Les cases atteignables respectent `speedCells`, propre à chaque pion.
+- [x] Un F5 sur la tablette en cours de partie restaure l'état complet en < 3 s.
+- [x] La vue joueurs n'affiche aucun élément d'UI.
+- [x] Le cast vers la TV tient 30 fps pendant une animation de déplacement — validé le 05/08/2026, première séance réelle.
+- [x] La boucle rAF est à l'arrêt mesurable quand le plateau est immobile.
+- [x] Un pion `sizeCells: 2` occupe 2×2 cases et ses coordonnées restent entières.
+- [x] Un grep de `pxPerCell` hors du fichier `GridAdapter` revient vide (test automatisé).
+
+> **Lot 1a fermé à 11/11 le 08/08/2026, par réconciliation.** Aucune de ces cases n'était cochée
+> alors que les onze critères étaient acquis, le dernier — les 30 fps sous cast — depuis le
+> 05/08/2026.
+>
+> ⚠ **Deux mesures matérielles restent ouvertes, et elles n'appartiennent pas à ce lot.** La tenue
+> thermique sur la durée est **R2-06** de la feuille de route complémentaire ; la limite de texture
+> réelle de la dalle est la **question ouverte n°1 du §12**. `ETAT.md` les comptait dans le lot 1a,
+> d'où un « 10 sur 11 » qui nommait pourtant deux points ouverts — un décompte impossible.
+> Un critère n'appartient qu'à une seule liste.
 
 > **Jouer une vraie séance sur le lot 1a avant d'écrire le lot 1b.** Le passage du drag au
 > déplacement plateau est né d'un test réel, pas d'une spécification — c'est la boucle à
@@ -1006,11 +1024,16 @@ où les VTT existants deviennent pesants — donc celui à affiner à l'usage pl
 spécifier d'avance (§1).
 
 Critères :
-- [ ] Vingt cartes se parcourent et se chargent sur la table sans quitter la vue MJ.
-- [ ] Un PNJ récurrent est recadré une seule fois et réinstancié pré-réglé.
-- [ ] Une image révélée s'affiche en plein écran chez les joueurs en < 500 ms, et sa
+- [x] Vingt cartes se parcourent et se chargent sur la table sans quitter la vue MJ.
+- [x] Un PNJ récurrent est recadré une seule fois et réinstancié pré-réglé.
+- [x] Une image révélée s'affiche en plein écran chez les joueurs en < 500 ms, et sa
       fermeture rend la carte intacte.
-- [ ] L'élévation d'un pion est lisible sur les trois écrans.
+- [x] L'élévation d'un pion est lisible sur les trois écrans — validé le 05/08/2026.
+
+> **Lot 1b fermé à 4/4 le 08/08/2026, par réconciliation.** Les quatre critères étaient acquis
+> depuis le chantier M et la séance du 5 août ; aucune case ne l'indiquait. Le deuxième critère est
+> celui que le chantier M a réellement fermé : la bibliothèque de pions ne persistait pas ce que le
+> générateur produisait, alors que `ETAT.md` l'annonçait complète.
 
 ### Lot 2 — Lignes de vue, portes & tactique
 

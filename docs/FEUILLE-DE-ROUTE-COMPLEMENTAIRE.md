@@ -310,7 +310,21 @@ La 1.0 peut être annoncée lorsque :
 - une campagne réelle à trois étages est jouable de bout en bout ;
 - l'essai cast de 45 minutes est concluant ;
 - le site publié ne contient que des fichiers nécessaires et correctement licenciés ;
-- `ETAT.md` et le cahier des charges portent le même nombre de critères validés.
+- ✅ `ETAT.md` et le cahier des charges portent le même nombre de critères validés —
+  **fait le 08/08/2026 : 34 sur 41**, après réconciliation des lots 1a et 1b, dont aucune case
+  n'était cochée, et correction d'un « 10 sur 11 » qui nommait deux points ouverts sans appartenir
+  au lot. Détail et règle de non-rechute dans `ETAT.md`, section « Réconciliation des décomptes ».
+
+### Où en est cette liste au 08/08/2026
+
+**Cinq conditions acquises, une partielle, quatre manquantes.** Acquises : régressions bloquées par
+la CI, session locale sans CDN, plafond Firestore, règles versionnées et déployées, site licencié,
+et désormais la concordance des décomptes. Partielle : la rétention existe en code, sa validation
+sur deux vrais clients non. Manquantes : la fermeture de R1, la campagne réelle à trois étages et
+l'essai cast de 45 minutes.
+
+⭐ Les trois manquantes tombent avec **une soirée de séance** et **un sujet de droits d'image**.
+Aucune n'attend du développement.
 
 ## 12. Ordre d'exécution recommandé
 
