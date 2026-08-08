@@ -28,9 +28,12 @@
 > R1-08 tiennent sur le runner, là précisément où ils étaient rouges aux runs 69 à 76. **Les règles
 > versionnées sont déployées le même jour** sur le projet `rpg-map-display`, Firestore et RTDB : ce
 > qui tourne en production est désormais ce que le dépôt décrit et ce que la CI éprouve. La porte R1
-> ne sera fermée qu'après les deux constats restants : preuve des restrictions en console Firebase,
-> et validation de la rétention sur deux vrais clients — à greffer sur la séance tablette, où la
-> tablette et le poste MJ sont précisément ces deux clients.
+> ne sera fermée qu'après **un seul constat restant** : la validation de la rétention sur deux vrais
+> clients, greffée sur la phase 8 de la séance tablette, où la tablette et le poste MJ sont
+> précisément ces deux clients. R1-09 est **tranché le 08/08** — domaines nettoyés et clé restreinte
+> de 25 à 6 APIs ; restriction d'origine et plafonds de quota écartés sciemment, la protection
+> venant des règles et une origine restreinte casserait les séances servies en local
+> (`FIREBASE-CONSOLE-RESTRICTIONS.md` §5).
 >
 > **Phase R2 automatisable implantée le 7 août 2026 ; porte matérielle encore ouverte.** Les
 > images de rendu lisent désormais un snapshot stable et immuable au lieu de cloner toute la

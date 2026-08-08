@@ -76,7 +76,7 @@ doit être terminée avant d'étiqueter une 1.0.
 | R1-06 | Publier une arborescence contrôlée | GitHub Pages reçoit un dossier `_site` construit par liste blanche, sans tests, briefs, scripts ni sources UVTT | **Fait** — paquet déterministe de 82 fichiers et smoke test navigateur depuis `_site` |
 | R1-07 | Fermer le sujet des licences | Les cartes publiées sont autorisées et les attributions requises sont accessibles depuis l'application | **Fait pour le paquet actuel** — icônes, sources, auteurs, licence et modifications publiés ; cartes/portraits exclus faute de droits documentés |
 | R1-08 | Renforcer la CI | Les gestes manuels deviennent bloquants après stabilisation ; la cohérence des modules CDN est vérifiée régulièrement | **Fait, constaté le 08/08/2026** — premier run GitHub complet vert : `verify` en 2 min 28 s puis `build` et `deploy` |
-| R1-09 | Protéger les quotas Firebase | Les restrictions d'origine et d'API sont vérifiées dans la console du projet | **Procédure faite, console ouverte** — configuration et preuves externes restent au mainteneur |
+| R1-09 | Protéger les quotas Firebase | Les restrictions d'origine et d'API sont vérifiées dans la console du projet | **Tranché le 08/08/2026** — domaines d'authentification nettoyés, clé restreinte de 25 à 6 APIs ; origine et plafonds de quota **écartés sciemment**, raison et conditions de réouverture ci-dessous |
 
 ### Détails et limites R1
 
@@ -111,18 +111,55 @@ doit être terminée avant d'étiqueter une 1.0.
 - Les règles et leurs tests appartiennent au même changement que le code qui les requiert.
 - Le contenu du site publié est explicite et licencié.
 
-**Porte R1 non fermée au 08/08/2026 ; deux items sur quatre sont tombés.** Le premier run CI avec
-émulateurs est constaté et vert, `build` et `deploy` compris, et les règles versionnées sont
-déployées sur le projet réel. Restent deux constats :
+### Arbitrage R1-09 — ce qui a été écarté, et pourquoi
 
-1. appliquer les restrictions de clé/origine/API et consigner leur preuve — procédure dans
-   `FIREBASE-CONSOLE-RESTRICTIONS.md`, la console est le seul endroit où cela se fait ;
-2. valider la rétention sur deux vrais clients Firebase — ⭐ à greffer sur la séance tablette de
-   R2, où la tablette et le poste MJ **sont** les deux clients demandés, plutôt qu'en faire un
-   rendez-vous séparé.
+Décidé par le mainteneur le 08/08/2026, après avoir séparé ce que chaque mesure protège vraiment.
 
-Le déploiement des règles conditionnait le point 2 : il fallait que les règles publiées soient
-celles du dépôt pour que la validation de rétention prouve quoi que ce soit. C'est fait.
+**Fait :** domaines autorisés nettoyés dans Firebase Authentication — `localhost` retiré ; clé Web
+restreinte de **25 APIs à 6** dans Google Cloud Console : Cloud Datastore, Cloud Firestore, Cloud
+Logging, Firebase Management, Identity Toolkit, Token Service. La liste se déduit des imports réels :
+les trois pages ne chargent que `firebase/app`, `auth`, `database` et `firestore`, sans Analytics —
+la configuration ne porte aucun `measurementId` — ni Storage, ni Messaging, ni App Check.
+
+**Écarté sciemment :** la restriction d'origine et les plafonds de quota. Trois raisons, dans
+l'ordre de poids :
+
+1. ⭐ **La restriction d'origine n'a jamais gardé les données.** La clé Web *identifie* le projet,
+   elle n'*autorise* rien : la barrière est la liste blanche des règles, déployée le même jour. Le
+   seul scénario qu'une restriction d'origine empêche est qu'un tiers consomme le quota
+   d'authentification depuis son propre site — un déni de service, pas une fuite.
+2. ⚠ **Elle casserait les séances.** Le paquet publié ne contient aucune carte, faute de droits
+   documentés (R1-07). Une vraie séance se sert donc en local par `pnpm run serve`, et la tablette
+   rejoint le poste par une adresse `http://192.168.x.x:port` qui ne correspond à aucun motif
+   HTTPS. Restreindre l'origine aujourd'hui reviendrait à refuser la connexion Google à la table.
+3. **Les plafonds de quota ne valent rien sans compte de facturation** : le palier gratuit est déjà
+   un plafond dur. Ce qui garde de la valeur dans cette section est l'alerte et le test de bout en
+   bout, pas le réglage d'un plafond sous un plafond.
+
+**Ce qui rouvrirait la question**, et il faut le relire avant d'y toucher : activer un compte de
+facturation, ou publier des cartes licenciées qui feraient de GitHub Pages la voie de diffusion
+réelle des séances. Tant que la table joue depuis un serveur local, la restriction d'origine coûte
+plus qu'elle ne protège.
+
+**Contrôle attaché à la partie faite** : le passage de 25 à 6 APIs est un changement qui peut casser
+l'outil sans prévenir. Le signal est `API_KEY_SERVICE_BLOCKED` dans la console du navigateur, la
+propagation prend jusqu'à 5 minutes, et le test est une connexion Google, une écriture Firestore et
+un aller-retour RTDB depuis l'URL réelle. Les deux APIs les plus susceptibles de manquer sont
+*Realtime Database Management* et *Firebase Rules* ; le document de procédure prescrit déjà de ne
+les rajouter que sur un blocage constaté, jamais par précaution.
+
+### Porte de sortie R1 — état au 08/08/2026
+
+**Trois items sur quatre sont tombés.** Le premier run CI avec émulateurs est constaté et vert,
+`build` et `deploy` compris ; les règles versionnées sont déployées sur le projet réel ; R1-09 est
+tranché ci-dessus.
+
+**Il reste un seul constat : valider la rétention sur deux vrais clients Firebase.** ⭐ Il se greffe
+sur la séance tablette, phase 8, où la tablette et le poste MJ **sont** les deux clients demandés —
+plutôt que d'en faire un rendez-vous séparé.
+
+Le déploiement des règles le conditionnait : il fallait que les règles publiées soient celles du
+dépôt pour que cette validation prouve quoi que ce soit. C'est fait.
 
 ## 5. Phase 2 — performance et endurance
 

@@ -81,3 +81,50 @@ Google depuis l'URL GitHub Pages réelle et une sauvegarde Firestore/RTDB avec l
 À consigner hors dépôt : URL Pages exacte, identifiant de la clé contrôlée, date de déploiement des
 règles, captures de la liste d'origines/API et résultat du test de connexion. Ces éléments restent
 externes et ne sont pas vérifiables localement.
+
+## 5. État réel et arbitrage — 8 août 2026
+
+Cette procédure décrit ce qu'il est *possible* de faire. Voici ce qui a été *décidé*.
+
+| § | Objet | État |
+|---|---|---|
+| 1 | Déploiement des règles | **Fait** — Firestore et RTDB publiés depuis le dépôt, `.firebaserc` versionné |
+| 2 | Domaines autorisés | **Fait** — `localhost` retiré |
+| 3 | APIs de la clé Web | **Fait** — de 25 à 6 |
+| 3 | Origines de la clé Web | ⛔ **Écarté sciemment** |
+| 4 | Plafonds de quota | ⛔ **Écarté sciemment** |
+
+### Les six APIs conservées, et d'où vient la liste
+
+`Cloud Datastore` · `Cloud Firestore` · `Cloud Logging` · `Firebase Management` ·
+`Identity Toolkit` · `Token Service`.
+
+Elle se déduit des imports réels et non d'une recommandation générique : `gm.html`, `player.html` et
+`diag.html` ne déclarent que `firebase/app`, `firebase/auth`, `firebase/database` et
+`firebase/firestore` dans leurs import maps, et `firebase-config.js` ne porte aucun `measurementId`,
+donc aucune Analytics. Les dix-neuf autres relevaient de produits jamais chargés (Storage, Messaging,
+App Check, Remote Config, ML, Installations…), du chemin de publication Firebase Hosting que le
+projet n'emploie pas, ou d'APIs de management que le SDK Web n'appelle pas.
+
+⚠ **Ne rajouter une API que sur un blocage constaté**, jamais par précaution : le signal est
+`API_KEY_SERVICE_BLOCKED` dans la console du navigateur, et les deux candidates connues sont
+*Realtime Database Management* et *Firebase Rules*.
+
+### Pourquoi l'origine est écartée, et ce qui la rouvrirait
+
+⭐ **La restriction d'origine ne garde pas les données.** La clé Web identifie le projet, elle
+n'autorise rien ; l'accès est gouverné par les règles, déployées le même jour. Ce qu'elle empêche
+est qu'un tiers brûle le quota d'authentification depuis son propre site — un déni de service, pas
+une fuite.
+
+⚠ **Et elle casserait les séances.** Le paquet publié ne contient aucune carte, faute de droits
+documentés. Une séance réelle se sert donc en local par `pnpm run serve`, et la tablette rejoint le
+poste par `http://192.168.x.x:port` — une origine qui ne correspond à aucun motif HTTPS. La
+restreindre aujourd'hui refuserait la connexion Google à la table.
+
+Les plafonds de quota, eux, ne valent rien sans compte de facturation : le palier gratuit est déjà
+un plafond dur.
+
+**La décision se réexamine si** un compte de facturation est activé, ou si des cartes licenciées
+entrent dans le paquet public et font de GitHub Pages la voie de diffusion réelle des séances. Tant
+que la table joue depuis un serveur local, la restriction d'origine coûte plus qu'elle ne protège.
