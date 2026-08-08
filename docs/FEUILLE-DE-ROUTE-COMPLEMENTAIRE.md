@@ -70,7 +70,7 @@ doit être terminée avant d'étiqueter une 1.0.
 |---|---|---|---|
 | R1-01 | Ajouter une rétention automatique au canal RTDB `events` | Une session active conserve seulement la fenêtre utile ; les événements expirés ne s'accumulent plus sans limite | **Code fait** — barrière `joining`, curseurs ACK et suppression transactionnelle par lots de 32 ; validation Firebase réelle à constater |
 | R1-02 | Ajouter le ménage des anciennes sessions | Un outil borné liste puis purge explicitement une session choisie ; aucune suppression globale implicite | **Fait** — inspection de 1 à 20 identifiants explicites, dry-run par défaut, confirmation et purge transactionnelle ; aucune énumération globale |
-| R1-03 | Versionner les règles Firebase | Les règles RTDB et Firestore vivent dans le dépôt et des tests négatifs prouvent les refus d'accès | **Exécuté le 08/08/2026** — la cible émulateurs a tourné contre les vrais moteurs Firestore et RTDB et elle est verte ; déploiement externe à constater |
+| R1-03 | Versionner les règles Firebase | Les règles RTDB et Firestore vivent dans le dépôt et des tests négatifs prouvent les refus d'accès | **Fait le 08/08/2026** — cible émulateurs verte contre les vrais moteurs, puis règles déployées sur le projet `rpg-map-display` ; `.firebaserc` versionné rend la commande reproductible |
 | R1-04 | Mesurer la taille persistée d'une campagne | L'interface ou le store avertit avant la limite Firestore ; la taille encodée réelle est testée, pas seulement estimée | **Fait** — JSON UTF-8 mesuré, taille logique Firestore calculée, avertissement 750 Kio et refus 900 Kio |
 | R1-05 | Décider le schéma de persistance multi-étages | Si trois scènes denses approchent 1 Mio, un schéma v3 sépare les métadonnées et les étages avant la fin du lot 3 | **Décision faite** — ADR-012 impose v3 avant R3-02 ; implémentation rattachée au lot 3 |
 | R1-06 | Publier une arborescence contrôlée | GitHub Pages reçoit un dossier `_site` construit par liste blanche, sans tests, briefs, scripts ni sources UVTT | **Fait** — paquet déterministe de 82 fichiers et smoke test navigateur depuis `_site` |
@@ -111,11 +111,18 @@ doit être terminée avant d'étiqueter une 1.0.
 - Les règles et leurs tests appartiennent au même changement que le code qui les requiert.
 - Le contenu du site publié est explicite et licencié.
 
-**Porte R1 non fermée au 08/08/2026 ; un item sur quatre est tombé.** Le premier run CI avec
-émulateurs est constaté et vert, `build` et `deploy` compris. Restent trois constats qui ne se font
-pas depuis le dépôt : déployer les règles versionnées sur le vrai projet, appliquer les restrictions
-de clé/origine/API et consigner leur preuve, valider la rétention sur deux vrais clients Firebase.
-Les trois relèvent du même contrôle d'exploitation en console.
+**Porte R1 non fermée au 08/08/2026 ; deux items sur quatre sont tombés.** Le premier run CI avec
+émulateurs est constaté et vert, `build` et `deploy` compris, et les règles versionnées sont
+déployées sur le projet réel. Restent deux constats :
+
+1. appliquer les restrictions de clé/origine/API et consigner leur preuve — procédure dans
+   `FIREBASE-CONSOLE-RESTRICTIONS.md`, la console est le seul endroit où cela se fait ;
+2. valider la rétention sur deux vrais clients Firebase — ⭐ à greffer sur la séance tablette de
+   R2, où la tablette et le poste MJ **sont** les deux clients demandés, plutôt qu'en faire un
+   rendez-vous séparé.
+
+Le déploiement des règles conditionnait le point 2 : il fallait que les règles publiées soient
+celles du dépôt pour que la validation de rétention prouve quoi que ce soit. C'est fait.
 
 ## 5. Phase 2 — performance et endurance
 

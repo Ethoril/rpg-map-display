@@ -25,9 +25,12 @@
 > **Le premier run CI complet est constaté vert le 8 août 2026** — `verify` en 2 min 28 s, puis
 > `build` et `deploy`. `test:firebase-rules` a donc exercé pour la première fois les refus et les
 > autorisations contre les **vrais** moteurs Firestore et RTDB, et les trois gestes rapatriés par
-> R1-08 tiennent sur le runner, là précisément où ils étaient rouges aux runs 69 à 76. La porte R1
-> ne sera fermée qu'après les trois constats restants, tous hors dépôt : déploiement des règles,
-> validation RTDB réelle et preuve des restrictions en console Firebase.
+> R1-08 tiennent sur le runner, là précisément où ils étaient rouges aux runs 69 à 76. **Les règles
+> versionnées sont déployées le même jour** sur le projet `rpg-map-display`, Firestore et RTDB : ce
+> qui tourne en production est désormais ce que le dépôt décrit et ce que la CI éprouve. La porte R1
+> ne sera fermée qu'après les deux constats restants : preuve des restrictions en console Firebase,
+> et validation de la rétention sur deux vrais clients — à greffer sur la séance tablette, où la
+> tablette et le poste MJ sont précisément ces deux clients.
 >
 > **Phase R2 automatisable implantée le 7 août 2026 ; porte matérielle encore ouverte.** Les
 > images de rendu lisent désormais un snapshot stable et immuable au lieu de cloner toute la
@@ -1232,6 +1235,30 @@ run GitHub qui exécute réellement `test:firebase-rules`. Résultat final : `ve
 - ⭐ le défaut de terminaison de Playwright, signalé trois fois plus haut dans ce document, est
   **propre au poste Windows**. Le job Ubuntu se termine normalement. Ce n'était pas un doute sur la
   suite de tests, et il ne faut plus le lire comme tel.
+
+### Déploiement des règles, le même jour
+
+`firebase deploy --only firestore:rules,database` a publié les deux jeux de règles sur
+`rpg-map-display`. Deux vérifications ont précédé la publication, parce que des règles déployées
+sont une porte qui se referme sur la table si elle est mal dimensionnée :
+
+| Base | Chemins réellement écrits par le code | Couverture |
+|---|---|---|
+| RTDB | `session/<id>/{events, presence, retentionClients}` | `session/$sessionId` couvre les descendants |
+| Firestore | `campaigns/<id>` + `/levels/<id>`, `/tokens/<id>`, `/state/current` | les quatre sont déclarés, sans règle récursive |
+
+`.info/serverTimeOffset` est lu par le transport mais échappe aux règles par construction.
+
+⚠ **La publication est un resserrement** : seuls `ethoril@gmail.com` (e-mail vérifié) et
+`et.horil@gmail.com` sont autorisés. Un troisième compte Google sur la tablette serait refusé dès la
+prochaine séance — à vérifier avec le compte réellement utilisé côté joueurs.
+
+`.firebaserc` était **absent** du dépôt : `firebase.json` déclarait bien les deux fichiers de règles,
+mais aucun projet n'y était associé et un `deploy` échouait sur « No project active ». Il est
+désormais versionné, pour que la commande soit la même sur toutes les machines.
+
+Note d'usage : `firebase-tools` est une devDependency, donc absente du `PATH`. La commande est
+`pnpm exec firebase …`, jamais `firebase …`.
 
 ### Le premier run a d'abord échoué, et la cause mérite d'être retenue
 
