@@ -55,7 +55,30 @@ export function createLinkEditor(container, options) {
       : levels;
     levelB.replaceChildren(...destinationLevels.map((level) => new Option(level.name, level.id)));
     if (destinationLevels.some((level) => level.id === previous)) levelB.value = previous;
-    status.textContent = endpointA ? `A : ${endpointA.levelId} — case ${endpointA.at.cellX}, ${endpointA.at.cellY}` : 'Aucune extrémité A posée.';
+
+    // ⭐ La ligne d'état annonce la liaison **entière**, destination comprise.
+    //
+    // Elle n'affichait que l'extrémité A, et c'est ce qui a fait relier le mauvais étage le
+    // 9 août 2026. Poser A retire l'étage d'origine de la liste des destinations et **reconstruit
+    // le menu** : si la destination précédente n'y figure plus, le navigateur retombe
+    // silencieusement sur la première option. Le choix existait donc, mais rien à l'écran ne le
+    // montrait — et sur un bâtiment à trois niveaux, c'est une chance sur deux.
+    //
+    // ⛔ Ne pas « corriger » cela en supprimant le défaut du menu : il épargne un clic à chaque
+    // liaison. Ce qui manquait n'était pas le choix, c'était sa visibilité.
+    const nomDe = (/** @type {string} */ id) => levels.find((level) => level.id === id)?.name ?? id;
+    if (endpointA) {
+      const bCase =
+        Number.isInteger(Number(cellX.value)) && Number.isInteger(Number(cellY.value))
+          ? ` — case ${Number(cellX.value)}, ${Number(cellY.value)}`
+          : '';
+      const bNom = levelB.value ? nomDe(levelB.value) : '—';
+      status.textContent =
+        `A : ${nomDe(endpointA.levelId)} — case ${endpointA.at.cellX}, ${endpointA.at.cellY}` +
+        `   →   B : ${bNom}${bCase}`;
+    } else {
+      status.textContent = 'Aucune extrémité A posée.';
+    }
     arm.textContent = armed ? 'Annuler la pose A' : 'Poser l’extrémité A';
     arm.classList.toggle('gm-btn-active', armed);
     create.disabled = !endpointA || destinationLevels.length === 0;
@@ -68,6 +91,13 @@ export function createLinkEditor(container, options) {
       row.append(text, select, remove); return row;
     }));
   }
+  // Sans ces trois écouteurs, la ligne d'état ne se mettrait à jour qu'aux moments choisis par le
+  // composant — donc jamais quand le mainteneur change la destination, c'est-à-dire précisément
+  // quand il a besoin de la relire.
+  levelB.addEventListener('change', refresh);
+  cellX.addEventListener('input', refresh);
+  cellY.addEventListener('input', refresh);
+
   arm.addEventListener('click', () => { armed = !armed; options.onArmChange?.(armed); refresh(); options.requestRender?.(); });
   create.addEventListener('click', () => {
     error.textContent = '';

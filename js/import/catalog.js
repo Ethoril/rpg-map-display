@@ -82,17 +82,28 @@ export function validateCatalog(obj) {
     /** @param {string} field */
     const checkUrl = (field) => {
       const url = map[field];
-      if (!url || typeof url !== 'string') {
+      if (!url) {
         errors.push(`${prefix} : ${field} manquant`);
         return false;
       }
-      if (url.startsWith('data:')) {
-        errors.push(`${prefix} : ${field} ne doit pas être une data: URL`);
+      const urls = Array.isArray(url) ? url : [url];
+      if (urls.length === 0) {
+        errors.push(`${prefix} : ${field} ne doit pas être vide`);
         return false;
       }
-      if (url.startsWith('blob:')) {
-        errors.push(`${prefix} : ${field} ne doit pas être une blob: URL`);
-        return false;
+      for (const u of urls) {
+        if (typeof u !== 'string' || !u) {
+          errors.push(`${prefix} : ${field} contient une valeur non-chaîne ou vide`);
+          return false;
+        }
+        if (u.startsWith('data:')) {
+          errors.push(`${prefix} : ${field} ne doit pas être une data: URL`);
+          return false;
+        }
+        if (u.startsWith('blob:')) {
+          errors.push(`${prefix} : ${field} ne doit pas être une blob: URL`);
+          return false;
+        }
       }
       return true;
     };
@@ -101,8 +112,11 @@ export function validateCatalog(obj) {
     checkUrl('sceneUrl');
     checkUrl('imageUrl');
 
-    if (map.sourceHash && typeof map.sourceHash !== 'string') {
-      errors.push(`${prefix} : sourceHash invalide`);
+    if (map.sourceHash) {
+      const hashes = Array.isArray(map.sourceHash) ? map.sourceHash : [map.sourceHash];
+      if (hashes.length === 0 || hashes.some((/** @type {any} */ h) => typeof h !== 'string' || !h)) {
+        errors.push(`${prefix} : sourceHash invalide`);
+      }
     }
 
     if (typeof map.levelCount !== 'number' || map.levelCount < 1) {

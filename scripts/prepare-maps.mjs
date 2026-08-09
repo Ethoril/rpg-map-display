@@ -302,9 +302,24 @@ const PIPELINE_HASH = (() => {
  * @param {number} targetPxPerCell
  * @param {{ maxTexturePx?: number, quality?: number }} options
  */
-function recipeOf(sourceHash, targetPxPerCell, options) {
+/**
+ * Recette d'une carte : ce qui doit être identique pour pouvoir sauter sa préparation.
+ *
+ * **`sourceHash` seul ne suffit pas**, et c'est le piège que cette fonction existe pour
+ * fermer : changer le plafond, la qualité ou le code ne change pas un octet du `.dd2vtt`.
+ * Un cache indexé sur la seule source sauterait la carte en affirmant qu'elle est à jour,
+ * et l'écart ne se verrait qu'à l'œil, bien plus tard. Pour une scène multi-étages ou munie
+ * de liaisons, `sourceHash` (tableau) et `linksHash` comptent aussi.
+ *
+ * @param {string|string[]} sourceHash
+ * @param {number} targetPxPerCell
+ * @param {{ maxTexturePx?: number, quality?: number }} options
+ * @param {string} [linksHash='']
+ */
+function recipeOf(sourceHash, targetPxPerCell, options, linksHash = '') {
   return {
     sourceHash,
+    linksHash,
     targetPxPerCell,
     maxTexturePx: options.maxTexturePx ?? MAX_PREPARED_TEXTURE_PX,
     quality: options.quality ?? WEBP_QUALITY,
@@ -327,7 +342,7 @@ function readRecipes(mapsDir) {
 /**
  * Le travail déjà fait est-il réutilisable tel quel ?
  *
- * Exige la recette **et** la présence effective des deux artefacts : un sidecar qui survit à
+ * Exige la recette **et** la présence effective des artefacts : un sidecar qui survit à
  * un `rm` sur `generated/` doit provoquer une reconstruction, pas un catalogue qui référence
  * des fichiers absents.
  *
@@ -338,19 +353,43 @@ function readRecipes(mapsDir) {
 function isReusable(known, recipe, mapsDir) {
   if (!known || !known.recipe || !known.catalogEntry) return false;
   const sameRecipe = /** @type {(keyof typeof recipe)[]} */ ([
-    'sourceHash',
     'targetPxPerCell',
     'maxTexturePx',
     'quality',
     'pipelineHash',
+    'linksHash',
   ]).every((k) => known.recipe[k] === recipe[k]);
   if (!sameRecipe) return false;
 
-  // Chemins dérivés du dossier réel et du seul nom de fichier : les URL du catalogue
-  // portent un préfixe `maps/` en dur, que les tests (dossier temporaire) ne respectent pas.
-  return [known.catalogEntry.sceneUrl, known.catalogEntry.imageUrl].every((url) =>
-    fs.existsSync(path.join(mapsDir, 'generated', path.basename(url)))
-  );
+  // Comparer sourceHash (chaîne ou tableau de chaînes)
+  const kHash = known.recipe.sourceHash;
+  const rHash = recipe.sourceHash;
+  if (Array.isArray(kHash) || Array.isArray(rHash)) {
+    if (!Array.isArray(kHash) || !Array.isArray(rHash) || kHash.length !== rHash.length) return false;
+    if (kHash.some((h, i) => h !== rHash[i])) return false;
+  } else if (kHash !== rHash) {
+    return false;
+  }
+
+  // Vérifier la présence effective du fichier de scène et des images WebP référencées
+  const scenePath = path.join(mapsDir, 'generated', path.basename(known.catalogEntry.sceneUrl));
+  if (!fs.existsSync(scenePath)) return false;
+
+  try {
+    const sceneObj = JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
+    if (Array.isArray(sceneObj.levels)) {
+      for (const level of sceneObj.levels) {
+        if (level.imageUrl) {
+          const imgPath = path.join(mapsDir, 'generated', path.basename(level.imageUrl));
+          if (!fs.existsSync(imgPath)) return false;
+        }
+      }
+    }
+  } catch {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -373,6 +412,20 @@ function findOrphanArtifacts(mapsDir, catalogEntries) {
   for (const entry of catalogEntries) {
     referenced.add(path.basename(entry.sceneUrl));
     referenced.add(path.basename(entry.imageUrl));
+    // Pour les scènes multi-étages, chaque image d'étage est aussi référencée
+    const scenePath = path.join(generatedDir, path.basename(entry.sceneUrl));
+    if (fs.existsSync(scenePath)) {
+      try {
+        const sceneObj = JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
+        if (Array.isArray(sceneObj.levels)) {
+          for (const l of sceneObj.levels) {
+            if (l.imageUrl) referenced.add(path.basename(l.imageUrl));
+          }
+        }
+      } catch {
+        /* ignorer */
+      }
+    }
   }
 
   return fs
@@ -409,18 +462,83 @@ function publishCatalog(catalogPath, catalog) {
 }
 
 /**
+ * Lit le manifeste `maps/scenes.json` s'il existe et construit la liste des scènes.
+ *
+ * @param {string} mapsDir
+ * @param {string[]} availableFiles Noms des fichiers VTT disponibles dans maps/
+ * @returns {{
+ *   id: string,
+ *   name: string,
+ *   levels: { id: string, name: string, source: string, order: number }[]
+ * }[]}
+ */
+function readSceneManifest(mapsDir, availableFiles) {
+  const manifestPath = path.join(mapsDir, 'scenes.json');
+  const availableSet = new Set(availableFiles);
+  const assignedFiles = new Set();
+  /** @type {any[]} */
+  const scenes = [];
+
+  if (fs.existsSync(manifestPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      if (Array.isArray(data.scenes)) {
+        for (const s of data.scenes) {
+          if (!s || typeof s.id !== 'string' || !Array.isArray(s.levels)) continue;
+          const levels = [];
+          for (let i = 0; i < s.levels.length; i++) {
+            const l = s.levels[i];
+            if (!l || !l.source || !availableSet.has(l.source)) continue;
+            levels.push({
+              id: typeof l.id === 'string' && l.id ? l.id : path.basename(l.source, path.extname(l.source)),
+              name: typeof l.name === 'string' && l.name ? l.name : displayNameFromSlug(path.basename(l.source, path.extname(l.source))),
+              source: l.source,
+              order: typeof l.order === 'number' ? l.order : i,
+            });
+            assignedFiles.add(l.source);
+          }
+          if (levels.length > 0) {
+            scenes.push({
+              id: s.id,
+              name: s.name || displayNameFromSlug(s.id),
+              levels,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[prepare-maps] Erreur à la lecture de scenes.json : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Fichiers restants non assignés : une scène à 1 étage par fichier
+  for (const file of availableFiles) {
+    if (!assignedFiles.has(file)) {
+      const slug = path.basename(file, path.extname(file));
+      scenes.push({
+        id: slug,
+        name: displayNameFromSlug(slug),
+        levels: [
+          {
+            id: slug,
+            name: displayNameFromSlug(slug),
+            source: file,
+            order: 0,
+          },
+        ],
+      });
+    }
+  }
+
+  return scenes;
+}
+
+/**
  * Prépare tous les fichiers UVTT du répertoire maps/.
  *
  * Transactionnel : le catalogue n'est publié que si **toutes** les cartes ont
  * été préparées. Une seule carte fautive fait échouer l'appel sans écrire
- * `catalog.json`, et le catalogue précédent reste intact octet pour octet
- * (U-02, plan §6.9). Les artefacts déjà produits par les cartes valides sont
- * conservés et signalés comme orphelins, jamais supprimés.
- *
- * Incrémental : une carte dont la **recette** est inchangée et dont les artefacts sont
- * toujours là n'est pas réencodée, son entrée de catalogue étant relue du sidecar. Le
- * catalogue publié est identique à celui qu'aurait produit une passe complète — c'est le
- * temps qui change, pas le résultat. `force` court-circuite le cache.
+ * `catalog.json`, et le catalogue précédent reste intact octet pour octet.
  *
  * @param {{
  *   mapsDir?: string,
@@ -439,7 +557,7 @@ function publishCatalog(catalogPath, catalog) {
  *   totalLights: number,
  *   warnings: string[]
  * }>}
- * @throws {Error} si une carte échoue ou si deux sources partagent un slug
+ * @throws {Error} si une carte échoue ou si la validation des liaisons échoue
  */
 export async function prepareMaps(options = {}) {
   const mapsDir = options.mapsDir || path.join(rootDir, 'maps');
@@ -452,7 +570,6 @@ export async function prepareMaps(options = {}) {
     fs.mkdirSync(mapsDir, { recursive: true });
   }
 
-  // Trouver tous les fichiers VTT reconnus directement sous maps/
   const uvttFiles = fs.readdirSync(mapsDir).filter(isSupportedSource).sort();
 
   if (uvttFiles.length === 0) {
@@ -470,8 +587,10 @@ export async function prepareMaps(options = {}) {
     };
   }
 
-  // Refuser les collisions de slug avant d'écrire quoi que ce soit.
-  const sources = planSources(uvttFiles);
+  // Vérifier les collisions basiques avant tout
+  planSources(uvttFiles);
+
+  const sceneJobs = readSceneManifest(mapsDir, uvttFiles);
 
   const catalogEntries = [];
   const allWarnings = [];
@@ -485,57 +604,155 @@ export async function prepareMaps(options = {}) {
   let preparedCount = 0;
   let skippedCount = 0;
 
-  // Toutes les cartes sont tentées, même après une première défaillance : le
-  // mainteneur voit l'ensemble des causes en une seule passe. Rien n'est publié
-  // pour autant, la décision se prend après la boucle.
   const failures = [];
-  for (const { file, slug } of sources) {
-    const uvttPath = path.join(mapsDir, file);
-    try {
-      const sourceHash = crypto
-        .createHash('sha256')
-        .update(fs.readFileSync(uvttPath, 'utf-8'))
-        .digest('hex');
-      const recipe = recipeOf(sourceHash, targetPxPerCell, fabrication);
-      const known = knownRecipes[slug];
 
-      // Réutiliser : lire et hacher 22 Mo coûte une fraction de seconde, réencoder
-      // 60 MP en coûte soixante. C'est tout l'écart entre deux minutes et deux secondes.
+  for (const sceneJob of sceneJobs) {
+    try {
+      // 1. Calcul des hashes des sources et du fichier de liaisons
+      const sourceHashes = sceneJob.levels.map((lvl) => {
+        const fileContent = fs.readFileSync(path.join(mapsDir, lvl.source), 'utf-8');
+        return 'sha256-' + crypto.createHash('sha256').update(fileContent).digest('hex');
+      });
+      const sourceHashValue = sourceHashes.length === 1 ? sourceHashes[0] : sourceHashes;
+
+      const linksFilePath = path.join(mapsDir, `${sceneJob.id}.links.json`);
+      let linksHash = '';
+      let linksData = [];
+      if (fs.existsSync(linksFilePath)) {
+        const rawLinks = fs.readFileSync(linksFilePath, 'utf-8');
+        linksHash = crypto.createHash('sha256').update(rawLinks).digest('hex');
+        linksData = JSON.parse(rawLinks);
+      }
+
+      const recipe = recipeOf(sourceHashValue, targetPxPerCell, fabrication, linksHash);
+      const known = knownRecipes[sceneJob.id];
+
       if (isReusable(known, recipe, mapsDir)) {
         catalogEntries.push(known.catalogEntry);
-        nextRecipes[slug] = known;
+        nextRecipes[sceneJob.id] = known;
         totalWalls += known.catalogEntry.features.walls;
         totalPortals += known.catalogEntry.features.portals;
         totalLights += known.catalogEntry.features.lights;
         skippedCount++;
-        console.log(`· ${slug} inchangée, réutilisée`);
+        console.log(`· ${sceneJob.id} inchangée, réutilisée`);
         continue;
       }
 
-      const result = await prepareMap(uvttPath, mapsDir, targetPxPerCell, fabrication);
-      catalogEntries.push(result.catalogEntry);
-      allWarnings.push(...result.warnings);
-      nextRecipes[slug] = { recipe, catalogEntry: result.catalogEntry };
+      // 2. Fabrication de la scène
+      const generatedDir = path.join(mapsDir, 'generated');
+      if (!fs.existsSync(generatedDir)) {
+        fs.mkdirSync(generatedDir, { recursive: true });
+      }
 
-      totalWalls += result.catalogEntry.features.walls;
-      totalPortals += result.catalogEntry.features.portals;
-      totalLights += result.catalogEntry.features.lights;
+      const preparedLevels = [];
+      const parseWarningsAcc = [];
+      let sceneWalls = 0;
+      let scenePortals = 0;
+      let sceneLights = 0;
+      let bakedLighting = false;
+
+      for (const lvlSpec of sceneJob.levels) {
+        const uvttPath = path.join(mapsDir, lvlSpec.source);
+        const fileContent = fs.readFileSync(uvttPath, 'utf-8');
+        const uvttData = JSON.parse(fileContent);
+        const { level, imageBase64, warnings: parseWarnings } = parseUvtt(uvttData);
+
+        parseWarningsAcc.push(...parseWarnings);
+        level.id = lvlSpec.id;
+        level.name = lvlSpec.name;
+        level.order = lvlSpec.order;
+
+        const webpFileName = `${lvlSpec.id}.webp`;
+        const webpPath = path.join(generatedDir, webpFileName);
+
+        const resampleResult = await resample(imageBase64, targetPxPerCell, {
+          sourcePxPerCell: uvttData.resolution?.pixels_per_grid,
+          widthCells: level.widthCells,
+          heightCells: level.heightCells,
+          outputPath: webpPath,
+          maxTexturePx: fabrication.maxTexturePx,
+          quality: fabrication.quality,
+        });
+
+        parseWarningsAcc.push(...resampleResult.warnings);
+
+        const originX = uvttData.resolution?.map_origin?.x ?? 0;
+        const originY = uvttData.resolution?.map_origin?.y ?? 0;
+
+        level.pxPerCell = resampleResult.pxPerCell;
+        level.imageUrl = `maps/generated/${webpFileName}`;
+        level.grid.offsetX = originX * resampleResult.pxPerCell;
+        level.grid.offsetY = originY * resampleResult.pxPerCell;
+
+        preparedLevels.push(level);
+
+        sceneWalls += level.walls.length;
+        scenePortals += level.portals.length;
+        sceneLights += level.lights.length;
+        if (level.ambient?.baked) bakedLighting = true;
+      }
+
+      // Trier les étages par `order` croissant
+      preparedLevels.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      const campaign = createCampaign({
+        campaignId: `campaign-${sceneJob.id}`,
+        name: sceneJob.name,
+        levels: preparedLevels,
+        links: linksData,
+      });
+
+      const errors = validateCampaign(campaign);
+      if (errors.length > 0) {
+        throw new Error(`Validation de la scène "${sceneJob.id}" échouée : ${errors.join('; ')}`);
+      }
+
+      const sceneFileName = `${sceneJob.id}.scene.json`;
+      const scenePath = path.join(generatedDir, sceneFileName);
+      fs.writeFileSync(scenePath, JSON.stringify(campaign, null, 2), 'utf-8');
+
+      const sceneContent = fs.readFileSync(scenePath, 'utf-8');
+      if (sceneContent.includes('data:') || sceneContent.includes('blob:')) {
+        throw new Error(`Scène ${sceneJob.id} contient des URLs temporaires (data: ou blob:)`);
+      }
+
+      const catalogEntry = {
+        id: sceneJob.id,
+        name: sceneJob.name,
+        sourceUrl: sceneJob.levels.length === 1 ? `maps/${sceneJob.levels[0].source}` : sceneJob.levels.map((l) => `maps/${l.source}`),
+        sceneUrl: `maps/generated/${sceneFileName}`,
+        imageUrl: `maps/generated/${preparedLevels[0].id}.webp`,
+        sourceHash: sourceHashValue,
+        levelCount: preparedLevels.length,
+        features: {
+          walls: sceneWalls,
+          portals: scenePortals,
+          lights: sceneLights,
+          bakedLighting,
+        },
+      };
+
+      catalogEntries.push(catalogEntry);
+      allWarnings.push(...parseWarningsAcc);
+      nextRecipes[sceneJob.id] = { recipe, catalogEntry };
+
+      totalWalls += sceneWalls;
+      totalPortals += scenePortals;
+      totalLights += sceneLights;
       preparedCount++;
 
-      console.log(`✓ ${result.mapId} préparée`);
+      console.log(`✓ Scène "${sceneJob.id}" (${preparedLevels.length} étage(s)) préparée`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`✗ Erreur en préparant ${file} : ${errMsg}`);
-      failures.push({ file, error: errMsg });
+      console.error(`✗ Erreur en préparant la scène ${sceneJob.id} : ${errMsg}`);
+      failures.push({ file: sceneJob.id, error: errMsg });
     }
   }
 
-  // Une seule carte fautive interdit la publication. Le catalogue précédent
-  // reste en place : mieux vaut un catalogue daté qu'un catalogue amputé.
   if (failures.length > 0) {
     const detail = failures.map((f) => ` - ${f.file} : ${f.error}`).join('\n');
     throw new Error(
-      `${failures.length} carte(s) en échec sur ${sources.length}, aucun catalogue publié ` +
+      `${failures.length} scène(s) en échec sur ${sceneJobs.length}, aucun catalogue publié ` +
         `(le précédent est conservé tel quel) :\n${detail}`
     );
   }
@@ -549,8 +766,6 @@ export async function prepareMaps(options = {}) {
 
   if (!dryRun) {
     publishCatalog(path.join(mapsDir, 'catalog.json'), catalog);
-    // Le sidecar n'est écrit **qu'après** la publication réussie. L'inverse laisserait un
-    // cache affirmant qu'un travail est fait alors que le catalogue ne le référence pas.
     fs.writeFileSync(recipesPath(mapsDir), JSON.stringify(nextRecipes, null, 2), 'utf-8');
   }
 
@@ -567,7 +782,8 @@ export async function prepareMaps(options = {}) {
 
 // CLI principal
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
-  prepareMaps()
+  const force = process.argv.includes('--force');
+  prepareMaps({ force })
     .then((result) => {
       console.log(
         `\n✓ ${result.mapsCount} carte(s) au catalogue ` +

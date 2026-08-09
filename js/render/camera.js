@@ -109,3 +109,18 @@ export class Camera {
     }
   }
 }
+
+/**
+ * Convertit un point du viewport (ex. PointerEvent clientX/clientY) en point carte (MapPoint),
+ * compte tenu du rectangle du viewport, de la translation (panX/panY) et du facteur de zoom.
+ *
+ * @param {{ clientX: number, clientY: number }} clientPos
+ * @param {{ rectLeft: number, rectTop: number, panX: number, panY: number, zoom: number }} viewTransform
+ * @returns {MapPoint}
+ */
+export function screenToMapPoint(clientPos, viewTransform) {
+  const x = (clientPos.clientX - viewTransform.rectLeft - viewTransform.panX) / viewTransform.zoom;
+  const y = (clientPos.clientY - viewTransform.rectTop - viewTransform.panY) / viewTransform.zoom;
+  return { x, y };
+}
+

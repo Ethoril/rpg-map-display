@@ -12,7 +12,9 @@ import {
 
 /**
  * @typedef {Object} TokenMakerOptions
- * @property {string|null} defaultLevelId LevelId actif à attribuer au pion généré
+ * @property {string|null} [defaultLevelId] LevelId actif à attribuer au pion généré (facultatif si hors campagne)
+ * @property {number} [maxBytes] Plafond en octets (longueur dataUrl) pour l'encodage (défaut : TOKEN_IMAGE_MAX_BYTES)
+ * @property {boolean} [requireLevelId] Si false, n'exige pas de levelId pour autoriser la génération
  * @property {(token: Token, dataUrl: string) => void} [onGenerate] Callback appelé lors de la génération
  * @property {(token: Token, dataUrl: string) => void} [onDownload] Callback appelé lors du téléchargement
  */
@@ -21,67 +23,78 @@ import {
  * Composant de création et recadrage de pion MJ.
  *
  * @param {HTMLElement} container Élément HTML conteneur
- * @param {TokenMakerOptions} options
+ * @param {TokenMakerOptions} [options]
  */
-export function createTokenMaker(container, options) {
+export function createTokenMaker(container, options = {}) {
   if (!container) {
     throw new Error('createTokenMaker : conteneur HTML requis');
   }
-  if (!Object.prototype.hasOwnProperty.call(options, 'defaultLevelId')) {
-    throw new Error('createTokenMaker : defaultLevelId est obligatoire');
-  }
 
+  // --- Structure DOM ---
   // --- Structure DOM ---
   container.className = 'token-maker-container';
   container.innerHTML = `
-    <div class="token-maker-ui" style="display: flex; flex-direction: column; gap: 1rem; max-width: 400px; font-family: system-ui, sans-serif;">
-      <div class="token-maker-dropzone" style="border: 2px dashed #666; padding: 1rem; text-align: center; border-radius: 6px; cursor: pointer;">
+    <div class="token-maker-ui" style="display: flex; flex-direction: column; gap: 1rem; max-width: 480px; font-family: system-ui, sans-serif; color: #f0f0f0;">
+      <div class="token-maker-dropzone" style="border: 2px dashed #666; padding: 1rem; text-align: center; border-radius: 6px; cursor: pointer; background: #1a1a1a; color: #ccc;">
         <label style="cursor: pointer; display: block;">
-          <span>Déposer une image ou cliquer pour choisir</span>
+          <span style="color: #4a90e2; font-weight: 500;">Déposer une image ou cliquer pour choisir</span>
           <input type="file" id="token-file-input" accept="image/*" style="display: none;" />
         </label>
       </div>
 
-      <div class="token-maker-preview-wrap" style="position: relative; width: 300px; height: 300px; margin: 0 auto; background: #222; border-radius: 6px; overflow: hidden; touch-action: none;">
+      <div class="token-maker-preview-wrap" style="position: relative; width: 300px; height: 300px; margin: 0 auto; background: #111; border-radius: 6px; overflow: hidden; touch-action: none; border: 1px solid #444;">
         <canvas id="token-preview-canvas" width="300" height="300" style="width: 300px; height: 300px; display: block; cursor: grab;"></canvas>
       </div>
 
-      <div class="token-maker-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center;">
-        <label for="token-shape">Forme guide :</label>
-        <select id="token-shape">
-          <option value="circle">⭕ Cercle</option>
-          <option value="square">▢ Carré</option>
-        </select>
+      <div class="token-maker-form" style="display: grid; grid-template-columns: 140px 1fr; gap: 0.6rem 0.8rem; align-items: center; background: #1a1a1a; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
+        <label for="token-id" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Identifiant :</label>
+        <input type="text" id="token-id" placeholder="Auto depuis le nom" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-kind">Type de pion :</label>
-        <select id="token-kind">
-          <option value="pc">PJ (Joueur)</option>
+        <label for="token-label" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Nom du pion :</label>
+        <input type="text" id="token-label" value="Pion" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+
+        <label for="token-kind" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Type de pion :</label>
+        <select id="token-kind" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
           <option value="npc">PNJ (Non-Joueur)</option>
+          <option value="pc">PJ (Joueur)</option>
         </select>
 
-        <label for="token-border-color">Couleur bordure :</label>
-        <input type="color" id="token-border-color" value="#ff0000" />
+        <label for="token-shape" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Forme guide :</label>
+        <select id="token-shape" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
+          <option value="square">▢ Carré</option>
+          <option value="circle">⭕ Cercle</option>
+        </select>
 
-        <label for="token-size-cells">Taille (cases) :</label>
-        <input type="number" id="token-size-cells" min="1" max="3" value="1" />
+        <label for="token-border-color" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Couleur bordure :</label>
+        <input type="color" id="token-border-color" value="#e74c3c" style="background: #252525; border: 1px solid #444; border-radius: 4px; height: 36px; padding: 2px; cursor: pointer; width: 100%;" />
 
-        <label for="token-speed-cells">Vitesse (cases) :</label>
-        <input type="number" id="token-speed-cells" min="1" max="5" value="3" />
+        <label for="token-size-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Taille (cases) :</label>
+        <input type="number" id="token-size-cells" min="1" max="8" value="1" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-label">Nom du pion :</label>
-        <input type="text" id="token-label" value="Pion" />
+        <label for="token-speed-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vitesse (cases) :</label>
+        <input type="number" id="token-speed-cells" min="1" max="30" value="3" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-canonical-url">URL publiée :</label>
-        <input type="text" id="token-canonical-url" placeholder="Vide : image embarquée dans la campagne" />
+        <label for="token-vision-bright" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision claire :</label>
+        <input type="number" id="token-vision-bright" min="0" max="60" value="5" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+
+        <label for="token-vision-dim" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision faible :</label>
+        <input type="number" id="token-vision-dim" min="0" max="60" value="10" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+
+        <label for="token-max-hp" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">PV max :</label>
+        <input type="number" id="token-max-hp" min="1" max="999" placeholder="—" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+
+        <label for="token-canonical-url" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">URL publiée :</label>
+        <input type="text" id="token-canonical-url" placeholder="Optionnel : maps/tokens/..." style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
       </div>
 
-      <p id="token-maker-status" style="margin: 0; font-size: 0.75rem; color: #aaa;">
-        Sans URL publiée, l'image est embarquée dans la campagne et visible tout de suite sur la tablette.
+      <p id="token-maker-status" style="margin: 0; font-size: 0.8rem; color: #aaa;">
+        Sans URL publiée, l'image est embarquée et disponible pour la génération.
       </p>
 
       <div class="token-maker-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <button id="btn-generate-token" style="flex: 1; min-width: 110px; padding: 0.5rem;" disabled>Générer pion</button>
-        <button id="btn-download-token" style="flex: 1; min-width: 110px; padding: 0.5rem;" disabled>Télécharger pion</button>
+        <button id="btn-generate-token" style="flex: 2; min-width: 140px; padding: 0.55rem; background: #27ae60; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" disabled>Générer & enregistrer pion</button>
+        <button id="btn-reset-token" style="flex: 1; min-width: 80px; padding: 0.55rem; background: #444; color: white; border: none; border-radius: 4px; cursor: pointer;">Vider</button>
+        <button id="btn-download-token" style="flex: 1; min-width: 100px; padding: 0.55rem; background: #2980b9; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>Télécharger</button>
       </div>
     </div>
   `;
@@ -95,11 +108,15 @@ export function createTokenMaker(container, options) {
     throw new Error('createTokenMaker : impossible d’obtenir le contexte 2d du canvas');
   }
 
+  const idInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-id'));
   const shapeSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#token-shape'));
   const kindSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#token-kind'));
   const colorInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-border-color'));
   const sizeCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-size-cells'));
   const speedCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-speed-cells'));
+  const visionBrightInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-vision-bright'));
+  const visionDimInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-vision-dim'));
+  const maxHpInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-max-hp'));
   const labelInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-label'));
   const canonicalUrlInput = /** @type {HTMLInputElement} */ (
     container.querySelector('#token-canonical-url')
@@ -107,6 +124,7 @@ export function createTokenMaker(container, options) {
   const status = /** @type {HTMLElement} */ (container.querySelector('#token-maker-status'));
 
   const btnGenerate = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-generate-token'));
+  const btnReset = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-reset-token'));
   const btnDownload = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-download-token'));
 
   // --- État interne ---
@@ -139,12 +157,16 @@ export function createTokenMaker(container, options) {
   /** @type {string|null} */
   let defaultLevelId = options.defaultLevelId ?? null;
 
+  const maxBytesBudget = options.maxBytes ?? TOKEN_IMAGE_MAX_BYTES;
+  const requireLevelId = options.requireLevelId ?? (options.defaultLevelId !== undefined);
+
   function refreshGenerateAvailability() {
     const explicitUrl = canonicalUrlInput.value.trim();
     const urlIsValid = explicitUrl === '' || isPersistableAssetUrl(explicitUrl);
-    btnGenerate.disabled = !loadedImage || !defaultLevelId || !urlIsValid;
+    const levelOk = !requireLevelId || Boolean(defaultLevelId);
+    btnGenerate.disabled = !loadedImage || !levelOk || !urlIsValid;
 
-    if (!defaultLevelId) {
+    if (requireLevelId && !defaultLevelId) {
       status.style.color = '#f1c40f';
       status.textContent = 'Ajoutez ou sélectionnez un étage avant de générer un pion.';
     } else if (!urlIsValid) {
@@ -154,8 +176,7 @@ export function createTokenMaker(container, options) {
     } else {
       status.style.color = '#aaa';
       status.textContent =
-        "Sans URL publiée, l'image est embarquée dans la campagne et visible tout de suite " +
-        'sur la tablette.';
+        "Sans URL publiée, l'image est embarquée et disponible pour la génération.";
     }
   }
 
@@ -365,13 +386,7 @@ export function createTokenMaker(container, options) {
   });
 
   /**
-   * Encode le canevas du pion en tenant sous `TOKEN_IMAGE_MAX_BYTES`.
-   *
-   * Un plafond qui refuserait l'image du MJ serait une impasse en pleine séance : il
-   * faut donc réduire, pas rejeter. La qualité baisse d'abord, la dimension ensuite —
-   * l'ordre compte, une image un peu plus compressée reste préférable à une image
-   * franchement plus petite. La réduction de dimension garantit aussi la terminaison
-   * quand le navigateur ignore le paramètre de qualité, ce que fait tout repli PNG.
+   * Encode le canevas du pion en tenant sous `maxBytesBudget`.
    *
    * @param {HTMLCanvasElement} canvas
    * @returns {{ dataUrl: string, size: number, reduced: boolean }}
@@ -381,12 +396,10 @@ export function createTokenMaker(container, options) {
     let source = canvas;
     let reduced = false;
 
-    // 12 px est la borne basse : en dessous, l'image ne vaut plus rien comme pion, et
-    // il faut s'arrêter plutôt que boucler.
     while (source.width >= 12) {
       for (const quality of [0.8, 0.7, 0.6, 0.5, 0.4]) {
         const dataUrl = source.toDataURL('image/webp', quality);
-        if (dataUrl.length <= TOKEN_IMAGE_MAX_BYTES) {
+        if (dataUrl.length <= maxBytesBudget) {
           return { dataUrl, size: dataUrl.length, reduced };
         }
       }
@@ -408,7 +421,7 @@ export function createTokenMaker(container, options) {
   // --- Génération du pion ---
   function generateToken() {
     if (!loadedImage) return null;
-    if (!defaultLevelId) {
+    if (requireLevelId && !defaultLevelId) {
       throw new Error('Impossible de générer un pion sans étage actif');
     }
 
@@ -417,9 +430,7 @@ export function createTokenMaker(container, options) {
     const kind = /** @type {'pc'|'npc'} */ (kindSelect.value === 'npc' ? 'npc' : 'pc');
     const shape = shapeSelect.value;
     const borderColor = colorInput.value;
-    const label = labelInput.value.trim() || 'Pion';
 
-    // Dimension finale du pion : basé sur ~140px par case avec seuil minimal de 200px
     const targetSize = Math.max(200, sizeCells * 140);
 
     const outCanvas = document.createElement('canvas');
@@ -428,7 +439,6 @@ export function createTokenMaker(container, options) {
     const outCtx = outCanvas.getContext('2d');
     if (!outCtx) return null;
 
-    // Calcul de la région image source sous le guide (guideSize x guideSize)
     const srcSize = guideSize / scale;
     const srcCx = loadedImage.width / 2 - offsetX / scale;
     const srcCy = loadedImage.height / 2 - offsetY / scale;
@@ -437,17 +447,14 @@ export function createTokenMaker(container, options) {
 
     outCtx.save();
 
-    // Masque de découpe selon la forme choisie
     if (shape === 'circle') {
       outCtx.beginPath();
       outCtx.arc(targetSize / 2, targetSize / 2, targetSize / 2, 0, Math.PI * 2);
       outCtx.clip();
     }
 
-    // Dessin du morceau d'image
     outCtx.drawImage(loadedImage, srcX, srcY, srcSize, srcSize, 0, 0, targetSize, targetSize);
 
-    // Dessin de la bordure colorée
     const borderWidth = Math.max(4, Math.round(targetSize * 0.04));
     outCtx.strokeStyle = borderColor;
     outCtx.lineWidth = borderWidth;
@@ -462,16 +469,17 @@ export function createTokenMaker(container, options) {
 
     outCtx.restore();
 
-    // Export en WebP (ou PNG par repli du navigateur), réduit pour tenir sous le plafond
     const { dataUrl, size, reduced } = encodeWithinBudget(outCanvas);
 
-    const tokenId = crypto.randomUUID();
+    const explicitId = idInput?.value.trim();
+    const label = labelInput.value.trim() || 'Pion';
+    const tokenId = explicitId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || crypto.randomUUID();
+    const visionBright = Math.max(0, parseInt(visionBrightInput?.value, 10) || 5);
+    const visionDim = Math.max(0, parseInt(visionDimInput?.value, 10) || 10);
+    const rawMaxHp = maxHpInput?.value.trim();
+    const maxHp = rawMaxHp && rawMaxHp !== '' ? Math.max(1, parseInt(rawMaxHp, 10) || 1) : null;
     const explicitCanonicalUrl = canonicalUrlInput.value.trim();
 
-    // Une URL explicite l'emporte : si le MJ a déjà publié le fichier, le référencer
-    // vaut mieux que dupliquer ses octets dans chaque campagne. Sans URL explicite,
-    // l'image est EMBARQUÉE — c'est ce qui permet au pion d'apparaître immédiatement
-    // sur le Mac et sur la tablette, sans dépôt de fichier ni commit.
     let imageUrl;
     if (explicitCanonicalUrl) {
       if (!isPersistableAssetUrl(explicitCanonicalUrl)) {
@@ -481,7 +489,7 @@ export function createTokenMaker(container, options) {
       }
       imageUrl = explicitCanonicalUrl;
     } else {
-      if (!isBoundedImageDataUrl(dataUrl)) {
+      if (maxBytesBudget === TOKEN_IMAGE_MAX_BYTES && !isBoundedImageDataUrl(dataUrl)) {
         throw new Error(
           `Image du pion non embarquable après réduction (${size} octets pour un plafond ` +
             `de ${TOKEN_IMAGE_MAX_BYTES}). Publiez le fichier et renseignez son URL.`
@@ -490,9 +498,11 @@ export function createTokenMaker(container, options) {
       imageUrl = dataUrl;
     }
 
+    const hp = maxHp ? { current: maxHp, max: maxHp } : null;
+
     const token = createToken({
       id: tokenId,
-      levelId: defaultLevelId,
+      levelId: defaultLevelId || 'rdc',
       cell: { a: 0, b: 0 },
       sizeCells,
       kind,
@@ -500,8 +510,9 @@ export function createTokenMaker(container, options) {
       borderColor,
       label,
       hidden: false,
-      visionBright: 5,
-      visionDim: 10,
+      visionBright,
+      visionDim,
+      hp,
       emitsLight: null,
       speedCells,
       playerMovable: kind === 'pc',
@@ -536,6 +547,67 @@ export function createTokenMaker(container, options) {
     generateToken();
   });
 
+  /** @param {any} t */
+  function populateFromToken(t) {
+    if (!t) return;
+    if (idInput) idInput.value = t.id || '';
+    labelInput.value = t.name || t.label || '';
+    kindSelect.value = t.kind || 'npc';
+    colorInput.value = t.borderColor || '#e74c3c';
+    sizeCellsInput.value = String(t.sizeCells ?? 1);
+    speedCellsInput.value = String(t.speedCells ?? 3);
+    if (visionBrightInput) visionBrightInput.value = String(t.visionBright ?? 5);
+    if (visionDimInput) visionDimInput.value = String(t.visionDim ?? 10);
+    if (maxHpInput) maxHpInput.value = typeof t.maxHp === 'number' && t.maxHp >= 1 ? String(t.maxHp) : '';
+    if (canonicalUrlInput) {
+      canonicalUrlInput.value = isPersistableAssetUrl(t.imageUrl) ? t.imageUrl : '';
+    }
+
+    if (t.imageUrl) {
+      const img = new Image();
+      img.onload = () => {
+        loadedImage = img;
+        scale = getMinScale();
+        offsetX = 0;
+        offsetY = 0;
+        clampState();
+        drawPreview();
+        refreshGenerateAvailability();
+      };
+      const src = t.imageUrl.startsWith('/') || t.imageUrl.startsWith('data:') ? t.imageUrl : `/${t.imageUrl}`;
+      img.src = src;
+    }
+
+    btnGenerate.textContent = 'Mettre à jour le pion';
+    drawPreview();
+    refreshGenerateAvailability();
+  }
+
+  function resetForm() {
+    if (idInput) idInput.value = '';
+    labelInput.value = 'Pion';
+    kindSelect.value = 'npc';
+    shapeSelect.value = 'square';
+    colorInput.value = '#e74c3c';
+    sizeCellsInput.value = '1';
+    speedCellsInput.value = '3';
+    if (visionBrightInput) visionBrightInput.value = '5';
+    if (visionDimInput) visionDimInput.value = '10';
+    if (maxHpInput) maxHpInput.value = '';
+    if (canonicalUrlInput) canonicalUrlInput.value = '';
+    loadedImage = null;
+    currentToken = null;
+    currentDataUrl = null;
+    btnGenerate.textContent = 'Générer & enregistrer pion';
+    btnDownload.disabled = true;
+    drawPreview();
+    refreshGenerateAvailability();
+  }
+
+  if (btnReset) {
+    btnReset.addEventListener('click', resetForm);
+  }
+
   // --- Téléchargement du pion ---
   function downloadToken() {
     if (!currentDataUrl || !currentToken) return;
@@ -556,18 +628,6 @@ export function createTokenMaker(container, options) {
     downloadToken();
   });
 
-  // L'action « Copier l'entrée JSON » a été retirée au chantier M.
-  //
-  // Elle produisait une entrée portant `imageUrl: "maps/tokens/<slug>.webp"`, un fichier
-  // qui n'existait pas : le générateur ne dépose le WebP que dans le dossier de
-  // téléchargement du MJ. Le correctif du 30/07 a embarqué l'image dans le pion pour
-  // régler le cas de la table — mais le catalogue de pions refuse les `data:`, donc
-  // l'entrée copiée restait inutilisable. Les deux mécanismes s'excluaient.
-  //
-  // La bibliothèque se remplit désormais par l'outil local, qui écrit l'image ET
-  // l'entrée : « Télécharger pion » ici, puis choisir le fichier dans `prepare.html`.
-  // Aucun test n'exerçait ce bouton — d'où son passage à l'inopérant en silence.
-
   // Rendu initial (vide)
   drawPreview();
   refreshGenerateAvailability();
@@ -576,6 +636,8 @@ export function createTokenMaker(container, options) {
     loadImageFile,
     generateToken,
     downloadToken,
+    populateFromToken,
+    resetForm,
     getCurrentToken: () => currentToken,
     getCurrentDataUrl: () => currentDataUrl,
     /**

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createLevel } from '../js/core/schema.js';
 import { gridFor } from '../js/grid/index.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
+import { screenToMapPoint } from '../js/render/camera.js';
 
 test('gridFor(level) instaure SquareGrid ou lève sur hex/inconnu', () => {
   const squareLevel = createLevel({ grid: { type: 'square', offsetX: 10, offsetY: 20 } });
@@ -110,4 +111,80 @@ test('cellsOccupied génère les blocs n×n appropriés', () => {
   const occ3 = grid.cellsOccupied({ a: 0, b: 0 }, 3);
   assert.equal(occ3.length, 9);
 });
+
+test('Conversion aux 4 coins et sous différents zooms et offsets via SquareGrid.cellFromPoint', () => {
+  const level = createLevel({
+    pxPerCell: 100,
+    widthCells: 10,
+    heightCells: 8,
+    grid: { type: 'square', offsetX: 50, offsetY: 20 },
+  });
+  const grid = gridFor(level);
+
+  // 1. Coin supérieur gauche de la case (0, 0)
+  assert.deepEqual(grid.cellFromPoint({ x: 50, y: 20 }), { a: 0, b: 0 });
+
+  // 2. Centre de la case (2, 3)
+  assert.deepEqual(grid.cellFromPoint({ x: 280, y: 350 }), { a: 2, b: 3 });
+
+  // 3. Coin inférieur droit de la case (9, 7)
+  assert.deepEqual(grid.cellFromPoint({ x: 1049, y: 819 }), { a: 9, b: 7 });
+
+  // 4. Hors limites (gauche/haut/droite/bas)
+  assert.equal(grid.cellFromPoint({ x: 49, y: 20 }), null);
+  assert.equal(grid.cellFromPoint({ x: 50, y: 19 }), null);
+  assert.equal(grid.cellFromPoint({ x: 1050, y: 500 }), null);
+  assert.equal(grid.cellFromPoint({ x: 500, y: 820 }), null);
+
+  // 5. Test sous une autre densité pxPerCell (e.g. 70 px/case)
+  const levelZoom = createLevel({
+    pxPerCell: 70,
+    widthCells: 10,
+    heightCells: 10,
+    grid: { type: 'square', offsetX: 50, offsetY: 20 },
+  });
+  const gridZoom = gridFor(levelZoom);
+  assert.deepEqual(gridZoom.cellFromPoint({ x: 190, y: 160 }), { a: 2, b: 2 });
+});
+
+test('Composée écran -> pixels carte -> case (via screenToMapPoint + SquareGrid.cellFromPoint)', () => {
+  const level = createLevel({
+    pxPerCell: 140,
+    widthCells: 40,
+    heightCells: 30,
+    grid: { type: 'square', offsetX: 0, offsetY: 0 },
+  });
+  const grid = gridFor(level);
+
+  const rect = { left: 50, top: 100 };
+  const mapPanX = 120;
+  const mapPanY = -40;
+  const mapZoom = 1.5;
+
+  // Case (3, 4) : centre carte x = 3.5 * 140 = 490, y = 4.5 * 140 = 630
+  // clientX = 50 + 120 + 490 * 1.5 = 905
+  // clientY = 100 - 40 + 630 * 1.5 = 1005
+  const pt1 = screenToMapPoint(
+    { clientX: 905, clientY: 1005 },
+    { rectLeft: rect.left, rectTop: rect.top, panX: mapPanX, panY: mapPanY, zoom: mapZoom }
+  );
+  const cellTarget = grid.cellFromPoint(pt1);
+  assert.deepEqual(cellTarget, { a: 3, b: 4 });
+
+  // Test sous zoom arrière (mapZoom = 0.5) et décalage inverse
+  const zoomOut = 0.5;
+  const panOutX = -50;
+  const panOutY = 30;
+
+  // Case (1, 2) : coin sup gauche carte x = 140, y = 280
+  // clientX = 50 - 50 + 140 * 0.5 = 70
+  // clientY = 100 + 30 + 280 * 0.5 = 270
+  const pt2 = screenToMapPoint(
+    { clientX: 70, clientY: 270 },
+    { rectLeft: rect.left, rectTop: rect.top, panX: panOutX, panY: panOutY, zoom: zoomOut }
+  );
+  const cellTargetZoomOut = grid.cellFromPoint(pt2);
+  assert.deepEqual(cellTargetZoomOut, { a: 1, b: 2 });
+});
+
 

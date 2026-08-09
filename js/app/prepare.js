@@ -1,15 +1,7 @@
-// @ts-check
-/**
- * Point d'entrée de `prepare.html` — outil local de préparation des cartes (chantier L).
- *
- * **Ce module ne décode ni ne rééchantillonne aucune image.** Le pipeline n'a qu'une
- * implantation, en Node (`scripts/resample.mjs`), et c'est la règle qui gouverne ce
- * chantier : le plafond de texture, le garde-fou anti-agrandissement et la qualité WebP
- * n'existent qu'à un seul endroit. Une seconde implantation côté navigateur divergerait au
- * premier réglage, sans le moindre signal — motif déjà payé deux fois sur ce projet.
- *
- * Ici : appeler l'API locale, afficher ce qu'elle renvoie.
- */
+import { createLinkEditor } from '../ui/gm/linkEditor.js';
+import { createTokenMaker } from '../ui/gm/tokenMaker.js';
+import { gridFor } from '../grid/index.js';
+import { screenToMapPoint } from '../render/camera.js';
 
 /** @type {HTMLElement} */
 const journal = /** @type {HTMLElement} */ (document.getElementById('journal'));
@@ -232,23 +224,6 @@ selSource.addEventListener('change', afficherDetails);
 // --- Bibliothèque de pions ---------------------------------------------------------
 
 const tokensListe = /** @type {HTMLElement} */ (document.querySelector('#tokens-liste tbody'));
-const champs = {
-  id: /** @type {HTMLInputElement} */ (document.getElementById('tk-id')),
-  name: /** @type {HTMLInputElement} */ (document.getElementById('tk-name')),
-  kind: /** @type {HTMLSelectElement} */ (document.getElementById('tk-kind')),
-  size: /** @type {HTMLInputElement} */ (document.getElementById('tk-size')),
-  speed: /** @type {HTMLInputElement} */ (document.getElementById('tk-speed')),
-  vb: /** @type {HTMLInputElement} */ (document.getElementById('tk-vb')),
-  vd: /** @type {HTMLInputElement} */ (document.getElementById('tk-vd')),
-  maxHp: /** @type {HTMLInputElement} */ (document.getElementById('tk-max-hp')),
-  color: /** @type {HTMLInputElement} */ (document.getElementById('tk-color')),
-  image: /** @type {HTMLInputElement} */ (document.getElementById('tk-image')),
-};
-const btnTokenSave = /** @type {HTMLButtonElement} */ (document.getElementById('btn-token-save'));
-const btnTokenReset = /** @type {HTMLButtonElement} */ (document.getElementById('btn-token-reset'));
-
-/** `imageUrl` de l'entrée en cours d'édition, conservée si aucune image neuve n'est fournie. */
-let imageUrlCourante = '';
 
 /** @param {any[]} tokens */
 function afficherTokens(tokens) {
@@ -257,7 +232,7 @@ function afficherTokens(tokens) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 3;
-    td.textContent = 'Bibliothèque vide. Le formulaire ci-dessous la remplit.';
+    td.textContent = 'Bibliothèque vide. Le formulaire ci-dessus la remplit.';
     td.style.opacity = '.7';
     tr.appendChild(td);
     tokensListe.appendChild(tr);
@@ -269,8 +244,6 @@ function afficherTokens(tokens) {
 
     const tdImg = document.createElement('td');
     const img = document.createElement('img');
-    // Cache court-circuité : après remplacement d'une image, le navigateur resservirait
-    // l'ancienne sous la même URL et l'édition semblerait sans effet.
     img.src = `/${t.imageUrl}?v=${encodeURIComponent(t.imageUrl)}-${tokens.length}`;
     img.alt = t.name;
     tdImg.appendChild(img);
@@ -291,7 +264,11 @@ function afficherTokens(tokens) {
 
     const bEdit = document.createElement('button');
     bEdit.textContent = 'Éditer';
-    bEdit.addEventListener('click', () => remplirFormulaire(t));
+    bEdit.addEventListener('click', () => {
+      prepTokenMaker?.populateFromToken(t);
+      tokenMakerMount?.scrollIntoView({ behavior: 'smooth' });
+      dire(`Édition de « ${t.name} » (${t.id}). Modifiez les champs puis cliquez sur Mettre à jour.`);
+    });
 
     const bDel = document.createElement('button');
     bDel.textContent = 'Supprimer';
@@ -312,90 +289,347 @@ function afficherTokens(tokens) {
   }
 }
 
-/** @param {any} t */
-function remplirFormulaire(t) {
-  champs.id.value = t.id;
-  champs.name.value = t.name;
-  champs.kind.value = t.kind;
-  champs.size.value = String(t.sizeCells);
-  champs.speed.value = String(t.speedCells);
-  champs.vb.value = String(t.visionBright);
-  champs.vd.value = String(t.visionDim);
-  champs.maxHp.value = typeof t.maxHp === 'number' && t.maxHp >= 1 ? String(t.maxHp) : '';
-  champs.color.value = t.borderColor;
-  champs.image.value = '';
-  imageUrlCourante = t.imageUrl;
-  dire(`Édition de « ${t.name} ». Sans nouvelle image, celle en place est conservée.`);
-}
+// --- V-02 Éditeur de liaisons & Vue carte interactif -------------------------------
 
-function viderFormulaire() {
-  champs.id.value = '';
-  champs.name.value = '';
-  champs.kind.value = 'npc';
-  champs.size.value = '1';
-  champs.speed.value = '3';
-  champs.vb.value = '5';
-  champs.vd.value = '10';
-  champs.maxHp.value = '';
-  champs.color.value = '#e74c3c';
-  champs.image.value = '';
-  imageUrlCourante = '';
-}
+const selLinkScene = /** @type {HTMLSelectElement} */ (document.getElementById('link-scene-select'));
+const selLinkLevel = /** @type {HTMLSelectElement} */ (document.getElementById('link-level-select'));
+const prepMapCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById('prep-map-canvas'));
+const prepMapZoom = /** @type {HTMLInputElement} */ (document.getElementById('prep-map-zoom'));
+const btnResetView = /** @type {HTMLButtonElement} */ (document.getElementById('prep-map-reset-view'));
+const cellInfo = /** @type {HTMLElement} */ (document.getElementById('prep-map-cell-info'));
+const linkEditorMount = /** @type {HTMLElement} */ (document.getElementById('prep-link-editor-mount'));
+const tokenMakerMount = /** @type {HTMLElement} */ (document.getElementById('token-maker-mount'));
 
-/** @param {File} file */
-function lireFichier(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error(`Lecture impossible de ${file.name}`));
-    reader.readAsDataURL(file);
+/** @type {any} */
+let currentScene = null;
+/**
+ * Identifiant de la scène **du catalogue**, conservé à part.
+ *
+ * ⛔ Ne pas le relire dans `currentScene` : un document de scène est une **campagne**, dont les
+ * clés racine sont `schemaVersion`, `campaignId`, `name`, `levels`, `links`, `tokens`,
+ * `templates` et `settings`. Il n'y a pas de champ `id`, et `campaignId` vaut
+ * `campaign-<sceneId>` — donc ni l'un ni l'autre n'est la clé attendue par le serveur, qui
+ * écrit `maps/<sceneId>.links.json` et relit `maps/generated/<sceneId>.scene.json`.
+ *
+ * Le défaut a été trouvé au premier vrai clic sur « Créer la liaison » : `sceneId` partait
+ * `undefined`, le serveur répondait 400 « Identifiant de scène manquant », et le message de
+ * succès aurait de toute façon annoncé `maps/undefined.links.json`.
+ * @type {string|null}
+ */
+let currentSceneId = null;
+/** @type {any} */
+let currentLevel = null;
+/** @type {HTMLImageElement|null} */
+let loadedMapImage = null;
+let mapPanX = 0;
+let mapPanY = 0;
+let mapZoom = 1.0;
+let isPanningMap = false;
+let panStartX = 0;
+let panStartY = 0;
+let initialPanX = 0;
+let initialPanY = 0;
+
+/** @type {ReturnType<typeof createLinkEditor>|null} */
+let prepLinkEditor = null;
+
+if (linkEditorMount) {
+  prepLinkEditor = createLinkEditor(linkEditorMount, {
+    getLevels: () => (currentScene?.levels ?? []).map((/** @type {any} */ l) => ({ id: l.id, name: l.name })),
+    getLinks: () => currentScene?.links ?? [],
+    onAdd: async (newLink) => {
+      if (!currentScene || !currentSceneId) return;
+      const links = [...(currentScene.links ?? []), newLink];
+      await api('/api/scene/links', { sceneId: currentSceneId, links });
+      currentScene.links = links;
+      prepLinkEditor?.refresh();
+      drawMapCanvas();
+      dire(`✓ Liaison « ${newLink.label || newLink.kind} » enregistrée dans maps/${currentSceneId}.links.json.`);
+    },
+    onRemove: async (linkId) => {
+      if (!currentScene || !currentSceneId) return;
+      const links = (currentScene.links ?? []).filter((/** @type {any} */ l) => l.id !== linkId);
+      await api('/api/scene/links', { sceneId: currentSceneId, links });
+      currentScene.links = links;
+      prepLinkEditor?.refresh();
+      drawMapCanvas();
+      dire(`✓ Liaison retirée de maps/${currentSceneId}.links.json.`);
+    },
+    onArmChange: () => drawMapCanvas(),
+    requestRender: () => drawMapCanvas(),
   });
 }
 
-btnTokenReset.addEventListener('click', () => {
-  viderFormulaire();
-  dire('Formulaire vidé — la prochaine sauvegarde créera une entrée.');
-});
+function drawMapCanvas() {
+  if (!prepMapCanvas) return;
+  const viewport = prepMapCanvas.parentElement;
+  if (!viewport) return;
 
-btnTokenSave.addEventListener('click', () =>
-  pendant(btnTokenSave, async () => {
-    const fichier = champs.image.files?.[0];
-    const imageDataUrl = fichier ? await lireFichier(fichier) : undefined;
+  const w = viewport.clientWidth || 500;
+  const h = viewport.clientHeight || 420;
+  prepMapCanvas.width = w;
+  prepMapCanvas.height = h;
 
-    // Une création sans image n'a rien à afficher. Le dire ici évite un aller-retour et
-    // un message d'erreur du serveur là où la cause est évidente côté page.
-    if (!imageDataUrl && !imageUrlCourante) {
-      dire('✗ Aucune image : choisir un fichier, ou éditer une entrée qui en a déjà une.');
-      return;
+  const ctx = prepMapCanvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(mapPanX, mapPanY);
+  ctx.scale(mapZoom, mapZoom);
+
+  if (loadedMapImage) {
+    ctx.drawImage(loadedMapImage, 0, 0);
+  }
+
+  if (currentLevel) {
+    const grid = gridFor(currentLevel);
+    grid.renderGrid(ctx);
+
+    // Dessin des liaisons existantes
+    const selectedLinkId = prepLinkEditor?.getSelectedLinkId();
+    const links = currentScene?.links ?? [];
+    for (const link of links) {
+      const isA = link.a?.levelId === currentLevel.id;
+      const isB = link.b?.levelId === currentLevel.id;
+      if (!isA && !isB) continue;
+
+      const isSelected = link.id === selectedLinkId;
+
+      for (const side of [isA ? link.a : null, isB ? link.b : null].filter(Boolean)) {
+        const pt = grid.pointFromCell({ a: side.at.cellX, b: side.at.cellY });
+        const ptNext = grid.pointFromCell({ a: side.at.cellX + 1, b: side.at.cellY });
+        const cellSize = Math.abs(ptNext.x - pt.x);
+        const r = cellSize * 0.35;
+
+        ctx.save();
+        ctx.fillStyle = isSelected ? '#f5a623' : isA ? '#4a90e2' : '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2 / mapZoom;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `${Math.max(10, Math.round(14 / mapZoom))}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const symbol = link.kind === 'stairs' ? '↕' : link.kind === 'elevator' ? '🛗' : '🪜';
+        ctx.fillText(symbol, pt.x, pt.y);
+        ctx.restore();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function resetMapView() {
+  if (!loadedMapImage || !prepMapCanvas) return;
+  const viewport = prepMapCanvas.parentElement;
+  const vw = viewport?.clientWidth || 500;
+  const vh = viewport?.clientHeight || 420;
+
+  const scaleX = vw / (loadedMapImage.width || 1);
+  const scaleY = vh / (loadedMapImage.height || 1);
+  mapZoom = Math.min(scaleX, scaleY, 1.0);
+  if (prepMapZoom) prepMapZoom.value = String(mapZoom);
+
+  mapPanX = (vw - loadedMapImage.width * mapZoom) / 2;
+  mapPanY = (vh - loadedMapImage.height * mapZoom) / 2;
+  drawMapCanvas();
+}
+
+async function chargerScenePourLiaisons(/** @type {string} */ sceneId) {
+  if (!sceneId) return;
+  try {
+    currentScene = await api(`/api/scene?id=${encodeURIComponent(sceneId)}`);
+    currentSceneId = sceneId;
+    const levels = currentScene.levels ?? [];
+
+    selLinkLevel.replaceChildren(
+      ...levels.map((/** @type {any} */ l) => {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = `${l.name} (${l.id})`;
+        return opt;
+      })
+    );
+
+    if (levels.length > 0) {
+      selLinkLevel.value = levels[0].id;
+      chargerLevelMap(levels[0].id);
+    }
+    prepLinkEditor?.refresh();
+  } catch (err) {
+    dire(`✗ Erreur lors du chargement de la scène : ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function chargerLevelMap(/** @type {string} */ levelId) {
+  if (!currentScene) return;
+  currentLevel = (currentScene.levels ?? []).find((/** @type {any} */ l) => l.id === levelId) ?? null;
+  if (!currentLevel) return;
+
+  const img = new Image();
+  img.onload = () => {
+    loadedMapImage = img;
+    resetMapView();
+  };
+  img.src = `/${currentLevel.imageUrl}`;
+}
+
+if (prepMapCanvas) {
+  const viewport = prepMapCanvas.parentElement;
+
+  viewport?.addEventListener('pointerdown', (e) => {
+    isPanningMap = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    initialPanX = mapPanX;
+    initialPanY = mapPanY;
+    viewport.setPointerCapture(e.pointerId);
+  });
+
+  viewport?.addEventListener('pointermove', (e) => {
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const mapPt = screenToMapPoint(
+      { clientX: e.clientX, clientY: e.clientY },
+      { rectLeft: rect.left, rectTop: rect.top, panX: mapPanX, panY: mapPanY, zoom: mapZoom }
+    );
+
+    if (currentLevel) {
+      const grid = gridFor(currentLevel);
+      const cell = grid.cellFromPoint(mapPt);
+      if (cell) {
+        cellInfo.textContent = `Case: ${cell.a}, ${cell.b}`;
+      } else {
+        cellInfo.textContent = 'Case: hors limites';
+      }
     }
 
-    const rawMaxHp = champs.maxHp.value.trim();
-    const maxHp = rawMaxHp !== '' ? Math.max(1, parseInt(rawMaxHp, 10) || 1) : null;
+    if (!isPanningMap) return;
+    mapPanX = initialPanX + (e.clientX - panStartX);
+    mapPanY = initialPanY + (e.clientY - panStartY);
+    drawMapCanvas();
+  });
 
-    const entry = {
-      id: champs.id.value.trim(),
-      name: champs.name.value.trim(),
-      imageUrl: imageUrlCourante,
-      kind: champs.kind.value === 'pc' ? 'pc' : 'npc',
-      sizeCells: Number(champs.size.value) || 1,
-      speedCells: Number(champs.speed.value) || 3,
-      visionBright: Number(champs.vb.value),
-      visionDim: Number(champs.vd.value),
-      emitsLight: null,
-      borderColor: champs.color.value,
-      maxHp,
-    };
+  const stopPan = (/** @type {PointerEvent} */ e) => {
+    if (isPanningMap) {
+      const dist = Math.hypot(e.clientX - panStartX, e.clientY - panStartY);
+      isPanningMap = false;
+      if (viewport) {
+        try {
+          viewport.releasePointerCapture(e.pointerId);
+        } catch (_) {
+          /* ignorer */
+        }
+      }
 
-    const r = await api('/api/tokens/save', { entry, imageDataUrl });
-    afficherTokens(r.tokens);
-    imageUrlCourante = r.imageUrl;
-    champs.image.value = '';
-    dire(
-      `✓ « ${entry.name} » ${r.replaced ? 'mis à jour' : 'ajouté'} dans la bibliothèque ` +
-        `(${r.imageUrl}). Commiter maps/tokens/ pour le retrouver sur une autre machine.`
-    );
-  })
-);
+      // S'il s'agit d'un simple clic (pas de glisser), poser l'extrémité
+      if (dist < 5 && currentLevel && viewport) {
+        const rect = viewport.getBoundingClientRect();
+        const mapPt = screenToMapPoint(
+          { clientX: e.clientX, clientY: e.clientY },
+          { rectLeft: rect.left, rectTop: rect.top, panX: initialPanX, panY: initialPanY, zoom: mapZoom }
+        );
+        const grid = gridFor(currentLevel);
+        const cell = grid.cellFromPoint(mapPt);
+
+        if (cell) {
+          if (prepLinkEditor?.isArmed()) {
+            prepLinkEditor.setEndpointA(currentLevel.id, { a: cell.a, b: cell.b });
+          } else {
+            // Remplir les champs B au clic pour faciliter la saisie
+            const inputX = /** @type {HTMLInputElement} */ (document.getElementById('link-cell-x'));
+            const inputY = /** @type {HTMLInputElement} */ (document.getElementById('link-cell-y'));
+            if (inputX) inputX.value = String(cell.a);
+            if (inputY) inputY.value = String(cell.b);
+          }
+          drawMapCanvas();
+        }
+      }
+    }
+  };
+
+  viewport?.addEventListener('pointerup', stopPan);
+  viewport?.addEventListener('pointercancel', stopPan);
+
+  viewport?.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!viewport) return;
+    const factor = e.deltaY < 0 ? 1.15 : 0.85;
+    const nextZoom = Math.max(0.1, Math.min(5.0, mapZoom * factor));
+
+    const rect = viewport.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    mapPanX = mouseX - (mouseX - mapPanX) * (nextZoom / mapZoom);
+    mapPanY = mouseY - (mouseY - mapPanY) * (nextZoom / mapZoom);
+    mapZoom = nextZoom;
+
+    if (prepMapZoom) prepMapZoom.value = String(mapZoom);
+    drawMapCanvas();
+  }, { passive: false });
+}
+
+prepMapZoom?.addEventListener('input', () => {
+  mapZoom = parseFloat(prepMapZoom.value) || 1.0;
+  drawMapCanvas();
+});
+
+btnResetView?.addEventListener('click', resetMapView);
+
+selLinkScene?.addEventListener('change', () => {
+  chargerScenePourLiaisons(selLinkScene.value);
+});
+
+selLinkLevel?.addEventListener('change', () => {
+  chargerLevelMap(selLinkLevel.value);
+});
+
+// --- V-03 Recadrage des pions dans l'outil avec budget 256 Kio ---------------------
+
+/** @type {ReturnType<typeof createTokenMaker>|null} */
+let prepTokenMaker = null;
+
+if (tokenMakerMount) {
+  prepTokenMaker = createTokenMaker(tokenMakerMount, {
+    maxBytes: 256 * 1024,
+    requireLevelId: false,
+    onGenerate: async (token, dataUrl) => {
+      try {
+        const id = token.id || 'pion-1';
+        const name = token.label || 'Nouveau pion';
+
+        const entry = {
+          id,
+          name,
+          imageUrl: token.imageUrl,
+          kind: token.kind,
+          sizeCells: token.sizeCells,
+          speedCells: token.speedCells,
+          visionBright: token.visionBright,
+          visionDim: token.visionDim,
+          emitsLight: token.emitsLight,
+          borderColor: token.borderColor,
+          maxHp: token.hp ? token.hp.max : null,
+        };
+
+        const r = await api('/api/tokens/save', { entry, imageDataUrl: dataUrl });
+        afficherTokens(r.tokens);
+        dire(`✓ Pion « ${entry.name} » (${id}) sauvegardé dans la bibliothèque (${r.imageUrl}).`);
+      } catch (err) {
+        dire(`✗ Erreur lors de la sauvegarde du pion : ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  });
+}
 
 /** Démarrage : sans API, la page le dit au lieu d'échouer en silence. */
 (async () => {
@@ -422,6 +656,25 @@ btnTokenSave.addEventListener('click', () =>
     afficherTokens(biblio.tokens);
     if (biblio.errors.length > 0) {
       dire(`⚠ Catalogue de pions invalide : ${biblio.errors.join(' ; ')}`);
+    }
+
+    // Charger les scènes publiées pour l'éditeur de liaisons
+    if (selLinkScene) {
+      const catalogData = await fetch('/maps/catalog.json').then((r) => r.json()).catch(() => null);
+      if (catalogData && Array.isArray(catalogData.maps)) {
+        selLinkScene.replaceChildren(
+          ...catalogData.maps.map((/** @type {any} */ m) => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = `${m.name} (${m.id})`;
+            return opt;
+          })
+        );
+        if (catalogData.maps.length > 0) {
+          selLinkScene.value = catalogData.maps[0].id;
+          chargerScenePourLiaisons(catalogData.maps[0].id);
+        }
+      }
     }
 
     const illisibles = data.illisibles.length

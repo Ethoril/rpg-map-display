@@ -28,6 +28,7 @@ import {
 } from './prepare-maps.mjs';
 import { MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
 import { parseUvtt } from '../js/import/uvtt.js';
+import { validateLinks } from '../js/core/schema.js';
 import {
   validateTokenCatalog,
   upsertTokenEntry,
@@ -454,6 +455,62 @@ function apiTokenDelete(body) {
 }
 
 /**
+ * GET /api/scene?id=<sceneId> — renvoie le document de scène généré.
+ * @param {string} sceneId
+ */
+function apiScene(sceneId) {
+  if (!sceneId) throw new Error('Identifiant de scène manquant');
+  const safeId = path.basename(sceneId);
+  const scenePath = path.join(mapsDir, 'generated', `${safeId}.scene.json`);
+  if (!fs.existsSync(scenePath)) {
+    throw new Error(`Scène introuvable : ${safeId}`);
+  }
+  return JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
+}
+
+/**
+ * POST /api/scene/links — valide et sauvegarde les liaisons d'une scène.
+ *
+ * Écrit dans `maps/<sceneId>.links.json` (commité) et met à jour `maps/generated/<sceneId>.scene.json`.
+ * Refuse explicitement tout lien vers un étage manquant ou avec des coordonnées hors limites.
+ *
+ * @param {any} body
+ */
+function apiSceneLinksSave(body) {
+  const sceneId = String(body?.sceneId ?? '');
+  const links = body?.links;
+  if (!sceneId) throw new Error('Identifiant de scène manquant');
+  if (!Array.isArray(links)) throw new Error('Tableau links requis');
+
+  const safeId = path.basename(sceneId);
+  const scenePath = path.join(mapsDir, 'generated', `${safeId}.scene.json`);
+  if (!fs.existsSync(scenePath)) {
+    throw new Error(`Scène introuvable : ${safeId}`);
+  }
+
+  const sceneObj = JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
+  const candidate = { ...sceneObj, links };
+  const errors = validateLinks(candidate);
+  if (errors.length > 0) {
+    throw new Error(`Liaisons refusées : ${errors.join(' ; ')}`);
+  }
+
+  // 1. Écrire le fichier source de liaisons commité maps/<sceneId>.links.json
+  const linksFilePath = path.join(mapsDir, `${safeId}.links.json`);
+  const tempLinksPath = `${linksFilePath}.tmp`;
+  fs.writeFileSync(tempLinksPath, JSON.stringify(links, null, 2), 'utf-8');
+  fs.renameSync(tempLinksPath, linksFilePath);
+
+  // 2. Mettre à jour le fichier dérivé généré
+  sceneObj.links = links;
+  const tempScenePath = `${scenePath}.tmp`;
+  fs.writeFileSync(tempScenePath, JSON.stringify(sceneObj, null, 2), 'utf-8');
+  fs.renameSync(tempScenePath, scenePath);
+
+  return { ok: true, sceneId: safeId, linksCount: links.length };
+}
+
+/**
  * POST /api/publish — passe transactionnelle complète, **avec les constantes du dépôt**.
  *
  * Aucun réglage n'est accepté ici, et c'est délibéré : un réglage publiable au coup par coup
@@ -475,6 +532,12 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && route === '/api/sources') {
       return sendJson(res, 200, apiSources());
+    }
+    if (req.method === 'GET' && route === '/api/scene') {
+      return sendJson(res, 200, apiScene(url.searchParams.get('id') ?? ''));
+    }
+    if (req.method === 'POST' && route === '/api/scene/links') {
+      return sendJson(res, 200, apiSceneLinksSave(await readJsonBody(req)));
     }
     if (req.method === 'POST' && route === '/api/preview') {
       return sendJson(res, 200, await apiPreview(await readJsonBody(req)));

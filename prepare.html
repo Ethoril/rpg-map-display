@@ -109,43 +109,40 @@
     <button id="btn-publish">Publier le catalogue</button>
     <label><input id="force" type="checkbox"> tout refabriquer, sans réutiliser</label>
 
-    <h2>4. Bibliothèque de pions</h2>
+    <h2>4. Éditeur de liaisons inter-étages</h2>
     <p class="aide">
-      Écrit dans <code>maps/tokens/</code> et <code>maps/tokens/catalog.json</code> — donc
-      dans le dépôt, donc <strong>persistant d'une séance à l'autre et d'une machine à
-      l'autre</strong> après commit. C'est ce que le générateur de <code>gm.html</code> ne
-      pouvait pas faire : ses pions n'existent que dans la campagne en cours.
+      Sélectionnez une scène publiée, affichez un étage, armez le bouton et tapez une case sur la carte pour définir l'extrémité A ou B.
+      Les liaisons sont sauvegardées dans <code>maps/&lt;sceneId&gt;.links.json</code> (commité dans git).
     </p>
-    <p class="aide">
-      Pour ajouter une création : la générer dans la vue MJ, cliquer
-      <em>Télécharger pion</em>, puis choisir le fichier obtenu ci-dessous. Le recadrage
-      reste au générateur — il n'est pas refait ici.
-    </p>
-
-    <table id="tokens-liste"><tbody></tbody></table>
-
-    <h3 style="font-size:.9rem; margin:1.25rem 0 .5rem">Ajouter ou modifier</h3>
-    <div id="token-form">
-      <label>Identifiant <input id="tk-id" type="text" size="16" placeholder="gobelin-archer"></label>
-      <label>Nom <input id="tk-name" type="text" size="20" placeholder="Gobelin archer"></label>
-      <label>Type
-        <select id="tk-kind">
-          <option value="npc">PNJ</option>
-          <option value="pc">PJ</option>
-        </select>
-      </label>
-      <label>Taille <input id="tk-size" type="number" min="1" max="8" step="1" value="1" style="width:4rem"></label>
-      <label>Vitesse <input id="tk-speed" type="number" min="1" max="30" step="1" value="3" style="width:4rem"></label>
-      <label>Vision claire <input id="tk-vb" type="number" min="0" max="60" step="1" value="5" style="width:4rem"></label>
-      <label>Vision faible <input id="tk-vd" type="number" min="0" max="60" step="1" value="10" style="width:4rem"></label>
-      <label>PV max <input id="tk-max-hp" type="number" min="1" max="999" step="1" placeholder="—" style="width:4rem"></label>
-      <label>Bordure <input id="tk-color" type="color" value="#e74c3c"></label>
-      <label>Image <input id="tk-image" type="file" accept="image/webp,image/png,image/jpeg"></label>
-      <div>
-        <button id="btn-token-save">Enregistrer dans la bibliothèque</button>
-        <button id="btn-token-reset">Vider le formulaire</button>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+      <label>Scène à éditer <select id="link-scene-select"><option value="">Chargement...</option></select></label>
+      <label>Étage affiché <select id="link-level-select"><option value="">—</option></select></label>
+    </div>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start;">
+      <div id="prep-map-container" style="flex: 1 1 500px; min-width: 320px; border: 1px solid currentColor; border-radius: 4px; padding: 0.5rem; background: #1a1a1a; position: relative;">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.85rem; align-items: center;">
+          <span>Zoom: <input id="prep-map-zoom" type="range" min="0.2" max="3" step="0.1" value="1" style="width: 100px;"></span>
+          <button id="prep-map-reset-view" style="min-height: 28px; padding: 0.2rem 0.5rem; font-size: 0.8rem;">Réinitialiser la vue</button>
+          <span id="prep-map-cell-info" style="margin-left: auto; font-family: monospace; color: #8bbdf0;">Case: —</span>
+        </div>
+        <div id="prep-map-viewport" style="width: 100%; height: 420px; overflow: hidden; position: relative; cursor: crosshair; background: #111; border-radius: 4px; touch-action: none;">
+          <canvas id="prep-map-canvas" style="display: block; position: absolute; left: 0; top: 0;"></canvas>
+        </div>
+      </div>
+      <div style="flex: 0 0 340px; min-width: 300px;">
+        <div id="prep-link-editor-mount"></div>
       </div>
     </div>
+
+    <h2>5. Bibliothèque de pions</h2>
+    <p class="aide">
+      Écrit dans <code>maps/tokens/</code> et <code>maps/tokens/catalog.json</code> — donc
+      dans le dépôt, <strong>persistant d'une séance à l'autre et d'une machine à l'autre</strong> après commit.
+    </p>
+
+    <div id="token-maker-mount" style="background: #181818; padding: 1.25rem; border-radius: 8px; border: 1px solid #333; margin-bottom: 1.5rem;"></div>
+
+    <table id="tokens-liste"><tbody></tbody></table>
   </div>
 
   <pre id="journal">Chargement…</pre>

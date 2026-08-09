@@ -1,0 +1,44 @@
+[
+  {
+    "id": "link-toe9pq1d",
+    "kind": "stairs",
+    "label": "Escalier Chambres",
+    "a": {
+      "levelId": "test_village_complet_00",
+      "at": {
+        "cellX": 6,
+        "cellY": 37
+      }
+    },
+    "b": {
+      "levelId": "test_village_complet_01",
+      "at": {
+        "cellX": 6,
+        "cellY": 37
+      }
+    },
+    "bidirectional": true,
+    "gmOnly": false
+  },
+  {
+    "id": "link-yctoe457",
+    "kind": "stairs",
+    "label": "Escalier Grenier",
+    "a": {
+      "levelId": "test_village_complet_01",
+      "at": {
+        "cellX": 7,
+        "cellY": 36
+      }
+    },
+    "b": {
+      "levelId": "test_village_complet_02",
+      "at": {
+        "cellX": 6,
+        "cellY": 36
+      }
+    },
+    "bidirectional": true,
+    "gmOnly": false
+  }
+]

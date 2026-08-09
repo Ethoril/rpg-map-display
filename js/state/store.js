@@ -564,7 +564,10 @@ export function addToken(tokenData) {
  * @returns {{ id: string, name: string }[]}
  */
 export function getLevelSummaries() {
-  return (campaign?.levels ?? []).map((l) => ({ id: l.id, name: l.name }));
+  return (campaign?.levels ?? [])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((l) => ({ id: l.id, name: l.name }));
 }
 
 /**

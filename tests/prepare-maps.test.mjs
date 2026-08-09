@@ -400,3 +400,113 @@ test('L : modifier le code du pipeline invalide le cache, à constantes identiqu
   assert.equal(apres.preparedCount, 1, 'un pipeline différent doit refabriquer');
   assert.equal(apres.skippedCount, 0);
 });
+
+// --- Chantier V : multi-étages et liaisons -----------------------------------------
+
+test('Chantier V : assemblage multi-étages via scenes.json et fusion de maps/<sceneId>.links.json', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'test_village_complet_00');
+  addMap(mapsDir, 'test_village_complet_01');
+
+  // Manifeste multi-étages
+  fs.writeFileSync(
+    path.join(mapsDir, 'scenes.json'),
+    JSON.stringify({
+      version: 1,
+      scenes: [
+        {
+          id: 'test_village_complet',
+          name: 'Test Village',
+          levels: [
+            { source: 'test_village_complet_00.uvtt', id: 'ground', name: 'RDC', order: 0 },
+            { source: 'test_village_complet_01.uvtt', id: 'floor1', name: 'Étage 1', order: 1 },
+          ],
+        },
+      ],
+    }),
+    'utf-8'
+  );
+
+  // Fichier de liaisons commité
+  fs.writeFileSync(
+    path.join(mapsDir, 'test_village_complet.links.json'),
+    JSON.stringify([
+      {
+        id: 'stairs-1',
+        kind: 'stairs',
+        label: 'Escalier',
+        a: { levelId: 'ground', at: { cellX: 5, cellY: 5 } },
+        b: { levelId: 'floor1', at: { cellX: 5, cellY: 5 } },
+        bidirectional: true,
+        gmOnly: false,
+      },
+    ]),
+    'utf-8'
+  );
+
+  const res = await prepareMaps({ mapsDir });
+  assert.equal(res.mapsCount, 1);
+
+  const sceneFile = path.join(mapsDir, 'generated', 'test_village_complet.scene.json');
+  assert.ok(fs.existsSync(sceneFile));
+
+  const scene = JSON.parse(fs.readFileSync(sceneFile, 'utf-8'));
+  assert.equal(scene.levels.length, 2);
+  assert.equal(scene.levels[0].id, 'ground');
+  assert.equal(scene.levels[1].id, 'floor1');
+  assert.equal(scene.links.length, 1);
+  assert.equal(scene.links[0].id, 'stairs-1');
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  assert.equal(catalog.maps.length, 1);
+  assert.equal(catalog.maps[0].id, 'test_village_complet');
+  assert.equal(catalog.maps[0].levelCount, 2);
+});
+
+test('Chantier V : validation stricte des liaisons — refus des liaisons vers un étage inconnu ou hors limites', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'test_village_complet_00');
+  addMap(mapsDir, 'test_village_complet_01');
+
+  fs.writeFileSync(
+    path.join(mapsDir, 'scenes.json'),
+    JSON.stringify({
+      version: 1,
+      scenes: [
+        {
+          id: 'test_village_complet',
+          name: 'Test Village',
+          levels: [
+            { source: 'test_village_complet_00.uvtt', id: 'ground', name: 'RDC', order: 0 },
+            { source: 'test_village_complet_01.uvtt', id: 'floor1', name: 'Étage 1', order: 1 },
+          ],
+        },
+      ],
+    }),
+    'utf-8'
+  );
+
+  // Fichier de liaisons invalide (étage 'attic' inconnu)
+  fs.writeFileSync(
+    path.join(mapsDir, 'test_village_complet.links.json'),
+    JSON.stringify([
+      {
+        id: 'stairs-invalid',
+        kind: 'stairs',
+        label: 'Escalier cassé',
+        a: { levelId: 'ground', at: { cellX: 5, cellY: 5 } },
+        b: { levelId: 'attic', at: { cellX: 5, cellY: 5 } },
+        bidirectional: true,
+        gmOnly: false,
+      },
+    ]),
+    'utf-8'
+  );
+
+  await assert.rejects(
+    () => prepareMaps({ mapsDir }),
+    /Liaison "stairs-invalid" : étage inconnu "attic"/,
+    'La préparation doit échouer si une liaison contient un étage inconnu'
+  );
+});
+

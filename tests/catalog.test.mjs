@@ -110,3 +110,38 @@ test('U-03 validateCatalog : maps invalide retourne une erreur claire', () => {
     'Doit refuser maps non-array'
   );
 });
+
+test('V-01 validateCatalog : accepte sourceUrl et sourceHash sous forme de tableaux pour multi-étages', () => {
+  const multiCatalog = {
+    version: 1,
+    maps: [
+      {
+        id: 'test_village_complet',
+        name: 'Village',
+        sourceUrl: [
+          'maps/test_village_complet_00.dd2vtt',
+          'maps/test_village_complet_01.dd2vtt',
+          'maps/test_village_complet_02.dd2vtt',
+        ],
+        sceneUrl: 'maps/generated/test_village_complet.scene.json',
+        imageUrl: 'maps/generated/test_village_complet_00.webp',
+        sourceHash: [
+          'sha256-490ae7239ad9fa0f7f6248d015161927500c0b4294f00083acf415e08f999c55',
+          'sha256-f31db0f11d85057cca4c46629ec18a39ee523a6d519970be9586fda956a7f29b',
+          'sha256-61eb212d516d97f05926c24802ef4749a6eb758f80773885ed34c2d163a506c8',
+        ],
+        levelCount: 3,
+        features: {
+          walls: 253,
+          portals: 147,
+          lights: 114,
+          bakedLighting: true,
+        },
+      },
+    ],
+  };
+
+  const errors = validateCatalog(multiCatalog);
+  assert.deepEqual(errors, [], 'Catalogue multi-étages valide ne doit pas produire d\'erreurs');
+});
+

@@ -1,0 +1,28 @@
+{
+  "scenes": [
+    {
+      "id": "test_village_complet",
+      "name": "Village",
+      "levels": [
+        {
+          "id": "test_village_complet_00",
+          "name": "Rez-de-chaussée",
+          "source": "test_village_complet_00.dd2vtt",
+          "order": 0
+        },
+        {
+          "id": "test_village_complet_01",
+          "name": "1er étage",
+          "source": "test_village_complet_01.dd2vtt",
+          "order": 1
+        },
+        {
+          "id": "test_village_complet_02",
+          "name": "2e étage",
+          "source": "test_village_complet_02.dd2vtt",
+          "order": 2
+        }
+      ]
+    }
+  ]
+}

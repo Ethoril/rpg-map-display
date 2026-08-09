@@ -380,3 +380,71 @@ l'édition depuis la bibliothèque.
 ⚠ La leçon est déjà écrite dans `ETAT.md` : le bouton « Copier l'entrée JSON » est devenu inopérant
 en silence parce qu'aucun test ne l'exerçait. Un formulaire sans test est un formulaire dont
 personne ne saura qu'il a cessé de remplir un champ.
+
+---
+
+## 12. Ce que le premier usage réel a trouvé — 9 août 2026
+
+Les deux constats que le §10 laissait ouverts ont été faits : un pion créé puis édité, deux liaisons
+posées sur les trois étages du village. **Ils ont trouvé deux défauts qu'aucun test n'avait vus, et
+c'est exactement pour cela qu'ils étaient exigés.**
+
+### 12.1 ⛔ L'identifiant de scène n'était pas dans le document de scène
+
+Au premier clic sur « Créer la liaison », le bouton se grisait et rien ne se passait :
+`POST /api/scene/links` répondait **400 — Identifiant de scène manquant**.
+
+`GET /api/scene` renvoie le document tel quel, c'est-à-dire une **campagne** : `schemaVersion`,
+`campaignId`, `name`, `levels`, `links`, `tokens`, `templates`, `settings`. **Il n'y a pas de champ
+`id`**, et `campaignId` vaut `campaign-<sceneId>`, ce qui n'est pas davantage la clé attendue — le
+serveur écrit `maps/<sceneId>.links.json`. La bonne valeur est l'identifiant du **catalogue**, celui
+que le sélecteur porte déjà ; il est désormais conservé à part.
+
+⭐ **Le mécanisme était pourtant couvert des deux côtés** : un test unitaire prouvait la fusion des
+liaisons par `prepareMaps`, le serveur validait. Rien ne couvrait **la soudure** — l'aller-retour
+navigateur → serveur. Chaque maillon prouvé, la jointure jamais.
+
+### 12.2 ⛔ La destination d'une liaison se choisissait sans être affichée
+
+La deuxième liaison a relié le mauvais étage. La cause n'est pas une maladresse : poser l'extrémité A
+retire l'étage d'origine de la liste des destinations et **reconstruit le menu**, et si la
+destination précédente n'y figure plus, le navigateur retombe silencieusement sur la première
+option. La ligne d'état, elle, n'affichait que l'extrémité A. Le choix existait, sa visibilité non —
+et sur un bâtiment à trois niveaux, c'est une chance sur deux.
+
+La ligne annonce désormais la liaison entière, avec les **noms** d'étages et la case B, et se
+rafraîchit à chaque changement de destination ou de coordonnée. ⛔ Le défaut du menu est conservé —
+il épargne un clic par liaison, et ce n'est pas lui qui trompait.
+
+Le correctif profite à la **vue MJ** par la même occasion : `linkEditor.js` est partagé, et le piège
+y était identique.
+
+### 12.3 Un nom d'étage inventé, qui contredisait sa propre séquence
+
+`maps/scenes.json` déclarait « Rez-de-chaussée », « 1er Étage » puis **« Sous-sol »** en `order: 2`.
+Les sources ne portent aucun nom : ces trois-là ont été devinés. Le troisième était non seulement
+faux — c'est un 2ᵉ étage — mais **incohérent avec lui-même**, un sous-sol ne se plaçant pas
+au-dessus d'un premier étage. L'erreur était lisible dans le fichier sans ouvrir une carte.
+
+⚠ Même classe que le « 10 critères sur 11 » du 8 août, qui nommait deux points ouverts : une valeur
+qui se contredit dans son propre document. **Ce sont les moins chères à trouver et les plus faciles
+à recopier.**
+
+### 12.4 Ce que la passe de préparation a prouvé
+
+`pnpm maps:prepare` a régénéré la scène du village, et **les deux liaisons ont survécu** : relues
+depuis `maps/test_village_complet.links.json`, refusionnées, `linksHash` inscrit dans la recette.
+C'est la validation de bout en bout de la décision d'architecture du §2 — les liaisons vivent côté
+source, jamais dans `generated/`.
+
+Les trois WebP réencodés ressortent **identiques à l'octet** : la chaîne est déterministe.
+
+⚠ Et une prévision que j'avais faite était fausse : j'annonçais que le changement de `pipelineHash`
+forcerait la régénération de tout le catalogue. `manoir-rdc` et `testbig150` ont été réutilisées —
+leurs recettes portaient déjà l'empreinte du pipeline modifié. **Un cache se lit, il ne se déduit
+pas.**
+
+### État
+
+Trois tests ajoutés au passage — champs du pion, identifiant de scène de la liaison, ligne d'état
+complète — chacun vérifié par mutation. Le chantier V est clos.

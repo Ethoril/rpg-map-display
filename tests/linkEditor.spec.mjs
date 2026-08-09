@@ -11,9 +11,21 @@ test('MJ crée, oriente puis supprime une liaison sans éditer le JSON', async (
   await page.click('#gm-tab-link-editor');
   await page.click('#link-arm');
   await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.gmPanel.linkEditor.setEndpointA('rdc', { a: 2, b: 3 }));
+
+  // ⭐ La ligne d'état doit annoncer la liaison **entière**, destination comprise.
+  //
+  // Elle n'affichait que l'extrémité A. Poser A reconstruit la liste des destinations, et le
+  // navigateur retombe alors sur la première option sans rien dire : le 9 août 2026, un escalier
+  // a ainsi relié le mauvais étage. Le choix existait, sa visibilité non.
+  await expect(page.locator('#link-a-status')).toContainText('A : RDC — case 2, 3');
+  await expect(page.locator('#link-a-status')).toContainText('B : Étage 1');
+
   await page.selectOption('#link-level-b', 'et1');
   await page.locator('#link-cell-x').fill('4');
   await page.locator('#link-cell-y').fill('5');
+
+  // Et elle suit la saisie : la case B se relit avant de créer, pas après.
+  await expect(page.locator('#link-a-status')).toContainText('B : Étage 1 — case 4, 5');
   await page.check('#link-one-way');
   await page.check('#link-gm-only');
   await page.click('#link-create');
