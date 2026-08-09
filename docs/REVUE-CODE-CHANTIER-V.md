@@ -306,3 +306,77 @@ Le chantier V est livré côté machine. Deux constats lui manquent, et aucun ne
 ⚠ Et un piège consigné au §7 reste vrai : renommer un identifiant d'étage dans `maps/scenes.json`
 change le nom du WebP produit, orpheline l'ancien et fait entrer 7 Mio de plus dans git. À savoir
 avant de rebaptiser « Sous-sol » ou « Rez-de-chaussée » — dont l'ordre, lui, est à arbitrer.
+
+---
+
+## 11. Amélioration de l'éditeur de pions — 9 août 2026
+
+Contraste des libellés, suppression du cadre « Édition manuelle » redondant, champs `id`,
+`visionBright`, `visionDim` et `maxHp` intégrés au formulaire, et édition directe depuis la
+bibliothèque.
+
+### ✅ Le risque principal est écarté, et c'était le bon à surveiller
+
+`tokenMaker.js` est **partagé avec la vue MJ** : le modifier pouvait casser le générateur de pions
+de séance, c'est-à-dire un critère du lot 1b. Ses deux scénarios navigateur — `tokenMaker.spec.mjs`
+et `tokenLibrary.spec.mjs`, **non modifiés** — passent 8 sur 8. Le contrat tient.
+
+### ✅ Et l'outil a servi pour de vrai
+
+`maps/tokens/elysia.webp` et son entrée de catalogue existent : recadrage, écriture du fichier et
+inscription au catalogue ont été exercés par un geste réel, pas seulement par un test. C'est le
+premier des deux constats que le §10 laissait ouverts.
+
+### ⛔ Mais l'amélioration n'apporte aucun test
+
+660 lignes changées — `tokenMaker.js` +214, `prepare.js` +449 — et les décomptes sont **identiques
+à ceux d'avant** : 330 unitaires, 148 navigateur. Le compte rendu présente « 330/330 réussis »
+comme une validation ; ce sont les mêmes 330.
+
+**Preuve par mutation.** J'ai forcé les champs du pion généré :
+
+```js
+visionBright: 0,
+visionDim: 0,
+hp: null,
+```
+
+Un PJ créé par l'outil devient **aveugle dans le noir et sans points de vie**. Résultat : 330 tests
+unitaires et 8 scénarios navigateur, **zéro échec**.
+
+⚠ Ce n'est pas un défaut théorique. Sur un étage sombre, un pion à `visionDim: 0` ne contribue
+**rien** à l'union de vision — c'est un piège déjà consigné, et il se verrait à table par un PJ qui
+n'éclaire plus rien.
+
+Aucun test ne mentionne non plus `/api/tokens/save` : le chemin d'écriture de la bibliothèque n'est
+gardé par rien.
+
+### ℹ Le plafond de 256 Kio ne sert à rien en pratique, et ce n'est pas grave
+
+`targetSize = Math.max(200, sizeCells * 140)` : un pion d'une case sort en **200 × 200**, et
+l'échelle de qualité commence à **0,8** et rend la main dès que ça tient. `elysia.webp` pèse
+**8,9 Kio** — le plafond n'a jamais été approché, et ne le sera pas pour un pion normal.
+
+Relever le plafond restait juste : il retirait une contrainte qui ne s'applique pas à un fichier sur
+disque. Mais il n'améliore rien. ⭐ **Le levier de netteté est `targetSize`, pas le plafond** — à
+savoir si un pion paraît flou sous cast.
+
+### ℹ Deux effets de bord assumés ou à assumer
+
+- Les nouveaux champs sont **inconditionnels** : ils apparaissent donc aussi dans la vue MJ, qui
+  possède déjà son propre panneau d'édition de pion. C'est plutôt un gain — la vision se règle à la
+  création — mais c'est un changement produit non demandé, à valider plutôt qu'à subir.
+- Le composant peint désormais **son propre fond** (`#1a1a1a`) et ses libellés (`#e0e0e0`) en style
+  en ligne. Les deux pages hôtes sont sombres, donc rien ne casse aujourd'hui ; une page claire le
+  ferait.
+
+### Ce qui fermerait le trou
+
+Un seul scénario navigateur sur `prepare.html` suffirait : remplir les champs, recadrer, enregistrer,
+puis vérifier que l'entrée écrite dans `maps/tokens/catalog.json` porte bien `visionBright`,
+`visionDim` et `maxHp`. Il couvrirait d'un coup les champs, le chemin `/api/tokens/save` et
+l'édition depuis la bibliothèque.
+
+⚠ La leçon est déjà écrite dans `ETAT.md` : le bouton « Copier l'entrée JSON » est devenu inopérant
+en silence parce qu'aucun test ne l'exerçait. Un formulaire sans test est un formulaire dont
+personne ne saura qu'il a cessé de remplir un champ.
