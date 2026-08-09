@@ -251,3 +251,58 @@ toujours la même chose, c'est-à-dire rien sur le code livré.
 
 Un point ouvert sur quatre. Le reste tient, et la partie la plus délicate — persistance des
 liaisons, cache multi-sources, retour à `GridAdapter` — est correcte et prouvée.
+
+---
+
+## 10. Troisième passe — 9 août 2026. Livraison acceptée
+
+**Le dernier point est corrigé, et la correction est la bonne.**
+
+`screenToMapPoint` est extraite dans `js/render/camera.js` — **un fichier existant**, désigné par
+`ARCHITECTURE.md` pour les conversions carte ⇄ écran, donc aucun ajout au manifeste. Les deux
+écouteurs de `js/app/prepare.js` l'appellent (`:584` au survol, `:620` au clic), et le test de
+`tests/squareGrid.test.mjs` l'importe. **Une seule implantation, deux appelants.**
+
+**Épreuve par mutation, la même qu'à la seconde passe :** signe inversé et division remplacée par
+une multiplication dans `screenToMapPoint`.
+
+| Passe | Résultat de la mutation |
+|---|---|
+| Seconde | 330 tests, **0 échec** — le test ne gardait rien |
+| Troisième | 330 tests, **1 échec** — la garde existe |
+
+### Récapitulatif des six mutations de cette revue
+
+| Mécanisme cassé | Verdict |
+|---|---|
+| Exception de `architecture.test.mjs` retirée | 🔴 rouge — l'exception était porteuse, d'où le §3 |
+| Fusion des liaisons désactivée | 🔴 rouge |
+| `pixelToCell` décalé d'une demi-case | 🔴 rouge |
+| `validateCampaign` neutralisée | 🔴 rouge |
+| Conversion écran → carte inversée (2ᵉ passe) | ⚪ **verte — défaut trouvé** |
+| `screenToMapPoint` cassée (3ᵉ passe) | 🔴 rouge |
+
+Une seule mutation sur six est restée verte, et elle a désigné le seul défaut que la lecture du
+compte rendu n'aurait pas trouvé.
+
+### Vérification finale sur le poste
+
+- typecheck : vert ;
+- 330 tests unitaires, **329 réussis, 1 ignoré**, 0 échec ;
+- `architecture.test.mjs` : **8 sur 8, sans exception** — la garde du critère 11 du lot 1a est
+  intacte ;
+- arbre de travail restauré à l'octet après chaque mutation, empreintes vérifiées.
+
+### Ce qui reste à faire, et qui n'est pas du code
+
+Le chantier V est livré côté machine. Deux constats lui manquent, et aucun ne se prend ici :
+
+1. **Poser une vraie liaison dans l'outil**, sur les trois étages du village, et vérifier que le
+   franchissement fonctionne en séance. Aucun `maps/*.links.json` n'existe encore : le mécanisme est
+   prouvé par les tests, jamais exercé par un geste.
+2. **Recadrer un pion dans l'outil** et constater que l'image écrite est nette — c'est le motif même
+   de V-03, et le plafond de 256 Kio ne se juge qu'à l'œil.
+
+⚠ Et un piège consigné au §7 reste vrai : renommer un identifiant d'étage dans `maps/scenes.json`
+change le nom du WebP produit, orpheline l'ancien et fait entrer 7 Mio de plus dans git. À savoir
+avant de rebaptiser « Sous-sol » ou « Rez-de-chaussée » — dont l'ordre, lui, est à arbitrer.
