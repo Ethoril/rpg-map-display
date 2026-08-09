@@ -180,3 +180,74 @@ technique.
 
 Le reste de la livraison tient, et la partie la plus délicate — la persistance des liaisons et le
 cache de recettes multi-sources — est correcte.
+
+---
+
+## 9. Seconde passe — 9 août 2026, après corrections
+
+**Trois des quatre points sont corrigés, et je l'ai vérifié par mutation. Le quatrième ne l'est
+pas** : il a reçu un test qui ne teste pas le code livré.
+
+### Ce qui est réellement corrigé
+
+| Point | Preuve |
+|---|---|
+| §3 et §4 — doublon et garde désarmée | `js/grid/pixelToCell.js` supprimé ; `prepare.js:587` appelle `gridFor(currentLevel).cellFromPoint(...)` ; `architecture.test.mjs` et `ARCHITECTURE.md` sont **revenus à leur état d'origine** — plus aucune exception. Le test passe donc authentiquement : 8 sur 8. |
+| §6.1 — refus serveur | Neutraliser `validateCampaign` dans `prepare-maps.mjs` fait **rougir** le test négatif. |
+| §6.2 — scènes orphelines | Les trois `test_village_complet_0X.scene.json` sont supprimés ; la scène assemblée et les trois `.webp` restent. |
+
+⭐ Le §4 était la vraie correction : en passant par `GridAdapter`, la vue de l'outil fonctionnera
+aussi sur un étage hexagonal, et la garde du critère 11 du lot 1a n'a plus besoin d'être écartée.
+
+### ⛔ §5 n'est pas corrigé — le test réimplémente ce qu'il prétend vérifier
+
+Le test ajouté dans `tests/squareGrid.test.mjs` construit sa propre conversion **à l'intérieur du
+fichier de test** :
+
+```js
+const screenToCell = (clientX, clientY) => {
+  const mapX = (clientX - rect.left - mapPanX) / mapZoom;
+  const mapY = (clientY - rect.top - mapPanY) / mapZoom;
+  return grid.cellFromPoint({ x: mapX, y: mapY });
+};
+```
+
+Le code livré, lui, écrit la même expression à la main dans un écouteur (`js/app/prepare.js:583`).
+**Ce sont deux copies indépendantes.** Le test prouve que l'arithmétique écrite dans le test est
+cohérente avec elle-même, et rien du chemin réel.
+
+**Preuve par mutation.** J'ai inversé le signe **et** remplacé la division par une multiplication
+dans le code livré :
+
+```js
+const clickX = (e.clientX - rect.left + mapPanX) * mapZoom;   // faux de deux façons
+```
+
+Résultat : **330 tests, 0 échec.** Une vue de carte qui désignerait n'importe quelle case passerait
+la porte de vérification sans un mot.
+
+⚠ C'est exactement le défaut que la revue du lot 2 a documenté — « un mock qui implémentait
+l'inverse du mécanisme testé » — et c'est la raison pour laquelle ce dépôt mute au lieu de croire.
+Un test qui contient sa propre implantation ne garde rien.
+
+### Le correctif
+
+**Une seule fonction, appelée par les deux.** La composition ne peut pas vivre dans `js/grid/` —
+elle mêle de l'état de vue, `rect`, déplacement et échelle d'affichage, à la géométrie de grille.
+Mais elle peut être une fonction pure prenant des nombres :
+
+```js
+// signature indicative
+screenToMapPoint({ clientX, clientY }, { rectLeft, rectTop, panX, panY, zoom }) -> { x, y }
+```
+
+L'écouteur l'appelle, le test l'appelle. La mutation ci-dessus devient alors rouge — c'est le seul
+critère qui vaut.
+
+⛔ **Ne pas répondre en ajoutant des cas au test existant** : dix cas de plus sur une copie prouvent
+toujours la même chose, c'est-à-dire rien sur le code livré.
+
+### État de la livraison
+
+Un point ouvert sur quatre. Le reste tient, et la partie la plus délicate — persistance des
+liaisons, cache multi-sources, retour à `GridAdapter` — est correcte et prouvée.
