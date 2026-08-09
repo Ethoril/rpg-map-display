@@ -74,7 +74,7 @@ doit être terminée avant d'étiqueter une 1.0.
 | R1-04 | Mesurer la taille persistée d'une campagne | L'interface ou le store avertit avant la limite Firestore ; la taille encodée réelle est testée, pas seulement estimée | **Fait** — JSON UTF-8 mesuré, taille logique Firestore calculée, avertissement 750 Kio et refus 900 Kio |
 | R1-05 | Décider le schéma de persistance multi-étages | Si trois scènes denses approchent 1 Mio, un schéma v3 sépare les métadonnées et les étages avant la fin du lot 3 | **Décision faite** — ADR-012 impose v3 avant R3-02 ; implémentation rattachée au lot 3 |
 | R1-06 | Publier une arborescence contrôlée | GitHub Pages reçoit un dossier `_site` construit par liste blanche, sans tests, briefs, scripts ni sources UVTT | **Fait** — paquet déterministe de 82 fichiers et smoke test navigateur depuis `_site` |
-| R1-07 | Fermer le sujet des licences | Les cartes publiées sont autorisées et les attributions requises sont accessibles depuis l'application | **Fait pour le paquet actuel** — icônes, sources, auteurs, licence et modifications publiés ; cartes/portraits exclus faute de droits documentés |
+| R1-07 | Fermer le sujet des licences | Les cartes publiées sont autorisées et les attributions requises sont accessibles depuis l'application | **Fait** — icônes, sources, auteurs, licence et modifications publiés. ⭐ **Décision du mainteneur le 09/08/2026 : les licences d'usage sont vérifiées en amont de chaque préparation**, toute carte qu'il prépare est donc diffusable ; l'exclusion des cartes du paquet public n'est plus un blocage de droits mais un choix de contenu |
 | R1-08 | Renforcer la CI | Les gestes manuels deviennent bloquants après stabilisation ; la cohérence des modules CDN est vérifiée régulièrement | **Fait, constaté le 08/08/2026** — premier run GitHub complet vert : `verify` en 2 min 28 s puis `build` et `deploy` |
 | R1-09 | Protéger les quotas Firebase | Les restrictions d'origine et d'API sont vérifiées dans la console du projet | **Tranché le 08/08/2026** — domaines d'authentification nettoyés, clé restreinte de 25 à 6 APIs ; origine et plafonds de quota **écartés sciemment**, raison et conditions de réouverture ci-dessous |
 
@@ -264,8 +264,8 @@ ni campagne jouée, ni verdict matériel.
 
 | ID | Travail | Critère de sortie |
 |---|---|---|
-| R4-01 | Peupler la bibliothèque de pions | Un ensemble minimal de PJ et PNJ récurrents est disponible sans recréation manuelle |
-| R4-02 | Livrer une campagne de référence | Une campagne multi-étages documentée sert à la fois de démonstration, de test et de partie réelle |
+| R4-01 | Peupler la bibliothèque de pions | Un ensemble minimal de PJ et PNJ récurrents est disponible sans recréation manuelle — ⭐ conditionné par V-03, le recadrage dans l'outil |
+| R4-02 | Livrer une campagne de référence | Une campagne multi-étages documentée sert à la fois de démonstration, de test et de partie réelle — ⭐ les trois niveaux du village existent depuis le 09/08 ; V-01 et V-02 les rendent jouables |
 | R4-03 | Clarifier les cases occupées | Une destination occupée n'est plus présentée comme atteignable sans expliquer la règle appliquée |
 | R4-04 | Regrouper les outils MJ par tâche | Contenu, terrain, visibilité, effets et réglages sont identifiables sans parcourir neuf onglets plats |
 | R4-05 | Améliorer l'accessibilité MJ | Navigation clavier, focus, contrastes et libellés sont testés sur les contrôles hors canvas |

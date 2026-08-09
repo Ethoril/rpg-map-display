@@ -268,15 +268,37 @@ Mesurer la lumière sur la tablette, c'est mesurer le mauvais monde.
 
 Ce qui se constate se sépare donc en deux, et les deux comptent :
 
+⚠ **Correction du 09/08/2026 — la méthode d'abord écrite était fausse.** Elle proposait de comparer
+le déplacement d'un pion ordinaire et celui d'un pion lumineux. Or la vision est **entièrement
+recalculée dès que la signature change** : n'importe quel déplacement rejoue tous les sweeps, PJ et
+lumières comprises. L'écart aurait donc été proche de zéro, et pour une raison qui n'a rien à voir
+avec la lumière. **La mesure est absolue, pas différentielle.**
+
 **6.1 — Le coût du calcul, sur le poste MJ**
 
-Charger une carte avec des sources : `testbig150` en déclare 185. Placer un pion `emitsLight`.
+Charger **le village**, celui qui sera réellement joué : son étage 00 déclare **93 sources**.
 
-☐ Vue MJ, presser **`P`** pour ouvrir la sonde (sur `gm.html` c'est la touche, pas `?probe=1`).
-☐ Déplacer un pion **sans** `emitsLight` d'une case. Actualiser, noter la colonne **Vision**.
-☐ Déplacer le pion **lumineux** d'une case. Actualiser, noter la colonne **Vision**.
-☐ L'écart entre les deux est le coût propre de la lumière. Profil de bureau indicatif, six PJ, huit
-   sources fixes et trois torches : **28 à 49 ms** pour 17 polygones. Ce n'est pas un verdict.
+☐ Vue MJ, presser **`P`** pour ouvrir la sonde (sur `gm.html` c'est la touche, **pas** `?probe=1`,
+   qui n'est lu que par la vue joueurs).
+☐ Poser six PJ et au moins une torche, comme en partie.
+☐ Déplacer un pion d'une case. Actualiser l'encart, noter la colonne **Vision**.
+☐ Recommencer trois fois et garder **le pire**, pas la moyenne.
+
+**Critère : rester dans le budget de 300 ms**, celui du critère 10.
+
+☐ Refaire le même relevé sur `manoir-rdc` — zéro source fixe, même geste. L'écart entre les deux
+   cartes **est** le coût des 93 lumières, et c'est le chiffre qui a du sens.
+
+> **Hypothèse à vérifier, pas à croire.** Le seul point de comparaison connu — 17 polygones, six PJ,
+> huit sources fixes et trois torches — donne 28 à 49 ms de bureau. À ce rythme, 93 sources
+> situeraient le village entre 200 et 280 ms, soit au bord du budget. ⚠ **Les extrapolations de ce
+> projet se sont déjà trompées d'un facteur 4** : les « ×3 à ×5 sur tablette » du lot 2 étaient tous
+> faux, la tablette tenant tête au Mac. C'est donc une hypothèse, et la mesure la tranche.
+>
+> **Question de conception que ce relevé décide** : les trois étages du village déclarent
+> `baked_lighting: true`, donc leur image est déjà éclairée et les PJ y voient jusqu'au plafond de
+> 20 cases. Faut-il encore balayer 93 sources qui n'étendent la vision qu'au-delà de cette portée ?
+> Si le chiffre est gros, la réponse est probablement non — mais elle se prend sur la mesure.
 
 **6.2 — Ce que la table ressent, sur la tablette**
 
