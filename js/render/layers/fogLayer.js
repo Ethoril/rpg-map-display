@@ -331,6 +331,11 @@ export class FogLayer {
     // La règle correcte, et c'est celle du mainteneur : l'éclairage **aide les joueurs à voir
     // plus loin**, il ne révèle rien par lui-même. Une source ne contribue donc que si un PJ
     // a une ligne de vue dégagée jusqu'à elle. Sans PJ sur l'étage, rien n'est visible.
+    //
+    // ⚠ **Approximation assumée, et décision ouverte — CdC §12 question 9.** Le test porte sur
+    // le **centre** de la source : voir la lampe révèle tout son halo, y compris ce que le PJ
+    // ne verrait pas lui-même. La version stricte croiserait les polygones ; son coût est
+    // chiffré dans le CdC, ainsi que le déclencheur pour y revenir.
     const centresPJ = pcTokens.map((t) => {
       const size = Math.max(1, t.sizeCells || 1);
       return grid.mapFromCellPoint({ cellX: t.cell.a + size / 2, cellY: t.cell.b + size / 2 });

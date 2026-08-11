@@ -1149,3 +1149,30 @@ Critères :
    > ce sont deux vocabulaires clos, portés par deux champs, et un quinzième **marqueur**
    > rouvrirait Q7 exactement comme avant.
 8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2** (Voir `TRANCHE-L08-GABARITS.md` §10). **Rouverte et amendée le 05/08/2026 (L-10)** : Les joueurs manipulent (déplacer, pivoter) les gabarits visibles (`visibleToPlayers`), avec autorisation à l'émission. La pose, l'effacement et le réglage restent réservés au MJ. Voir `TRANCHE-L10-GABARITS-LIBRES.md`.
+9. **Une lumière vue révèle-t-elle tout ce qu'elle éclaire, ou seulement ce que le PJ voit ?**
+   **Ouverte, et mise de côté sciemment le 11/08/2026.**
+
+   La règle de base est tranchée et implantée : *une lumière n'est pas un œil*. Une source
+   ne contribue à la visibilité que si un PJ a une ligne de vue dégagée jusqu'à elle, et sans
+   PJ sur l'étage rien n'est visible. Elle vient d'un constat de séance — une carte Dungeon
+   Alchemist, qui en place systématiquement, se dévoilait toute seule **sans aucun pion**.
+
+   Ce qui reste ouvert est l'**approximation** retenue : le test porte sur le **centre** de la
+   source. Un PJ qui aperçoit une lampe se voit donc révéler *tout son halo*, y compris des
+   recoins que lui-même ne verrait pas. Le cas visible serait : apercevoir une lanterne par
+   l'embrasure d'une porte et découvrir toute la pièce derrière.
+
+   **La version stricte** croiserait, pour chaque PJ, son polygone de vue à portée complète
+   avec l'union des zones éclairées. Coût estimé, mesuré sur les cartes du dépôt :
+   - l'intersection elle-même est **quasi gratuite** — le masque de fog est déjà rasterisé à
+     8 px/case, soit 336 × 336 px sur la plus grande carte : un seul `source-in` ;
+   - ce qui coûte est **un balayage supplémentaire par PJ**, et seulement dans le noir : sous
+     ambiante allumée le polygone à portée maximale existe déjà. Environ **+4 à 7 ms** avec
+     six PJ sur `test_village_complet_00`, soit 15 à 20 ms contre 300 de budget ;
+   - le vrai prix est **une centaine de lignes dans le chemin du fog**, celui où une erreur
+     fait voir aux joueurs ce qu'ils ne devraient pas.
+
+   ⭐ **Le déclencheur pour y revenir est écrit** : voir en séance une pièce entière se
+   dévoiler parce qu'un PJ aperçoit une lampe par une porte. Tant que le cas reste théorique,
+   l'approximation tient. Tentative de reproduction sur `testvideo-3` le 11/08/2026 : les murs
+   obliques de la tour bloquent la ligne vers les lampes, le cas ne s'est pas déclenché.
