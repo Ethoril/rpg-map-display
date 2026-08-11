@@ -54,6 +54,76 @@ test('7bis. la lecture réelle mesure la cadence par le critère du produit', as
   expect(erreurs).toEqual([]);
 });
 
+test('10. le coût des lumières est rendu comme un écart, avec le verdict de budget', async ({ page }) => {
+  test.setTimeout(120000);
+  /** @type {string[]} */
+  const erreurs = [];
+  page.on('pageerror', (e) => erreurs.push(e.message));
+  await page.goto('/diag.html');
+
+  await page.click('#btn-lumieres');
+  await expect.poll(() => page.textContent('#sortie'), { timeout: 90000 }).toContain('budget de 300 ms');
+
+  const texte = /** @type {string} */ (await page.textContent('#sortie'));
+  // Ce que le critère demande, c'est l'ÉCART : le coût imputable aux lumières. Un tableau
+  // de temps absolus ne répondrait pas à R3-05.
+  expect(texte).toContain('Écart, donc coût des lumières');
+  expect(texte).toContain('Pire avec lumières');
+  expect(texte).toContain('Pire sans lumière');
+  // La carte du village porte des lumières, le manoir n'en a aucune : les deux côtés de
+  // la comparaison doivent exister, sinon l'écart ne veut rien dire.
+  expect(texte).toMatch(/test_village_complet/);
+  expect(texte).toMatch(/manoir-rdc/);
+  expect(erreurs).toEqual([]);
+});
+
+test('11. les motifs se dessinent et le verdict rejoint le journal', async ({ page }) => {
+  await page.goto('/diag.html');
+  await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = true; });
+
+  await page.click('#btn-endurance-start');
+  await page.fill('#motif-px-case', '33');
+  await page.click('#btn-motifs');
+  await expect.poll(() => page.textContent('#sortie')).toContain('Motifs affichés à 33 px');
+
+  // Le canvas doit réellement porter des pixels colorés : un motif à juger qui ne
+  // s'affiche pas serait un verdict rendu sur du vide.
+  const peint = await page.evaluate(() => {
+    const c = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
+    const d = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')).getImageData(0, 0, c.width, c.height).data;
+    let distincts = new Set();
+    for (let i = 0; i < d.length; i += 4 * 97) distincts.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+    return distincts.size;
+  });
+  expect(peint).toBeGreaterThan(3);
+
+  await page.click('#btn-motif-lisible');
+  expect(await page.textContent('#sortie')).toContain('verdict motifs : lisible');
+});
+
+test('13. le banc de visée rejoue les mêmes gestes contre les trois capsules', async ({ page }) => {
+  await page.goto('/diag.html');
+  await page.click('#btn-visee');
+  await expect.poll(() => page.textContent('#sortie')).toContain('Banc de visée armé');
+
+  // Vingt taps au centre du canvas : peu importe la précision, on vérifie que le banc
+  // conclut et qu'il compare bien les trois valeurs sur un seul jeu de gestes.
+  //
+  // ⚠ `locator.click` plutôt que `mouse.click` à des coordonnées calculées : le canvas est
+  // en bas de page, sous plusieurs `<details>`, donc hors écran. Des coordonnées absolues
+  // tombaient à côté et le banc n'enregistrait rien — sans le moindre message.
+  const board = page.locator('#board');
+  for (let i = 0; i < 20; i++) {
+    await board.click({ position: { x: 200, y: 150 } });
+  }
+  await expect.poll(() => page.textContent('#sortie'), { timeout: 15000 }).toContain('Taux de réussite simulé');
+
+  const texte = /** @type {string} */ (await page.textContent('#sortie'));
+  expect(texte).toContain('capsule 0,25 case');
+  expect(texte).toContain('capsule 0,40 case');
+  expect(texte).toContain('DRAG_HOLD_MS = 150');
+});
+
 test('le journal d’endurance survit à un rechargement d’onglet', async ({ page }) => {
   await page.goto('/diag.html');
   // Les commandes d'endurance vivent dans un `<details>` replié : sans l'ouvrir, le bouton

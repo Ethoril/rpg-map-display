@@ -389,6 +389,406 @@ async function diagnosticVideoLecture() {
  * **5,3 s en avance**, invisible à deux campagnes de mesure. Elle est à un appel de
  * distance, et aucune section ne la relevait.
  */
+// --- 12 & 14. Horloge, aller-retour serveur et rétention du canal ----------
+
+/**
+ * Résout la configuration Firebase comme la section 5, sans la redemander.
+ * @returns {Record<string, any>|null}
+ */
+function configFirebaseEnregistree() {
+  const champ = /** @type {HTMLInputElement} */ (document.getElementById('config'));
+  const brut = champ.value.trim() || localStorage.getItem(CLE_CONFIG);
+  if (!brut) return null;
+  try {
+    const config = saveFirebaseConfig(JSON.parse(brut));
+    localStorage.setItem(CLE_CONFIG, JSON.stringify(config));
+    return config;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Écart d'horloge appareil ↔ serveur, et comptage des nœuds de la session.
+ *
+ * ⭐ L'écart d'horloge est la donnée qui a coûté le plus cher à ce projet : une tablette
+ * **5,3 s en avance**, invisible à deux campagnes de mesure entières. Elle est à un appel
+ * de distance, et aucune section ne la relevait.
+ */
+async function diagnosticHorlogeEtCanal() {
+  const config = configFirebaseEnregistree();
+  if (!config) {
+    ecrire('Coller d’abord la configuration Firebase dans le champ de la section 5.');
+    return;
+  }
+  ecrire('Connexion Google…');
+  const { FirebaseTransport } = await import('../transport/FirebaseTransport.js');
+  const transport = new FirebaseTransport(config);
+  const sessionId = /** @type {HTMLInputElement} */ (document.getElementById('canal-session')).value.trim();
+
+  try {
+    await ((await transport.currentUser()) ?? transport.signInWithGoogle());
+    const lignes = ['Horloge et canal', ''];
+
+    if (sessionId) {
+      await transport.connect(sessionId, 'gm');
+      // Laisser le transport recevoir `.info/serverTimeOffset`, qui arrive de façon asynchrone.
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+
+    const ecart = /** @type {any} */ (transport)._serverTimeOffset;
+    if (typeof ecart === 'number') {
+      lignes.push(
+        `Écart horloge appareil ↔ serveur : ${ecart > 0 ? '+' : ''}${arrondi(ecart, 0)} ms`,
+        Math.abs(ecart) > 1000
+          ? '⚠ Au-delà d’une seconde : tout horodatage relatif de cette séance est suspect,'
+          : 'Écart négligeable.',
+        Math.abs(ecart) > 1000 ? '  et c’est exactement le défaut qui a coûté deux campagnes le 7 août.' : ''
+      );
+    } else {
+      lignes.push('Écart d’horloge non reçu : se connecter à une session pour l’obtenir.');
+    }
+
+    if (sessionId) {
+      const etat = await /** @type {any} */ (transport).diagnosticCanal?.();
+      lignes.push(
+        '',
+        `Session « ${sessionId} »`,
+        etat
+          ? `  événements ${etat.events ?? '?'} · clients de rétention ${etat.retentionClients ?? '?'} · présences ${etat.presence ?? '?'}`
+          : '  le transport n’expose pas de comptage : à lire dans la console Firebase.'
+      );
+    }
+    ecrire(lignes.filter(Boolean).join('\n'));
+  } finally {
+    await transport.disconnect?.();
+  }
+}
+
+// --- 10. Coût d'une mutation lumineuse (R3-05) -----------------------------
+
+/**
+ * Mesure `FogLayer.updateVision` sur une carte à lumières et sur une carte sans, et rend
+ * **l'écart** — qui est le coût des lumières, la grandeur du critère R3-05.
+ *
+ * ⚠ **À lancer sur la machine qui porte la vue MJ, pas sur la tablette.** Le calcul de
+ * vision est autoritaire côté MJ ; le mesurer ailleurs répondrait pour un appareil qui ne
+ * le fait jamais. C'est le piège du « mauvais monde », et il a déjà coûté une campagne.
+ */
+async function diagnosticLumieres() {
+  const { FogLayer } = await import('../render/layers/fogLayer.js');
+  const catalogue = await (await fetch('maps/catalog.json')).json();
+  const lignes = ['Coût d’une mutation lumineuse — R3-05', '', 'À lancer sur le poste MJ.', ''];
+
+  /** @type {Array<{ nom: string, sources: number, pire: number }>} */
+  const releves = [];
+
+  for (const entree of catalogue.maps ?? []) {
+    const scene = await (await fetch(entree.sceneUrl)).json();
+    for (const level of scene.levels ?? []) {
+      const grid = gridFor(level);
+      const sources =
+        (Array.isArray(level.lights) ? level.lights.length : 0) + (level.ambient?.baked ? 1 : 0);
+
+      // Six PJ et une torche mobile : le profil de table décrit par le protocole.
+      const tokens = [];
+      for (let i = 0; i < 6; i++) {
+        tokens.push(
+          createToken({
+            id: `pj-${i}`,
+            levelId: level.id,
+            kind: 'pc',
+            cell: { a: 2 + i * 2, b: 2 + i },
+            visionDim: 12,
+          })
+        );
+      }
+      tokens.push(
+        createToken({
+          id: 'torche',
+          levelId: level.id,
+          kind: 'npc',
+          cell: { a: 4, b: 4 },
+          emitsLight: { range: 6, intensity: 1, color: '#ffdca8' },
+        })
+      );
+
+      const couche = new FogLayer();
+      let pire = 0;
+      for (let essai = 0; essai < 3; essai++) {
+        // Déplacer d'une case : sans mutation réelle, la mémoïsation par signature rendrait
+        // la mesure gratuite et donc fausse.
+        tokens[0].cell = { a: 2 + essai, b: 2 + essai };
+        couche.invalidate?.();
+        const t0 = performance.now();
+        couche.updateVision(grid, level, tokens, {});
+        pire = Math.max(pire, performance.now() - t0);
+      }
+      releves.push({ nom: `${entree.id} / ${level.id}`, sources, pire: arrondi(pire, 1) });
+    }
+  }
+
+  releves.sort((a, b) => b.pire - a.pire);
+  for (const r of releves) {
+    lignes.push(`${String(r.pire).padStart(8)} ms   ${String(r.sources).padStart(4)} sources   ${r.nom}`);
+  }
+
+  const avec = releves.filter((r) => r.sources > 0);
+  const sans = releves.filter((r) => r.sources === 0);
+  const pireAvec = avec.length ? Math.max(...avec.map((r) => r.pire)) : 0;
+  const pireSans = sans.length ? Math.max(...sans.map((r) => r.pire)) : 0;
+
+  lignes.push(
+    '',
+    `Pire avec lumières : ${arrondi(pireAvec, 1)} ms`,
+    `Pire sans lumière  : ${arrondi(pireSans, 1)} ms`,
+    `Écart, donc coût des lumières : ${arrondi(pireAvec - pireSans, 1)} ms`,
+    '',
+    pireAvec < 300
+      ? 'Dans le budget de 300 ms : OUI.'
+      : 'HORS budget de 300 ms — R3-05 n’est pas tenu sur cette machine.',
+    '',
+    'Le pire des trois essais est retenu, jamais la moyenne. Rappel : les extrapolations de',
+    'ce projet se sont déjà trompées d’un facteur 4.'
+  );
+  ecrire(lignes.join('\n'));
+}
+
+// --- 11. Motifs à juger : anneaux, pastilles, marqueurs --------------------
+
+/**
+ * Affiche côte à côte les motifs que le chantier Q demande de juger **à la vue « carte
+ * entière »**, c'est-à-dire vers 33 px la case.
+ *
+ * Ces motifs ne sont pas composables à la demande dans la vue MJ : il faudrait fabriquer
+ * les pions et leurs états à la main, en pleine séance. Ici ils s'affichent en un tap, y
+ * compris sur le téléviseur sous cast — qui est justement l'écran où le doute porte.
+ *
+ * La page ne juge rien : elle montre, et enregistre le verdict humain dans le journal.
+ */
+async function afficherMotifs() {
+  const { computeProportionalRing, computeStateRing } = await import('../render/statusBadges.js');
+  const champ = /** @type {HTMLInputElement} */ (document.getElementById('motif-px-case'));
+  const pxCase = Math.max(12, Number(champ.value) || 33);
+
+  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+  canvas.width = 640;
+  canvas.height = 480;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#2b2b2b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  /**
+   * @param {number} cx @param {number} cy @param {string} legende
+   * @param {{ hp?: {current:number,max:number}|null, health?: string }} etat
+   */
+  function pion(cx, cy, legende, etat) {
+    const d = pxCase;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, d * 0.42, 0, Math.PI * 2);
+    ctx.fillStyle = '#6b5a3e';
+    ctx.fill();
+
+    if (etat.hp) {
+      const anneau = computeProportionalRing(d, 1, etat.hp);
+      if (anneau) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, d * 0.46, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (etat.hp.current / etat.hp.max));
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = Math.max(2, d * 0.08);
+        ctx.stroke();
+      }
+    }
+    if (etat.health && etat.health !== 'unharmed') {
+      const anneau = computeStateRing(d, 1, /** @type {any} */ (etat.health));
+      const couleur = etat.health === 'wounded' ? '#c2410c' : '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cx, cy, d * 0.46, 0, Math.PI * 2);
+      ctx.strokeStyle = couleur;
+      ctx.lineWidth = Math.max(3, d * (anneau ? 0.16 : 0.16));
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#e8e8e8';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(legende, cx, cy + d * 0.42 + 16);
+    ctx.restore();
+  }
+
+  const y1 = 90;
+  ctx.fillStyle = '#cfcfcf';
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Motifs à ${pxCase} px la case — le cas nommé au §5.4 du chantier Q`, 12, 24);
+  ctx.fillText('Les deux tracent un tour complet : c’est là que la confusion se joue.', 12, 44);
+
+  pion(90, y1, 'PJ 28/28 (bleu)', { hp: { current: 28, max: 28 } });
+  pion(230, y1, 'PNJ critical', { health: 'critical' });
+  pion(370, y1, 'PNJ wounded', { health: 'wounded' });
+  pion(510, y1, 'PNJ indemne', { health: 'unharmed' });
+
+  ctx.fillStyle = '#cfcfcf';
+  ctx.fillText('Orange brique contre rouge : distinguables à cette taille ?', 12, y1 + 70);
+
+  // Grappe de gros combat : huit pions serrés avec leurs pastilles chiffrées.
+  const y2 = 300;
+  ctx.fillText('Gros combat — les pastilles chiffrées restent-elles lisibles ?', 12, y2 - 50);
+  for (let i = 0; i < 8; i++) {
+    const cx = 60 + i * Math.max(pxCase * 1.15, 34);
+    pion(cx, y2, '', { hp: { current: 7 + i, max: 20 } });
+    ctx.fillStyle = '#101010';
+    ctx.beginPath();
+    ctx.arc(cx + pxCase * 0.34, y2 - pxCase * 0.34, Math.max(7, pxCase * 0.26), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `${Math.max(8, Math.round(pxCase * 0.28))}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${7 + i}`, cx + pxCase * 0.34, y2 - pxCase * 0.34 + Math.max(3, pxCase * 0.1));
+  }
+
+  ecrire(
+    [
+      `Motifs affichés à ${pxCase} px la case.`,
+      '',
+      'À juger, dans l’ordre du chantier Q :',
+      '  1. un PJ à plein se distingue-t-il d’un PNJ « mal en point » ?',
+      '  2. « blessé » orange brique se distingue-t-il de « mal en point » rouge ?',
+      '  3. les pastilles chiffrées restent-elles lisibles en gros combat ?',
+      '',
+      'Régler le curseur sur 33 px pour la vue « carte entière », puis juger sur la TV castée.',
+      'Enregistrer le verdict par les boutons : il rejoint le journal, et s’exporte avec lui.',
+    ].join('\n')
+  );
+}
+
+/** @param {string} verdict */
+function noterVerdictMotif(verdict) {
+  const ligne = enduranceJournal.recordEvent(`verdict motifs : ${verdict}`);
+  ecrire(
+    ligne
+      ? `Verdict enregistré : ${verdict}\n\n${enduranceJournal.toText()}`
+      : 'Démarrer d’abord le journal d’endurance : c’est lui qui garde les verdicts.'
+  );
+}
+
+// --- 13. Banc de visée : la capsule des portes -----------------------------
+
+/**
+ * Mesure la **distribution réelle** de l'erreur du doigt, puis rejoue les taps enregistrés
+ * contre plusieurs valeurs de `PORTAL_HIT_CELL_RATIO`.
+ *
+ * Le chantier O demande de « constater à la table » si la capsule peut monter de 0,25 à
+ * 0,4. Un banc calcule la réponse au lieu de la deviner, et un seul jeu de vingt gestes
+ * éprouve les trois valeurs à la fois.
+ */
+/** @type {{ down: () => void }|null} */
+let bancEnCours = null;
+
+async function bancDeVisee() {
+  const CIBLES = 20;
+  const PX_CASE = 33;
+  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+  canvas.width = 640;
+  canvas.height = 480;
+
+  /** @type {Array<{ distancePx: number, dureeMs: number }>} */
+  const taps = [];
+  let porte = { x: 0, y: 0, angle: 0 };
+
+  function poser() {
+    porte = {
+      x: 60 + Math.random() * (canvas.width - 120),
+      y: 60 + Math.random() * (canvas.height - 120),
+      angle: Math.random() * Math.PI,
+    };
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#2b2b2b';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#7cc47c';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    const dx = Math.cos(porte.angle) * PX_CASE * 0.5;
+    const dy = Math.sin(porte.angle) * PX_CASE * 0.5;
+    ctx.moveTo(porte.x - dx, porte.y - dy);
+    ctx.lineTo(porte.x + dx, porte.y + dy);
+    ctx.stroke();
+    ctx.fillStyle = '#cfcfcf';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Viser la porte — ${taps.length + 1} / ${CIBLES}`, 12, 24);
+  }
+
+  if (bancEnCours) canvas.removeEventListener('pointerdown', bancEnCours.down);
+
+  let debutAppui = 0;
+  const down = () => { debutAppui = performance.now(); };
+  /** @param {PointerEvent} e */
+  const up = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * canvas.width;
+    const y = ((e.clientY - r.top) / r.height) * canvas.height;
+    const dx = Math.cos(porte.angle);
+    const dy = Math.sin(porte.angle);
+    const demi = PX_CASE * 0.5;
+    const t = Math.max(-demi, Math.min(demi, (x - porte.x) * dx + (y - porte.y) * dy));
+    const distance = Math.hypot(x - (porte.x + t * dx), y - (porte.y + t * dy));
+    taps.push({ distancePx: distance, dureeMs: performance.now() - debutAppui });
+
+    if (taps.length >= CIBLES) {
+      canvas.removeEventListener('pointerdown', down);
+      canvas.removeEventListener('pointerup', up);
+      bancEnCours = null;
+      const distances = taps.map((t2) => t2.distancePx).sort((a, b) => a - b);
+      const durees = taps.map((t2) => t2.dureeMs).sort((a, b) => a - b);
+      const pc = (/** @type {number[]} */ a, /** @type {number} */ q) => arrondi(a[Math.floor(a.length * q)], 1);
+      const reussite = (/** @type {number} */ ratio) =>
+        Math.round((distances.filter((d) => d <= ratio * PX_CASE).length / distances.length) * 100);
+      ecrire(
+        [
+          `Banc de visée — ${CIBLES} taps à ${PX_CASE} px la case`,
+          '',
+          `Erreur : p50 ${pc(distances, 0.5)} px · p95 ${pc(distances, 0.95)} px · max ${arrondi(distances[distances.length - 1], 1)} px`,
+          '',
+          'Taux de réussite simulé, sur les MÊMES gestes :',
+          `  capsule 0,25 case (valeur actuelle) : ${reussite(0.25)} %`,
+          `  capsule 0,30 case                   : ${reussite(0.3)} %`,
+          `  capsule 0,40 case (proposée §8)     : ${reussite(0.4)} %`,
+          '',
+          `Durée d’appui : p50 ${pc(durees, 0.5)} ms · p95 ${pc(durees, 0.95)} ms`,
+          `Repère : DRAG_HOLD_MS = 150 ms. Un p95 au-dessus signifie que des taps ordinaires`,
+          'sont pris pour des appuis longs — c’est la donnée que l’arbitrage A7 attendait.',
+        ].join('\n')
+      );
+      return;
+    }
+    poser();
+  };
+
+  canvas.addEventListener('pointerdown', down);
+  canvas.addEventListener('pointerup', up);
+  bancEnCours = { down };
+  poser();
+  ecrire(`Banc de visée armé : viser ${CIBLES} portes en tapant dessus, au doigt.`);
+}
+
+// --- 15. Grille de relevé des onglets MJ -----------------------------------
+
+/** @type {Record<string, number>} */
+const compteursOnglets = {};
+
+/** @param {string} nom */
+function compterOnglet(nom) {
+  compteursOnglets[nom] = (compteursOnglets[nom] ?? 0) + 1;
+  const lignes = ['Onglets MJ réellement ouverts en cours de partie', ''];
+  for (const [k, v] of Object.entries(compteursOnglets).sort((a, b) => b[1] - a[1])) {
+    lignes.push(`${String(v).padStart(4)} × ${k}`);
+  }
+  lignes.push('', 'Un zéro est une information, et c’est même la plus utile ici :');
+  lignes.push('un onglet jamais ouvert en séance n’a pas à occuper la barre.');
+  ecrire(lignes.join('\n'));
+}
+
 // --- 2ter. Journal cast et endurance : uniquement sur action explicite -----
 
 /** @param {string} id */
@@ -1060,6 +1460,17 @@ brancher('btn-video-capacite', diagnosticVideoCapacite);
 brancher('btn-video-lecture', diagnosticVideoLecture);
 brancher('btn-journal-lock', prendreVerrouEtPleinEcran);
 brancher('btn-journal-copier', copierJournal);
+brancher('btn-lumieres', diagnosticLumieres);
+brancher('btn-motifs', afficherMotifs);
+brancher('btn-motif-lisible', () => noterVerdictMotif('lisible'));
+brancher('btn-motif-illisible', () => noterVerdictMotif('ILLISIBLE'));
+brancher('btn-visee', bancDeVisee);
+brancher('btn-horloge', diagnosticHorlogeEtCanal);
+
+for (const nom of ['Cartes', 'UVTT', 'Image', 'Pions', 'Handouts', 'Fog', 'Murs', 'Liaisons', 'Gabarits', 'Grille']) {
+  const bouton = document.getElementById(`btn-onglet-${nom.toLowerCase()}`);
+  bouton?.addEventListener('click', () => compterOnglet(nom));
+}
 
 brancherTemoinsCycleDeVie();
 

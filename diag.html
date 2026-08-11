@@ -42,6 +42,35 @@
   <button id="btn-sweep-reel">6bis. Sweep sur les cartes publiées (sans extrapolation)</button>
   <button id="btn-video-capacite">7. Fond animé : matériel ou logiciel ?</button>
   <button id="btn-video-lecture">7bis. Lecture réelle du fond animé (60 s)</button>
+  <button id="btn-lumieres">10. Coût de la vision avec lumières (poste MJ)</button>
+  <button id="btn-visee">13. Banc de visée : 20 portes</button>
+
+  <details>
+    <summary>11. Motifs à juger — anneaux, pastilles (chantier Q)</summary>
+    <p class="aide">La page ne juge rien : elle affiche les motifs à l’échelle exacte de la vue
+      « carte entière », y compris sur le téléviseur sous cast, et enregistre votre verdict dans
+      le journal. 33 px la case est la taille où le doute porte.</p>
+    <label>Pixels par case <input id="motif-px-case" type="number" min="12" max="140" step="1" value="33" inputmode="numeric"></label>
+    <button id="btn-motifs" type="button">Afficher les motifs</button>
+    <button id="btn-motif-lisible" type="button">Verdict : lisible</button>
+    <button id="btn-motif-illisible" type="button">Verdict : illisible</button>
+  </details>
+
+  <details>
+    <summary>15. Relevé des onglets MJ réellement ouverts (poste MJ)</summary>
+    <p class="aide">Taper l’onglet à chaque fois qu’il est ouvert en cours de partie. Un zéro est
+      une information : un onglet jamais ouvert n’a pas à occuper la barre.</p>
+    <button id="btn-onglet-cartes" type="button">Cartes</button>
+    <button id="btn-onglet-uvtt" type="button">UVTT</button>
+    <button id="btn-onglet-image" type="button">Image</button>
+    <button id="btn-onglet-pions" type="button">Pions</button>
+    <button id="btn-onglet-handouts" type="button">Handouts</button>
+    <button id="btn-onglet-fog" type="button">Fog</button>
+    <button id="btn-onglet-murs" type="button">Murs</button>
+    <button id="btn-onglet-liaisons" type="button">Liaisons</button>
+    <button id="btn-onglet-gabarits" type="button">Gabarits</button>
+    <button id="btn-onglet-grille" type="button">Grille</button>
+  </details>
 
   <details>
     <summary>R2 — Décodage froid, cast 45 min et endurance 4 h</summary>
@@ -79,6 +108,11 @@
     </p>
     <input id="config" type="text" placeholder='{"apiKey":"…","authDomain":"…","databaseURL":"…","projectId":"…","appId":"…"}'>
     <button id="btn-firebase">Mesurer la latence (30 aller-retours)</button>
+    <p class="aide">12 &amp; 14 — l’écart d’horloge est la donnée qui a coûté le plus cher à ce projet :
+      une tablette 5,3 s en avance, invisible à deux campagnes de mesure. Renseigner un code de
+      session pour compter aussi les nœuds du canal.</p>
+    <label>Code de session (facultatif) <input id="canal-session" type="text" placeholder="ex. K7M2P" spellcheck="false"></label>
+    <button id="btn-horloge" type="button">12. Écart d’horloge et état du canal</button>
   </details>
 
   <canvas id="board" width="640" height="480"></canvas>
