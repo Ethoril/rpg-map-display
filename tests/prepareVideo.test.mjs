@@ -158,7 +158,7 @@ test('la vidéo publiée n’est pas déclarée orpheline', () => {
   );
 });
 
-test('bout en bout : un dd2vtt vidéo produit une scène animée et un catalogue qui le dit', async () => {
+test('bout en bout : un dd2vtt vidéo produit une scène animée et un catalogue qui le dit', async (t) => {
   // ⭐ **Le raccord, pas les pièces.** Les cas ci-dessus couvrent chaque helper isolément ;
   // cinq mutations du chemin joint restaient pourtant vertes — `videoUrl` forcé à `null`,
   // `animated` forcé à `false`… c'est-à-dire la fonctionnalité entièrement morte, suite au
@@ -167,8 +167,11 @@ test('bout en bout : un dd2vtt vidéo produit une scène animée et un catalogue
   const source = path.join(ROOT, 'maps');
   const vtt = path.join(source, 'testvideo-3.dd2vtt');
   if (!fs.existsSync(vtt)) {
-    // Les sources sont `.gitignore`d : sur un clone neuf, ce cas ne peut pas s'exécuter.
-    // On ne le maquille pas en vert silencieux — le test se déclare ignoré.
+    // Les sources sont `.gitignore`d : sur un clone neuf — et donc en CI — ce cas ne peut
+    // pas s'exécuter. ⚠ Un `return` nu le rendrait **vert**, c'est-à-dire indiscernable
+    // d'un test qui a réellement vérifié quelque chose. `t.skip` le compte comme ignoré,
+    // ce qu'il est.
+    t.skip(`source absente (${vtt}) : préparation à faire sur le poste qui la détient`);
     return;
   }
   for (const nom of ['testvideo-3.dd2vtt', 'testvideo-3.webm', 'testvideo-3.poster.webp']) {
