@@ -48,19 +48,19 @@ export function createTokenMaker(container, options = {}) {
 
       <div class="token-maker-form" style="display: grid; grid-template-columns: 140px 1fr; gap: 0.6rem 0.8rem; align-items: center; background: #1a1a1a; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
         <label for="token-id" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Identifiant :</label>
-        <input type="text" id="token-id" placeholder="Auto depuis le nom" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="text" id="token-id" placeholder="Auto depuis le nom" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-label" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Nom du pion :</label>
-        <input type="text" id="token-label" value="Pion" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="text" id="token-label" value="Pion" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-kind" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Type de pion :</label>
-        <select id="token-kind" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
+        <select id="token-kind" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
           <option value="npc">PNJ (Non-Joueur)</option>
           <option value="pc">PJ (Joueur)</option>
         </select>
 
         <label for="token-shape" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Forme guide :</label>
-        <select id="token-shape" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
+        <select id="token-shape" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
           <option value="square">▢ Carré</option>
           <option value="circle">⭕ Cercle</option>
         </select>
@@ -69,22 +69,22 @@ export function createTokenMaker(container, options = {}) {
         <input type="color" id="token-border-color" value="#e74c3c" style="background: #252525; border: 1px solid #444; border-radius: 4px; height: 36px; padding: 2px; cursor: pointer; width: 100%;" />
 
         <label for="token-size-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Taille (cases) :</label>
-        <input type="number" id="token-size-cells" min="1" max="8" value="1" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="number" id="token-size-cells" min="1" max="8" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-speed-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vitesse (cases) :</label>
-        <input type="number" id="token-speed-cells" min="1" max="30" value="3" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="number" id="token-speed-cells" min="1" max="30" value="3" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-vision-bright" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision claire :</label>
-        <input type="number" id="token-vision-bright" min="0" max="60" value="5" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="number" id="token-vision-bright" min="0" max="60" value="5" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-vision-dim" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision faible :</label>
-        <input type="number" id="token-vision-dim" min="0" max="60" value="10" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="number" id="token-vision-dim" min="0" max="60" value="10" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-max-hp" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">PV max :</label>
-        <input type="number" id="token-max-hp" min="1" max="999" placeholder="—" style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="number" id="token-max-hp" min="1" max="999" placeholder="—" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-canonical-url" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">URL publiée :</label>
-        <input type="text" id="token-canonical-url" placeholder="Optionnel : maps/tokens/..." style="background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="text" id="token-canonical-url" placeholder="Optionnel : maps/tokens/..." style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
       </div>
 
       <p id="token-maker-status" style="margin: 0; font-size: 0.8rem; color: #aaa;">

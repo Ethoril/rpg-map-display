@@ -176,19 +176,219 @@ async function armerDecodageFroid() {
 
 async function mesurerDecodageFroid() {
   const result = await coldDecodeTrial.measure();
+
+  // ⭐ `Image.decode()` n'est PAS la grandeur du critère R2-03. Le chiffre de 490 ms relevé
+  // avant le correctif du chantier P était le coût du **`drawImage` du fond**, et le seuil
+  // de 5 ms porte sur lui. Mesurer le seul `decode()` répondait donc à côté — c'est
+  // exactement le travers déjà commis une fois sur ce projet : « la sonde ne mesurait pas
+  // la bonne grandeur ».
+  const field = /** @type {HTMLInputElement} */ (document.getElementById('cold-image-url'));
+  const url = field.value.trim();
+  const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
+  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = url;
+  await image.decode();
+
+  const t0 = performance.now();
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const plein = performance.now() - t0;
+
+  // La doublure du chantier P : un bitmap réduit à 1024 px, peint à la place du plein
+  // format tant que celui-ci est froid.
+  const cote = Math.max(image.naturalWidth, image.naturalHeight) || 1;
+  const facteur = Math.min(1, 1024 / cote);
+  const doublure = await createImageBitmap(image, {
+    resizeWidth: Math.max(1, Math.round(image.naturalWidth * facteur)),
+    resizeHeight: Math.max(1, Math.round(image.naturalHeight * facteur)),
+  });
+  const t1 = performance.now();
+  ctx.drawImage(doublure, 0, 0, canvas.width, canvas.height);
+  const reduite = performance.now() - t1;
+  doublure.close();
+
+  const verdict = plein < 5
+    ? 'Fond < 5 ms : OUI — critère R2-03 tenu sur cette mesure.'
+    : `Fond ≥ 5 ms (${arrondi(plein, 1)} ms) : le seuil R2-03 n'est PAS tenu.`;
+
   ecrire(
     [
       'Décodage post-inactivité terminé.',
       '',
-      `Inactivité observée : ${arrondi(result.idleMs / 1000, 1)} s`,
-      `Image.decode() :      ${arrondi(result.decodeMs, 1)} ms`,
+      `Inactivité observée :        ${arrondi(result.idleMs / 1000, 1)} s`,
+      `Image.decode() :             ${arrondi(result.decodeMs, 1)} ms`,
+      `drawImage plein format :     ${arrondi(plein, 1)} ms   ← la grandeur du critère`,
+      `drawImage doublure 1024 px : ${arrondi(reduite, 1)} ms`,
+      `Source : ${image.naturalWidth}×${image.naturalHeight}`,
       '',
-      'Reporter ce chiffre, le modèle de tablette et le comportement visuel de la première frame',
-      'dans docs/RAPPORT-ENDURANCE.md. Aucun verdict thermique ou cast n’est déduit ici.',
+      verdict,
+      'Repère : 490 ms relevés avant le correctif du chantier P, seuil < 5 ms.',
+      '',
+      'Le navigateur n’expose aucune API d’éviction : ce test ne peut pas prouver que le bitmap',
+      'avait réellement été évincé, seulement mesurer ce qui a été payé après le silence.',
     ].join('\n')
   );
 }
 
+// --- 7. Fond animé : décodage matériel ou logiciel ? -----------------------
+
+/**
+ * Répond, sans lire un octet de vidéo, à la question ouverte du chantier W : la tablette
+ * décode-t-elle `testvideo-3.webm` **en matériel** ?
+ *
+ * `mediaCapabilities.decodingInfo` rend `powerEfficient`, qui est précisément cette
+ * réponse-là — et non « est-ce que ça joue », que tout décodeur logiciel sait faire, en
+ * rampant.
+ */
+async function diagnosticVideoCapacite() {
+  const LARGEUR = 4200;
+  const HAUTEUR = 2850;
+  const luma = LARGEUR * HAUTEUR;
+  const PLAFOND_VP9_52 = 8912896;
+
+  const lignes = [
+    'Capacité de décodage du fond animé',
+    '',
+    `Cible : testvideo-3.webm — ${LARGEUR}×${HAUTEUR}, VP9, 30 img/s`,
+    `Échantillons de luminance : ${luma.toLocaleString('fr-FR')}`,
+    `Plafond VP9 niveau 5.2 :    ${PLAFOND_VP9_52.toLocaleString('fr-FR')}`,
+    luma > PLAFOND_VP9_52
+      ? '→ au-delà du niveau 5.2 : le niveau 6.0 est requis, rarement géré en matériel sur mobile.'
+      : '→ sous le plafond 5.2 : aucun problème de niveau attendu.',
+    '',
+  ];
+
+  if (typeof navigator !== 'undefined' && navigator.mediaCapabilities?.decodingInfo) {
+    const info = await navigator.mediaCapabilities.decodingInfo({
+      type: 'file',
+      video: {
+        contentType: 'video/webm; codecs="vp09.00.61.08"',
+        width: LARGEUR,
+        height: HAUTEUR,
+        bitrate: 5_600_000,
+        framerate: 30,
+      },
+    });
+    lignes.push(
+      'mediaCapabilities.decodingInfo :',
+      `  supporté        : ${info.supported}`,
+      `  fluide (smooth) : ${info.smooth}`,
+      `  économe en énergie : ${info.powerEfficient}   ← vrai = décodage matériel`,
+      '',
+      info.powerEfficient
+        ? 'VERDICT : décodage MATÉRIEL annoncé. Le fond animé devrait tenir.'
+        : 'VERDICT : décodage LOGICIEL annoncé. Le repli sur l’affiche est le comportement attendu.',
+    );
+  } else {
+    lignes.push('mediaCapabilities indisponible sur ce navigateur : verdict impossible ici.');
+  }
+
+  if (typeof VideoDecoder !== 'undefined' && VideoDecoder.isConfigSupported) {
+    try {
+      const dur = await VideoDecoder.isConfigSupported({
+        codec: 'vp09.00.61.08',
+        codedWidth: LARGEUR,
+        codedHeight: HAUTEUR,
+        hardwareAcceleration: 'prefer-hardware',
+      });
+      lignes.push('', `WebCodecs, matériel préféré : ${dur.supported}`);
+    } catch (err) {
+      lignes.push('', `WebCodecs : configuration refusée (${/** @type {any} */ (err)?.message || err})`);
+    }
+  }
+
+  ecrire(lignes.join('\n'));
+}
+
+/**
+ * Lecture réelle de 60 s, jugée **par le même critère que le produit** : l'avancement du
+ * flux comparé à l'horloge murale, seuil 50 % (`js/render/videoBackdrop.js`).
+ */
+async function diagnosticVideoLecture() {
+  const URL_VIDEO = 'maps/generated/testvideo-3.webm';
+  // Réglable par `?duree=10` : la mesure de séance dure une minute, mais la couverture
+  // automatique n'a pas à payer une minute à chaque passage de CI pour vérifier que le
+  // bouton répond. La valeur par défaut reste celle du protocole.
+  const demande = Number(new URLSearchParams(location.search).get('duree'));
+  const DUREE_MS = Number.isFinite(demande) && demande > 0 ? demande * 1000 : 60000;
+  ecrire(`Lecture du fond animé pendant ${DUREE_MS / 1000} s…`);
+
+  const video = document.createElement('video');
+  video.src = URL_VIDEO;
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.style.cssText = 'position:fixed;left:-10000px;width:640px;height:434px;';
+  document.body.appendChild(video);
+
+  try {
+    await new Promise((resolve, reject) => {
+      video.addEventListener('loadeddata', () => resolve(undefined), { once: true });
+      video.addEventListener('error', () => reject(new Error(`média illisible (code ${video.error?.code})`)), { once: true });
+      setTimeout(() => reject(new Error('timeout de chargement (60 s)')), 60000);
+    });
+    await video.play();
+
+    const debutMur = performance.now();
+    const debutFlux = video.currentTime;
+    /** @type {number|null} */
+    let premierRepli = null;
+    // Un seul échantillonnage à 2,5 s, comme le détecteur du produit, puis on laisse jouer.
+    await new Promise((resolve) => {
+      const t = setInterval(() => {
+        const ecoule = performance.now() - debutMur;
+        let avance = video.currentTime - debutFlux;
+        if (avance < 0) avance += video.duration || 0;
+        if (premierRepli === null && ecoule > 2500 && (avance * 1000) / ecoule < 0.5) premierRepli = ecoule;
+        if (ecoule >= DUREE_MS) { clearInterval(t); resolve(undefined); }
+      }, 2500);
+    });
+
+    const ecoule = performance.now() - debutMur;
+    let avance = video.currentTime - debutFlux;
+    while (avance < 0) avance += video.duration || 0;
+    const ratio = (avance * 1000) / ecoule;
+    const q = video.getVideoPlaybackQuality?.() ?? null;
+    const perdues = q ? q.droppedVideoFrames : null;
+    const totales = q ? q.totalVideoFrames : null;
+
+    ecrire(
+      [
+        'Lecture réelle du fond animé — 60 s',
+        '',
+        `Résolution décodée : ${video.videoWidth}×${video.videoHeight}`,
+        `Temps réel écoulé :  ${arrondi(ecoule / 1000, 1)} s`,
+        `Flux parcouru :      ${arrondi(avance, 1)} s`,
+        `Cadence relative :   ${arrondi(ratio * 100, 0)} % du temps réel   (seuil produit : 50 %)`,
+        totales !== null ? `Images décodées :    ${totales}, dont ${perdues} perdues` : 'getVideoPlaybackQuality indisponible.',
+        totales ? `Images par seconde : ${arrondi(totales / (ecoule / 1000), 1)}` : '',
+        '',
+        ratio >= 0.5
+          ? 'VERDICT : la lecture tient. Le détecteur de cadence ne se déclencherait pas.'
+          : `VERDICT : la lecture rampe. Le produit basculerait sur l’affiche fixe${premierRepli !== null ? ` vers ${arrondi(premierRepli / 1000, 1)} s` : ''}.`,
+        '',
+        'Si le verdict est « rampe », réexporter la carte sous le plafond VP9 5.2 :',
+        '3920 × 2800 au plus, soit 28 × 20 cases à 140 px/case.',
+      ].filter(Boolean).join('\n')
+    );
+  } finally {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    video.remove();
+  }
+}
+
+// --- 12. Horloge et aller-retour serveur réel ------------------------------
+
+/**
+ * L'écart d'horloge est la donnée qui a coûté le plus cher à ce projet : une tablette
+ * **5,3 s en avance**, invisible à deux campagnes de mesure. Elle est à un appel de
+ * distance, et aucune section ne la relevait.
+ */
 // --- 2ter. Journal cast et endurance : uniquement sur action explicite -----
 
 /** @param {string} id */
@@ -196,6 +396,87 @@ function valeurObservation(id) {
   return /** @type {import('./endurance.js').ObservationState} */ (
     /** @type {HTMLSelectElement} */ (document.getElementById(id)).value
   );
+}
+
+/**
+ * Prend le Wake Lock et le plein écran, puis **surveille leur perte**.
+ *
+ * `ETAT.md` demande de constater que l'écran ne s'éteint pas de toute la séance et que le
+ * plein écran survit aux gestes système. Jusqu'ici c'était une case à cocher à la main,
+ * c'est-à-dire un souvenir. Un relâchement survenu à la 37ᵉ minute pendant qu'on regardait
+ * ailleurs n'était consigné nulle part.
+ *
+ * @type {any}
+ */
+let verrouEcran = null;
+
+async function prendreVerrouEtPleinEcran() {
+  const lignes = [];
+
+  try {
+    verrouEcran = await /** @type {any} */ (navigator).wakeLock?.request('screen');
+    if (verrouEcran) {
+      lignes.push('Wake Lock pris.');
+      enduranceJournal.recordEvent('Wake Lock pris');
+      verrouEcran.addEventListener?.('release', () => {
+        enduranceJournal.recordEvent('⚠ Wake Lock RELÂCHÉ');
+        ecrire(enduranceJournal.toText());
+      });
+    } else {
+      lignes.push('API Wake Lock absente de ce navigateur.');
+    }
+  } catch (err) {
+    lignes.push(`Wake Lock refusé : ${/** @type {any} */ (err)?.message || err}`);
+  }
+
+  try {
+    await document.documentElement.requestFullscreen?.();
+    lignes.push('Plein écran demandé.');
+    enduranceJournal.recordEvent('Plein écran pris');
+  } catch (err) {
+    lignes.push(`Plein écran refusé : ${/** @type {any} */ (err)?.message || err}`);
+  }
+
+  lignes.push('', 'La page consignera d’elle-même toute perte, sans rien échantillonner.');
+  ecrire(lignes.join('\n'));
+}
+
+/**
+ * Branche les témoins de cycle de vie.
+ *
+ * ⭐ Répond à une inconnue nommée dans `ETAT.md` : « `visibilitychange` peut ne pas suffire
+ * si le système restaure la page par un autre chemin ». On journalise donc **par quel
+ * chemin** la reprise s'est faite — c'est la donnée qui manquait.
+ *
+ * ⛔ Aucun `setInterval` : ces lignes ne naissent que d'un événement du navigateur. La page
+ * doit rester inerte pendant les silences, sinon elle fausse sa propre mesure.
+ */
+function brancherTemoinsCycleDeVie() {
+  const noter = (/** @type {string} */ label) => {
+    if (enduranceJournal.recordEvent(label)) ecrire(enduranceJournal.toText());
+  };
+  document.addEventListener('visibilitychange', () =>
+    noter(`visibilitychange → ${document.visibilityState}`)
+  );
+  document.addEventListener('fullscreenchange', () =>
+    noter(document.fullscreenElement ? 'plein écran repris' : '⚠ plein écran QUITTÉ')
+  );
+  window.addEventListener('pagehide', (e) => noter(`pagehide (persisted=${e.persisted})`));
+  window.addEventListener('pageshow', (e) => noter(`pageshow (persisted=${e.persisted})`));
+  document.addEventListener('freeze', () => noter('onglet GELÉ par le système'));
+  document.addEventListener('resume', () => noter('onglet REPRIS par le système'));
+}
+
+async function copierJournal() {
+  const md = enduranceJournal.toMarkdown();
+  try {
+    await navigator.clipboard.writeText(md);
+    ecrire(`Journal copié dans le presse-papier, au format du tableau de RAPPORT-ENDURANCE.md.\n\n${md}`);
+  } catch {
+    // Le presse-papier peut être refusé hors geste utilisateur ou hors HTTPS : on affiche,
+    // ce qui reste copiable à la main. Un échec silencieux ferait perdre la séance.
+    ecrire(`Presse-papier indisponible — copier depuis ici :\n\n${md}`);
+  }
 }
 
 function demarrerJournalEndurance() {
@@ -775,6 +1056,17 @@ brancher('btn-thermique', () => diagnosticImages(300000, 30000, 'Tenue thermique
 brancher('btn-firebase', diagnosticFirebase);
 brancher('btn-sweep', diagnosticSweep);
 brancher('btn-sweep-reel', diagnosticSweepReel);
+brancher('btn-video-capacite', diagnosticVideoCapacite);
+brancher('btn-video-lecture', diagnosticVideoLecture);
+brancher('btn-journal-lock', prendreVerrouEtPleinEcran);
+brancher('btn-journal-copier', copierJournal);
+
+brancherTemoinsCycleDeVie();
+
+// Un journal interrompu par un rechargement d'onglet est repris, pas perdu.
+if (enduranceJournal.restore()) {
+  ecrire(`Journal endurance repris après rechargement.\n\n${enduranceJournal.toText()}`);
+}
 
 const champConfig = /** @type {HTMLInputElement} */ (document.getElementById('config'));
 if (localStorage.getItem(CLE_CONFIG)) champConfig.placeholder = 'Configuration déjà enregistrée sur cet appareil';

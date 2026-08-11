@@ -1,7 +1,9 @@
 # Chantier W — Fond animé
 
-> Livré le 11 août 2026. **Porte matérielle ouverte** : rien de ce qui suit n'a été mesuré
-> sur la Samsung Galaxy Tab S9 FE, ni sous cast. Voir §6.
+> Livré le 11 août 2026. **Constaté à table le jour même, et ça marche** : sur la Tab S9 FE,
+> l'animation est fluide, la boucle ne s'arrête pas, aucun ralentissement perceptible au zoom
+> ni au dézoom, et la vue joueurs suit. Le déplacement autour du bâtiment rond est jugé
+> « vraiment nickel ». Restent le cast 45 min et l'endurance 4 h — voir §6.
 
 ## 1. Ce que le mainteneur voulait, et pourquoi c'était la bonne idée
 
@@ -122,6 +124,13 @@ relève d'une autre clause que la partie privée à table. C'est écrit dans le 
 ## 6. Ce que la table doit constater, et que rien ne remplace en machine
 
 Aucun de ces points n'est mesuré. Ils sont classés par ordre de ce qui tuerait le chantier.
+
+> ✅ **Le point 1 est tombé le 11/08/2026 : ça marche.** L'animation est fluide sur la
+> tablette, le détecteur de cadence ne s'est pas déclenché. Le décodeur franchit donc le
+> plafond théorique ci-dessous. Le raisonnement reste juste et le seuil reste utile — il
+> vaudra pour une carte plus grande — mais la prédiction pessimiste était fausse pour cet
+> appareil. La section **7** de `diag.html` permet désormais de le vérifier en deux taps sur
+> n'importe quel appareil, plutôt que de le déduire.
 
 1. **La Tab S9 FE décode-t-elle `testvideo-3` en matériel ? Probablement pas.**
    L'arithmétique est nette et je l'ai vérifiée sur l'en-tête du fichier publié :

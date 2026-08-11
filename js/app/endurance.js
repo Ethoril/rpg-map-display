@@ -70,18 +70,81 @@ const OBSERVATION_STATES = new Set(['observed', 'not-observed', 'not-checked']);
  * constat humain à un instant choisi, afin de ne pas fausser une séance de cast longue.
  */
 export class EnduranceJournal {
-  /** @param {{ now?: () => number }} [options] */
+  /**
+   * @param {{ now?: () => number, storage?: Storage|null, storageKey?: string }} [options]
+   *   `storage` : ⭐ **le journal doit survivre à un rechargement d'onglet.** Sur une séance
+   *   de 4 h, Chrome Android peut recharger la page à tout moment ; un journal en mémoire
+   *   pure perdait alors les huit relevés, c'est-à-dire toute la séance. C'est le mode de
+   *   défaillance le plus probable de la mesure la plus longue.
+   */
   constructor(options = {}) {
     this.now = options.now ?? (() => performance.now());
+    this.storage = options.storage !== undefined
+      ? options.storage
+      : (typeof localStorage !== 'undefined' ? localStorage : null);
+    this.storageKey = options.storageKey ?? 'rpg-diag-endurance';
     this.startedAt = null;
     /** @type {Array<{ elapsedMs: number, fps: number|null, temperature: string, wakeLock: ObservationState, fullscreen: ObservationState, cast: ObservationState, resumed: ObservationState, notes: string }>} */
     this.observations = [];
+    /** Lignes automatiques : Wake Lock, plein écran, cycle de vie. @type {Array<{ elapsedMs: number, label: string }>} */
+    this.events = [];
   }
 
   start() {
     this.startedAt = this.now();
     this.observations = [];
+    this.events = [];
+    this._persist();
     return this.startedAt;
+  }
+
+  /**
+   * Enregistre un fait **observé par la page**, pas par la personne : relâchement du
+   * Wake Lock, sortie de plein écran, gel ou reprise de l'onglet.
+   *
+   * ⛔ Ne déclenche aucune minuterie : ces lignes ne naissent que d'un événement du
+   * navigateur, donc la page reste inerte pendant les silences — condition posée par le
+   * protocole d'endurance pour ne pas fausser sa propre mesure.
+   *
+   * @param {string} label
+   */
+  recordEvent(label) {
+    if (this.startedAt === null) return null;
+    const entry = { elapsedMs: this.now() - this.startedAt, label };
+    this.events.push(entry);
+    this._persist();
+    return entry;
+  }
+
+  /** Recharge un journal interrompu. @returns {boolean} vrai si quelque chose a été repris */
+  restore() {
+    if (!this.storage) return false;
+    try {
+      const brut = this.storage.getItem(this.storageKey);
+      if (!brut) return false;
+      const data = JSON.parse(brut);
+      if (typeof data?.startedAt !== 'number') return false;
+      this.startedAt = data.startedAt;
+      this.observations = Array.isArray(data.observations) ? data.observations : [];
+      this.events = Array.isArray(data.events) ? data.events : [];
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** @private */
+  _persist() {
+    if (!this.storage) return;
+    try {
+      this.storage.setItem(
+        this.storageKey,
+        JSON.stringify({ startedAt: this.startedAt, observations: this.observations, events: this.events })
+      );
+    } catch {
+      // Quota plein ou stockage refusé : le journal en mémoire reste utilisable, et
+      // l'échec ne doit pas interrompre une séance de quatre heures.
+    }
   }
 
   /**
@@ -107,6 +170,7 @@ export class EnduranceJournal {
       notes: observation.notes?.trim() ?? '',
     };
     this.observations.push(recorded);
+    this._persist();
     return recorded;
   }
 
@@ -120,6 +184,38 @@ export class EnduranceJournal {
         (row.notes ? ` | ${row.notes}` : '')
       );
     }
+    if (this.events.length > 0) {
+      lines.push('', 'Constaté par la page, sans intervention :');
+      for (const e of this.events) lines.push(`${(e.elapsedMs / 60000).toFixed(1)} min | ${e.label}`);
+    }
     return lines.join('\n');
+  }
+
+  /**
+   * Rend le journal sous la forme du tableau de `docs/RAPPORT-ENDURANCE.md`, prêt à coller.
+   *
+   * La recopie à la main, huit relevés de huit colonnes, se faisait depuis un `<pre>` sur
+   * une tablette, en fin de séance de quatre heures. C'est le moment et l'endroit où l'on
+   * se trompe.
+   */
+  toMarkdown() {
+    if (this.startedAt === null) return 'Journal non démarré.';
+    const etat = (/** @type {ObservationState} */ v) =>
+      v === 'observed' ? 'oui' : v === 'not-observed' ? 'NON' : '—';
+    const lignes = [
+      '| Temps | fps | Température | Wake Lock | Plein écran | Cast | Reprise | Notes |',
+      '|---|---|---|---|---|---|---|---|',
+    ];
+    for (const r of this.observations) {
+      lignes.push(
+        `| ${(r.elapsedMs / 60000).toFixed(0)} min | ${r.fps ?? '—'} | ${r.temperature || '—'} | ` +
+        `${etat(r.wakeLock)} | ${etat(r.fullscreen)} | ${etat(r.cast)} | ${etat(r.resumed)} | ${r.notes || '—'} |`
+      );
+    }
+    if (this.events.length > 0) {
+      lignes.push('', '### Constaté par la page', '');
+      for (const e of this.events) lignes.push(`- **${(e.elapsedMs / 60000).toFixed(1)} min** — ${e.label}`);
+    }
+    return lignes.join('\n');
   }
 }
