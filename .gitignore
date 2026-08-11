@@ -22,6 +22,16 @@ fixtures/real/*
 maps/*.dd2vtt
 maps/*.df2vtt
 
+# Fonds animés et leurs affiches : même raisonnement, en plus lourd encore. Un WebM de
+# carte pèse des dizaines de mégaoctets, et seule la copie de maps/generated/ est servie.
+# L'affiche est reproductible par `node scripts/extract-poster.mjs`.
+maps/*.webm
+maps/*.mp4
+maps/*.poster.webp
+
+# Bac à sable d'essais vidéo du mainteneur : exports bruts de Dungeon Alchemist.
+maps/test video/
+
 # Variantes du comparateur de l'outil local : jetables par construction, et publiées avec
 # le reste du dépôt si on les commitait. Elles servent à décider d'un réglage, jamais à le
 # porter — la décision se fixe dans les constantes de scripts/resample.mjs.

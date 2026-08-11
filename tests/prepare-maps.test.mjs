@@ -86,6 +86,9 @@ test('U-00 succès : catalogue publié avec des compteurs exacts', async (t) => 
     portals: 1,
     lights: 1,
     bakedLighting: false,
+    // Une carte sans vidéo jumelle doit l'annoncer explicitement, pas par omission :
+    // la bibliothèque distingue « pas animée » de « champ absent, donc ancienne entrée ».
+    animated: false,
   });
   assert.match(entry.sourceHash, /^sha256-[0-9a-f]{64}$/);
 

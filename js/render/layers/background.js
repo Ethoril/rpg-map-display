@@ -349,10 +349,25 @@ export class BackgroundLayer {
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} width Largeur de la carte en pixels carte
    * @param {number} height Hauteur de la carte en pixels carte
-   * @param {{ role?: 'gm'|'players', neutralColor?: string }} [options]
+   * @param {{
+   *   role?: 'gm'|'players',
+   *   neutralColor?: string,
+   *   suppressed?: boolean
+   * }} [options] `suppressed` : un fond animé peint sous le canvas, cette couche doit
+   *   alors ne rien dessiner (voir `js/render/videoBackdrop.js`).
    */
   render(ctx, width, height, options = {}) {
     if (!ctx || width <= 0 || height <= 0) return;
+
+    // ⭐ Un fond animé peint **sous** le canvas (`js/render/videoBackdrop.js`). Cette
+    // couche doit alors ne rien dessiner du tout — **pas même le fond neutre**, qui
+    // masquerait la vidéo puisque le canvas est au-dessus.
+    //
+    // L'appelant ne passe `suppressed` que lorsque la vidéo a des pixels décodés. Tant
+    // qu'elle n'en a pas, on repasse ici et l'affiche est peinte : c'est ce qui rend le
+    // repli automatique plutôt qu'écrit à la main.
+    if (options.suppressed) return;
+
     const now = this.clock();
 
     ctx.save();

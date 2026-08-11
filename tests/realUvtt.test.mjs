@@ -5,7 +5,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, validateCampaign } from '../js/core/schema.js';
-import { SUPPORTED_EXTENSIONS, isSupportedSource } from '../scripts/prepare-maps.mjs';
+import {
+  SUPPORTED_EXTENSIONS,
+  isSupportedSource,
+  findSidecarVideo,
+  posterPathFor,
+} from '../scripts/prepare-maps.mjs';
 
 // Exigence de FIXTURES.md §1 : un export réel doit être parsé sans erreur. Les fixtures
 // synthétiques ne reproduisent pas ce que produit Dungeondraft — polylignes dégénérées,
@@ -88,7 +93,22 @@ test('les exports UVTT réels se parsent et produisent une campagne valide', { s
     assert.equal(typeof niveau.grid.offsetY, 'number', `${contexte} : offsetY`);
 
     // L'image est transportée en base64, jamais décodée ici : parseUvtt est pure.
-    assert.ok(res.imageBase64.length > 0, `${contexte} : image absente`);
+    //
+    // ⚠ Exception unique et **conditionnée** : un export vidéo de Dungeon Alchemist porte
+    // `"image": ""` — la géométrie est dans le JSON, les pixels dans le fichier vidéo. La
+    // garde n'est pas levée pour autant : elle exige alors la présence effective de la
+    // vidéo jumelle ET de son affiche. Un export sans image et sans vidéo reste une faute,
+    // parce que c'est une carte qui ne s'affichera jamais.
+    const video = findSidecarVideo(chemin);
+    if (res.imageBase64.length === 0) {
+      assert.ok(video, `${contexte} : image absente et aucune vidéo jumelle`);
+      assert.ok(
+        fs.existsSync(posterPathFor(chemin)),
+        `${contexte} : export vidéo sans affiche — lancer scripts/extract-poster.mjs`
+      );
+    } else {
+      assert.ok(res.imageBase64.length > 0, `${contexte} : image absente`);
+    }
 
     // Et le tout doit constituer une campagne acceptée par la validation.
     const erreurs = validateCampaign(createCampaign({ levels: [niveau], tokens: [] }));

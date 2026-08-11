@@ -21,7 +21,8 @@
         "walls": 253,
         "portals": 147,
         "lights": 114,
-        "bakedLighting": true
+        "bakedLighting": true,
+        "animated": false
       }
     },
     {
@@ -36,7 +37,8 @@
         "walls": 131,
         "portals": 40,
         "lights": 0,
-        "bakedLighting": false
+        "bakedLighting": false,
+        "animated": false
       }
     },
     {
@@ -51,7 +53,24 @@
         "walls": 1338,
         "portals": 141,
         "lights": 185,
-        "bakedLighting": true
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
+      "id": "testvideo-3",
+      "name": "Testvideo — 3",
+      "sourceUrl": "maps/testvideo-3.dd2vtt",
+      "sceneUrl": "maps/generated/testvideo-3.scene.json",
+      "imageUrl": "maps/generated/testvideo-3.webp",
+      "sourceHash": "sha256-dc54ea70259cd81515d36237d1f01140875d2f719a86f7ada17c69e9ef31ef94",
+      "levelCount": 1,
+      "features": {
+        "walls": 14,
+        "portals": 4,
+        "lights": 4,
+        "bakedLighting": true,
+        "animated": true
       }
     }
   ]

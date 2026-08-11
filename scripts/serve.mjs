@@ -42,6 +42,12 @@ const MIME = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.svg', 'image/svg+xml'],
   ['.uvtt', 'application/json; charset=utf-8'],
+  // Fonds animés. Chromium accepte parfois un `application/octet-stream` pour un média,
+  // par reniflage — mais « parfois » n'est pas un contrat, et la politique de cette table
+  // est justement de ne rien deviner. Sans ces deux lignes, la lecture du fond animé tenait
+  // à une tolérance du navigateur, non à une déclaration du serveur.
+  ['.webm', 'video/webm'],
+  ['.mp4', 'video/mp4'],
 ]);
 
 const server = http.createServer((req, res) => {

@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-testvideo-3",
+  "name": "Testvideo — 3",
+  "levels": [
+    {
+      "id": "testvideo-3",
+      "name": "Testvideo — 3",
+      "order": 0,
+      "imageUrl": "maps/generated/testvideo-3.webp",
+      "videoUrl": "maps/generated/testvideo-3.webm",
+      "animatedOverlays": [],
+      "pxPerCell": 140,
+      "widthCells": 28,
+      "heightCells": 19,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "terrainCost": null,
+      "walls": [
+        [
+          {
+            "cellX": 12.989995,
+            "cellY": 17.03326
+          },
+          {
+            "cellX": 13.9299946,
+            "cellY": 16.8832588
+          }
+        ],
+        [
+          {
+            "cellX": 14.7699938,
+            "cellY": 16.46326
+          },
+          {
+            "cellX": 15.4399939,
+            "cellY": 15.7932606
+          }
+        ],
+        [
+          {
+            "cellX": 15.4399939,
+            "cellY": 15.7932606
+          },
+          {
+            "cellX": 15.8599939,
+            "cellY": 14.95326
+          }
+        ],
+        [
+          {
+            "cellX": 9.979996,
+            "cellY": 14.0232611
+          },
+          {
+            "cellX": 10.1299963,
+            "cellY": 14.95326
+          }
+        ],
+        [
+          {
+            "cellX": 10.1299963,
+            "cellY": 14.95326
+          },
+          {
+            "cellX": 10.5499954,
+            "cellY": 15.7932606
+          }
+        ],
+        [
+          {
+            "cellX": 10.5499954,
+            "cellY": 15.7932606
+          },
+          {
+            "cellX": 11.2199955,
+            "cellY": 16.46326
+          }
+        ],
+        [
+          {
+            "cellX": 12.0599947,
+            "cellY": 16.8832588
+          },
+          {
+            "cellX": 12.989995,
+            "cellY": 17.03326
+          }
+        ],
+        [
+          {
+            "cellX": 15.8599939,
+            "cellY": 13.0832615
+          },
+          {
+            "cellX": 15.4399939,
+            "cellY": 12.2432613
+          }
+        ],
+        [
+          {
+            "cellX": 15.4399939,
+            "cellY": 12.2432613
+          },
+          {
+            "cellX": 14.7699938,
+            "cellY": 11.5732622
+          }
+        ],
+        [
+          {
+            "cellX": 13.9299946,
+            "cellY": 11.1532621
+          },
+          {
+            "cellX": 12.989995,
+            "cellY": 11.0032625
+          }
+        ],
+        [
+          {
+            "cellX": 12.989995,
+            "cellY": 11.0032625
+          },
+          {
+            "cellX": 12.0599947,
+            "cellY": 11.1532621
+          }
+        ],
+        [
+          {
+            "cellX": 11.2199955,
+            "cellY": 11.5732622
+          },
+          {
+            "cellX": 10.5499954,
+            "cellY": 12.2432613
+          }
+        ],
+        [
+          {
+            "cellX": 10.5499954,
+            "cellY": 12.2432613
+          },
+          {
+            "cellX": 10.1299963,
+            "cellY": 13.0832615
+          }
+        ],
+        [
+          {
+            "cellX": 10.1299963,
+            "cellY": 13.0832615
+          },
+          {
+            "cellX": 9.979996,
+            "cellY": 14.0232611
+          }
+        ]
+      ],
+      "portals": [
+        {
+          "id": "portal-1",
+          "a": {
+            "cellX": 13.9299946,
+            "cellY": 16.8832588
+          },
+          "b": {
+            "cellX": 14.7699938,
+            "cellY": 16.46326
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-2",
+          "a": {
+            "cellX": 11.2199955,
+            "cellY": 16.46326
+          },
+          "b": {
+            "cellX": 12.0599947,
+            "cellY": 16.8832588
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-3",
+          "a": {
+            "cellX": 14.7699938,
+            "cellY": 11.5732622
+          },
+          "b": {
+            "cellX": 13.9299946,
+            "cellY": 11.1532621
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-4",
+          "a": {
+            "cellX": 12.0599947,
+            "cellY": 11.1532621
+          },
+          "b": {
+            "cellX": 11.2199955,
+            "cellY": 11.5732622
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        }
+      ],
+      "lights": [
+        {
+          "id": "light-1",
+          "at": {
+            "cellX": 12.968462,
+            "cellY": 13.978632
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FFE6BF",
+          "shadows": true
+        },
+        {
+          "id": "light-2",
+          "at": {
+            "cellX": 12.9910316,
+            "cellY": 11.5259047
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFEBBF",
+          "shadows": true
+        },
+        {
+          "id": "light-3",
+          "at": {
+            "cellX": 14.81907,
+            "cellY": 15.8185415
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFEBBF",
+          "shadows": true
+        },
+        {
+          "id": "light-4",
+          "at": {
+            "cellX": 15.1032715,
+            "cellY": 12.403367
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFEBBF",
+          "shadows": true
+        }
+      ],
+      "ambient": {
+        "color": "#ffffff",
+        "level": 1,
+        "baked": true
+      }
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "templates": [],
+  "settings": {
+    "ambientLevel": 1
+  }
+}

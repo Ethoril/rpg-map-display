@@ -116,6 +116,11 @@ F:\rpg-map-display\
 │   │   ├─ tokenSocket.js         [R]  géométrie et contrat de zones de la châsse des pions.
 │   │   │                              Module pur sans dépendance au DOM, vérifiable sous
 │   │   │                              node:test — cf. CHANTIER-R §3
+│   │   ├─ videoBackdrop.js       [W]  fond animé : pilote un <video> posé SOUS le canvas.
+│   │   │                              ⚠ SEUL fichier de render/ qui touche au DOM hors
+│   │   │                              canvas, et c'est le point : la vidéo est décodée par
+│   │   │                              le compositeur, jamais par drawImage, donc le rendu
+│   │   │                              reste à la demande — cf. CHANTIER-W §2
 
 │   │   └─ layers/
 │   │       ├─ background.js      [1a] image de fond

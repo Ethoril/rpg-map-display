@@ -4,6 +4,7 @@ import { initStage, renderLayerStack } from '../render/stage.js';
 import { Camera } from '../render/camera.js';
 import { FrameLoop } from '../render/frame.js';
 import { BackgroundLayer } from '../render/layers/background.js';
+import { VideoBackdrop } from '../render/videoBackdrop.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
@@ -103,6 +104,11 @@ export async function bootstrapGMApp(options = {}) {
   const requestRender = () => frameLoop?.requestFrame();
 
   const backgroundLayer = new BackgroundLayer({ invalidate: requestRender });
+  const videoBackdrop = new VideoBackdrop({
+    invalidate: requestRender,
+    onWarning: (message) => console.warn(`[fond animé] ${message}`),
+  });
+  videoBackdrop.attach(canvas.parentElement, canvas);
   const gridLayer = new GridLayer();
   const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
@@ -490,6 +496,10 @@ export async function bootstrapGMApp(options = {}) {
       (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
     fitActiveLevel(state.activeLevel);
     const activeLevel = state.activeLevel;
+    // ⛔ **Avant** le retour anticipé. La frame a déjà fait `clearRect` : sortir ici sans
+    // couper la vidéo laisserait le fond animé de l'étage précédent seul à l'écran, en
+    // lecture, sans grille ni pions. Pas un vide — pire : une carte orpheline.
+    videoBackdrop.sync(activeLevel);
     if (!activeLevel) return;
 
     const grid = gridFor(activeLevel);
@@ -502,6 +512,11 @@ export async function bootstrapGMApp(options = {}) {
     stage.context.save();
     stage.context.scale(stage.resolution, stage.resolution);
     camera.applyToContext(stage.context);
+    // ⛔ **Après** `applyToContext`, jamais avant : cette méthode **borne `camera.zoom` en
+    // le mutant**. Placer la vidéo d'abord la calait sur le zoom non borné pendant que le
+    // canvas utilisait le zoom borné — un décalage d'une frame, invisible en usage normal
+    // mais bien réel au bout d'un pincement qui dépasse les butées.
+    videoBackdrop.place(camera, bottomRight.x, bottomRight.y, stage.width, stage.height);
 
     let animationActive = false;
     layerDurations.background = 0;
@@ -517,7 +532,10 @@ export async function bootstrapGMApp(options = {}) {
     renderLayerStack({
       background: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, { role: 'gm' });
+        backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, {
+          role: 'gm',
+          suppressed: videoBackdrop.active,
+        });
         layerDurations.background = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       grid: () => {
@@ -1298,6 +1316,10 @@ export async function bootstrapGMApp(options = {}) {
       document.removeEventListener('keydown', onKeyDown);
     }
     pointerInput.detach();
+    // Sans ceci, le flux vidéo survit à la destruction de la vue : Chromium continue de
+    // décoder tant que l'élément existe avec une source. Toutes les autres ressources de
+    // cette fonction sont libérées ici ; celle-ci est la plus coûteuse.
+    videoBackdrop.detach();
     frameProbe.stop();
     unsubscribeStore();
     unsubscribeEvents?.();

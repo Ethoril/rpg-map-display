@@ -33,6 +33,30 @@ html, body {
   height: 100%;
   display: block;
   touch-action: none;
+  /* Un canvas non positionné peint SOUS tout élément positionné : sans ces deux
+     lignes, le fond animé recouvrirait la grille, les pions et le fog. */
+  position: relative;
+  z-index: 1;
+}
+
+/* Fond animé : voir js/render/videoBackdrop.js. Décodé par le compositeur, hors du
+   canvas et donc hors de la boucle de rendu. `transform` est piloté par `place()`. */
+.video-backdrop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  transform-origin: 0 0;
+  /* Reproduit le cadrage de BackgroundLayer.render : mise à l'échelle par le plus
+     petit rapport, puis centrage. */
+  object-fit: contain;
+  /* Si le rapport de la vidéo diffère de celui de la carte, `contain` laisse des bandes.
+     Sans cette couleur elles seraient transparentes, alors que le chemin fixe y peint son
+     fond neutre : la même carte changerait de bordure selon qu'elle est animée ou non. */
+  background-color: #34383f;
+  /* Le canvas doit rester seul destinataire des gestes. */
+  pointer-events: none;
+  display: none;
 }
 
 #gm-panel {

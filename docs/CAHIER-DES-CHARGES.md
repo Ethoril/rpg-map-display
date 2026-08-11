@@ -871,8 +871,18 @@ Deux coûts réels :
 cartes du commerce. Netteté conservée partout, frames dépensées seulement là où ça bouge,
 et pilotage par le pattern d'animation déterministe (§7) donc **zéro synchro**.
 
-`videoUrl` reste supporté en opt-in explicite par étage, avec avertissement UI que
-l'étage désactive le rendu à la demande.
+`videoUrl` reste supporté en opt-in explicite par étage.
+
+> **Corrigé le 11/08/2026 — la phrase précédente disait « avec avertissement UI que l'étage
+> désactive le rendu à la demande », et c'était faux.** Elle supposait que la vidéo passerait
+> par `drawImage`, ce qui aurait effectivement imposé une boucle continue. L'implantation
+> retenue pose un `<video>` **sous** le canvas (`js/render/videoBackdrop.js`) : le compositeur
+> du navigateur la décode sur son propre fil, `requestAnimationFrame` ne la voit jamais, et le
+> rendu à la demande est intégralement conservé. Le coût n°1 listé ci-dessus — « rendu continu
+> + décodage + encodage cast = trois charges » — se réduit donc à deux.
+>
+> Ce qui reste vrai et non mesuré : le décodage d'un flux de 12 Mpx sur Mali-G68, sa
+> consommation mémoire, et la batterie sur 4 h. Voir le spike dans `ETAT.md`.
 
 **Ce qui coûte cher, dans l'ordre :**
 

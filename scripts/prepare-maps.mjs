@@ -6,11 +6,161 @@ import crypto from 'node:crypto';
 import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, validateCampaign } from '../js/core/schema.js';
 import { resample, MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
+import { videoWarnings } from './videoProbe.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 export const SUPPORTED_EXTENSIONS = ['.uvtt', '.dd2vtt', '.df2vtt'];
+
+/**
+ * Conteneurs vidéo acceptés comme **fond animé**, par ordre de préférence.
+ *
+ * WebM d'abord, et ce n'est pas une préférence de goût : le H.264 plafonne la taille
+ * d'image par niveau, et les niveaux 5.1/5.2 — les seuls largement décodés en matériel —
+ * s'arrêtent à 36 864 macroblocs. Une carte de 28×19 cases à 150 px/case fait 4200×2850,
+ * soit 47 077 macroblocs : elle ne peut **pas** être encodée en H.264 lisible sur mobile.
+ * Dungeon Alchemist conseille d'ailleurs le WebM pour les grandes cartes, et c'est
+ * vraisemblablement la raison. Le MP4 reste accepté pour les petites.
+ */
+export const VIDEO_EXTENSIONS = ['.webm', '.mp4'];
+
+/**
+ * Suffixe du fichier d'affiche accompagnant une vidéo de fond.
+ * Produit par `scripts/extract-poster.mjs`.
+ */
+export const POSTER_SUFFIX = '.poster.webp';
+
+/**
+ * Localise la vidéo jumelle d'un export VTT, si elle existe.
+ *
+ * Convention : même dossier, même nom de base. `testvideo-3.dd2vtt` va avec
+ * `testvideo-3.webm`.
+ *
+ * @param {string} vttPath - chemin du fichier .uvtt/.dd2vtt/.df2vtt
+ * @returns {string|null} chemin absolu de la vidéo, ou null
+ */
+export function findSidecarVideo(vttPath) {
+  const base = path.join(path.dirname(vttPath), path.basename(vttPath, path.extname(vttPath)));
+  for (const ext of VIDEO_EXTENSIONS) {
+    const candidate = `${base}${ext}`;
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** @param {string} vttPath @returns {string} */
+export function posterPathFor(vttPath) {
+  const dir = path.dirname(vttPath);
+  const base = path.basename(vttPath, path.extname(vttPath));
+  return path.join(dir, `${base}${POSTER_SUFFIX}`);
+}
+
+/**
+ * Détermine ce qui sert de **pixels** à un étage : l'image embarquée dans l'UVTT, ou
+ * l'affiche d'une vidéo de fond.
+ *
+ * Un export vidéo de Dungeon Alchemist porte `"image": ""` — la géométrie est là, les
+ * pixels sont dans le fichier vidéo. Sans ce chemin, `resample('')` échouait sur
+ * « Impossible de lire l'image source » : franc, mais sans issue.
+ *
+ * ⚠ **L'affiche repasse par `resample`** alors qu'elle en sort déjà. Un ré-encodage
+ * WebP q90 sur une source q90 est mesurablement négligeable, et le prix est juste :
+ * `resample` reste **le seul** producteur d'images préparées, donc le plafond de
+ * texture, la qualité et les avertissements n'ont qu'une implantation. Un chemin qui
+ * copierait l'affiche telle quelle contournerait le plafond en silence.
+ *
+ * @param {string} vttPath
+ * @param {string} imageBase64 - contenu de `image` dans l'UVTT (souvent vide en mode vidéo)
+ * @returns {{ imageSource: string|Buffer, videoPath: string|null }}
+ */
+export function resolveImageSource(vttPath, imageBase64) {
+  if (imageBase64 && imageBase64.length > 0) {
+    return { imageSource: imageBase64, videoPath: null };
+  }
+
+  const videoPath = findSidecarVideo(vttPath);
+  if (!videoPath) {
+    throw new Error(
+      `${path.basename(vttPath)} ne contient aucune image (« image »: "") et aucune vidéo ` +
+        `jumelle n'a été trouvée. Attendu : ` +
+        `${path.basename(vttPath, path.extname(vttPath))}.webm ou .mp4 dans le même dossier.`
+    );
+  }
+
+  const posterPath = posterPathFor(vttPath);
+  if (!fs.existsSync(posterPath)) {
+    throw new Error(
+      `${path.basename(vttPath)} est un export vidéo, mais son affiche manque. ` +
+        `Produire d'abord :\n` +
+        `  node scripts/extract-poster.mjs "${videoPath}" "${posterPath}"\n` +
+        `L'affiche n'est pas un confort : c'est le repli quand la vidéo ne peut pas jouer, ` +
+        `et la vignette du catalogue.`
+    );
+  }
+
+  return { imageSource: fs.readFileSync(posterPath), videoPath };
+}
+
+/**
+ * Empreinte d'un étage, **vidéo et affiche comprises**.
+ *
+ * Hacher le seul `.dd2vtt` laissait un piège : réencoder la vidéo sans toucher au JSON
+ * — exactement ce qu'on fait en ajustant la qualité d'export — laissait le cache déclarer
+ * la carte à jour et republier l'ancienne vidéo.
+ *
+ * @param {string} vttPath
+ * @returns {string} `sha256-…`
+ */
+export function sourceHashOf(vttPath) {
+  const hash = crypto.createHash('sha256');
+  hash.update(fs.readFileSync(vttPath));
+  const videoPath = findSidecarVideo(vttPath);
+  if (videoPath) {
+    hash.update('|video|');
+    hash.update(fs.readFileSync(videoPath));
+    const posterPath = posterPathFor(vttPath);
+    if (fs.existsSync(posterPath)) {
+      hash.update('|poster|');
+      hash.update(fs.readFileSync(posterPath));
+    }
+  }
+  return `sha256-${hash.digest('hex')}`;
+}
+
+/**
+ * Copie la vidéo de fond dans `generated/` et rend l'URL publiable correspondante.
+ *
+ * @param {string} videoPath
+ * @param {string} generatedDir
+ * @param {string} levelId
+ * @returns {string} URL relative au dépôt
+ */
+export function publishVideo(videoPath, generatedDir, levelId) {
+  const ext = path.extname(videoPath).toLowerCase();
+  const fileName = `${levelId}${ext}`;
+  fs.copyFileSync(videoPath, path.join(generatedDir, fileName));
+  return `maps/generated/${fileName}`;
+}
+
+/**
+ * Prépare un fond animé : contrôle, copie, et avertissements.
+ *
+ * ⚠ Le contrôle de dimension **manquait**, et c'était un trou par symétrie : une image
+ * dépassant `MAX_PREPARED_TEXTURE_PX` est réduite et signalée, alors qu'une vidéo était
+ * copiée sans qu'on la regarde. Or son plafond est plus bas — voir `videoProbe.mjs`.
+ *
+ * @param {string} videoPath
+ * @param {string} generatedDir
+ * @param {string} levelId
+ * @returns {{ url: string, warnings: string[] }}
+ */
+export function prepareVideo(videoPath, generatedDir, levelId) {
+  return {
+    url: publishVideo(videoPath, generatedDir, levelId),
+    warnings: videoWarnings(videoPath),
+  };
+}
 
 /**
  * Un nom de fichier désigne-t-il un export VTT reconnu ?
@@ -80,13 +230,12 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
   }
 
   const fileContent = fs.readFileSync(uvttPath, 'utf-8');
-  const sourceHash = crypto
-    .createHash('sha256')
-    .update(fileContent)
-    .digest('hex');
+  // Empreinte de **toutes** les sources de l'étage, vidéo et affiche comprises.
+  const sourceHash = sourceHashOf(uvttPath).slice('sha256-'.length);
 
   const uvttData = JSON.parse(fileContent);
   const { level, imageBase64, warnings: parseWarnings } = parseUvtt(uvttData);
+  const { imageSource, videoPath } = resolveImageSource(uvttPath, imageBase64);
 
   const baseName = path.basename(uvttPath, path.extname(uvttPath));
 
@@ -116,8 +265,13 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
   const webpFileName = `${baseName}.webp`;
   const webpPath = path.join(generatedDir, webpFileName);
 
-  const resampleResult = await resample(imageBase64, targetPxPerCell, {
-    sourcePxPerCell: uvttData.resolution?.pixels_per_grid,
+  const resampleResult = await resample(imageSource, targetPxPerCell, {
+    // En mode vidéo l'affiche ne vient pas de l'UVTT : annoncer son `pixels_per_grid`
+    // serait faux. En pratique le paramètre ne décide de rien ici — `resample` ne le lit
+    // qu'à défaut de `widthCells`/`heightCells`, que les deux appels fournissent toujours,
+    // et c'est `widthCells × targetPxPerCell` qui fixe la largeur. On le renseigne
+    // quand même juste, plutôt que de laisser une valeur fausse en attendant qu'elle serve.
+    sourcePxPerCell: videoPath ? targetPxPerCell : uvttData.resolution?.pixels_per_grid,
     widthCells: level.widthCells,
     heightCells: level.heightCells,
     outputPath: webpPath,
@@ -139,6 +293,11 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
   level.pxPerCell = resampleResult.pxPerCell;
   // N'UTILISER PAS data: ou blob: en persistance
   level.imageUrl = `maps/generated/${webpFileName}`;
+  // Le fond animé est **en plus** de l'image, jamais à la place : `imageUrl` reste
+  // l'affiche et le repli. Un étage dont la vidéo échoue retombe donc exactement sur
+  // le comportement d'avant ce chantier, sans code de secours à écrire.
+  const videoPrepare = videoPath ? prepareVideo(videoPath, generatedDir, baseName) : null;
+  level.videoUrl = videoPrepare?.url ?? null;
   level.grid.offsetX = originX * resampleResult.pxPerCell;
   level.grid.offsetY = originY * resampleResult.pxPerCell;
 
@@ -163,7 +322,11 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
     throw new Error(`Scène ${baseName} contient des URLs temporaires (data: ou blob:)`);
   }
 
-  const allWarnings = [...parseWarnings, ...resampleResult.warnings];
+  const allWarnings = [
+    ...parseWarnings,
+    ...resampleResult.warnings,
+    ...(videoPrepare?.warnings ?? []),
+  ];
 
   // Les compteurs viennent du parseUvtt déjà fait
   const walls = level.walls;
@@ -183,6 +346,7 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
       portals: portals.length,
       lights: lights.length,
       bakedLighting: level.ambient.baked ?? false,
+      animated: level.videoUrl !== null,
     },
   };
 
@@ -350,7 +514,7 @@ function readRecipes(mapsDir) {
  * @param {ReturnType<typeof recipeOf>} recipe
  * @param {string} mapsDir
  */
-function isReusable(known, recipe, mapsDir) {
+export function isReusable(known, recipe, mapsDir) {
   if (!known || !known.recipe || !known.catalogEntry) return false;
   const sameRecipe = /** @type {(keyof typeof recipe)[]} */ ([
     'targetPxPerCell',
@@ -383,6 +547,14 @@ function isReusable(known, recipe, mapsDir) {
           const imgPath = path.join(mapsDir, 'generated', path.basename(level.imageUrl));
           if (!fs.existsSync(imgPath)) return false;
         }
+        // ⚠ La vidéo compte autant que l'image. Sans ce contrôle, supprimer un `.webm`
+        // de `generated/` laissait la recette valide : la carte était déclarée à jour
+        // et publiée avec un `videoUrl` pointant dans le vide. Le fond serait resté noir
+        // sur la tablette, sans que rien dans la préparation ne le signale.
+        if (level.videoUrl) {
+          const vidPath = path.join(mapsDir, 'generated', path.basename(level.videoUrl));
+          if (!fs.existsSync(vidPath)) return false;
+        }
       }
     }
   } catch {
@@ -404,7 +576,7 @@ function isReusable(known, recipe, mapsDir) {
  * @param {any[]} catalogEntries
  * @returns {string[]} avertissements
  */
-function findOrphanArtifacts(mapsDir, catalogEntries) {
+export function findOrphanArtifacts(mapsDir, catalogEntries) {
   const generatedDir = path.join(mapsDir, 'generated');
   if (!fs.existsSync(generatedDir)) return [];
 
@@ -420,6 +592,11 @@ function findOrphanArtifacts(mapsDir, catalogEntries) {
         if (Array.isArray(sceneObj.levels)) {
           for (const l of sceneObj.levels) {
             if (l.imageUrl) referenced.add(path.basename(l.imageUrl));
+            // Sans cette ligne, chaque passe déclarait orpheline la vidéo qu'elle venait
+            // de publier — aucune entrée de catalogue ne la nomme, seule la scène le fait.
+            // U-02 interdisant la suppression, rien n'était perdu : le coût est un
+            // avertissement faux à chaque préparation, ce qui apprend à ne plus les lire.
+            if (l.videoUrl) referenced.add(path.basename(l.videoUrl));
           }
         }
       } catch {
@@ -609,10 +786,9 @@ export async function prepareMaps(options = {}) {
   for (const sceneJob of sceneJobs) {
     try {
       // 1. Calcul des hashes des sources et du fichier de liaisons
-      const sourceHashes = sceneJob.levels.map((lvl) => {
-        const fileContent = fs.readFileSync(path.join(mapsDir, lvl.source), 'utf-8');
-        return 'sha256-' + crypto.createHash('sha256').update(fileContent).digest('hex');
-      });
+      const sourceHashes = sceneJob.levels.map((lvl) =>
+        sourceHashOf(path.join(mapsDir, lvl.source))
+      );
       const sourceHashValue = sourceHashes.length === 1 ? sourceHashes[0] : sourceHashes;
 
       const linksFilePath = path.join(mapsDir, `${sceneJob.id}.links.json`);
@@ -665,8 +841,10 @@ export async function prepareMaps(options = {}) {
         const webpFileName = `${lvlSpec.id}.webp`;
         const webpPath = path.join(generatedDir, webpFileName);
 
-        const resampleResult = await resample(imageBase64, targetPxPerCell, {
-          sourcePxPerCell: uvttData.resolution?.pixels_per_grid,
+        const { imageSource, videoPath } = resolveImageSource(uvttPath, imageBase64);
+
+        const resampleResult = await resample(imageSource, targetPxPerCell, {
+          sourcePxPerCell: videoPath ? targetPxPerCell : uvttData.resolution?.pixels_per_grid,
           widthCells: level.widthCells,
           heightCells: level.heightCells,
           outputPath: webpPath,
@@ -681,6 +859,9 @@ export async function prepareMaps(options = {}) {
 
         level.pxPerCell = resampleResult.pxPerCell;
         level.imageUrl = `maps/generated/${webpFileName}`;
+        const videoPrepare = videoPath ? prepareVideo(videoPath, generatedDir, lvlSpec.id) : null;
+        level.videoUrl = videoPrepare?.url ?? null;
+        parseWarningsAcc.push(...(videoPrepare?.warnings ?? []));
         level.grid.offsetX = originX * resampleResult.pxPerCell;
         level.grid.offsetY = originY * resampleResult.pxPerCell;
 
@@ -729,6 +910,7 @@ export async function prepareMaps(options = {}) {
           portals: scenePortals,
           lights: sceneLights,
           bakedLighting,
+          animated: preparedLevels.some((l) => l.videoUrl !== null),
         },
       };
 

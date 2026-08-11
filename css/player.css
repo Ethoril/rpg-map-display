@@ -16,6 +16,9 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  /* Référentiel de positionnement du fond animé, qui est en `position: absolute`.
+     Sans ça, il se placerait par rapport au bloc englobant initial et dériverait. */
+  position: relative;
 }
 
 canvas {
@@ -23,4 +26,27 @@ canvas {
   display: block;
   width: 100%;
   height: 100%;
+  /* Un canvas non positionné peint SOUS tout élément positionné : sans ces deux
+     lignes, le fond animé recouvrirait pions et fog — donc, côté joueurs, il
+     montrerait la carte entière sous le brouillard. */
+  position: relative;
+  z-index: 1;
+}
+
+/* Fond animé : voir js/render/videoBackdrop.js. Décodé par le compositeur, hors du
+   canvas et donc hors de la boucle de rendu. `transform` est piloté par `place()`. */
+.video-backdrop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  transform-origin: 0 0;
+  /* Reproduit le cadrage de BackgroundLayer.render : mise à l'échelle par le plus
+     petit rapport, puis centrage. */
+  object-fit: contain;
+  /* Voir gm.css : les bandes de `contain` doivent porter le même fond neutre que le
+     chemin fixe, sinon la bordure change selon que la carte est animée ou non. */
+  background-color: #34383f;
+  pointer-events: none;
+  display: none;
 }
