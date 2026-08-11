@@ -56,10 +56,14 @@
 >
 > ✅ **Moitié quantitative de R3-05 mesurée le 11/08/2026, section 10 de `diag.html`, sur le
 > poste MJ.** Pire des trois essais, mutation lumineuse réelle avec 6 PJ et une torche mobile :
-> **16,4 ms** sur `test_village_complet_00` et ses **94 sources**, contre **0,2 ms** sur
-> `manoir-rdc` qui n'en a aucune. Le coût imputable aux lumières est donc de **16,2 ms**, pour
+> **11,5 ms** sur `test_village_complet_00` et ses **94 sources**, contre **0,1 ms** sur
+> `manoir-rdc` qui n'en a aucune. Le coût imputable aux lumières est donc de **11,4 ms**, pour
 > un budget de 300 ms. ⭐ L'hypothèse écrite était de 200 à 280 ms : la mesure est **douze à
 > dix-sept fois meilleure**. Reste la confirmation sous cast sur la tablette.
+>
+> ⭐ Le chiffre a **baissé** de 16,4 à 11,5 ms le même jour, en corrigeant une règle de
+> visibilité : une source que personne ne voit n'est plus balayée du tout. La correction de
+> conception a rendu le calcul plus juste **et** plus rapide.
 >
 > **Chantier Q, 6 août 2026 — code livré, trois vérifications de table ouvertes.** Points de vie,
 > hors CdC et demandé par le mainteneur : compteur `courant/max` saisi par le MJ, **anneau

@@ -561,13 +561,51 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
     emitsLight: { range: 2, intensity: 1, color: '#ffcc66' },
   });
 
+  // ⭐ **Règle changée le 11/08/2026 : une lumière n'est pas un œil.**
+  //
+  // Ce test affirmait l'inverse — « la lumière fixe révèle son côté du mur » — alors que le
+  // seul PJ est aveugle (`visionDim: 0`) et se tient derrière ce mur. Personne ne pouvait
+  // donc voir cette zone, et elle était pourtant dévoilée.
+  //
+  // Le défaut s'est vu en séance sur une carte Dungeon Alchemist, qui place des lumières
+  // systématiquement : chargée **sans aucun pion**, elle projetait des cônes de vision à
+  // travers les portes d'une tour. Le mainteneur a tranché : l'éclairage aide les joueurs à
+  // voir plus loin, il ne révèle rien par lui-même.
   const { ctx } = createMockCanvas(120, 100);
   ctx.fillStyle = 'rgb(100, 100, 100)';
   ctx.fillRect(0, 0, 120, 100);
   const fogLayer = createTestFogLayer();
   fogLayer.render(/** @type {any} */ (ctx), grid, level, [darkPc], defaultOptions());
-  assert.equal(ctx.getImageData(25, 55).data[0], 100, 'la lumière fixe révèle son côté du mur');
+  assert.ok(
+    ctx.getImageData(25, 55).data[0] < 100,
+    'aucun PJ n’a vue sur la lumière : elle ne doit rien révéler'
+  );
   assert.ok(ctx.getImageData(70, 55).data[0] < 100, 'le mur bloque la lumière fixe');
+
+  // Et le pendant : un PJ du même côté que la lumière, avec une ligne de vue dégagée,
+  // bénéficie bien de son éclairage — sinon la règle aurait tué la fonctionnalité.
+  const pcEclaire = createToken({
+    id: 'pc-eclaire', levelId: 'rdc', kind: 'pc', cell: { a: 1, b: 5 }, visionDim: 0,
+  });
+  const { ctx: ctx2 } = createMockCanvas(120, 100);
+  ctx2.fillStyle = 'rgb(100, 100, 100)';
+  ctx2.fillRect(0, 0, 120, 100);
+  createTestFogLayer().render(/** @type {any} */ (ctx2), grid, level, [pcEclaire], defaultOptions());
+  assert.equal(
+    ctx2.getImageData(25, 55).data[0],
+    100,
+    'un PJ qui voit la lumière profite de son éclairage'
+  );
+
+  // Et sans aucun pion, une carte à lumières reste intégralement couverte.
+  const { ctx: ctx3 } = createMockCanvas(120, 100);
+  ctx3.fillStyle = 'rgb(100, 100, 100)';
+  ctx3.fillRect(0, 0, 120, 100);
+  createTestFogLayer().render(/** @type {any} */ (ctx3), grid, level, [], defaultOptions());
+  assert.ok(
+    ctx3.getImageData(25, 55).data[0] < 100,
+    'sans pion, une carte Dungeon Alchemist ne doit rien dévoiler'
+  );
 
   fogLayer.updateVision(grid, level, [darkPc, torch], { extractSegments: extractBlockedSegments });
   const before = fogLayer.getVisionSignature();

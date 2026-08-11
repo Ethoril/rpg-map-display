@@ -18,6 +18,26 @@ import { sweep } from '../../vision/sweep.js';
 let computeCount = 0;
 
 /**
+ * Deux segments se croisent-ils ?
+ *
+ * Copie locale et volontaire du test de `js/import/blockedEdges.js` : la couche de rendu
+ * n'a pas à dépendre de la couche d'import pour trois lignes d'arithmétique, et
+ * `ARCHITECTURE.md` §2 tient à ce que ces dépendances restent lisibles.
+ *
+ * @param {MapPoint} a @param {MapPoint} b @param {MapPoint} c @param {MapPoint} d
+ * @returns {boolean}
+ */
+function segmentsSeCroisent(a, b, c, d) {
+  const orientation = (/** @type {MapPoint} */ p, /** @type {MapPoint} */ q, /** @type {MapPoint} */ r) =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = orientation(c, d, a);
+  const d2 = orientation(c, d, b);
+  const d3 = orientation(a, b, c);
+  const d4 = orientation(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/**
  * Compteur du nombre de recalculs réels de vision effectués (pour les tests).
  * @returns {number}
  */
@@ -256,7 +276,14 @@ export class FogLayer {
       (t) => t && t.levelId === level.id && cappedRange(t.emitsLight?.range) > 0
     );
 
-    if (pcTokens.length === 0 && levelLights.length === 0 && emittingTokens.length === 0) {
+    // Sans PJ sur l'étage, rien n'est visible — mais ⚠ **ce n'est pas cette ligne qui le
+    // garantit**, c'est `vuParUnPJ` dans `addSource` : sans observateur, aucune source ne
+    // trouve de ligne de vue et le résultat est vide de toute façon. Vérifié par mutation,
+    // supprimer ce bloc ne change aucun comportement.
+    //
+    // Il reste parce qu'il évite de balayer 94 sources pour jeter le résultat. C'est une
+    // optimisation, et elle doit être lue comme telle.
+    if (pcTokens.length === 0) {
       this._cachedPolygons = [];
       return true;
     }
@@ -294,6 +321,38 @@ export class FogLayer {
     // Les sources fixes UVTT et les torches portées sont des disques de visibilité additionnels.
     // Elles passent toutes par le même sweep que les PJ : murs et portes fermées restent donc des
     // obstacles identiques, sans lecture de pixels ni travail dépendant de rAF.
+    //
+    // ⭐ **Mais une lumière n'est pas un œil.** Jusqu'au 11/08/2026 elles étaient ajoutées sans
+    // condition : une carte Dungeon Alchemist — qui en place systématiquement — se dévoilait
+    // donc toute seule, **sans le moindre pion sur le plateau**. Constaté en séance sur
+    // `testvideo-3` : quatre lampes dans une tour, et des cônes de vision projetés à travers
+    // ses portes alors que personne n'était là pour regarder.
+    //
+    // La règle correcte, et c'est celle du mainteneur : l'éclairage **aide les joueurs à voir
+    // plus loin**, il ne révèle rien par lui-même. Une source ne contribue donc que si un PJ
+    // a une ligne de vue dégagée jusqu'à elle. Sans PJ sur l'étage, rien n'est visible.
+    const centresPJ = pcTokens.map((t) => {
+      const size = Math.max(1, t.sizeCells || 1);
+      return grid.mapFromCellPoint({ cellX: t.cell.a + size / 2, cellY: t.cell.b + size / 2 });
+    });
+
+    /**
+     * Un PJ voit-il ce point ? Test de segment dégagé, pas de sweep : c'est une question
+     * binaire, et la poser 6 × 94 fois coûte moins qu'un seul balayage.
+     *
+     * @param {MapPoint} point
+     */
+    const vuParUnPJ = (point) => {
+      for (const centre of centresPJ) {
+        let bloque = false;
+        for (const s of segments) {
+          if (segmentsSeCroisent(centre, point, s.p1, s.p2)) { bloque = true; break; }
+        }
+        if (!bloque) return true;
+      }
+      return false;
+    };
+
     /**
      * @param {import('../../core/types.js').CellPoint|undefined} at
      * @param {number|undefined} range
@@ -301,9 +360,11 @@ export class FogLayer {
     const addSource = (at, range) => {
       const rangeCells = cappedRange(range);
       if (!at || !Number.isFinite(at.cellX) || !Number.isFinite(at.cellY) || rangeCells <= 0) return;
+      const centerPoint = grid.mapFromCellPoint(at);
+      // Personne pour la voir : la source éclaire peut-être, mais elle ne révèle rien.
+      if (!vuParUnPJ(centerPoint)) return;
       const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
       const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
-      const centerPoint = grid.mapFromCellPoint(at);
       const poly = sweep(centerPoint, segments, rangePx);
       if (Array.isArray(poly) && poly.length > 0) polygons.push(poly);
     };
