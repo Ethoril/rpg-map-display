@@ -54,6 +54,24 @@ test('7bis. la lecture réelle mesure la cadence par le critère du produit', as
   expect(erreurs).toEqual([]);
 });
 
+/**
+ * ⛔ **Ce que ce scénario n'éprouve pas, et pourquoi ce n'est pas un oubli.**
+ *
+ * Il ne vérifie **pas le verdict** de 7bis, et il ne le vérifiera pas : asserter « la lecture
+ * tient » exigerait que le runner décode 4200×2850 en temps réel, ce qu'un headless en
+ * décodage logiciel ne garantit pas. L'assertion serait dépendante de la machine, donc
+ * instable — et une assertion instable finit désactivée, ce qui est pire que son absence.
+ *
+ * Il ne franchit pas non plus une boucle complète : `?duree=8` reste sous les 30 s de
+ * `testvideo-3.webm`. C'est ce qui a permis au faux verdict de la campagne du 11/08/2026 de
+ * survivre à toute la couverture automatique.
+ *
+ * ⭐ La grandeur est donc éprouvée là où elle est déterministe : `LoopingPlaybackProgress`
+ * dans `tests/videoBackdrop.test.mjs`, avec une horloge et un flux synthétiques, boucles
+ * comprises. **Un test navigateur qui mesure une performance mesure aussi la machine qui
+ * l'exécute** ; séparer le calcul de la lecture est ce qui rend la première moitié prouvable.
+ */
+
 test('10. le coût des lumières est rendu comme un écart, avec le verdict de budget', async ({ page }) => {
   test.setTimeout(120000);
   /** @type {string[]} */

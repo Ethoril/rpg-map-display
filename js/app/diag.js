@@ -19,6 +19,11 @@ import { sweep, getLastEvalSegmentCount } from '../vision/sweep.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { ColdDecodeTrial, EnduranceJournal } from './endurance.js';
+import {
+  LoopingPlaybackProgress,
+  MIN_PLAYBACK_RATIO,
+  STALL_CHECK_MS,
+} from '../render/videoBackdrop.js';
 
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
@@ -333,24 +338,32 @@ async function diagnosticVideoLecture() {
     await video.play();
 
     const debutMur = performance.now();
-    const debutFlux = video.currentTime;
+    // ⭐ Cumul par intervalle, et non écart depuis le début de la fenêtre. La version
+    // précédente comparait `currentTime` à `debutFlux` avec une correction d'un seul tour :
+    // sur une vidéo de 30 s mesurée pendant 60 s, deux tours parfaits donnaient 29,9 s pour
+    // 60,0 s, soit 49,8 % — « rampe » à un cheveu du seuil, sur du matériel sain, et de façon
+    // identique sur n'importe quelle machine. Voir `LoopingPlaybackProgress`.
+    const progression = new LoopingPlaybackProgress(video.duration);
+    progression.sample(video.currentTime, debutMur);
     /** @type {number|null} */
     let premierRepli = null;
-    // Un seul échantillonnage à 2,5 s, comme le détecteur du produit, puis on laisse jouer.
     await new Promise((resolve) => {
       const t = setInterval(() => {
-        const ecoule = performance.now() - debutMur;
-        let avance = video.currentTime - debutFlux;
-        if (avance < 0) avance += video.duration || 0;
-        if (premierRepli === null && ecoule > 2500 && (avance * 1000) / ecoule < 0.5) premierRepli = ecoule;
+        const maintenant = performance.now();
+        // Le ratio de l'**intervalle** : c'est celui que `_checkPlayback` juge, donc le seul
+        // qui prédise le basculement du produit. Le ratio depuis le début ne le prédit pas.
+        const intervalle = progression.sample(video.currentTime, maintenant);
+        const ecoule = maintenant - debutMur;
+        if (premierRepli === null && intervalle !== null && intervalle < MIN_PLAYBACK_RATIO) {
+          premierRepli = ecoule;
+        }
         if (ecoule >= DUREE_MS) { clearInterval(t); resolve(undefined); }
-      }, 2500);
+      }, STALL_CHECK_MS);
     });
 
     const ecoule = performance.now() - debutMur;
-    let avance = video.currentTime - debutFlux;
-    while (avance < 0) avance += video.duration || 0;
-    const ratio = (avance * 1000) / ecoule;
+    const avance = progression.avanceTotale;
+    const ratio = progression.ratio ?? 0;
     const q = video.getVideoPlaybackQuality?.() ?? null;
     const perdues = q ? q.droppedVideoFrames : null;
     const totales = q ? q.totalVideoFrames : null;
@@ -361,12 +374,12 @@ async function diagnosticVideoLecture() {
         '',
         `Résolution décodée : ${video.videoWidth}×${video.videoHeight}`,
         `Temps réel écoulé :  ${arrondi(ecoule / 1000, 1)} s`,
-        `Flux parcouru :      ${arrondi(avance, 1)} s`,
-        `Cadence relative :   ${arrondi(ratio * 100, 0)} % du temps réel   (seuil produit : 50 %)`,
+        `Flux parcouru :      ${arrondi(avance, 1)} s   (cumulé par intervalle, boucles comprises)`,
+        `Cadence relative :   ${arrondi(ratio * 100, 0)} % du temps réel   (seuil produit : ${arrondi(MIN_PLAYBACK_RATIO * 100, 0)} %)`,
         totales !== null ? `Images décodées :    ${totales}, dont ${perdues} perdues` : 'getVideoPlaybackQuality indisponible.',
         totales ? `Images par seconde : ${arrondi(totales / (ecoule / 1000), 1)}` : '',
         '',
-        ratio >= 0.5
+        ratio >= MIN_PLAYBACK_RATIO
           ? 'VERDICT : la lecture tient. Le détecteur de cadence ne se déclencherait pas.'
           : `VERDICT : la lecture rampe. Le produit basculerait sur l’affiche fixe${premierRepli !== null ? ` vers ${arrondi(premierRepli / 1000, 1)} s` : ''}.`,
         '',

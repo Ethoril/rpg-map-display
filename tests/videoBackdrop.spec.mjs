@@ -141,6 +141,67 @@ test('quand la vidéo peint, la couche de fond se tait', async ({ browser }) => 
   await sansVideo.context.close();
 });
 
+/**
+ * ⭐ L'invariant porteur du chantier W, et le seul que rien ne vérifiait.
+ *
+ * Deux moitiés existaient sans jamais se rencontrer : `appIntegration.spec.mjs` prouve que
+ * `frameCount` se fige sur une scène immobile — mais **sans vidéo** —, et le scénario
+ * ci-dessus prouve que la couche de fond se tait **en pixels** — ce qui dit qu'elle ne
+ * dessine pas l'image, pas que la boucle dort.
+ *
+ * Un `invalidate()` par image vidéo passerait donc les deux : la vidéo jouerait, la couche
+ * se tairait, les pixels seraient justes. Le seul symptôme serait une tablette qui se vide
+ * sur une séance de 4 h — et il serait mis sur le compte du matériel, R2-06 étant ouvert.
+ *
+ * La fenêtre est tenue **sous les 2,5 s de `STALL_CHECK_MS`** délibérément : le contrôle de
+ * cadence n'appelle `invalidate()` qu'en cas d'échec, mais un headless qui décode 4200×2850
+ * en logiciel peut légitimement ramper, et l'assertion deviendrait dépendante de la machine.
+ * Ce qu'on éprouve ici est l'absence de réveil **par la lecture**, pas la tenue du décodeur.
+ */
+test('un fond animé qui joue ne réveille jamais le rendu', async ({ browser }) => {
+  for (const vue of /** @type {const} */ (['gm', 'player'])) {
+    const { context, page, erreurs } = await ouvrir(browser, vue, snapshot());
+    await attendreFlux(page);
+
+    const frames = () =>
+      page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.frameLoop.frameCount);
+
+    // Le démarrage demande légitimement des frames — le flux qui devient lisible en est une.
+    // On attend donc que la boucle se soit tue d'elle-même avant de mesurer, au lieu de
+    // deviner un délai : deux relevés égaux à 300 ms d'écart valent repos établi.
+    await expect
+      .poll(
+        async () => {
+          const a = await frames();
+          await page.waitForTimeout(300);
+          return (await frames()) === a;
+        },
+        { timeout: 15000, message: `la boucle de rendu ne s’est jamais tue (${vue})` }
+      )
+      .toBe(true);
+
+    const avant = await frames();
+    await page.waitForTimeout(1000);
+    const apres = await frames();
+
+    // 1 000 ms de lecture, soit ~30 images à 30 i/s : un réveil par image en produirait ~30,
+    // et une seule suffit à faire rougir cette égalité.
+    expect(
+      apres,
+      `${vue} : ${apres - avant} frame(s) rendue(s) pendant 1 s de lecture vidéo`
+    ).toBe(avant);
+    // La vidéo doit avoir réellement avancé pendant la fenêtre, sans quoi l'égalité
+    // ci-dessus serait obtenue par un flux à l'arrêt — vert pour la mauvaise raison.
+    const avance = await page.evaluate(() => {
+      const v = /** @type {HTMLVideoElement|null} */ (document.querySelector('.video-backdrop'));
+      return v ? v.currentTime : 0;
+    });
+    expect(avance, `${vue} : le flux n’a pas avancé, l’invariant n’est pas éprouvé`).toBeGreaterThan(0);
+    expect(erreurs).toEqual([]);
+    await context.close();
+  }
+});
+
 test('vidéo illisible : repli sur l’affiche, sans page en erreur', async ({ browser }) => {
   const { context, page, erreurs } = await ouvrir(
     browser,

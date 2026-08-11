@@ -52,6 +52,86 @@ export const STALL_CHECK_MS = 2500;
 export const MIN_PLAYBACK_RATIO = 0.5;
 
 /**
+ * Avancement d'un flux entre deux échantillons, passage par zéro compris.
+ *
+ * ⛔ **Valable pour un seul tour de boucle, donc à n'appeler que sur des échantillons plus
+ * rapprochés que la durée du flux.** Au-delà, un tour entier est indiscernable d'un flux
+ * immobile : l'information est perdue et aucune arithmétique ne la rattrape. C'est une
+ * contrainte sur l'appelant, et elle a déjà été violée — voir `LoopingPlaybackProgress`.
+ *
+ * @param {number} precedent - `currentTime` de l'échantillon précédent
+ * @param {number} courant - `currentTime` de l'échantillon courant
+ * @param {number} duree - durée du flux, `video.duration`
+ * @returns {number} secondes de flux parcourues depuis l'échantillon précédent
+ */
+export function advanceBetween(precedent, courant, duree) {
+  const avance = courant - precedent;
+  return avance < 0 ? avance + (duree || 0) : avance;
+}
+
+/**
+ * Cumul de l'avancement d'un flux qui boucle, échantillon par échantillon.
+ *
+ * ⭐ **Existe parce qu'une mesure fausse a survécu à une campagne entière.** La section 7bis
+ * de `diag.html` comparait `currentTime` au **début** d'une fenêtre de 60 s, avec la
+ * correction d'un seul tour d'`advanceBetween`, sur une vidéo de 30 s. Soixante secondes de
+ * lecture *parfaite* font deux tours : `currentTime` revient à son point de départ, la
+ * correction en rend un seul, et le résultat annoncé était **29,9 s pour 60,0 s — 49,8 %,
+ * juste sous le seuil de 50 %**. Le verdict « la lecture rampe » était donc déterministe et
+ * indépendant du matériel, ce qui l'a rendu crédible : la tablette et un PC puissant
+ * rendaient exactement le même chiffre.
+ *
+ * Cumuler par intervalle respecte la contrainte d'`advanceBetween` par construction, et
+ * donne en plus la grandeur que le produit juge réellement — le ratio **de l'intervalle**,
+ * et non celui depuis le début, `VideoBackdrop._checkPlayback` ne regardant jamais plus loin
+ * que l'échantillon précédent.
+ */
+export class LoopingPlaybackProgress {
+  /** @param {number} duree - durée du flux, `video.duration` */
+  constructor(duree) {
+    this.duree = duree;
+    /** Total des avancements par intervalle, en secondes de flux. */
+    this.avanceTotale = 0;
+    /** Temps mural couvert par les intervalles mesurés, en millisecondes. */
+    this.ecouleTotal = 0;
+    /** @type {{ at: number, media: number }|null} */
+    this._precedent = null;
+  }
+
+  /**
+   * Enregistre un échantillon et rend le ratio **de cet intervalle**.
+   *
+   * @param {number} media - `video.currentTime`
+   * @param {number} at - horloge murale, en millisecondes
+   * @returns {number|null} ratio de l'intervalle, ou `null` pour le premier échantillon —
+   *   qui ne sert que de référence, comme dans le contrôle de cadence du produit.
+   */
+  sample(media, at) {
+    const precedent = this._precedent;
+    this._precedent = { at, media };
+    if (!precedent) return null;
+
+    const ecoule = at - precedent.at;
+    if (ecoule <= 0) return null;
+    const avance = advanceBetween(precedent.media, media, this.duree);
+    this.avanceTotale += avance;
+    this.ecouleTotal += ecoule;
+    return (avance * 1000) / ecoule;
+  }
+
+  /**
+   * Ratio cumulé sur tous les intervalles mesurés.
+   *
+   * ⚠ Rapporté au temps mural **couvert par les échantillons**, pas à la durée totale de la
+   * fenêtre : un échantillon manqué ne doit pas se lire comme un flux en retard.
+   */
+  get ratio() {
+    if (this.ecouleTotal <= 0) return null;
+    return (this.avanceTotale * 1000) / this.ecouleTotal;
+  }
+}
+
+/**
  * Transformation CSS reproduisant exactement `Camera.applyToContext`.
  *
  * ⛔ **Sans le `scale(resolution)` du stage.** `renderAll` applique d'abord
@@ -286,9 +366,10 @@ export class VideoBackdrop {
     const ecoule = now - precedent.at;
     if (ecoule < STALL_CHECK_MS * 0.8) return;
 
-    // La boucle repasse par zéro : `currentTime` recule. Ce n'est pas un blocage.
-    let avance = media - precedent.media;
-    if (avance < 0) avance += video.duration || 0;
+    // La boucle repasse par zéro : `currentTime` recule. Ce n'est pas un blocage. La
+    // correction est partagée avec le diagnostic, qui prétend juger par ce même critère —
+    // et qui en avait recopié une version fausse.
+    const avance = advanceBetween(precedent.media, media, video.duration);
 
     const ratio = (avance * 1000) / ecoule;
     if (ratio >= MIN_PLAYBACK_RATIO) return;

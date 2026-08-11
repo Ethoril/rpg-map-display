@@ -7,6 +7,9 @@ import {
   cssTransformFor,
   HAVE_CURRENT_DATA,
   STALL_CHECK_MS,
+  MIN_PLAYBACK_RATIO,
+  advanceBetween,
+  LoopingPlaybackProgress,
 } from '../js/render/videoBackdrop.js';
 import { BackgroundLayer } from '../js/render/layers/background.js';
 import { Camera } from '../js/render/camera.js';
@@ -73,6 +76,144 @@ function harness(options = {}) {
     get invalidations() { return invalidations; },
   };
 }
+
+/**
+ * Rejoue une lecture par échantillons et rend ce que la mesure conclut.
+ *
+ * @param {{ duree: number, fenetreMs: number, periodeMs: number, vitesse: number|((t: number) => number) }} scenario
+ *   `vitesse` est la fraction du temps réel que le flux parcourt — 1 pour une lecture
+ *   normale, 0,3 pour un flux qui rampe, ou une fonction du temps mural pour un flux qui
+ *   change de régime en cours de route.
+ */
+function rejouerLecture({ duree, fenetreMs, periodeMs, vitesse }) {
+  const vitesseA = typeof vitesse === 'function' ? vitesse : () => vitesse;
+  const progression = new LoopingPlaybackProgress(duree);
+  let media = 0;
+  progression.sample(media, 0);
+  /** @type {number[]} */
+  const ratiosIntervalle = [];
+  for (let t = periodeMs; t <= fenetreMs; t += periodeMs) {
+    // Le flux avance de `vitesse` × la période, et repasse par zéro à chaque tour : c'est
+    // exactement ce que `video.currentTime` fait sous `loop`.
+    media = (media + (periodeMs / 1000) * vitesseA(t)) % duree;
+    const r = progression.sample(media, t);
+    if (r !== null) ratiosIntervalle.push(r);
+  }
+  return { ratio: progression.ratio, avance: progression.avanceTotale, ratiosIntervalle };
+}
+
+test('advanceBetween : sans passage par zéro, c’est une simple différence', () => {
+  assert.equal(advanceBetween(4, 6.5, 30), 2.5);
+});
+
+test('advanceBetween : un passage par zéro n’est pas un blocage', () => {
+  // 29,5 s → 2 s sur un flux de 30 s : 2,5 s parcourues, pas −27,5.
+  assert.equal(advanceBetween(29.5, 2, 30), 2.5);
+});
+
+test('⭐ 60 s de lecture parfaite sur un flux de 30 s valent 100 %, pas 49,8 %', () => {
+  // Le test qui aurait attrapé le faux verdict de la campagne du 11/08/2026. L'ancien calcul
+  // comparait `currentTime` au début de la fenêtre avec une correction d'un seul tour : deux
+  // tours parfaits rendaient 29,9 s pour 60,0 s, soit 49,8 % — juste sous le seuil.
+  const { ratio, avance } = rejouerLecture({
+    duree: 30,
+    fenetreMs: 60000,
+    periodeMs: STALL_CHECK_MS,
+    vitesse: 1,
+  });
+  assert.ok(ratio !== null && Math.abs(ratio - 1) < 0.001, `ratio attendu ≈ 1, obtenu ${ratio}`);
+  assert.ok(Math.abs(avance - 60) < 0.001, `avance attendue ≈ 60 s, obtenue ${avance}`);
+  // Et la borne qui compte : le verdict du produit ne doit pas se déclencher.
+  assert.ok(/** @type {number} */ (ratio) >= MIN_PLAYBACK_RATIO);
+  // La valeur exacte du défaut, pour que la régression soit nommée et non seulement évitée.
+  assert.ok(/** @type {number} */ (ratio) > 0.5, 'le défaut rendait 0,498 — un cheveu sous le seuil');
+});
+
+test('la mesure ne dépend pas du nombre de tours de boucle parcourus', () => {
+  // Des flux de durées très différentes, tous lus normalement : même verdict. C'est
+  // précisément ce que le défaut ne faisait pas — il rendait duree/fenetre.
+  //
+  // ⛔ Toutes ces durées dépassent la période d'échantillonnage, comme `advanceBetween`
+  // l'exige. En dessous, la mesure est faussée par construction : voir le test suivant, qui
+  // épingle la limite au lieu de la contourner.
+  for (const duree of [3, 7.5, 30, 300]) {
+    const { ratio } = rejouerLecture({
+      duree,
+      fenetreMs: 60000,
+      periodeMs: STALL_CHECK_MS,
+      vitesse: 1,
+    });
+    assert.ok(
+      ratio !== null && Math.abs(ratio - 1) < 0.001,
+      `flux de ${duree} s : ratio attendu ≈ 1, obtenu ${ratio}`
+    );
+  }
+});
+
+test('⚠ un flux plus court que la période est illisible, et le produit y est exposé', () => {
+  // Découvert en écrivant le test précédent, et **ce n'est pas un défaut du diagnostic** :
+  // `_checkPlayback` échantillonne à `STALL_CHECK_MS`, donc une carte dont la vidéo dure
+  // moins de 2,5 s verrait son fond animé rabattu sur l'affiche fixe, avec un avertissement
+  // accusant à tort le décodeur. Aucune carte du catalogue n'est dans ce cas aujourd'hui
+  // (`testvideo-3` dure 30 s), l'exposition est donc latente.
+  //
+  // Ce test **fixe le comportement actuel** pour que le jour où la période devient adaptative,
+  // il rougisse et rappelle pourquoi. Il ne valide pas la situation.
+  const { ratio } = rejouerLecture({
+    duree: 2,
+    fenetreMs: 60000,
+    periodeMs: STALL_CHECK_MS,
+    vitesse: 1,
+  });
+  assert.ok(
+    /** @type {number} */ (ratio) < MIN_PLAYBACK_RATIO,
+    'la lecture est parfaite et pourtant jugée trop lente : c’est la limite, pas un succès'
+  );
+  assert.ok(Math.abs(/** @type {number} */ (ratio) - 0.2) < 0.001, `obtenu ${ratio}`);
+});
+
+test('un flux qui rampe à 30 % est bien vu comme rampant', () => {
+  const { ratio } = rejouerLecture({
+    duree: 30,
+    fenetreMs: 60000,
+    periodeMs: STALL_CHECK_MS,
+    vitesse: 0.3,
+  });
+  assert.ok(ratio !== null && Math.abs(ratio - 0.3) < 0.001, `ratio attendu ≈ 0,3, obtenu ${ratio}`);
+  assert.ok(/** @type {number} */ (ratio) < MIN_PLAYBACK_RATIO);
+});
+
+test('le ratio d’intervalle attrape un blocage tardif que le cumul dilue', () => {
+  // 50 s de lecture normale puis un arrêt franc : le cumul reste au-dessus du seuil, donc un
+  // verdict global déclarerait « ça tient ». C'est pour ça que le premier repli se juge sur
+  // l'intervalle — comme `_checkPlayback`, qui ne regarde jamais plus loin que l'échantillon
+  // précédent.
+  const { ratio, ratiosIntervalle } = rejouerLecture({
+    duree: 30,
+    fenetreMs: 60000,
+    periodeMs: STALL_CHECK_MS,
+    vitesse: (t) => (t <= 50000 ? 1 : 0),
+  });
+  assert.ok(/** @type {number} */ (ratio) >= MIN_PLAYBACK_RATIO, 'le cumul dilue le blocage');
+  assert.ok(
+    ratiosIntervalle.some((r) => r < MIN_PLAYBACK_RATIO),
+    'aucun intervalle n’a été vu sous le seuil, le blocage passerait inaperçu'
+  );
+});
+
+test('le premier échantillon ne conclut rien : il sert de référence', () => {
+  const progression = new LoopingPlaybackProgress(30);
+  assert.equal(progression.sample(0, 0), null);
+  assert.equal(progression.ratio, null, 'aucun intervalle mesuré, donc aucun ratio à rendre');
+  assert.equal(progression.sample(2.5, 2500), 1);
+});
+
+test('deux échantillons à la même horloge ne fabriquent pas un ratio infini', () => {
+  const progression = new LoopingPlaybackProgress(30);
+  progression.sample(0, 1000);
+  assert.equal(progression.sample(1, 1000), null);
+  assert.equal(progression.ratio, null);
+});
 
 test('la vidéo est insérée avant le canvas, muette, bouclée et en lecture en ligne', () => {
   const h = harness();

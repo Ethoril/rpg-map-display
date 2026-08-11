@@ -1,9 +1,12 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
 > Dernière mise à jour : 11 août 2026 — **campagne de diagnostics passée sur la Tab S9 FE, aucun
-> problème de performance constaté** ; le chantier O est clos et l'arbitrage A7 a sa mesure, mais
-> **deux sondes de `diag.html` rendent des chiffres faux et restent en place**. Lire « Campagne de
-> diagnostics sur la tablette — 11 août 2026 » avant de citer un chiffre de cette page. Avant cela,
+> problème de performance constaté** ; le chantier O est clos et l'arbitrage A7 a sa mesure. Deux
+> sondes de `diag.html` rendaient des chiffres faux : **7bis est corrigée et son calcul est désormais
+> éprouvé**, celle du décodage froid reste un piège connu. Un défaut latent du produit a été trouvé
+> en écrivant ce test — un fond animé de moins de 2,5 s serait rabattu à tort sur l'affiche fixe.
+> Lire « Campagne de diagnostics sur la tablette — 11 août 2026 » avant de citer un chiffre de cette
+> page. Avant cela,
 > le 8 août 2026 : **premier run CI complet vert, émulateurs Firebase compris**
 > (voir « Premier run CI complet »). **Le lot 2 du CdC est fermé à 13 critères sur 13.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
 > L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
@@ -1387,12 +1390,14 @@ mieux que ce soit écrit ici qu'oublié puis cité.
   jamais ouvert n'a pas à occuper la barre »). Un relevé, une séance : à confirmer sur une seconde
   avant de retirer quoi que ce soit de la barre.
 
-### ⚠ Deux sondes de `diag.html` rendent des chiffres faux, et elles restent en place
+### Deux sondes de `diag.html` rendaient des chiffres faux — une corrigée, une consignée
 
-Le mainteneur a arbitré de ne pas les corriger, la campagne étant close et le produit sain. Elles
-sont donc consignées ici comme **pièges connus** : ne conclure de rien à partir de leurs chiffres.
+Décision initiale du 11/08 : ne rien corriger, la campagne étant close et le produit sain.
+**Révisée le même jour pour 7bis**, sur demande du mainteneur, une fois établi que le calcul
+pouvait être éprouvé sans dépendre d'une machine. La seconde sonde reste en place, et reste donc un
+**piège connu** : ne conclure de rien à partir de ses chiffres.
 
-**1. La section 7bis dit « rampe » sur une lecture qui tient.** Elle mesure l'avancement du flux
+**1. La section 7bis disait « rampe » sur une lecture qui tient. ✅ Corrigée.** Elle mesurait l'avancement du flux
 depuis le *début* de la fenêtre de 60 s, avec une correction de boucle qui ne rattrape qu'**un seul
 tour** (`while (avance < 0) avance += video.duration`). Or `testvideo-3.webm` dure exactement 30 s
 — lu dans l'en-tête EBML, `ffprobe` n'étant pas installé sur le poste. Soixante secondes de lecture
@@ -1412,6 +1417,35 @@ existe — et aucune fixité n'apparaît à l'œil.
 Le test de couverture ne pouvait pas l'attraper : `tests/diagVideo.spec.mjs` tourne à `?duree=8`,
 sous les 30 s de la vidéo, donc la boucle ne repasse **jamais** par zéro. Faux vert de plus, et de
 la même famille que ceux du chantier W : le test exerce le bouton, pas la grandeur.
+
+**Correctif livré le 11/08/2026.** Le calcul est cumulé par intervalle et vit désormais dans une
+primitive partagée, `LoopingPlaybackProgress` de `js/render/videoBackdrop.js` : le produit et le
+diagnostic jugent la même arithmétique, ce que la doc de 7bis prétendait déjà. `premierRepli` se
+juge maintenant sur le ratio **de l'intervalle** — la grandeur que `_checkPlayback` regarde
+réellement — et non sur le ratio depuis le début, qui ne prédit rien du basculement.
+
+⭐ **La leçon de méthode est dans la répartition de la preuve.** Le verdict de 7bis ne sera jamais
+asserté en CI : il exigerait qu'un headless décode 4200×2850 en temps réel, l'assertion serait
+dépendante de la machine, donc instable, donc désactivée un jour. Le calcul, lui, est déterministe :
+il est éprouvé dans `tests/videoBackdrop.test.mjs` avec une horloge et un flux synthétiques, boucles
+comprises, et la mutation le confirme — remettre le défaut fait rougir quatre tests. **Un test
+navigateur qui mesure une performance mesure aussi la machine ;** séparer le calcul de la lecture est
+ce qui rend la moitié prouvable réellement prouvée.
+
+### ⚠ Un défaut du produit trouvé en écrivant ce test, latent aujourd'hui
+
+Trouvé le 11/08/2026, et ce n'en est pas un du diagnostic. `advanceBetween` ne corrige **qu'un seul**
+passage par zéro, ce qui exige d'échantillonner plus vite que la durée du flux. Or
+`VideoBackdrop._checkPlayback` échantillonne à `STALL_CHECK_MS = 2500` ms : **une carte dont la vidéo
+dure moins de 2,5 s verrait son fond animé rabattu sur l'affiche fixe**, avec un avertissement
+accusant à tort le décodeur. Une lecture parfaite d'un flux de 2 s se lit 0,2 — vérifié par test.
+
+L'exposition est **latente** : `testvideo-3.webm` dure 30 s et c'est la seule carte animée du
+catalogue. Mais une boucle courte — feu de camp, clapotis, torche — est exactement le cas d'usage
+naturel d'un fond animé, donc le défaut attend une carte, pas un correctif de code. Le correctif
+serait de dériver la période de la durée du flux plutôt que de la fixer. **Non traité, sciemment** ;
+un test épingle le comportement actuel pour que le jour où la période devient adaptative, il rougisse
+et rappelle pourquoi.
 
 **2. La ligne `drawImage` du décodage froid mesure une file d'attente, pas un décodage.** La section
 refabrique une `Image` et fait `await image.decode()` **juste avant** de démarrer le chronomètre :
@@ -1480,7 +1514,7 @@ Avancement mesuré contre les lots du cahier des charges §11, au **8 août 2026
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
 | **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. La mesure lumière est **faite sur la tablette le 11/08/2026 — 2,6 ms pour un budget de 300 ms** ; il ne reste de cette porte matérielle qu'à préciser si le cast était actif. Les critères fonctionnels 5 et 6 restent acquis. |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
-| Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** par la section 7 (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6. ⚠ **Ne pas lire le verdict de la section 7bis** : il annonce « rampe » par un défaut d'arithmétique de boucle, sur une lecture qui tient (voir la campagne du 11/08) |
+| Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** par la section 7 (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6. Le verdict « rampe » rendu par la section 7bis pendant la campagne était un défaut d'arithmétique de boucle, **corrigé le 11/08** : la lecture tenait |
 | §12 Questions ouvertes | 8, dont plusieurs conditionnent des choix de conception du lot 2 |
 
 Le substrat est en place : plateau, grille, pions, gestes, transport, persistance, import.
