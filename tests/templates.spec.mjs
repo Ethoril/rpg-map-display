@@ -164,6 +164,111 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     expect(templatesAfterClear).toBe(0);
   });
 
+  /**
+   * Réglages du panneau des gabarits — la moitié du composant que rien ne touchait.
+   *
+   * `#tpl-shape`, `#tpl-toggle-arm` et `#tpl-clear-level` sont couverts par les scénarios 1 à 3,
+   * et le geste réel d'armement par `tests/manuel/gmToolDisarmGeste.spec.mjs`. Mais **aucun test
+   * ne touchait `#tpl-radius`, `.tpl-rad-preset`, `#tpl-color` ni `#tpl-visible`** : le rayon, la
+   * couleur et la visibilité joueurs pouvaient cesser d'atteindre le gabarit posé sans qu'une
+   * seule assertion bouge.
+   *
+   * ⭐ Le dernier est un risque de fuite, pas un confort : la vue joueurs filtre bien sur
+   * `visibleToPlayers` (couvert par `templates.test.mjs` et `templateHit.test.mjs`), mais ce qui
+   * n'était pas couvert est que **décocher la case produise réellement `false`**. Un filtre
+   * correct alimenté par un drapeau toujours vrai montre tout aux joueurs.
+   */
+  test('5. Rayon, couleur et visibilité joueurs atteignent le gabarit posé', async ({ page }) => {
+    const sessionId = `test-template-e2e-5-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, null);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+
+    await page.evaluate(async () => {
+      const [store, schema] = await Promise.all([
+        import('../js/state/store.js'),
+        import('../js/core/schema.js'),
+      ]);
+      const level = schema.createLevel({
+        id: 'level-1', name: 'Étage Test', widthCells: 10, heightCells: 10, pxPerCell: 140,
+      });
+      store.loadCampaign(schema.createCampaign({ levels: [level] }));
+    });
+
+    await page.click('button[data-tab="template-tools"]');
+
+    // Les trois réglages jamais éprouvés, chacun par son vrai contrôle.
+    await page.fill('#tpl-radius', '7');
+    await page.click('.tpl-color-preset[data-color="#10b981"]');
+    await page.uncheck('#tpl-visible');
+
+    await page.click('#tpl-toggle-arm');
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 250, y: 250 },
+        screenPos: { x: 250, y: 250 },
+      });
+    });
+
+    const pose = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const t = store.getState().campaign?.templates?.[0];
+      return t ? { radiusCells: t.radiusCells, color: t.color, visibleToPlayers: t.visibleToPlayers } : null;
+    });
+
+    expect(pose, 'aucun gabarit posé : le reste du test ne prouverait rien').not.toBeNull();
+    expect(pose?.radiusCells, 'le rayon saisi n’atteint pas le gabarit').toBe(7);
+    expect(pose?.color, 'la pastille de couleur n’atteint pas le gabarit').toBe('#10b981');
+    expect(
+      pose?.visibleToPlayers,
+      'la case décochée n’atteint pas le gabarit : il serait montré aux joueurs'
+    ).toBe(false);
+  });
+
+  test('6. Pastilles de rayon et bornage de la saisie', async ({ page }) => {
+    const sessionId = `test-template-e2e-6-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, null);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await page.click('button[data-tab="template-tools"]');
+
+    const config = () =>
+      page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.gmPanel.templateTools.getConfig());
+
+    // Une pastille doit écraser la saisie ET réécrire le champ, sinon l'affichage mentirait
+    // sur ce qui sera posé.
+    await page.fill('#tpl-radius', '3');
+    await page.click('.tpl-rad-preset[data-rad="6"]');
+    expect((await config()).radiusCells).toBe(6);
+    expect(await page.inputValue('#tpl-radius')).toBe('6');
+
+    // Saisie invalide : le composant retombe sur 1 plutôt que de propager NaN, qui ferait
+    // échouer la validation du schéma à l'enregistrement de la campagne.
+    //
+    // ⛔ Pas de cas « abc » ici, et ce n'est pas un oubli : un `input[type=number]` ne peut pas
+    // porter de texte non numérique — le navigateur l'assainit en chaîne vide, que Playwright
+    // refuse d'ailleurs d'écrire. Le cas réellement atteignable est donc la chaîne vide, et
+    // c'est elle que le `|| 1` du composant rattrape.
+    for (const brut of ['0', '-4', '']) {
+      await page.fill('#tpl-radius', brut);
+      await page.dispatchEvent('#tpl-radius', 'change');
+      expect((await config()).radiusCells, `saisie « ${brut} »`).toBe(1);
+    }
+
+    // ⚠ Écart constaté entre l'interface et le code, **non corrigé** : le champ déclare
+    // `max="20"` mais le bornage du composant est à 50, et `max` n'empêche rien hors validation
+    // de formulaire. Le maximum effectif est donc 50. Ce test fixe le comportement réel pour que
+    // l'écart soit vu ; il ne dit pas laquelle des deux bornes est la bonne.
+    expect(await page.getAttribute('#tpl-radius', 'max')).toBe('20');
+    await page.fill('#tpl-radius', '50');
+    await page.dispatchEvent('#tpl-radius', 'change');
+    expect((await config()).radiusCells, 'le bornage effectif a changé — relire le commentaire').toBe(50);
+    await page.fill('#tpl-radius', '999');
+    await page.dispatchEvent('#tpl-radius', 'change');
+    expect((await config()).radiusCells).toBe(50);
+  });
+
   test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {
     const sessionId = `test-template-e2e-4-${Date.now()}`;
     const levelWithWall = {

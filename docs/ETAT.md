@@ -211,6 +211,19 @@ cause d'instabilité avait été trouvée et corrigée le 4 août 2026 — défa
 l'application — ; leur succès est désormais requis avant tout déploiement. Les traces restent
 publiées en artefact en cas d'échec, sans second job qui rejouerait les mêmes scénarios.
 
+> ✅ **`pnpm run test:mesures` est hors de `verify`, et c'est voulu.** Consigné le 11/08/2026 après
+> que la question a été reposée — signe qu'elle se reposera. Les deux fichiers de `tests/mesures/`
+> (`fogReadback`, `latenceAllerRetour`) portent la mention « Aucun seuil : ce fichier mesure, il ne
+> juge pas » et n'ont d'assertion que « le relevé n'est pas vide ». **Les mettre dans la porte
+> n'attraperait donc rien** et ajouterait deux scénarios multi-pages lents à chaque `verify`.
+>
+> ⛔ Le critère qui décide, et il ne se devine pas depuis le nom du script : un fichier entre dans la
+> porte quand il porte un **jugement reproductible**, pas quand il produit un chiffre. `test:gestes`
+> y est entré par R1-08 pour cette raison précise — il juge un geste, et son instabilité était un
+> défaut de test, corrigé. Une mesure, elle, dépend de la machine : la mettre sous seuil dans un CI
+> revient à faire dépendre le déploiement du runner du jour. C'est le même raisonnement qui interdit
+> d'asserter le verdict de la section 7bis de `diag.html` (voir la campagne du 11/08).
+
 La cohérence des import maps et de la version Firebase reste bloquante à chaque `verify`.
 La disponibilité des CDN et le signalement des versions npm récentes passent dans un contrôle
 hebdomadaire séparé : une indisponibilité extérieure ponctuelle ne bloque donc pas un push.
@@ -1488,6 +1501,69 @@ sens que le chantier annonçait sans le chiffrer (« la tablette paie plus cher 
 — c'est précisément le rôle de la doublure 1024 px du chantier P que d'éviter que ce coût tombe dans
 une frame — et l'endurance ne signale aucune saccade. À retenir comme **confirmation d'une prédiction**,
 pas comme défaut.
+
+## Revue de couverture des tests — 11 août 2026
+
+Menée sur question du mainteneur (« il nous manque quoi en tests ? »), après la campagne de
+diagnostics. Le maillage était dense — 289 unitaires, 142 navigateur, huit invariants d'architecture
+vérifiés à la machine — et il manquait peu. Mais un trou était sérieux, et deux leçons de méthode
+sont sorties de la recherche elle-même.
+
+### Le trou : l'invariant du chantier W n'était vérifié par personne
+
+**Deux moitiés existaient sans jamais se rencontrer.** `appIntegration.spec.mjs` prouve que
+`frameCount` se fige quand la scène est immobile — mais sur une scène vide, **sans vidéo**.
+`videoBackdrop.spec.mjs` prouve que la couche de fond se tait quand la vidéo peint — mais **en
+pixels**, ce qui dit qu'elle ne dessine pas l'image, pas que la boucle de rendu dort.
+
+⭐ Un `invalidate()` par image vidéo passait donc les deux : la vidéo jouerait, la couche se tairait,
+les pixels seraient justes. **Le seul symptôme aurait été une tablette qui se vide sur une séance de
+4 h** — et il aurait été mis sur le compte du matériel, R2-06 étant précisément ouvert sur la tenue
+de longue durée. Fermé par un test qui lit `frameCount` sur 1 s de lecture réelle, sur les deux vues,
+après avoir attendu que la boucle se taise d'elle-même plutôt que de deviner un délai.
+
+### Trois modules sans test, et pourquoi le compte était de trois et non de quatre
+
+`js/grid/GridAdapter.js` était dans la liste des modules qu'aucun test n'importe : c'est un fichier
+de contrat (`export {}`), correctement sans test, comme `js/core/types.js`. Les trois autres sont
+couverts depuis le 11/08 :
+
+- **`js/render/layers/walls.js`** — `tests/walls.test.mjs`, 9 tests. Ce qui s'y joue n'est pas
+  l'aspect des traits, qui se voit à l'œil, mais **l'hygiène d'état du contexte** : une couche qui
+  laisse fuir un `strokeStyle` ou un tiret de pointillé contamine toutes les couches suivantes de
+  l'ordre canonique, et le défaut se manifeste alors **ailleurs** que dans son propre code. Deux
+  comportements sont épinglés sans être approuvés : la couche hérite du pointillé de son appelant, et
+  chaque mur doit ouvrir son propre chemin sous peine d'être relié au suivant par un trait inexistant.
+- **`js/app/runtimeConfig.js`** — `tests/runtimeConfig.test.mjs`, 12 tests. Deux raisons, dont une
+  qui n'était visible de nulle part : ⭐ le module a un **devoir de confidentialité**. `testEmail` et
+  `testPassword` sont les identifiants du compte technique de la CI, et le mainteneur colle parfois
+  le JSON complet dans `diag.html` : ils ne doivent ni entrer dans le runtime, ni être réécrits dans
+  le stockage local de la tablette — qui se lit. Rien ne le vérifiait. Mutation : contourner le
+  filtrage fait rougir les deux tests concernés.
+- **`js/ui/gm/templateTools.js`** — ⚠ **et ici mon signal de départ était un faux positif.** « Aucun
+  test ne l'importe » ne veut pas dire « non couvert » : c'est un composant DOM, il n'y a pas de jsdom
+  au dépôt, et `templates.spec.mjs` le pilote déjà par l'interface réelle — forme, armement,
+  effacement, exclusivité mutuelle — ce qui est la **meilleure** couverture pour ce genre de code.
+  Le vrai trou était plus étroit et plus intéressant : **rien ne touchait `#tpl-radius`,
+  `.tpl-rad-preset`, `#tpl-color` ni `#tpl-visible`**. Deux scénarios les couvrent désormais.
+
+⭐ **`#tpl-visible` était un risque de fuite, pas un confort.** La vue joueurs filtre correctement sur
+`visibleToPlayers` — c'est couvert par `templates.test.mjs` et `templateHit.test.mjs`. Ce qui ne
+l'était pas, c'est que **décocher la case produise réellement `false`** : un filtre juste alimenté par
+un drapeau toujours vrai montre tout aux joueurs. Mutation : figer les trois champs à leur valeur par
+défaut dans `gm.js` fait rougir le scénario.
+
+### Deux écarts mineurs relevés, non corrigés
+
+- **Le champ de rayon déclare `max="20"` mais le composant borne à 50**, et `max` n'empêche rien hors
+  validation de formulaire : le maximum effectif est 50. Un test fixe le comportement réel pour que
+  l'écart soit vu ; il ne dit pas laquelle des deux bornes est la bonne — c'est un arbitrage de jeu.
+- **`onPlaceTemplate` est déclaré dans le typedef de `TemplateToolsOptions` et n'est jamais
+  destructuré ni appelé.** Un appelant qui le passerait n'obtiendrait rien, en silence. La pose passe
+  en réalité par `gm.js`, qui lit `getConfig()`. À supprimer du typedef, ou à câbler.
+- **`currentTemplateId` vient de `Date.now()`** : deux armements dans la même milliseconde
+  produiraient le même identifiant. Improbable au doigt, atteignable par un test rapide — c'est
+  d'ailleurs pourquoi les nouveaux scénarios ne posent qu'un gabarit chacun.
 
 ## À faire avant la 1.0 — dette d'exploitation Firebase
 
