@@ -1,6 +1,10 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 8 août 2026 — **premier run CI complet vert, émulateurs Firebase compris**
+> Dernière mise à jour : 11 août 2026 — **campagne de diagnostics passée sur la Tab S9 FE, aucun
+> problème de performance constaté** ; le chantier O est clos et l'arbitrage A7 a sa mesure, mais
+> **deux sondes de `diag.html` rendent des chiffres faux et restent en place**. Lire « Campagne de
+> diagnostics sur la tablette — 11 août 2026 » avant de citer un chiffre de cette page. Avant cela,
+> le 8 août 2026 : **premier run CI complet vert, émulateurs Firebase compris**
 > (voir « Premier run CI complet »). **Le lot 2 du CdC est fermé à 13 critères sur 13.** L-01 arêtes bloquées, L-02 sweep de visibilité et sa mesure sur la tablette,
 > L-03 union des champs de vision, L-04 fog persistant, L-05 portes à trois états, L-06 outils
 > de fog du MJ, L-07 éditeur de murs, L-10 gabarits libres, L-09 marqueurs d'état. Le mainteneur
@@ -59,7 +63,11 @@
 > **11,5 ms** sur `test_village_complet_00` et ses **94 sources**, contre **0,1 ms** sur
 > `manoir-rdc` qui n'en a aucune. Le coût imputable aux lumières est donc de **11,4 ms**, pour
 > un budget de 300 ms. ⭐ L'hypothèse écrite était de 200 à 280 ms : la mesure est **douze à
-> dix-sept fois meilleure**. Reste la confirmation sous cast sur la tablette.
+> dix-sept fois meilleure**.
+>
+> ✅ **Confirmé sur la tablette le 11/08/2026, même section : 2,6 ms**, soit 1 % du budget de 300 ms
+> et mieux encore que le poste MJ. ⚠ Le relevé ne précise pas si le cast était actif : c'est le seul
+> reste de cette porte, et il tient en une phrase du mainteneur.
 >
 > ⭐ Le chiffre a **baissé** de 16,4 à 11,5 ms le même jour, en corrigeant une règle de
 > visibilité : une source que personne ne voit n'est plus balayée du tout. La correction de
@@ -676,12 +684,21 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   compositing, bitmap encore chaud à 5,6 s et froid à 88 s. Correctif au **chantier P**. Ce qui
   reste ouvert est la **lecture d'après** : une fois P livré, remesurer au même endroit et sur la
   même carte — après 2 min d'inactivité, la colonne « Fond » doit passer sous 5 ms —, constater à
-  la main que la tablette ne saccade plus, puis retirer la sonde en un commit ;
-- **chantier O — le tap au doigt sur un pion. ✅ Constaté à la table le 5 août 2026 : le mainteneur
-  donne le geste pour satisfaisant.** Ce qui reste ouvert est la question du §8 du brief : **la
-  capsule des portes peut-elle remonter de 0,25 vers 0,4 maintenant que le pion a sa tolérance ?**
-  Les portes n'ont pas été jugées pénibles à viser à cette séance, donc rien ne presse — mais c'est
-  le gain caché du chantier, et il ne se constate qu'à la table ;
+  la main que la tablette ne saccade plus, puis retirer la sonde en un commit.
+  **État au 11/08/2026 : la moitié qui se constate à la main est acquise, la moitié qui se mesure ne
+  l'est pas.** La tablette ne saccade plus — endurance sans remarque, aucun problème de performance
+  sur toute la campagne du 11/08 — mais le chiffre qui devait le prouver est produit par une sonde
+  fausse : la section « décodage froid » chronomètre une file d'attente GPU sur un bitmap déjà chaud,
+  d'où 0,2 ms puis 1 146 ms pour le même travail. ⛔ **Ne pas déclarer R2-03 validé sur ces chiffres.**
+  Ce que la séance donne de solide est le `Image.decode()` à froid : **1 118 ms sur la carte à 8192 px,
+  contre ~490 ms sur le Mac**, soit 2,3× — la prédiction de ce chantier, confirmée. Détail et cause
+  exacte : « Campagne de diagnostics sur la tablette — 11 août 2026 » ;
+- **chantier O — le tap au doigt sur un pion. ✅ Clos le 11 août 2026.** Le geste était donné pour
+  satisfaisant à la table le 5 août ; la question du §8 du brief — **la capsule des portes peut-elle
+  remonter de 0,25 vers 0,4 maintenant que le pion a sa tolérance ?** — est désormais **tranchée par
+  la mesure, et la réponse est non** : le banc de visée rend **100 % de réussite dès 0,25 case** sur
+  vingt gestes réels (erreur p50 2,9 px, p95 7,1 px). Élargir ne gagnerait rien et coûterait de la
+  précision là où deux portes se touchent ;
 - **la vision directe après une vraie mise en veille de la tablette** — le correctif du 6 août
   2026 (voir « Retour de table du 6 août ») est couvert par un **vrai F5** dans
   `tests/visionRecovery.spec.mjs`, ce qui reproduit la perte de contexte mais **pas** la mise en
@@ -732,7 +749,11 @@ La configuration runtime peut être injectée par `window.RPG_FIREBASE_CONFIG` o
   sans effet**. Antérieur au correctif ci-dessus et sans rapport avec lui. L'arbitrage est de
   découpler la brièveté du `tap` de la constante de glisser, qui n'a pas de raison d'être la même
   valeur ; à décider après la séance, l'usage réel disant si le cas se présente
-  (`CORRECTIF-APPUI-LONG.md` §7 A7) ;
+  (`CORRECTIF-APPUI-LONG.md` §7 A7). **La donnée que A7 attendait est arrivée le 11/08/2026** : sur
+  vingt appuis réels au doigt, la durée est de **83 ms en p50 et 139,2 ms en p95**, donc **sous les
+  150 ms de `DRAG_HOLD_MS`** — les taps ordinaires ne basculent pas en glisser, et rien n'oblige à
+  découpler dans l'urgence. ⚠ La marge n'est que de **10,8 ms** : si le découplage est fait un jour,
+  c'est de ce p95 qu'il faut partir, et non d'une valeur choisie au jugé ;
 - **le correctif du masquage des pions, à confirmer sur la tablette** — c'est le point le plus
   concret de cette liste, parce qu'un défaut y a été mesuré puis corrigé sans que la mesure
   finale soit faite. Le masquage de L-04 allouait par image un canvas aux dimensions de la carte
@@ -1330,6 +1351,88 @@ mesure — ici, la tenue thermique semblait retenir le lot 1a alors qu'elle atte
 lot 3 5/6, lot 4 1/6, spike vidéo 0/1. Les sept restants tiennent en trois causes : trois cartes
 réelles licenciées, la grille hexagonale entière, et un spike vidéo que rien ne bloque.
 
+## Campagne de diagnostics sur la tablette — 11 août 2026
+
+Passée par le mainteneur sur la Tab S9 FE avec `diag.html`. **Aucun problème de performance
+constaté**, et la campagne est **close sur sa décision** — « nous n'avons pas de soucis de perf,
+réjouissons-nous au lieu de tester sans fin ». Ce qui suit est le relevé complet, **y compris ce
+qu'il n'autorise pas à conclure** : deux sondes de la page rendent des chiffres faux, et il vaut
+mieux que ce soit écrit ici qu'oublié puis cité.
+
+| Section de `diag.html` | Relevé sur la tablette |
+|---|---|
+| 6bis — sweep sur les cartes publiées | positif, résultats « exceptionnels » sur la carte vidéo |
+| 7 — fond animé, matériel ou logiciel | **décodage matériel annoncé** (`powerEfficient` vrai) |
+| 7bis — lecture réelle du fond animé | 29,9 i/s ; verdict « rampe » ⚠ **faux par construction**, voir plus bas |
+| 10 — coût de la vision avec lumières | **2,6 ms**, pour un budget de 300 ms |
+| 11 — motifs à juger (chantier Q) | aucun souci de visibilité |
+| 15 — onglets MJ réellement ouverts | image 5 · handout 5 · gabarits 4 · pions 3 · cartes 2 · fog 2 · murs 1 |
+| R2 — décodage froid | `Image.decode()` **1 118 ms** sur `testbig150.webp` |
+| R2 — endurance | rien à signaler |
+| 13 — banc de visée, 20 portes | erreur p50 **2,9 px** · p95 **7,1 px** ; réussite **100 % dès 0,25 case** ; appui p50 **83 ms** · p95 **139,2 ms** |
+
+### Trois arbitrages que ce relevé tranche sans écrire une ligne de code
+
+- **La capsule des portes reste à 0,25 case.** La question du §8 du brief — remonter de 0,25 à 0,4
+  maintenant que le pion a sa tolérance — est **répondue par la mesure et la réponse est non** : sur
+  les mêmes vingt gestes, la capsule actuelle réussit déjà **100 %**. Élargir ne gagnerait rien et
+  coûterait de la précision là où deux portes se touchent. Le chantier O est donc entièrement clos.
+- **`DRAG_HOLD_MS` reste à 150 ms, et c'est la donnée que l'arbitrage A7 attendait.** L'appui p95
+  mesuré est de **139,2 ms**, donc sous le seuil : les taps ordinaires ne sont pas pris pour des
+  appuis longs. ⚠ **La marge n'est que de 10,8 ms** — si la zone morte 150–500 ms est un jour
+  découplée (`CORRECTIF-APPUI-LONG.md` §7 A7), c'est ce chiffre qu'il faudra reprendre, pas un seuil
+  choisi au hasard.
+- **Trois onglets MJ ne servent pas.** UVTT, Liaisons et Grille n'apparaissent pas au relevé, donc à
+  zéro ouverture sur cette séance — ce que la section 15 dit explicitement chercher (« un onglet
+  jamais ouvert n'a pas à occuper la barre »). Un relevé, une séance : à confirmer sur une seconde
+  avant de retirer quoi que ce soit de la barre.
+
+### ⚠ Deux sondes de `diag.html` rendent des chiffres faux, et elles restent en place
+
+Le mainteneur a arbitré de ne pas les corriger, la campagne étant close et le produit sain. Elles
+sont donc consignées ici comme **pièges connus** : ne conclure de rien à partir de leurs chiffres.
+
+**1. La section 7bis dit « rampe » sur une lecture qui tient.** Elle mesure l'avancement du flux
+depuis le *début* de la fenêtre de 60 s, avec une correction de boucle qui ne rattrape qu'**un seul
+tour** (`while (avance < 0) avance += video.duration`). Or `testvideo-3.webm` dure exactement 30 s
+— lu dans l'en-tête EBML, `ffprobe` n'étant pas installé sur le poste. Soixante secondes de lecture
+*parfaite* font donc deux tours complets : `currentTime` revient à son point de départ, `avance`
+retombe à ~0, la correction en rend un seul, et le résultat est **29,9 s de flux pour 60,0 s
+écoulées, soit 49,8 %** — un cheveu sous le seuil de 50 %. Le verdict est **déterministe et
+indépendant du matériel**, ce que le mainteneur a vérifié de lui-même en repassant le test sur un PC
+puissant : chiffres identiques. Ce n'était pas une coïncidence, c'était la signature du défaut.
+
+⭐ **Le produit, lui, ne commet pas cette erreur** : `VideoBackdrop._checkPlayback` compare deux
+échantillons **consécutifs** à 2,5 s d'écart, où corriger d'un tour est valide. Le seuil de 50 % et
+la période de 2,5 s sont justes ; c'est la seule fenêtre de mesure du diagnostic qui est fausse.
+**Conclusion réelle : la lecture du fond animé tient sur la tablette.** 29,9 i/s est la cadence du
+fichier (30 i/s), pas un plafond de l'appareil — aucun décodeur ne rend plus d'images qu'il n'en
+existe — et aucune fixité n'apparaît à l'œil.
+
+Le test de couverture ne pouvait pas l'attraper : `tests/diagVideo.spec.mjs` tourne à `?duree=8`,
+sous les 30 s de la vidéo, donc la boucle ne repasse **jamais** par zéro. Faux vert de plus, et de
+la même famille que ceux du chantier W : le test exerce le bouton, pas la grandeur.
+
+**2. La ligne `drawImage` du décodage froid mesure une file d'attente, pas un décodage.** La section
+refabrique une `Image` et fait `await image.decode()` **juste avant** de démarrer le chronomètre :
+le bitmap est chaud par construction, et les deux minutes de silence sont annulées à la ligne d'avant.
+Rien ne vide ensuite le pipeline GPU, donc `performance.now()` encadre la mise en file d'une commande
+et non sa peinture. D'où les deux chiffres impossibles du relevé : **0,2 ms pour 12 Mpx en plein
+format** — 60 Gpx/s — puis **1 146 ms sur la doublure de 1024 px**, qui est le coût du premier tracé
+payé en retard et imputé au mauvais poste. Les deux décrivent le même travail, mal découpé.
+
+⛔ **Le « OUI — critère R2-03 tenu » qu'imprime cette section est donc un faux vert.** Ne pas le
+citer comme validation de R2-03 : le critère reste ouvert au sens de la mesure. C'est le travers que
+`debugging_lessons` retient sous « une sonde fausse ferme la question », et le commentaire de
+`js/app/diag.js` qui met en garde contre l'erreur de grandeur la commet autrement, six lignes plus bas.
+
+**Seul le `Image.decode()` de cette section est exploitable, et il dit quelque chose.** 1 118 ms à
+froid sur `testbig150.webp` contre ~490 ms relevés sur le Mac au chantier N : **2,3×**, exactement le
+sens que le chantier annonçait sans le chiffrer (« la tablette paie plus cher »). Cela ne rouvre rien
+— c'est précisément le rôle de la doublure 1024 px du chantier P que d'éviter que ce coût tombe dans
+une frame — et l'endurance ne signale aucune saccade. À retenir comme **confirmation d'une prédiction**,
+pas comme défaut.
+
 ## À faire avant la 1.0 — dette d'exploitation Firebase
 
 Relevé le 7 août 2026 sur question du mainteneur : « il me faudra un truc pour détruire toutes
@@ -1375,9 +1478,9 @@ Avancement mesuré contre les lots du cahier des charges §11, au **8 août 2026
 | **1a — Le plateau** | **11 critères sur 11, fermé le 08/08/2026 par réconciliation.** Les onze étaient acquis, le dernier — 30 fps sous cast — depuis le 05/08/2026 ; aucune case du CdC ne le disait. ⚠ **Ce lot annonçait « 10 sur 11 » en citant deux points ouverts**, ce qui est un décompte impossible : la tenue thermique est **R2-06** et la limite de texture réelle la **question n°1 du §12**. Elles restent ouvertes, mais **ailleurs** |
 | **1b — La prépa MJ** | **4 critères sur 4**, fermé depuis le chantier M et la séance du 05/08/2026 ; cases du CdC cochées le 08/08. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K) |
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
-| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. La mesure lumière sur tablette/cast reste aussi une porte matérielle, sans retirer les critères fonctionnels 5 et 6 acquis. |
+| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. La mesure lumière est **faite sur la tablette le 11/08/2026 — 2,6 ms pour un budget de 300 ms** ; il ne reste de cette porte matérielle qu'à préciser si le cast était actif. Les critères fonctionnels 5 et 6 restent acquis. |
 | **4 — Hexagone & confort de table** | **1 sur 6**, et c’est une tranche du lot 2 qui l’a ouvert : **L-06 ferme « Undo restaure l’état fog précédent »**, l’undo n’ayant de sens qu’avec le fog. Les cinq autres restent entiers. La convention hexagonale doit être figée avant de coder (`ANALYSE-DD2VTT-GRILLES.md` §4.3), sans quoi l’adaptateur naîtra désaligné |
-| Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6, et `diag.html` sections 7 / 7bis |
+| Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** par la section 7 (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6. ⚠ **Ne pas lire le verdict de la section 7bis** : il annonce « rampe » par un défaut d'arithmétique de boucle, sur une lecture qui tient (voir la campagne du 11/08) |
 | §12 Questions ouvertes | 8, dont plusieurs conditionnent des choix de conception du lot 2 |
 
 Le substrat est en place : plateau, grille, pions, gestes, transport, persistance, import.
