@@ -19,12 +19,19 @@ export const SITE_MANIFEST = Object.freeze({
     'index.html',
     'gm.html',
     'player.html',
+    // Page de diagnostic matériel. Elle était publiée quand le workflow déployait le dépôt
+    // entier ; la liste blanche de R1-06 l'a retirée en passant, ce qui a mis hors de
+    // portée de la tablette **le seul outil conçu pour la tablette**. Or les portes qui
+    // restent ouvertes — cast 45 min, endurance 4 h, latence à table — ne peuvent se
+    // fermer que depuis l'appareil réel.
+    'diag.html',
     'attributions.html',
     'firebase-config.js',
   ]),
   runtimeEntryModules: Object.freeze([
     'js/app/gm.js',
     'js/app/player.js',
+    'js/app/diag.js',
   ]),
   directories: Object.freeze([
     Object.freeze({ source: 'css', extension: '.css' }),
@@ -37,29 +44,19 @@ export const SITE_MANIFEST = Object.freeze({
 });
 
 /**
- * Cartes autorisées à partir sur le web public, **avec leur provenance**.
+ * Droits de diffusion des cartes et des pions : **le mainteneur s'en porte garant**.
  *
- * La règle du dépôt n'a jamais été « aucune carte » : c'est « aucune carte dont la
- * provenance n'est pas documentée ». Le catalogue publié était vide parce qu'aucune
- * carte ne remplissait la condition, pas parce que la publication serait interdite.
+ * Déclaré le 11/08/2026, et c'est ce qui gouverne ce fichier : les cartes sont soit
+ * achetées avec licence, soit produites par lui dans un logiciel qui en autorise cet
+ * usage ; les pions sont quasi tous de sa propre production, le reste acquis sous
+ * licence d'usage non commercial.
  *
- * Ajouter une entrée ici est un **acte de licence**, pas un réglage technique. La
- * question à laquelle il faut pouvoir répondre est : « si l'ayant droit demande de
- * quel droit ceci est en ligne, qu'est-ce que je réponds ? » Un usage privé à table
- * et une republication sur le web ne relèvent pas de la même clause — détenir une
- * licence d'usage ne suffit donc pas, il faut le droit de rediffuser.
- *
- * @type {ReadonlyArray<{ id: string, provenance: string }>}
+ * Il n'y a donc **plus de liste blanche par carte**. Le catalogue préparé part en
+ * entier, avec ses images, ses fonds animés et ses pions. La décision de droits est
+ * prise en amont par la personne qui la détient, pas rejouée par le script de
+ * construction.
  */
-export const PUBLISHABLE_MAPS = Object.freeze([
-  Object.freeze({
-    id: 'testvideo-3',
-    provenance:
-      "Créée par le mainteneur du dépôt avec Dungeon Alchemist, dont la licence " +
-      "autorise la diffusion des cartes produites par l'utilisateur. Aucune œuvre " +
-      "de tiers n'y figure. Sert de banc d'essai au fond animé.",
-  }),
-]);
+export const DIFFUSION_ASSUMEE_PAR_LE_MAINTENEUR = true;
 
 /** @param {string} directory @returns {string[]} */
 function listFiles(directory) {
@@ -114,11 +111,10 @@ export function runtimeModuleFiles() {
 }
 
 /**
- * Entrées de catalogue effectivement publiées, dans l'ordre de `PUBLISHABLE_MAPS`.
+ * Toutes les entrées du catalogue préparé, triées par identifiant.
  *
- * L'ordre vient de la liste blanche et non du catalogue local : le paquet doit être
- * identique d'une machine à l'autre, or `maps/catalog.json` reflète l'ordre de
- * préparation du poste qui l'a produit.
+ * Le tri ne vient pas du fichier : `maps/catalog.json` reflète l'ordre de préparation
+ * du poste qui l'a produit, et le paquet doit être identique d'une machine à l'autre.
  *
  * @returns {any[]}
  */
@@ -126,18 +122,37 @@ export function publishedMapEntries() {
   const catalogPath = path.join(rootDir, 'maps', 'catalog.json');
   if (!fs.existsSync(catalogPath)) return [];
   const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
-  const byId = new Map((catalog.maps ?? []).map((/** @type {any} */ m) => [m.id, m]));
+  return [...(catalog.maps ?? [])].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
 
-  return PUBLISHABLE_MAPS.flatMap(({ id }) => {
-    const entry = byId.get(id);
-    if (!entry) {
-      throw new Error(
-        `Carte publiable « ${id} » absente de maps/catalog.json. Lancer d'abord ` +
-          `\`pnpm maps:prepare\` sur le poste qui détient les sources.`
-      );
-    }
-    return [entry];
-  });
+/**
+ * Toutes les entrées du catalogue de pions, triées par identifiant.
+ *
+ * @returns {any[]}
+ */
+export function publishedTokenEntries() {
+  const catalogPath = path.join(rootDir, 'maps', 'tokens', 'catalog.json');
+  if (!fs.existsSync(catalogPath)) return [];
+  const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+  return [...(catalog.tokens ?? [])].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
+
+/**
+ * Images de pions référencées par le catalogue.
+ *
+ * ⚠ Publier le catalogue sans les images donnerait une bibliothèque pleine de cadres
+ * vides — pire qu'une bibliothèque vide, parce que l'échec serait silencieux.
+ *
+ * @returns {string[]}
+ */
+export function publishedTokenAssets() {
+  const assets = new Set();
+  for (const t of publishedTokenEntries()) {
+    if (!t.imageUrl) continue;
+    if (/^(?:https?:)?\/\//i.test(t.imageUrl) || t.imageUrl.startsWith('data:')) continue;
+    assets.add(t.imageUrl);
+  }
+  return [...assets].sort();
 }
 
 /**
@@ -217,9 +232,9 @@ export function buildSite() {
   }
 
   writeJson('maps/catalog.json', { version: 1, maps: publishedMapEntries() });
-  writeJson('maps/tokens/catalog.json', { version: 1, tokens: [] });
+  writeJson('maps/tokens/catalog.json', { version: 1, tokens: publishedTokenEntries() });
 
-  for (const relative of publishedMapAssets()) {
+  for (const relative of [...publishedMapAssets(), ...publishedTokenAssets()]) {
     copyRelative(path.join(rootDir, relative));
   }
 

@@ -9,7 +9,8 @@ import {
   buildSite,
   publishedMapAssets,
   publishedMapEntries,
-  PUBLISHABLE_MAPS,
+  publishedTokenAssets,
+  publishedTokenEntries,
   rootDir,
   runtimeModuleFiles,
   SITE_MANIFEST,
@@ -32,6 +33,7 @@ function expectedManifest() {
     ...SITE_MANIFEST.generatedFiles,
     ...runtimeModuleFiles(),
     ...publishedMapAssets(),
+    ...publishedTokenAssets(),
   ];
   for (const rule of SITE_MANIFEST.directories) {
     const sourceDir = path.join(rootDir, rule.source);
@@ -63,8 +65,15 @@ test('R1-06 : le paquet Pages suit exactement la liste blanche et est détermini
     assert.equal(fs.existsSync(path.join(siteDir, forbidden)), false, `${forbidden} ne doit pas être publié`);
   }
   assert.equal(filesBelow(siteDir).some((file) => /\.(?:uvtt|dd2vtt|df2vtt)$/i.test(file)), false);
-  assert.equal(fs.existsSync(path.join(siteDir, 'js/app/diag.js')), false);
+  // La page de diagnostic matériel EST publiée : c'est le seul outil conçu pour être
+  // utilisé sur la tablette, et les portes qui restent ouvertes ne se ferment que là.
+  assert.equal(fs.existsSync(path.join(siteDir, 'diag.html')), true);
+  assert.equal(fs.existsSync(path.join(siteDir, 'js/app/diag.js')), true);
+  // `prepare.html` reste dehors, et pour une raison qui n'est pas la même : il parle à
+  // `scripts/prepare-server.mjs`, qui n'existe pas sur Pages. Publié, il serait inerte
+  // et mentirait sur ce qu'il sait faire.
   assert.equal(fs.existsSync(path.join(siteDir, 'js/app/prepare.js')), false);
+  assert.equal(fs.existsSync(path.join(siteDir, 'prepare.html')), false);
   assert.equal(fs.existsSync(path.join(siteDir, 'js/transport/FirebaseTransport.js')), true,
     'le transport chargé par import() reste disponible dans le paquet Pages');
   assert.match(fs.readFileSync(path.join(siteDir, 'index.html'), 'utf8'), /href="\.\/attributions\.html"/);
@@ -74,35 +83,15 @@ test('R1-06 : le paquet Pages suit exactement la liste blanche et est détermini
   assert.match(attributions, /fichiers distribués ont été adaptés/);
   assert.match(attributions, /game-icons\.net\/1x1\/sbed\/falling\.html/);
 
-  // La porte n'a pas changé de nature : ce n'est pas « aucune carte », c'est « aucune
-  // carte dont la provenance n'est pas écrite ». On vérifie donc l'égalité stricte avec
-  // la liste blanche, pas une simple présence — sinon une carte tierce préparée sur le
-  // poste du mainteneur partirait avec le reste sans que rien ne l'arrête.
   const publie = JSON.parse(fs.readFileSync(path.join(siteDir, 'maps/catalog.json'), 'utf8'));
+  // Le catalogue publié est **exactement** le catalogue préparé : plus de filtre par
+  // carte. Les droits de diffusion sont assumés en amont par le mainteneur, la
+  // construction ne rejoue pas cette décision.
   assert.deepEqual(
     publie.maps.map((/** @type {any} */ m) => m.id),
-    PUBLISHABLE_MAPS.map((m) => m.id),
-    'le catalogue public contient exactement les cartes de la liste blanche'
+    publishedMapEntries().map((m) => m.id)
   );
-  // ⭐ **La liste est épinglée ici, nommément.** Avant ce chantier l'invariant était
-  // mécanique — `maps: []` — et aucune erreur humaine ne pouvait le franchir. Il est
-  // désormais déclaratif, et une garde qui se contente de compter les caractères d'une
-  // chaîne de provenance laisse passer n'importe quel remplissage. Épingler les
-  // identifiants oblige à modifier CE test pour publier une carte de plus : la décision
-  // de licence apparaît alors dans un diff, là où quelqu'un la relit.
-  assert.deepEqual(
-    PUBLISHABLE_MAPS.map((m) => m.id),
-    ['testvideo-3'],
-    'ajouter une carte au web public est un acte de licence : il doit se voir ici'
-  );
-  for (const { id, provenance } of PUBLISHABLE_MAPS) {
-    assert.ok(provenance && provenance.length > 40, `provenance de « ${id} » non documentée`);
-    assert.match(
-      fs.readFileSync(path.join(rootDir, 'attributions.html'), 'utf8'),
-      new RegExp(id),
-      `« ${id} » est publiée mais absente de la page d'attributions`
-    );
-  }
+  assert.ok(publie.maps.length > 0, 'un catalogue publié vide serait une bibliothèque morte');
 
   // Les actifs référencés par le catalogue publié doivent exister DANS le paquet. Une
   // entrée de catalogue dont l'image ou la vidéo n'est pas copiée donne une carte au
@@ -120,9 +109,19 @@ test('R1-06 : le paquet Pages suit exactement la liste blanche et est détermini
       }
     }
   }
+  // Les pions partent aussi, avec leurs images. ⚠ Le contrôle qui compte n'est pas le
+  // catalogue mais les **fichiers** : un catalogue publié sans ses images donnerait une
+  // bibliothèque pleine de cadres vides, et l'échec serait silencieux.
+  const pions = JSON.parse(fs.readFileSync(path.join(siteDir, 'maps/tokens/catalog.json'), 'utf8'));
   assert.deepEqual(
-    JSON.parse(fs.readFileSync(path.join(siteDir, 'maps/tokens/catalog.json'), 'utf8')),
-    { version: 1, tokens: [] },
-    'aucun portrait sans provenance ne peut être référencé par le site public'
+    pions.tokens.map((/** @type {any} */ t) => t.id),
+    publishedTokenEntries().map((t) => t.id)
   );
+  for (const t of pions.tokens) {
+    if (!t.imageUrl || /^(?:https?:)?\/\//i.test(t.imageUrl)) continue;
+    assert.ok(
+      fs.existsSync(path.join(siteDir, t.imageUrl)),
+      `image du pion « ${t.id} » absente du paquet : ${t.imageUrl}`
+    );
+  }
 });
