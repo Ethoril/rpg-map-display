@@ -4,7 +4,9 @@
 > problème de performance constaté** ; le chantier O est clos et l'arbitrage A7 a sa mesure. Deux
 > sondes de `diag.html` rendaient des chiffres faux : **7bis est corrigée et son calcul est désormais
 > éprouvé**, celle du décodage froid reste un piège connu. Un défaut latent du produit a été trouvé
-> en écrivant ce test — un fond animé de moins de 2,5 s serait rabattu à tort sur l'affiche fixe.
+> en écrivant ce test — un fond animé de moins de 2,5 s était rabattu à tort sur l'affiche fixe — et
+> **corrigé le jour même** : la période d'échantillonnage du contrôle de cadence est désormais dérivée
+> de la durée du flux.
 > Lire « Campagne de diagnostics sur la tablette — 11 août 2026 » avant de citer un chiffre de cette
 > page. Avant cela,
 > le 8 août 2026 : **premier run CI complet vert, émulateurs Firebase compris**
@@ -1432,20 +1434,40 @@ comprises, et la mutation le confirme — remettre le défaut fait rougir quatre
 navigateur qui mesure une performance mesure aussi la machine ;** séparer le calcul de la lecture est
 ce qui rend la moitié prouvable réellement prouvée.
 
-### ⚠ Un défaut du produit trouvé en écrivant ce test, latent aujourd'hui
+### ✅ Un défaut du produit trouvé en écrivant ce test, corrigé le jour même
 
-Trouvé le 11/08/2026, et ce n'en est pas un du diagnostic. `advanceBetween` ne corrige **qu'un seul**
-passage par zéro, ce qui exige d'échantillonner plus vite que la durée du flux. Or
-`VideoBackdrop._checkPlayback` échantillonne à `STALL_CHECK_MS = 2500` ms : **une carte dont la vidéo
-dure moins de 2,5 s verrait son fond animé rabattu sur l'affiche fixe**, avec un avertissement
-accusant à tort le décodeur. Une lecture parfaite d'un flux de 2 s se lit 0,2 — vérifié par test.
+Trouvé le 11/08/2026 en écrivant les tests ci-dessus, et **ce n'en était pas un du diagnostic**.
+`advanceBetween` ne corrige **qu'un seul** passage par zéro, ce qui exige d'échantillonner plus vite
+que la durée du flux. Or `VideoBackdrop._checkPlayback` échantillonnait à `STALL_CHECK_MS = 2500` ms
+fixe : **toute carte dont la vidéo durait moins de 2,5 s aurait vu son fond animé rabattu sur
+l'affiche fixe**, avec un avertissement accusant à tort le décodeur. Une lecture parfaite d'un flux
+de 2 s se lit 0,2 — vérifié par test.
 
-L'exposition est **latente** : `testvideo-3.webm` dure 30 s et c'est la seule carte animée du
+L'exposition était **latente** : `testvideo-3.webm` dure 30 s et c'est la seule carte animée du
 catalogue. Mais une boucle courte — feu de camp, clapotis, torche — est exactement le cas d'usage
-naturel d'un fond animé, donc le défaut attend une carte, pas un correctif de code. Le correctif
-serait de dériver la période de la durée du flux plutôt que de la fixer. **Non traité, sciemment** ;
-un test épingle le comportement actuel pour que le jour où la période devient adaptative, il rougisse
-et rappelle pourquoi.
+naturel d'un fond animé. **Arbitré par le mainteneur pour un correctif immédiat**, sur le motif
+décisif : « c'est très improbable une boucle si courte mais je pense que je ne le saurai jamais à
+l'avance ». Un défaut qui ne se manifeste qu'à l'import d'une carte future ne se diagnostiquera pas
+au moment où il frappera.
+
+Le correctif tient en deux pièces, et la seconde est là parce que la première ne suffit pas :
+
+- **`stallPeriodFor(duree)` dérive la période du flux** — la moitié de la durée, plafonnée à la
+  nominale de 2 500 ms et plancherée à `STALL_CHECK_FLOOR_MS = 500` ms. Le plancher existe contre la
+  gigue du minuteur : à 100 ms de période, 50 ms de retard suffiraient à faire tomber le ratio sous
+  le seuil. La durée n'étant pas connue à l'armement, le contrôle se **réarme sur `loadedmetadata`**.
+- **`_checkPlayback` refuse de conclure quand la mesure est indécidable** — si l'intervalle atteint la
+  durée du flux, un tour entier a pu passer et aucune arithmétique ne distingue « ça boucle » de
+  « c'est bloqué ». Nécessaire parce qu'en dessous du plancher, **aucune** période ne satisfait la
+  précondition : un flux de 0,4 s n'est pas mesurable, et laisser jouer un fond peut-être lent vaut
+  infiniment mieux qu'éteindre une lecture saine.
+
+⭐ Le test qui gardait l'arithmétique du défaut a été conservé, pas supprimé : c'est lui qui écrit
+**pourquoi** la période est dérivée. Sans lui, `stallPeriodFor` ressemble à une complication gratuite
+et quelqu'un rétablit la constante. Preuve par mutation en deux passes séparées, pour que
+l'attribution soit nette : période refixée → 6 tests rouges dont le régressif ; refus de conclure
+retiré → exactement 1, le sien. Le fond animé réel conserve la période nominale, `testvideo-3` durant
+30 s : **aucun changement de comportement pour le catalogue actuel**.
 
 **2. La ligne `drawImage` du décodage froid mesure une file d'attente, pas un décodage.** La section
 refabrique une `Image` et fait `await image.decode()` **juste avant** de démarrer le chronomètre :

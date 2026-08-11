@@ -8,6 +8,8 @@ import {
   HAVE_CURRENT_DATA,
   STALL_CHECK_MS,
   MIN_PLAYBACK_RATIO,
+  STALL_CHECK_FLOOR_MS,
+  stallPeriodFor,
   advanceBetween,
   LoopingPlaybackProgress,
 } from '../js/render/videoBackdrop.js';
@@ -150,26 +152,57 @@ test('la mesure ne dépend pas du nombre de tours de boucle parcourus', () => {
   }
 });
 
-test('⚠ un flux plus court que la période est illisible, et le produit y est exposé', () => {
-  // Découvert en écrivant le test précédent, et **ce n'est pas un défaut du diagnostic** :
-  // `_checkPlayback` échantillonne à `STALL_CHECK_MS`, donc une carte dont la vidéo dure
-  // moins de 2,5 s verrait son fond animé rabattu sur l'affiche fixe, avec un avertissement
-  // accusant à tort le décodeur. Aucune carte du catalogue n'est dans ce cas aujourd'hui
-  // (`testvideo-3` dure 30 s), l'exposition est donc latente.
+test('⭐ échantillonner plus lentement que le flux le rend illisible — la raison d’être de stallPeriodFor', () => {
+  // Découvert en écrivant le test précédent, et **ce n'était pas un défaut du diagnostic** :
+  // `_checkPlayback` échantillonnait à `STALL_CHECK_MS` fixe, donc une carte dont la vidéo
+  // durait moins de 2,5 s voyait son fond animé rabattu sur l'affiche fixe, avec un
+  // avertissement accusant à tort le décodeur. Corrigé le 11/08/2026 en dérivant la période
+  // de la durée du flux.
   //
-  // Ce test **fixe le comportement actuel** pour que le jour où la période devient adaptative,
-  // il rougisse et rappelle pourquoi. Il ne valide pas la situation.
-  const { ratio } = rejouerLecture({
+  // Ce test garde l'arithmétique du défaut, parce que c'est elle qui justifie la dérivation :
+  // à période fixe, une lecture PARFAITE d'un flux de 2 s se lit 0,2. Le supprimer laisserait
+  // `stallPeriodFor` sans raison écrite, et quelqu'un rétablirait la constante.
+  const aPeriodeFixe = rejouerLecture({
     duree: 2,
     fenetreMs: 60000,
     periodeMs: STALL_CHECK_MS,
     vitesse: 1,
   });
   assert.ok(
-    /** @type {number} */ (ratio) < MIN_PLAYBACK_RATIO,
-    'la lecture est parfaite et pourtant jugée trop lente : c’est la limite, pas un succès'
+    /** @type {number} */ (aPeriodeFixe.ratio) < MIN_PLAYBACK_RATIO,
+    'l’arithmétique du défaut a changé — relire le commentaire ci-dessus'
   );
-  assert.ok(Math.abs(/** @type {number} */ (ratio) - 0.2) < 0.001, `obtenu ${ratio}`);
+  assert.ok(Math.abs(/** @type {number} */ (aPeriodeFixe.ratio) - 0.2) < 0.001);
+
+  // Et la même lecture, à la période que le produit choisit désormais pour ce flux.
+  const aPeriodeDerivee = rejouerLecture({
+    duree: 2,
+    fenetreMs: 60000,
+    periodeMs: stallPeriodFor(2),
+    vitesse: 1,
+  });
+  assert.ok(
+    Math.abs(/** @type {number} */ (aPeriodeDerivee.ratio) - 1) < 0.001,
+    `ratio attendu ≈ 1, obtenu ${aPeriodeDerivee.ratio}`
+  );
+});
+
+test('stallPeriodFor : nominale pour un flux long, dérivée pour un flux court, jamais sous le plancher', () => {
+  assert.equal(stallPeriodFor(30), STALL_CHECK_MS, 'un flux long garde la période nominale');
+  assert.equal(stallPeriodFor(5), STALL_CHECK_MS, 'à 5 s, la moitié vaut déjà la nominale');
+  assert.equal(stallPeriodFor(2), 1000, 'la moitié de la durée');
+  assert.equal(stallPeriodFor(1.2), 600);
+  assert.equal(stallPeriodFor(0.4), STALL_CHECK_FLOOR_MS, 'le plancher protège de la gigue');
+  // Durée inconnue à l'armement, flux continu, valeur absurde : période nominale, et c'est le
+  // refus de conclure de `_checkPlayback` qui sert alors de garde-fou.
+  for (const d of [undefined, null, 0, -1, NaN, Infinity]) {
+    assert.equal(stallPeriodFor(/** @type {any} */ (d)), STALL_CHECK_MS, `durée ${d}`);
+  }
+  // La période reste toujours strictement sous la durée dès que la durée dépasse le plancher :
+  // c'est la précondition d'`advanceBetween`, et elle doit tenir sur tout l'intervalle utile.
+  for (const d of [0.6, 1, 2, 4.9, 5, 30, 600]) {
+    assert.ok(stallPeriodFor(d) < d * 1000, `période ≥ durée pour un flux de ${d} s`);
+  }
 });
 
 test('un flux qui rampe à 30 % est bien vu comme rampant', () => {
@@ -340,6 +373,126 @@ test('un flux à cadence normale n’est jamais repris, boucle comprise', () => 
 
   assert.equal(h.backdrop.active, true, 'le retour à zéro de la boucle n’est pas un blocage');
   assert.equal(h.warnings.filter((w) => /trop lent/.test(w)).length, 0);
+});
+
+/** Harnais dont le minuteur retient aussi la période demandée. */
+function harnessMinute() {
+  let maintenant = 0;
+  /** @type {Array<{ fn: () => void, ms: number }>} */
+  const timers = [];
+  const h = harness({
+    clock: () => maintenant,
+    setTimer: (/** @type {() => void} */ fn, /** @type {number} */ ms) => {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    clearTimer: () => {},
+  });
+  return {
+    ...h,
+    timers,
+    get maintenant() { return maintenant; },
+    avancer: (/** @type {number} */ ms) => { maintenant += ms; },
+    /** Déclenche le dernier contrôle armé — les précédents ont été désarmés. */
+    controler: () => timers[timers.length - 1].fn(),
+    get periode() { return timers[timers.length - 1].ms; },
+  };
+}
+
+test('⭐ un fond animé de 2 s lu parfaitement n’est plus rabattu sur l’affiche', () => {
+  // Le défaut, en un test. À période fixe de 2 500 ms, un flux de 2 s avançait de 0,5 s entre
+  // deux échantillons — le reste étant deux tours de boucle invisibles — soit un ratio de 0,2,
+  // et le fond animé de toute carte à boucle courte s'éteignait au bout de cinq secondes.
+  const h = harnessMinute();
+  h.backdrop.sync({ videoUrl: 'boucle-courte.webm' });
+  h.video.readyState = 4;
+  h.video.paused = false;
+  h.video.currentTime = 0;
+
+  // La durée n'existe qu'aux métadonnées : c'est là que la période se dérive.
+  assert.equal(h.periode, STALL_CHECK_MS, 'avant les métadonnées, la période reste nominale');
+  h.video.duration = 2;
+  h.video.emit('loadedmetadata');
+  assert.equal(h.periode, 1000, 'la période doit suivre la durée du flux');
+
+  h.controler();                       // référence
+  for (let tour = 1; tour <= 6; tour++) {
+    h.avancer(h.periode);
+    // Lecture parfaite : le flux avance d'une période et repasse par zéro tous les deux tours.
+    h.video.currentTime = (tour * (h.periode / 1000)) % h.video.duration;
+    h.controler();
+  }
+
+  assert.equal(h.backdrop.active, true, 'une lecture parfaite a été prise pour un blocage');
+  assert.deepEqual(h.warnings.filter((w) => /trop lent/.test(w)), []);
+  assert.notEqual(h.video.style.display, 'none');
+});
+
+test('un flux court qui rampe réellement est tout de même rattrapé', () => {
+  // Le pendant du test précédent : dériver la période ne doit pas revenir à désarmer le
+  // contrôle pour les flux courts, sinon on échange un faux positif contre un faux négatif.
+  const h = harnessMinute();
+  h.backdrop.sync({ videoUrl: 'boucle-courte-lente.webm' });
+  h.video.readyState = 4;
+  h.video.paused = false;
+  h.video.duration = 2;
+  h.video.emit('loadedmetadata');
+  h.video.currentTime = 0;
+
+  h.controler();
+  h.avancer(h.periode);
+  h.video.currentTime = 0.1;          // 0,1 s de flux pour 1 s de temps réel : 10 %
+  h.controler();
+
+  assert.equal(h.backdrop.active, false, 'le repli doit fonctionner aussi sur un flux court');
+  assert.match(h.warnings.join(' '), /trop lent/);
+});
+
+test('⛔ sous le plancher, la mesure est indécidable et le contrôle refuse de conclure', () => {
+  // Un flux de 0,4 s : aucune période ne peut être à la fois sous la durée et au-dessus du
+  // plancher de gigue. Le contrôle doit alors **s'abstenir** — laisser jouer un fond animé
+  // peut-être lent vaut infiniment mieux qu'éteindre une lecture saine.
+  const h = harnessMinute();
+  h.backdrop.sync({ videoUrl: 'tres-courte.webm' });
+  h.video.readyState = 4;
+  h.video.paused = false;
+  h.video.duration = 0.4;
+  h.video.emit('loadedmetadata');
+  h.video.currentTime = 0;
+
+  assert.equal(h.periode, STALL_CHECK_FLOOR_MS);
+  h.controler();
+  h.avancer(h.periode);
+  h.video.currentTime = 0;            // parfaitement immobile, en apparence
+  h.controler();
+
+  assert.equal(h.backdrop.active, true, 'une mesure indécidable ne doit jamais conclure');
+  assert.deepEqual(h.warnings.filter((w) => /trop lent/.test(w)), []);
+});
+
+test('changer d’étage réarme la période sur la durée du nouveau flux', () => {
+  const h = harnessMinute();
+  h.backdrop.sync({ videoUrl: 'courte.webm' });
+  h.video.duration = 2;
+  h.video.emit('loadedmetadata');
+  assert.equal(h.periode, 1000);
+
+  h.backdrop.sync({ videoUrl: 'longue.webm' });
+  h.video.duration = 60;
+  h.video.emit('loadedmetadata');
+  assert.equal(h.periode, STALL_CHECK_MS, 'la période du flux précédent a survécu au changement');
+});
+
+test('les métadonnées d’un flux déjà en échec ne réarment rien', () => {
+  // `loadedmetadata` peut arriver après un `error` selon la plateforme : réarmer relancerait un
+  // contrôle sur une source abandonnée, et le repli est définitif pour cette URL.
+  const h = harnessMinute();
+  h.backdrop.sync({ videoUrl: 'cassee.webm' });
+  const armes = h.timers.length;
+  h.video.emit('error');
+  h.video.duration = 2;
+  h.video.emit('loadedmetadata');
+  assert.equal(h.timers.length, armes, 'un flux en échec a été réarmé');
 });
 
 test('un flux en pause n’est pas jugé trop lent', () => {

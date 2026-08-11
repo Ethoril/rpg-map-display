@@ -30,8 +30,45 @@
 /** `HTMLMediaElement.HAVE_CURRENT_DATA` : au moins l'image courante est décodée. */
 export const HAVE_CURRENT_DATA = 2;
 
-/** Période d'échantillonnage du contrôle de cadence, en millisecondes. */
+/** Période d'échantillonnage **nominale** du contrôle de cadence, en millisecondes. */
 export const STALL_CHECK_MS = 2500;
+
+/**
+ * Période d'échantillonnage minimale, en millisecondes.
+ *
+ * En dessous, la gigue du minuteur pèse assez lourd dans le ratio pour qu'une lecture saine
+ * passe pour un blocage : à 100 ms de période, 50 ms de retard font tomber le ratio à 0,5.
+ */
+export const STALL_CHECK_FLOOR_MS = 500;
+
+/**
+ * Période d'échantillonnage adaptée à la durée du flux.
+ *
+ * ⭐ **Corrige un défaut trouvé le 11/08/2026 en écrivant les tests de `LoopingPlaybackProgress`.**
+ * `advanceBetween` ne rattrape qu'un seul passage par zéro, donc mesurer exige d'échantillonner
+ * plus vite que la durée du flux. Avec une période fixée à 2 500 ms, **toute carte dont la vidéo
+ * durait moins de 2,5 s voyait son fond animé rabattu sur l'affiche fixe** — une lecture
+ * parfaite d'un flux de 2 s se lisant 0,2 — avec un avertissement accusant à tort le décodeur.
+ * Or une boucle courte (feu de camp, clapotis, torche) est le cas d'usage naturel d'un fond
+ * animé : le défaut n'attendait qu'une carte.
+ *
+ * La durée n'est pas connue à l'armement : `_armStallCheck` s'exécute avant que les métadonnées
+ * n'arrivent. C'est pourquoi le contrôle se réarme sur `loadedmetadata`, et pourquoi
+ * `_checkPlayback` garde en plus un refus de conclure — la période seule ne suffit pas pour un
+ * flux plus court que le plancher.
+ *
+ * @param {number|undefined|null} duree - `video.duration`, en secondes
+ * @returns {number} période en millisecondes
+ */
+export function stallPeriodFor(duree) {
+  const d = Number(duree);
+  // Durée inconnue, nulle ou infinie (flux continu) : on garde la période nominale, le refus
+  // de conclure de `_checkPlayback` servant alors de garde-fou.
+  if (!Number.isFinite(d) || d <= 0) return STALL_CHECK_MS;
+  // La moitié de la durée laisse une marge franche : au régime normal, le flux avance d'une
+  // période, donc un seul passage par zéro au plus peut tomber dans l'intervalle.
+  return Math.min(STALL_CHECK_MS, Math.max(STALL_CHECK_FLOOR_MS, (d * 1000) / 2));
+}
 
 /**
  * Fraction du temps réel qu'un flux doit parcourir pour être jugé lisible.
@@ -182,6 +219,8 @@ export class VideoBackdrop {
     this.clearTimer = options.clearTimer ?? ((id) => clearInterval(id));
     /** @type {any} */
     this._stallTimer = null;
+    /** Période effective du contrôle de cadence, dérivée de la durée du flux. */
+    this._stallPeriodMs = STALL_CHECK_MS;
     /** @type {{ at: number, media: number }|null} */
     this._lastSample = null;
     /** @type {any} */
@@ -224,6 +263,13 @@ export class VideoBackdrop {
 
     video.addEventListener('loadeddata', () => this.invalidate());
     video.addEventListener('canplay', () => this.invalidate());
+    // La durée du flux n'existe qu'à partir d'ici : c'est le seul moment où la période
+    // d'échantillonnage peut être dérivée. Réarmer remet aussi la référence à zéro, ce qui est
+    // juste — l'échantillon d'avant les métadonnées ne vaut rien.
+    video.addEventListener('loadedmetadata', () => {
+      if (!this.currentUrl || this.failed) return;
+      this._armStallCheck();
+    });
     video.addEventListener('error', () => {
       this.failed = true;
       // Masquer l'élément en échec : la couche de fond reprend la main et peint l'affiche
@@ -332,7 +378,9 @@ export class VideoBackdrop {
   _armStallCheck() {
     this._disarmStallCheck();
     this._lastSample = null;
-    this._stallTimer = this.setTimer(() => this._checkPlayback(), STALL_CHECK_MS);
+    const periode = stallPeriodFor(this.element?.duration);
+    this._stallPeriodMs = periode;
+    this._stallTimer = this.setTimer(() => this._checkPlayback(), periode);
   }
 
   /** @private */
@@ -364,7 +412,15 @@ export class VideoBackdrop {
     if (!precedent) return;
 
     const ecoule = now - precedent.at;
-    if (ecoule < STALL_CHECK_MS * 0.8) return;
+    if (ecoule < this._stallPeriodMs * 0.8) return;
+
+    // ⛔ Refus de conclure quand la mesure n'est pas décidable : si l'intervalle atteint la
+    // durée du flux, un tour entier a pu passer et `advanceBetween` ne peut plus distinguer
+    // « ça boucle » de « c'est bloqué ». La période dérivée évite ce cas pour tout flux plus
+    // long que `STALL_CHECK_FLOOR_MS` ; en dessous, aucune période ne le permet, et laisser
+    // jouer un fond animé lent est très préférable à rabattre une lecture saine sur l'affiche.
+    const dureeMs = Number(video.duration) * 1000;
+    if (Number.isFinite(dureeMs) && dureeMs > 0 && ecoule >= dureeMs) return;
 
     // La boucle repasse par zéro : `currentTime` recule. Ce n'est pas un blocage. La
     // correction est partagée avec le diagnostic, qui prétend juger par ce même critère —
