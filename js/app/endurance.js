@@ -59,6 +59,18 @@ export class ColdDecodeTrial {
     const decodeMs = this.now() - startedAt;
     return { idleMs, decodeMs };
   }
+
+  takeArmedImage() {
+    if (!this.image || this.armedAt === null) throw new Error('Armer le test avant la mesure.');
+    const idleMs = this.now() - this.armedAt;
+    if (idleMs < this.minimumIdleMs) {
+      throw new RangeError(`Inactivité insuffisante : ${Math.ceil((this.minimumIdleMs - idleMs) / 1000)} s restantes.`);
+    }
+    const image = this.image;
+    this.image = null;
+    this.armedAt = null;
+    return { image, idleMs };
+  }
 }
 
 /** @typedef {'observed'|'not-observed'|'not-checked'} ObservationState */

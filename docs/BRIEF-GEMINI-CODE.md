@@ -227,23 +227,62 @@ figé.
 - `cellsInRange` : coût **uniforme 1** par pas, et respecte `blockedEdges`. Pas de diagonale à
   arbitrer, l'hexagone n'en a pas — ce qui rend cette méthode plus simple qu'en carré.
 
-## ⛔ La question d'architecture à trancher avant le critère 3
+## ✅ Réponse d'architecture — établie le 12/08/2026 en lisant le code
 
-`blockedEdges` est une `Set` de clés d'arêtes produite par `js/import/blockedEdges.js`, et sa
-convention de clé a été **conçue pour des cellules carrées** — l'arête entre deux cases voisines,
-identifiée par le couple de cellules. Il faut établir, **avant d'écrire `cellsInRange`** :
+### 1. La convention de clé d'arête tient telle quelle. Rien à changer.
 
-1. La convention de clé d'arête tient-elle telle quelle pour six voisines ? Si la clé est dérivée du
-   couple de cellules ordonné, oui — mais il faut le **vérifier dans le code**, pas le supposer.
-2. Qui produit ces arêtes pour un étage hexagonal ? `blockedEdges.js` lit une géométrie UVTT, et
-   l'import UVTT hex est écarté. Sur un étage hex, les murs viendront de **l'éditeur de murs de
-   L-07** — qui trace des polylignes en `CellPoint`. Le croisement centre-à-centre de L-01
-   fonctionne-t-il sur un pavage hexagonal ?
+`edgeKey(cellA, cellB)` dans `js/core/cellKey.js` est **purement dérivée du couple de cellules** :
+les deux `cellKey` triées lexicographiquement et jointes par `|`. `cellKey` vaut `${cell.a},${cell.b}`,
+sur le couple opaque. **Aucune géométrie carrée n'y intervient**, et six voisines lui vont aussi bien
+que huit.
 
-⛔ **N'écris pas `cellsInRange` avant que ces deux points soient tranchés.** Le critère 1 de L-01
-notait déjà que « l'accrochage à la grille échoue sur DA » : la géométrie des murs est la partie de
-ce projet qui a produit le plus de défauts coûteux, et un `cellsInRange` hexagonal bâti sur une
-convention d'arête fausse serait invisible en test synthétique et faux à la table.
+`edgesOf(cell)` de `SquareGrid` est `this.neighbors(cell).map((n) => [cell, n])` : elle délègue à
+`neighbors`, donc elle se recopie à l'identique dans `HexGrid`.
+
+### 2. ⛔ Mais `computeBlockedEdges` est carré, en trois endroits. C'est **lui** le blocage.
+
+`js/import/blockedEdges.js` appelle `extractBlockedSegments(level)` **sans la grille** (ligne 267),
+donc tout le calcul vit en **unités de case avec une sémantique carrée** :
+
+| | Hypothèse carrée | Pourquoi elle tombe en hexagone |
+|---|---|---|
+| Centre de case | `centerA = { x: a + 0.5, y: b + 0.5 }` | le centre d'un hexagone axial (q, r) n'est pas (q+0,5 ; r+0,5) |
+| Énumération du pavage | `for (a = 0..width) for (b = 0..height)` | en axial, les (q, r) valides d'une carte rectangulaire forment une région cisaillée, pas un rectangle |
+| Indexation des seaux | `Math.floor(seg.A.x)` puis `row * width + col` | suppose que la case (col, row) couvre le carré unité — un hexagone ne pave pas des carrés unité |
+
+⭐ **C'est une fuite de topologie hors de `js/grid/`**, de la même famille que l'interdiction n°5, et le
+troisième test d'architecture ne l'attrape pas : il cherche les coordonnées **nommées**
+(`.col`, `.row`, `.q`, `.r`), pas un `+ 0.5`.
+
+### 3. Ce qu'il faut faire, et c'est plus large que `cellsInRange`
+
+**Passer le calcul en espace pixels-carte**, où tout est déjà topologie-agnostique :
+
+- centres par **`grid.pointFromCell(cell)`** — au contrat, rend un `MapPoint` ;
+- sommets de murs par **`grid.mapFromCellPoint(vertex)`** — au contrat aussi ;
+- seaux : un index spatial en pixels-carte, au pas de la grille, valable pour tout pavage.
+
+⛔ **Et il manque une méthode au contrat** : rien ne sait énumérer les cases d'un étage, parce que
+`0..width × 0..height` en tenait lieu. C'est une **extension de `GridAdapter`**, donc mon arbitrage :
+ajoute `allCells()` au contrat, implémentée dans `SquareGrid` (le double `for` actuel) et dans
+`HexGrid` (la région axiale correspondante). Déclare-la dans `js/grid/GridAdapter.js` **avant** de
+l'utiliser.
+
+### 4. Ordre imposé pour cette tâche
+
+1. `allCells()` au contrat + `SquareGrid`, et `computeBlockedEdges` réécrit en pixels-carte.
+   ⛔ **À iso-comportement sur le carré** : les tests de L-01 (`tests/blockedEdges.test.mjs`,
+   `tests/reachable.test.mjs`) doivent rester verts **sans être modifiés**. C'est la seule garantie
+   que le passage en pixels n'a rien déplacé. Rapport, puis arrêt.
+2. Ensuite seulement `HexGrid`, `allCells()` comprise.
+3. `cellsInRange` hexagonale en dernier.
+
+**Pourquoi cet ordre** : l'étape 1 est un refactoring à comportement constant sur du code éprouvé et
+elle est vérifiable par les tests existants. La mêler à l'écriture de `HexGrid` rendrait impossible de
+savoir laquelle des deux a cassé quoi. Le critère 1 de L-01 notait déjà que « l'accrochage à la grille
+échoue sur DA » : la géométrie des murs est la partie de ce projet qui a produit les défauts les plus
+coûteux, et un `cellsInRange` hexagonal bâti sur des centres faux serait **invisible en test
+synthétique et faux à la table**.
 
 ## Critères d'acceptation
 

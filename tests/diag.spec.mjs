@@ -57,6 +57,19 @@ test('diag.html : le protocole R2 s’arme sans minuterie et accepte un relevé 
   await page.getByRole('button', { name: /Mesurer après inactivité/ }).click();
   await expect(page.locator('#sortie')).toContainText('Inactivité insuffisante');
 
+  // Fast-forward l'armement pour simuler les 120 s physiques et mesurer
+  await page.evaluate(() => {
+    const trial = /** @type {any} */ (window).__coldDecodeTrial;
+    if (trial) trial.armedAt = trial.now() - 130000;
+  });
+  await page.getByRole('button', { name: /Mesurer après inactivité/ }).click();
+  const texteMesure = /** @type {string} */ (await page.locator('#sortie').textContent());
+  expect(texteMesure).toContain('Décodage post-inactivité terminé');
+  expect(texteMesure).toContain('Coût brut');
+  expect(texteMesure).toContain('Coût relecture (1×1)');
+  expect(texteMesure).toContain('Coût net du premier tracé');
+  expect(texteMesure).toContain('Image.decode() a été retiré');
+
   await page.getByRole('button', { name: /Démarrer le journal endurance/ }).click();
   await page.locator('#endurance-fps').fill('30');
   await page.locator('#endurance-temperature').fill('dos tiède');

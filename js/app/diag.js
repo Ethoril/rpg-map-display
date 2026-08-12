@@ -28,6 +28,7 @@ import {
 const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
 const coldDecodeTrial = new ColdDecodeTrial();
+if (typeof window !== 'undefined') /** @type {any} */ (window).__coldDecodeTrial = coldDecodeTrial;
 const enduranceJournal = new EnduranceJournal();
 
 /** @param {string} texte */
@@ -180,26 +181,25 @@ async function armerDecodageFroid() {
 }
 
 async function mesurerDecodageFroid() {
-  const result = await coldDecodeTrial.measure();
-
-  // ⭐ `Image.decode()` n'est PAS la grandeur du critère R2-03. Le chiffre de 490 ms relevé
-  // avant le correctif du chantier P était le coût du **`drawImage` du fond**, et le seuil
-  // de 5 ms porte sur lui. Mesurer le seul `decode()` répondait donc à côté — c'est
-  // exactement le travers déjà commis une fois sur ce projet : « la sonde ne mesurait pas
-  // la bonne grandeur ».
-  const field = /** @type {HTMLInputElement} */ (document.getElementById('cold-image-url'));
-  const url = field.value.trim();
+  const { image, idleMs } = coldDecodeTrial.takeArmedImage();
   const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
   const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
 
-  const image = new Image();
-  image.decoding = 'async';
-  image.src = url;
-  await image.decode();
+  // 1. Coût de la relecture seule pour vider le pipeline GPU
+  const dummy = document.createElement('canvas');
+  dummy.width = 1;
+  dummy.height = 1;
+  const tr0 = performance.now();
+  ctx.drawImage(dummy, 0, 0, canvas.width, canvas.height);
+  ctx.getImageData(0, 0, 1, 1);
+  const relecture = performance.now() - tr0;
 
+  // 2. Coût brut du premier tracé avec vidage du pipeline
   const t0 = performance.now();
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const plein = performance.now() - t0;
+  ctx.getImageData(0, 0, 1, 1);
+  const brut = performance.now() - t0;
+  const net = Math.max(0, brut - relecture);
 
   // La doublure du chantier P : un bitmap réduit à 1024 px, peint à la place du plein
   // format tant que celui-ci est froid.
@@ -211,26 +211,29 @@ async function mesurerDecodageFroid() {
   });
   const t1 = performance.now();
   ctx.drawImage(doublure, 0, 0, canvas.width, canvas.height);
+  ctx.getImageData(0, 0, 1, 1);
   const reduite = performance.now() - t1;
   doublure.close();
 
-  const verdict = plein < 5
+  const verdict = net < 5
     ? 'Fond < 5 ms : OUI — critère R2-03 tenu sur cette mesure.'
-    : `Fond ≥ 5 ms (${arrondi(plein, 1)} ms) : le seuil R2-03 n'est PAS tenu.`;
+    : `Fond ≥ 5 ms (${arrondi(net, 1)} ms) : le seuil R2-03 n'est PAS tenu.`;
 
   ecrire(
     [
       'Décodage post-inactivité terminé.',
       '',
-      `Inactivité observée :        ${arrondi(result.idleMs / 1000, 1)} s`,
-      `Image.decode() :             ${arrondi(result.decodeMs, 1)} ms`,
-      `drawImage plein format :     ${arrondi(plein, 1)} ms   ← la grandeur du critère`,
+      `Inactivité observée :        ${arrondi(idleMs / 1000, 1)} s`,
+      `Coût brut (drawImage+flush): ${arrondi(brut, 1)} ms`,
+      `Coût relecture (1×1) :       ${arrondi(relecture, 1)} ms (retranché)`,
+      `Coût net du premier tracé :  ${arrondi(net, 1)} ms   ← la grandeur du critère`,
       `drawImage doublure 1024 px : ${arrondi(reduite, 1)} ms`,
       `Source : ${image.naturalWidth}×${image.naturalHeight}`,
       '',
       verdict,
       'Repère : 490 ms relevés avant le correctif du chantier P, seuil < 5 ms.',
       '',
+      'Image.decode() a été retiré de l’affichage : mesurer decode() d’abord réchauffe le bitmap avant drawImage().',
       'Le navigateur n’expose aucune API d’éviction : ce test ne peut pas prouver que le bitmap',
       'avait réellement été évincé, seulement mesurer ce qui a été payé après le silence.',
     ].join('\n')

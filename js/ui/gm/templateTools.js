@@ -9,11 +9,16 @@
  * Options du composant templateTools
  * @typedef {Object} TemplateToolsOptions
  * @property {() => string|null} getActiveLevelId
- * @property {(template: Template) => void} [onPlaceTemplate]
  * @property {(levelId: string) => void} [onClearTemplates]
  * @property {(armed: boolean) => void} [onArmChange]
  * @property {() => void} [requestRender]
  */
+
+let templateCounter = 0;
+
+function generateTemplateId() {
+  return `template-${Date.now()}-${++templateCounter}`;
+}
 
 /**
  * Monte le composant d'outils de Gabarits du MJ.
@@ -34,7 +39,7 @@ export function createTemplateTools(container, options) {
   let radiusCells = 4;
   let color = '#ef4444';
   let visibleToPlayers = true;
-  let currentTemplateId = `template-${Date.now()}`;
+  let currentTemplateId = generateTemplateId();
 
   container.innerHTML = `
     <div class="template-tools-panel" style="display: flex; flex-direction: column; gap: 0.8rem; padding: 0.5rem 0;">
@@ -114,7 +119,7 @@ export function createTemplateTools(container, options) {
     if (armed !== next) {
       armed = next;
       if (armed) {
-        currentTemplateId = `template-${Date.now()}`;
+        currentTemplateId = generateTemplateId();
       }
       updateUI();
       onArmChange?.(armed);
