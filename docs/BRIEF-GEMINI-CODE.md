@@ -110,15 +110,20 @@ recevrait deux gabarits de même `id`. Improbable au doigt, atteignable par un t
 l'identifiant doit rester lisible et stable pour la relecture, comme les autres identifiants du
 dépôt.
 
-## G-02c — ⛔ Le champ de rayon déclare `max="20"` mais le composant borne à 50
+## G-02c — ✅ Le rayon des gabarits s'aligne sur **20 cases**
 
 `<input id="tpl-radius" max="20">` contre `Math.min(50, …)` dans le gestionnaire. `max` n'empêche rien
-hors validation de formulaire : **le maximum effectif est 50**.
+hors validation de formulaire : le maximum effectif était **50**.
 
-⛔ **ARRÊT. Ne code rien sur ce point.** Laquelle des deux bornes est la bonne est un arbitrage de
-jeu, pas de code — un gabarit de 50 cases de rayon a-t-il un sens à cette table ? Le test
-`tests/templates.spec.mjs` fixe aujourd'hui le comportement réel (50) sans dire lequel est voulu.
-Demande l'arbitrage, puis aligne les deux valeurs et le test.
+**Arbitrage du mainteneur, 12/08/2026 : 20 cases.** Le code s'aligne sur ce que l'interface annonce,
+pas l'inverse. Motif : à 140 px/case, 20 cases de rayon couvrent 5 600 px de diamètre — plus large que
+la plupart des cartes du corpus, dont l'échantillon mesure 37 × 28 cases. Un gabarit plus grand que la
+carte n'a pas d'usage.
+
+**À faire** : `Math.min(20, …)` dans le gestionnaire de `#tpl-radius`, et **la même borne pour les
+pastilles** si l'une dépasse. Puis mettre à jour `tests/templates.spec.mjs`, scénario 6 : il fixe
+aujourd'hui le comportement réel (50) en disant explicitement qu'il ne juge pas laquelle des bornes
+est la bonne. Remplace ce commentaire par la décision, et assertionne 20.
 
 ## Critères d'acceptation (G-02a et G-02b)
 
@@ -128,9 +133,11 @@ Demande l'arbitrage, puis aligne les deux valeurs et le test.
 
 ---
 
-# G-03 — Mesure au geste *(dernier critère de confort du lot 4)*
+# G-03 — Mesure de distance *(dernier critère de confort du lot 4)*
 
-⛔ **ARRÊT AVANT DE CODER. La conception doit être confirmée par le mainteneur.**
+✅ **Conception confirmée par le mainteneur le 12/08/2026 : bouton armé, sur le modèle du ping.** Le
+CdC §5.5 est amendé en conséquence — l'appui long + glisser est écarté, et le motif y est écrit. ⛔ Ne
+touche pas à `js/input/pointer.js`.
 
 ## Le critère
 
@@ -138,20 +145,19 @@ Demande l'arbitrage, puis aligne les deux valeurs et le test.
 portées de tir, d'un point arbitraire à un autre — les cases atteignables répondent déjà à « est-ce
 que j'y arrive ? », et le §5.5 note lui-même que **la priorité est abaissée**.
 
-## La conception que je recommande, et le piège qu'elle évite
+## Pourquoi cette voie, et le piège qu'elle évite
 
 Le CdC prévoyait **appui long + glisser**, donc `js/input/pointer.js`. ⚠ C'est le fichier le plus
 délicat du dépôt : l'appui long et le glisser s'y disputent déjà le doigt, et la marge mesurée à la
 table le 11/08/2026 n'est que de **10,8 ms** entre le p95 d'un tap réel (139,2 ms) et `DRAG_HOLD_MS`
 (150 ms). Un troisième geste dans cette zone est le mauvais endroit pour un critère déprécié.
 
-**Le chantier X a montré une voie sans risque** : un **bouton armé hors onglets**, dans la barre de
-séance du panneau MJ, à côté du ping. Armer « Mesurer », cliquer deux points, lire la distance, se
-désarmer. Cela réutilise `setActiveTool` — donc l'exclusivité mutuelle et le désarmement au
-changement d'onglet, déjà éprouvés — et **ne touche pas à `pointer.js`**. Le Zero-UI n'est pas violé :
-le bouton vit dans le panneau, pas sur la carte.
+Le chantier X a ouvert la voie sûre : un **bouton armé hors onglets**, dans la barre de séance du
+panneau MJ, à côté du ping. Armer « Mesurer », cliquer deux points, lire la distance, se désarmer.
+Cela réutilise `setActiveTool` — donc l'exclusivité mutuelle et le désarmement au changement d'onglet,
+déjà éprouvés.
 
-## Si cette voie est retenue
+## La spécification
 
 - Nouvel outil `'measure'` dans l'union de `setActiveTool`, sur le modèle exact de `'ping'`
   (`CHANTIER-X-PING.md` §2).
@@ -164,12 +170,31 @@ le bouton vit dans le panneau, pas sur la carte.
   hexagone sans une ligne de plus.
 - Grandeurs de rendu **en pixels écran divisées par le zoom**, comme `portals.js` et `pings.js`.
 
+## Critères d'acceptation
+
+- Deux clics posent la mesure, et la distance affichée est celle de `grid.distance`. Un test le
+  vérifie sur un couple dont la distance octile diffère de la distance à vol d'oiseau — sinon
+  l'assertion passerait même avec un calcul en dur.
+- Le troisième clic recommence une mesure, il ne l'étend pas. Un outil de séance ne doit pas accumuler
+  d'état qu'on ne sait pas défaire.
+- L'outil se désarme au changement d'onglet et désarme les autres à l'armement, **par héritage de
+  `setActiveTool`** — modèle et tests : `tests/ping.spec.mjs`, scénario 4.
+- Rien ne part sur le réseau et rien n'entre dans le store : la mesure est un geste du MJ pour
+  lui-même. Un test vérifie qu'**aucun événement** n'est publié pendant la mesure.
+- Mutation : remplacer `grid.distance` par un calcul en dur doit faire rougir le premier test.
+
 ---
 
 # G-04 — `HexGrid` *(les trois derniers critères)*
 
-⛔ **ARRÊT AVANT DE COMMENCER. Voir la question d'architecture en fin de tâche : elle décide de la
-faisabilité du troisième critère.**
+✅ **La question d'architecture que tu avais posée est répondue** — voir « Réponse d'architecture » en
+fin de tâche. Elle a déplacé le blocage : ce n'est pas `cellsInRange`, c'est `computeBlockedEdges`, et
+il faut une extension du contrat. **Lis cette section avant tout le reste**, elle impose l'ordre des
+étapes et le seul point d'arrêt de la tâche.
+
+⛔ **Le point d'arrêt est après l'étape 1** — `allCells()` plus la réécriture de `computeBlockedEdges`
+en pixels-carte, à iso-comportement sur le carré. Rapport de 3 lignes et tu t'arrêtes là, avant de
+toucher à `HexGrid`.
 
 ⚠ **À savoir avant d'investir** : aucune carte hexagonale n'existe dans la bibliothèque du
 mainteneur — les 1 774 images du corpus sont carrées. Ce travail est propre et bien préparé, mais sa

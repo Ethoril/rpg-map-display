@@ -486,9 +486,24 @@ sources portées par les pions (`emitsLight`).
 
 ### 5.5 Outils de table (pas du confort)
 
-- **Mesure de distance** — au geste : appui long + glisser. Priorité abaissée : les cases
-  atteignables (§5.3bis) répondent déjà à « est-ce que j'y arrive ? ». Reste utile pour les
-  portées de tir, d'un point arbitraire à un autre.
+- **Mesure de distance** — ~~au geste : appui long + glisser~~ **par bouton armé, amendé le
+  12/08/2026.** Priorité abaissée : les cases atteignables (§5.3bis) répondent déjà à « est-ce que
+  j'y arrive ? ». Reste utile pour les portées de tir, d'un point arbitraire à un autre.
+
+  *Pourquoi l'écart au geste initialement prévu.* L'appui long et le glisser se disputent déjà le
+  doigt dans `js/input/pointer.js`, et la mesure de séance du 11/08/2026 a chiffré la marge : le p95
+  d'un tap réel est à **139,2 ms** contre `DRAG_HOLD_MS = 150`, soit **10,8 ms**. Ajouter un
+  troisième geste dans cette zone pour un critère de priorité abaissée serait mal employer le seul
+  endroit du code où une erreur se paie à chaque geste de la séance.
+
+  Le chantier X a ouvert la voie sûre : un **bouton armé dans la barre de séance MJ**, hors des
+  onglets, sur le modèle du ping. Armer, cliquer deux points, lire la distance, se désarmer. Il
+  hérite de l'exclusivité mutuelle des outils et du désarmement au changement d'onglet, déjà
+  éprouvés. ⭐ **Le Zero-UI n'est pas violé** : la contrainte porte sur la vue joueurs et sur la
+  carte, pas sur le panneau MJ — qui est un poste clavier-souris et porte déjà dix onglets.
+
+  ⛔ La distance vient de **`grid.distance(a, b)`**, jamais d'un calcul en dur (interdiction n°7).
+  C'est ce qui la fera fonctionner en hexagone sans une ligne de plus.
 - **Ping** — ~~deux doigts tap~~, marqueur animé ~2 s, **visible sur les trois postes**.
   **Amendé le 12/08/2026 : émission MJ seule, par bouton armé.**
 
