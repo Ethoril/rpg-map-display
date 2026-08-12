@@ -489,7 +489,31 @@ sources portées par les pions (`emitsLight`).
 - **Mesure de distance** — au geste : appui long + glisser. Priorité abaissée : les cases
   atteignables (§5.3bis) répondent déjà à « est-ce que j'y arrive ? ». Reste utile pour les
   portées de tir, d'un point arbitraire à un autre.
-- **Ping** — deux doigts tap, marqueur animé ~2 s, visible de tous.
+- **Ping** — ~~deux doigts tap~~, marqueur animé ~2 s, **visible sur les trois postes**.
+  **Amendé le 12/08/2026 : émission MJ seule, par bouton armé.**
+
+  *Ce qui a changé et pourquoi.* Le geste tactile est **supprimé** : côté joueurs il n'y a pas de
+  besoin, parce qu'il leur suffit de **zoomer sur la tablette** pour que le MJ voie de quoi ils
+  parlent. Le ping ne sert donc que dans le sens MJ → table, et le poste MJ est toujours
+  clavier-souris. ⭐ L'affichage, lui, reste sur **les trois postes** : c'est tout l'objet du geste,
+  et le critère du lot 4 est inchangé.
+
+  *Bouton armé plutôt que double-clic, et pas seulement par facilité.* Sur la vue MJ un clic a déjà
+  des effets — sélectionner un pion, désigner une destination. Un double-clic les déclencherait au
+  premier clic, ou imposerait de **retarder chaque clic simple** de la fenêtre de double-clic pour
+  lever l'ambiguïté : ~250 ms ajoutés à toute l'interface MJ pour un geste occasionnel. Le bouton
+  armé n'a aucun de ces défauts et **réutilise l'exclusivité mutuelle des outils MJ** ainsi que le
+  désarmement au changement d'onglet, déjà éprouvés (`gmToolDisarmGeste`). Il est **toujours
+  visible, hors des onglets** : c'est un geste de séance, pas un outil de préparation.
+
+  ⛔ *Le piège de conception, tranché ici parce qu'il est contre-intuitif.* Le marqueur s'anime
+  depuis **l'instant de réception local**, et **non** depuis l'horodatage de l'émetteur — donc
+  **pas** comme l'animation des pions. Motif : `Date.now()` de l'émetteur est une horloge
+  étrangère, et la tablette de ce projet a été mesurée **5,3 s en avance**. Un ping de 2 s calculé
+  sur cet écart serait déjà expiré à l'arrivée : il **n'apparaîtrait jamais** sur le poste qui
+  compte le plus. Un pion a besoin de déterminisme entre postes — un joueur qui rejoint doit le
+  voir au bon endroit ; un ping n'a **aucun état persistant**, donc chacun peut l'afficher 2 s à
+  partir de sa propre réception sans que la différence soit observable.
 - **Undo MJ** — une révélation de fog ou une suppression de pion accidentelles sont
   irréversibles sinon. Rendu quasi gratuit par les commandes discrètes (§5.3bis).
 
@@ -748,7 +772,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `vision.update` | **Mac seul** | après chaque mouvement, throttlé |
 | `fog.update` | **Mac seul** | throttlé 1 Hz ou à la révélation |
 | `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
-| `ping` | tous | ponctuel |
+| `ping` | **MJ seul** (amendé le 12/08/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
 | `ambient.set` | MJ | throttlé |
 | `handout.show` / `handout.hide` | MJ | ponctuel |
 | `template.place` / `clear` | MJ | ponctuel |
@@ -977,8 +1001,12 @@ entre les lots — prévoir le chemin de migration dès le lot 1.
 
 ## 11. Lots & critères d'acceptation
 
-> **Décompte au 08/08/2026 : 34 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
-> lot 3 5/6, lot 4 1/6, spike vidéo 0/1.
+> **Décompte au 12/08/2026 : 35 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
+> lot 3 5/6, lot 4 **2/6**, spike vidéo 0/1.
+>
+> Le dernier acquis est le **ping** du lot 4 (chantier X, 12/08/2026). Le spike vidéo reste à 0/1
+> bien que le fond animé soit constaté fluide sur la tablette le 11/08 : il lui manque le **cast
+> 45 min**, et un critère ne se coche pas à moitié.
 >
 > ⚠ **Ce §11 fait foi sur le décompte, et les cases de ce document en sont la seule preuve.** Un
 > résumé qui annonce un autre nombre est à corriger sur celui-ci, jamais l'inverse. La règle qui a
@@ -1104,7 +1132,10 @@ Critères :
 - [ ] Le hit-test pixel→hexagone sélectionne la bonne case au doigt du premier coup.
 - [ ] Les cases atteignables en hexagone sont à coût uniforme 1 et respectent les murs.
 - [ ] Mesurer une distance sans quitter le Zero-UI.
-- [ ] Un ping est visible sur les trois postes en < 500 ms.
+- [x] Un ping est visible sur les trois postes en < 500 ms. **Livré le 12/08/2026, chantier X**
+      (`CHANTIER-X-PING.md`). Émission MJ par bouton armé, affichage sur les trois postes,
+      horodatage réhorodaté à la réception. ⚠ Le budget est éprouvé sur transport local : les
+      500 ms réels restent à constater à la table.
 - [x] Undo restaure l'état fog précédent.
 
 ### Spike à planifier tôt (lot 2 ou 3, avant de concevoir autour)

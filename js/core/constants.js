@@ -24,6 +24,18 @@ export const RENDER_RESOLUTION_CAP = 1.5;
 export const DRAG_HOLD_MS = 150;
 
 /**
+ * Durée d'affichage d'un ping, en millisecondes (CdC §5.5, « marqueur animé ~2 s »).
+ *
+ * ⛔ **Comptée depuis la réception LOCALE, jamais depuis l'horodatage de l'émetteur.** Le
+ * `Date.now()` du poste MJ est une horloge étrangère pour la tablette, et celle de ce projet a
+ * été mesurée **5,3 s en avance** : un ping de 2 s jugé sur cet écart serait déjà expiré à
+ * l'arrivée et **n'apparaîtrait jamais** là où il sert. Contrairement à l'animation d'un pion, un
+ * ping n'a aucun état persistant à reconstituer, donc rien n'exige qu'il soit déterministe entre
+ * postes — chacun l'affiche 2 s depuis sa propre réception, et la différence est inobservable.
+ */
+export const PING_DURATION_MS = 2000;
+
+/**
  * Fréquence maximale de publication de l'état de la caméra/vue sur le réseau (10 Hz, soit toutes les 100 ms).
  * Évite de saturer le canal temps réel tout en assurant une fluidité perçue suffisante.
  */

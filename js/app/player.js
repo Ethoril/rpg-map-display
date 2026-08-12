@@ -13,6 +13,7 @@ import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
 import { LinksLayer } from '../render/layers/links.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
+import { PingsLayer } from '../render/layers/pings.js';
 import { decodeFogPng } from '../vision/fog.js';
 import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
@@ -238,6 +239,14 @@ export async function bootstrapPlayerApp(options = {}) {
   const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
+  const pingsLayer = new PingsLayer();
+  /**
+   * Ping courant. ⛔ `at` est posé à la **réception locale**, jamais lu de `event.at` : c'est le
+   * poste où la règle compte le plus, la tablette de ce projet ayant été mesurée 5,3 s en avance.
+   * Un ping jugé sur l'horloge du MJ n'apparaîtrait jamais ici. Voir `PING_DURATION_MS`.
+   * @type {{levelId: string, mapPos: {x: number, y: number}, at: number}|null}
+   */
+  let currentPing = null;
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
   // Passive, comme côté MJ : aucun timer ni rAF ne vient entretenir la tablette au repos.
@@ -500,6 +509,15 @@ export async function bootstrapPlayerApp(options = {}) {
         });
         layerDurations.feedback = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
+      pings: () => {
+        const result = pingsLayer.render(stage.context, grid, activeLevel, {
+          ping: currentPing,
+          now: Date.now(),
+          zoom: camera.zoom,
+        });
+        animationActive ||= result.animationActive;
+        if (currentPing && !result.animationActive) currentPing = null;
+      },
     });
 
     stage.context.restore();
@@ -566,6 +584,19 @@ export async function bootstrapPlayerApp(options = {}) {
         if (payload?.camera) {
           camera.setPan(payload.camera.x, payload.camera.y);
           camera.setZoom(payload.camera.zoom);
+          requestRender();
+        }
+        return;
+      }
+      // Un ping n'est pas une mutation de l'état de jeu : il ne passe pas par `applyNetworkEvent`,
+      // qui le laisserait tomber silencieusement. Traité ici comme `view.change` juste au-dessus,
+      // pour la même raison — un effet local, sans persistance et sans rejeu. Un joueur qui rejoint
+      // la séance ne doit surtout pas voir un vieux ping ressurgir.
+      if (event.type === 'ping') {
+        const p = /** @type {any} */ (event.payload) || {};
+        if (p.mapPos && Number.isFinite(p.mapPos.x) && Number.isFinite(p.mapPos.y)) {
+          // ⛔ `Date.now()` local, pas `event.at`. Voir `PING_DURATION_MS`.
+          currentPing = { levelId: p.levelId, mapPos: p.mapPos, at: Date.now() };
           requestRender();
         }
         return;

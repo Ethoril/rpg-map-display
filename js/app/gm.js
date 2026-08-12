@@ -13,6 +13,7 @@ import { PortalsLayer } from '../render/layers/portals.js';
 import { LinksLayer } from '../render/layers/links.js';
 import { WallsLayer } from '../render/layers/walls.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
+import { PingsLayer } from '../render/layers/pings.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
@@ -115,6 +116,7 @@ export async function bootstrapGMApp(options = {}) {
   const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
+  const pingsLayer = new PingsLayer();
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
 
@@ -438,6 +440,15 @@ export async function bootstrapGMApp(options = {}) {
    * @type {{portalId: string, at: number}|null}
    */
   let lockedPortalFlash = null;
+  /**
+   * Ping courant, s'il est encore dans sa fenêtre d'affichage.
+   *
+   * ⛔ **`at` est posé ici, localement, jamais lu de l'événement reçu.** Le MJ estampille avec sa
+   * propre horloge, la tablette avec la sienne, et c'est précisément ce qui rend le ping immunisé
+   * au décalage d'horloge — 5,3 s mesurés sur cette tablette. Voir `PING_DURATION_MS`.
+   * @type {{levelId: string, mapPos: {x: number, y: number}, at: number}|null}
+   */
+  let currentPing = null;
   /** @type {string|null} */
   let lastActiveLevelId = null;
   let restoredCamera = false;
@@ -624,6 +635,20 @@ export async function bootstrapGMApp(options = {}) {
         }
         layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
+      pings: () => {
+        const result = pingsLayer.render(stage.context, grid, activeLevel, {
+          ping: currentPing,
+          now: Date.now(),
+          zoom: camera.zoom,
+        });
+        // ⚠ `||=`, jamais `=`. Un accumulateur écrasé ici éteindrait l'animation des couches
+        // précédentes — le défaut a déjà été commis une fois sur ce projet.
+        animationActive ||= result.animationActive;
+        // Le ping expiré est relâché pour que la boucle puisse s'arrêter : sans ça, la couche
+        // rendrait `animationActive: false` mais l'objet resterait, et le prochain rendu le
+        // réévaluerait pour rien.
+        if (currentPing && !result.animationActive) currentPing = null;
+      },
     });
 
     stage.context.restore();
@@ -767,6 +792,20 @@ export async function bootstrapGMApp(options = {}) {
       // parce que c'est ici que vivent le cache de signature et l'autorité qui recalcule.
       if (event.type === VISION_REQUEST_EVENT) {
         scheduleVisionResend();
+        return;
+      }
+
+      // Un ping n'est pas une mutation de l'état de jeu : il ne passe pas par
+      // `applyNetworkEvent`, il n'a rien à persister et il ne doit surtout pas se rejouer. Le cas
+      // n'arrive qu'entre deux postes MJ — l'émission est réservée au MJ (CdC §5.5) — mais le
+      // traiter coûte trois lignes et évite qu'un second écran reste muet sans qu'on sache pourquoi.
+      if (event.type === 'ping') {
+        const p = /** @type {any} */ (event.payload) || {};
+        if (p.mapPos && Number.isFinite(p.mapPos.x) && Number.isFinite(p.mapPos.y)) {
+          // ⛔ `Date.now()` local, pas `event.at`. Voir `PING_DURATION_MS`.
+          currentPing = { levelId: p.levelId, mapPos: p.mapPos, at: Date.now() };
+          requestRender();
+        }
         return;
       }
 
@@ -1005,6 +1044,27 @@ export async function bootstrapGMApp(options = {}) {
       if (!state.activeLevel) return;
       const activeLevel = state.activeLevel;
       const activeToolName = gmPanel?.getActiveToolName?.() ?? 'none';
+
+      if (activeToolName === 'ping') {
+        // Affichage local immédiat, sans attendre l'aller-retour réseau : le MJ doit voir que son
+        // geste a porté, y compris hors ligne. C'est aussi ce qui rend le critère des 500 ms
+        // mesurable sur le seul poste distant, sans confondre les deux délais.
+        currentPing = { levelId: activeLevel.id, mapPos: intention.mapPos, at: Date.now() };
+        // ⛔ `at` est envoyé pour l'ordonnancement du canal, PAS pour le rendu : chaque poste
+        // réhorodate à la réception. Envoyer l'instant d'émission sans cette règle rendrait le
+        // ping invisible sur une tablette dont l'horloge avance.
+        transport?.publish({
+          type: 'ping',
+          payload: { levelId: activeLevel.id, mapPos: intention.mapPos },
+          at: Date.now(),
+          by: 'gm',
+        });
+        // Un ping est un geste ponctuel, pas un mode : rester armé ferait pointer au clic suivant,
+        // qui est presque toujours destiné à autre chose.
+        gmPanel?.disarmActiveTool?.();
+        requestRender();
+        return;
+      }
 
       if (activeToolName === 'template-place') {
         if (gmPanel?.templateTools) {
