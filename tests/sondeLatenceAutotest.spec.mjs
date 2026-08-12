@@ -36,7 +36,7 @@ test('la sonde de latence documentée s\'exécute et relève un déplacement', a
         emitsLight: null, speedCells: 30, playerMovable: true, locked: false, elevation: 0,
         markers: [], hp: null, health: 'unharmed',
       }],
-      templates: [], settings: { ambientLevel: 1 },
+      templates: [], settings: {},
     },
     activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
   };

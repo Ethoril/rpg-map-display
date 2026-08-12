@@ -35,7 +35,7 @@ function snapshot() {
       links: [{ id: 'stairs', kind: 'stairs', label: 'Escalier', a: { levelId: 'rdc', at: { cellX: 2, cellY: 2 } }, b: { levelId: 'etage', at: { cellX: 2, cellY: 2 } }, bidirectional: true, gmOnly: false }],
       tokens: [{ id: 'hero', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 1, kind: 'pc', imageUrl: 'maps/hero.webp', borderColor: '#ffffff', label: 'Héros', hidden: false, visionBright: 5, visionDim: 10, emitsLight: null, speedCells: 6, playerMovable: true, locked: false, elevation: 0, markers: [], hp: null, health: 'unharmed' }],
       templates: [{ id: 'template', levelId: 'cave', shape: 'circle', origin: { x: 280, y: 280 }, radiusCells: 2, directionDeg: 0, widthCells: 1, color: '#ff0000', visibleToPlayers: true }],
-      settings: { ambientLevel: 1 },
+      settings: {},
     },
     activeLevelId: 'rdc', selectedTokenId: 'hero', activeHandout: { id: 'note' },
   };

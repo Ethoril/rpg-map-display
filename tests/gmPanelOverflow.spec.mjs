@@ -32,7 +32,7 @@ const SNAPSHOT = {
     links: [],
     tokens: [],
     templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
   },
   activeLevelId: niveau.id,
   selectedTokenId: null,

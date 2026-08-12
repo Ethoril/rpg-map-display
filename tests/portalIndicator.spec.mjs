@@ -39,7 +39,7 @@ const SNAPSHOT = {
     links: [],
     tokens: [],
     templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
   },
   activeLevelId: 'rdc-level',
   selectedTokenId: null,

@@ -5,7 +5,7 @@ import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs'
 const snapshot = {
   campaign: {
     schemaVersion: 2, campaignId: 'lights', name: 'Lumières', links: [], templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
     levels: [{
       id: 'rdc', name: 'RDC', order: 0, imageUrl: '', videoUrl: null, animatedOverlays: [],
       pxPerCell: 100, widthCells: 12, heightCells: 8,

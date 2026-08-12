@@ -313,7 +313,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
         links: [],
         tokens: [],
         templates: [templateRed],
-        settings: { ambientLevel: 1 },
+        settings: {},
       },
       activeLevelId: 'lvl-clip',
       selectedTokenId: null,

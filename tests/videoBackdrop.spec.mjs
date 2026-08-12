@@ -37,7 +37,7 @@ function snapshot(override = {}) {
       links: [],
       tokens: [],
       templates: [],
-      settings: { ambientLevel: 1 },
+      settings: {},
     },
     activeLevelId: niveauAnime.id,
     selectedTokenId: null,

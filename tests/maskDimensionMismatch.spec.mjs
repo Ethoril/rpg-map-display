@@ -72,7 +72,7 @@ const instantane = (levelId, w, h) => ({
       },
     ],
     templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
   },
   activeLevelId: levelId,
   selectedTokenId: null,

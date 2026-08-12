@@ -155,7 +155,7 @@ test('deux vraies pages joueurs convergent via leur transport, sans relais du te
         },
       ],
       templates: [],
-      settings: { ambientLevel: 1 },
+      settings: {},
     },
     activeLevelId: 'rdc',
     selectedTokenId: null,

@@ -161,8 +161,14 @@
  */
 
 /**
+ * Réglages de campagne — **conteneur réservé, aujourd'hui vide**.
+ *
+ * ⛔ Portait `ambientLevel`, retiré le 12/08/2026 avec la question n°4 du §12. L'ambiance est **par
+ * étage** (`Level.ambient`) : c'est celle que `fogLayer` lit, et le champ global n'était relu par
+ * aucun rendu ni aucune vision. Le §6 plaçait déjà l'ambiance par étage, et l'argument tenait — une
+ * cave sombre sous un rez éclairé. Ne pas remettre de champ ici sans un lecteur en face.
+ *
  * @typedef {Object} CampaignSettings
- * @property {number} ambientLevel
  */
 
 /**

@@ -90,7 +90,7 @@ const SCENE = {
   links: [],
   tokens: [],
   templates: [],
-  settings: { ambientLevel: 1 },
+  settings: {},
 };
 
 /** Les pages démarrent sans campagne : on veut voir la scène *arriver*. */
@@ -326,7 +326,7 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
             links: [],
             tokens: [],
             templates: [],
-            settings: { ambientLevel: 1 },
+            settings: {},
           },
           activeLevelId: 'etage-incomplet',
           selectedTokenId: null,

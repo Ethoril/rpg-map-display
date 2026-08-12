@@ -114,7 +114,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
         links: [],
         tokens: [],
         templates: [],
-        settings: { ambientLevel: 1 },
+        settings: {},
       });
     });
 
@@ -186,7 +186,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
         links: [],
         tokens: [],
         templates: [],
-        settings: { ambientLevel: 1 },
+        settings: {},
       },
       activeLevelId: FAKE_LEVEL.id,
       selectedTokenId: null,

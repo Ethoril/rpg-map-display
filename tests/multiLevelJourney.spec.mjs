@@ -12,7 +12,7 @@ const snapshot = {
       { id: 'stairs-up', kind: 'stairs', label: 'Montée', a: { levelId: 'rdc', at: { cellX: 2, cellY: 2 } }, b: { levelId: 'et1', at: { cellX: 2, cellY: 2 } }, bidirectional: true, gmOnly: false },
     ],
     tokens: [{ id: 'hero', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 1, kind: 'pc', imageUrl: '', borderColor: '#00ff00', label: 'Héros', hidden: false, visionBright: 4, visionDim: 6, emitsLight: null, speedCells: 6, playerMovable: true, locked: false, elevation: 0, markers: [], hp: null, health: 'unharmed' }],
-    templates: [], settings: { ambientLevel: 1 },
+    templates: [], settings: {},
   }, activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
 };
 

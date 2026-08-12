@@ -66,7 +66,7 @@ const SNAPSHOT = {
     links: [],
     tokens: [pion('pj-rdc', 'rdc', 2, 2), pion('pj-etage', 'etage', 5, 5)],
     templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
   },
   activeLevelId: 'rdc',
   selectedTokenId: null,
@@ -172,7 +172,7 @@ const SNAPSHOT_LIAISON = {
     // le déplacement qui y mène, déjà couvert ailleurs.
     tokens: [pion('pj-1', 'rdc', 3, 3)],
     templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
   },
   activeLevelId: 'rdc',
   selectedTokenId: null,

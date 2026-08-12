@@ -24,10 +24,10 @@ import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs'
  * distincts : ce qui est éprouvé, c'est qu'aucun masque, canvas ou cache dimensionné pour l'étage
  * précédent ne survive à la bascule.
  *
- * ⚠ Fixture **synthétique**, et délibérément. Les cartes qui ont révélé le trou sont sous licence
- * d'usage privé, et `maps/` est publié sur GitHub Pages : elles ne peuvent pas entrer au dépôt. Les
- * dimensions ci-dessous reproduisent leurs proportions, ce qui suffit — le défaut visé dépend de
- * l'hétérogénéité, pas du dessin.
+ * ⚠ Fixture **synthétique**, et délibérément. Les cartes qui ont révélé le trou appartiennent à la
+ * bibliothèque du mainteneur ; les ajouter au dépôt de ma propre initiative n'était pas à moi de le
+ * décider. Les dimensions ci-dessous reproduisent leurs proportions, ce qui suffit — le défaut visé
+ * dépend de l'hétérogénéité, pas du dessin.
  */
 
 /**
@@ -95,7 +95,7 @@ const snapshot = {
       health: 'unharmed',
     })),
     templates: [],
-    settings: { ambientLevel: 1 },
+    settings: {},
   },
   activeLevelId: 'embuscade',
   selectedTokenId: null,

@@ -101,7 +101,7 @@ function instantane(nbMurs) {
       links: [],
       tokens: [pion('pj-1', 'grande', 10, 10), pion('pj-2', 'grande', 12, 10)],
       templates: [],
-      settings: { ambientLevel: 1 },
+      settings: {},
     },
     activeLevelId: 'grande',
     selectedTokenId: null,

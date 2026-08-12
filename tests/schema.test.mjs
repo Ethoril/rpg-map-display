@@ -334,7 +334,7 @@ test('normalizeCampaign convertit les anciens gabarits origin {a, b} en centre d
         visibleToPlayers: true,
       },
     ],
-    settings: { ambientLevel: 1.0 },
+    settings: {},
   };
 
   const normalized = normalizeCampaign(oldCampaign);

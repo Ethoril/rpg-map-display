@@ -51,7 +51,7 @@ function snapshotFor(sessionId) {
       links: [],
       tokens: [{ ...FAKE_TOKEN }],
       templates: [],
-      settings: { ambientLevel: 1 },
+      settings: {},
     },
     activeLevelId: FAKE_LEVEL.id,
     selectedTokenId: 'hero-1',

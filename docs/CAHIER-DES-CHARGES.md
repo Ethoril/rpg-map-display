@@ -1166,14 +1166,43 @@ Critères :
 
 ## 12. Questions ouvertes
 
-1. **Limite de texture réelle** de la Tab S9 FE (§3) → conditionne la résolution des cartes.
-2. **Latence Firebase mesurée** à table : si le p95 dépasse ~250 ms, basculer
-   `LocalSocketTransport`. À mesurer au lot 1, avant de construire dessus.
+1. ~~**Limite de texture réelle** de la Tab S9 FE (§3)~~ **Tranchée le 12/08/2026 : 8192, et le
+   plafond y reste.** `gl.MAX_TEXTURE_SIZE` a été mesuré à 8192 sur la Tab S9 FE, et
+   `MAX_PREPARED_TEXTURE_PX` vaut cette valeur exacte.
+
+   ⚠ Le point qui a laissé la question ouverte était l'absence de marge : `testbig150` est préparée à
+   7499 × 8192, soit **245 Mio de RGBA décodés**. Il est tranché par l'usage — la carte se prépare,
+   se sert et se joue, et la campagne de diagnostics du 11/08/2026 n'a signalé **aucun problème de
+   performance**. Le coût de décodage, lui, est déjà couvert par la doublure 1024 px du chantier P.
+
+   ⛔ Ne pas réduire le plafond « par prudence » : ce serait rendre toutes les grandes cartes moins
+   nettes contre un risque qui ne s'est jamais manifesté, sur un parc d'un seul appareil dont la
+   limite est connue. Si un appareil au plafond plus bas rejoint le parc un jour, c'est **là** qu'il
+   faudra trancher, et sur sa mesure.
+2. ~~**Latence Firebase mesurée** à table~~ **Tranchée le 07/08/2026 : on reste sur Firebase,
+   `LocalSocketTransport` n'est pas activé.** Décision prise **sciemment sans** la mesure que ce §12
+   réclamait. Le détail est dans `ETAT.md`, « Décision n°2 du §12 » ; l'essentiel est que le seuil de
+   250 ms n'était pas le maillon dominant — le cast ajoute sa propre latence, bien supérieure.
+
+   ⚠ Cette décision n'était consignée que dans `ETAT.md` jusqu'au 12/08/2026, alors que **c'est ce
+   §12 qui fait foi**. Elle a donc figuré comme « ouverte » pendant cinq jours sans l'être.
 3. ~~**Portes ouvrables par les joueurs** ou MJ uniquement ?~~ **Tranchée le 03/08/2026 : les
    deux, avec une règle par transition.** Les joueurs ouvrent et ferment (`closed` ↔ `open`) ;
    verrouiller et déverrouiller sont réservés au MJ. Voir §7 et `TRANCHE-L05-PORTES.md` §6.3.
-4. **Ambiance globale ou par étage ?** Le §6 la place par étage ; une cave sombre sous un
-   rez éclairé plaide pour ce choix, à confirmer.
+4. ~~**Ambiance globale ou par étage ?**~~ **Tranchée le 12/08/2026 : par étage, et le champ global
+   est supprimé.** Le §6 la plaçait déjà par étage et l'argument tenait — une cave sombre sous un rez
+   éclairé.
+
+   ⭐ **L'implémentation avait en réalité déjà répondu, et la question restait ouverte par
+   inadvertance.** Le curseur d'ambiance du panneau MJ publie `level.ambient`, `fogLayer` lit
+   `level.ambient`, et `isAmbientLit` en dérive la portée de vision — ambiante active, chaque PJ voit
+   jusqu'au plafond technique ; ambiante nulle, sa portée nocturne seule.
+
+   ⛔ **`settings.ambientLevel` n'était relu par aucun rendu ni aucune vision** : écrit par le défaut
+   du schéma, jamais lu. Il est retiré de `js/core/schema.js` et de `js/core/types.js`, et des 39
+   fixtures de test qui le renseignaient. Un réglage qu'on peut écrire sans effet finit par piéger
+   quelqu'un qui croit le régler. `CampaignSettings` reste comme conteneur vide : **ne rien y remettre
+   sans un lecteur en face.**
 5. ~~**D'où viennent les cartes hexagonales ?**~~ **Tranchée le 12/08/2026 : image calibrée, plus
    l'étage vierge.** Un étage hexagonal se crée soit sur une **image de fond calibrée à la main**,
    comme au lot 1a — le MJ règle la largeur **plat-à-plat**, l'application en déduit le pas de rangée

@@ -100,7 +100,7 @@ test('Démarrage vue MJ avec campagne restaurée et PJ doté de vision : zéro e
         },
       ],
       templates: [],
-      settings: { ambientLevel: 1 },
+      settings: {},
     },
     activeLevelId: 'lvl-init',
     selectedTokenId: null,

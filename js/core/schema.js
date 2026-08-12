@@ -353,8 +353,12 @@ export function createCampaign(overrides = {}) {
     links: overrides.links ?? [],
     tokens: overrides.tokens ?? [],
     templates: overrides.templates ?? [],
+    // ⛔ `settings` est un conteneur réservé, et il est **vide**. Il portait `ambientLevel`, retiré
+    // le 12/08/2026 en tranchant la question n°4 du §12 : l'ambiante est **par étage**
+    // (`level.ambient`), c'est elle que `fogLayer` lit, et le champ global n'était **relu par aucun
+    // rendu ni aucune vision**. Un réglage écrit et jamais lu finit par piéger quelqu'un qui croit
+    // le régler. Le conteneur reste pour un futur réglage de campagne qui, lui, sera lu.
     settings: {
-      ambientLevel: 1.0,
       ...(overrides.settings ?? {}),
     },
     ...overrides,

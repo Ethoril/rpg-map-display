@@ -55,7 +55,7 @@ const FAKE_SCENE = {
   links: [],
   tokens: [],
   templates: [],
-  settings: { ambientLevel: 1 },
+  settings: {},
 };
 
 /**

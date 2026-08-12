@@ -206,7 +206,7 @@ const SCENE = {
   links: [],
   tokens: [],
   templates: [],
-  settings: { ambientLevel: 1 },
+  settings: {},
 };
 
 test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalogue', async ({ page }) => {
