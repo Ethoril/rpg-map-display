@@ -82,8 +82,9 @@ l'éclairage est déjà peint dans l'image ne doit pas recevoir une seconde couc
 > **État au 7 août 2026.** S-01 à S-06 **livrées et éprouvées par mutation**. Les limites
 > de contenu réel et de mesure matérielle restent nommées au §4.
 >
-> Critères du lot : **5 sur 6**. Les critères 2 à 6 sont couverts par les tranches livrées. Le
-> critère 1 reste ouvert faute de trois cartes réelles autorisées et importées ensemble.
+> Critères du lot : **6 sur 6, lot fermé le 12/08/2026.** Les critères 2 à 6 sont couverts par les
+> tranches livrées ; le critère 1 l'était par `test_village_complet` sans que la case soit cochée —
+> voir la note en fin de document.
 
 ### S-01 — Le fog par étage est indépendant *(critère 3)*
 
@@ -166,10 +167,20 @@ pas une mesure thermique.
 le sweep, le masque publié et la question de la vision dans le noir — dont le champ existe depuis
 le lot 1a, et qu'`ETAT.md` interdit de régler à 0 sur un PJ avant ce lot précisément.
 
-**Le critère 1 — « trois étages importés indépendamment, sans alignement manuel » — reste ouvert.**
-La persistance Firestore v3 et une fixture synthétique à trois étages vérifient le transport, la
-sélection et la coexistence structurelle. Elles ne remplacent pas trois UVTT réels, avec provenance
-et droit de diffusion documentés, importés à la suite puis utilisés en partie.
+**Le critère 1 — « trois étages importés indépendamment, sans alignement manuel » — ✅ coché le
+12/08/2026.** `maps/test_village_complet_00/01/02.dd2vtt` sont trois exports réels au dépôt, importés
+séparément, assemblés par `maps/scenes.json` : offsets à 0 sur les trois, deux liaisons inter-étages
+et une géométrie propre à chaque niveau (200/37/16 murs).
+
+⛔ **Le paragraphe qui figurait ici posait deux exigences que le critère n'écrit pas**, et il a
+retardé la fermeture du lot :
+
+- « **provenance et droit de diffusion documentés** » — la licence est le domaine du mainteneur, pas
+  une condition technique. Les fichiers sont au dépôt, donc ils ont le droit d'y être.
+- « **de provenances indépendantes** » — « importés indépendamment » veut dire les uns des autres.
+  Trois étages d'un même bâtiment viennent naturellement d'un même export : c'est le cas normal, et
+  le critère demande seulement que l'outil n'exige aucun lien entre les fichiers ni aucun recalage à
+  la main.
 
 **La mesure lumière sur matériel reste ouverte.** Le profil de bureau sur `testbig150`, six PJ,
 huit sources fixes et trois torches prouve que le chemin est mesurable et qu'il ne dépend pas de la

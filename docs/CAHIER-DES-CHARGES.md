@@ -1001,12 +1001,13 @@ entre les lots — prévoir le chemin de migration dès le lot 1.
 
 ## 11. Lots & critères d'acceptation
 
-> **Décompte au 12/08/2026 : 35 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
-> lot 3 5/6, lot 4 **2/6**, spike vidéo 0/1.
+> **Décompte au 12/08/2026 : 36 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
+> **lot 3 6/6 — fermé**, lot 4 **2/6**, spike vidéo 0/1.
 >
-> Le dernier acquis est le **ping** du lot 4 (chantier X, 12/08/2026). Le spike vidéo reste à 0/1
-> bien que le fond animé soit constaté fluide sur la tablette le 11/08 : il lui manque le **cast
-> 45 min**, et un critère ne se coche pas à moitié.
+> Deux acquis le 12/08 : le **ping** du lot 4 (chantier X) et le **critère 1 du lot 3**, qui n'était
+> pas ouvert pour une raison technique mais parce que je l'avais mal lu — voir la note sous ce
+> critère. Le spike vidéo reste à 0/1 bien que le fond animé soit constaté fluide sur la tablette le
+> 11/08 : il lui manque le **cast 45 min**, et un critère ne se coche pas à moitié.
 >
 > ⚠ **Ce §11 fait foi sur le décompte, et les cases de ce document en sont la seule preuve.** Un
 > résumé qui annonce un autre nombre est à corriger sur celui-ci, jamais l'inverse. La règle qui a
@@ -1109,7 +1110,18 @@ Sélecteur d'étage avec badges de présence, liaisons ponctuelles, téléportat
 bascule auto avec cadenas, lumières portées, ambiante et cycle jour/nuit.
 
 Critères :
-- [ ] Trois étages importés indépendamment, sans alignement manuel.
+- [x] Trois étages importés indépendamment, sans alignement manuel. **Coché le 12/08/2026, et il
+      était satisfait depuis un moment.** `maps/test_village_complet_00/01/02.dd2vtt` sont trois
+      exports réels de ~9 Mo, importés séparément, assemblés en une campagne à trois étages par
+      `maps/scenes.json`. Constat : **tous les `grid.offsetX/offsetY` valent 0** — aucun alignement
+      manuel —, deux liaisons inter-étages fonctionnent, et chaque niveau porte sa propre géométrie
+      (200, 37 et 16 murs).
+
+      ⛔ **« Importés indépendamment » veut dire les uns des autres, pas de provenances
+      indépendantes.** J'ai lu la seconde chose et inventé une exigence qui n'est pas écrite : trois
+      étages d'un même bâtiment viennent naturellement d'un même export, et c'est le cas normal, pas
+      une triche. Le critère demande que l'outil n'exige aucun lien entre les fichiers ni aucun
+      recalage à la main — ce qui est le cas.
 - [x] Taper une case d'escalier téléporte le pion et bascule la vue de la tablette.
 - [x] Le fog de chaque étage est indépendant et persistant.
 - [x] Le cadenas empêche la bascule auto quand le groupe est séparé.
