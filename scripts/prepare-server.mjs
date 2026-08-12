@@ -24,6 +24,7 @@ import {
   prepareMap,
   prepareMaps,
   isSupportedSource,
+  filterSidecarImages,
   displayNameFromSlug,
 } from './prepare-maps.mjs';
 import { MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
@@ -190,8 +191,10 @@ function sendJson(res, status, payload) {
 
 /** GET /api/sources — les cartes disponibles et les constantes en vigueur. */
 function apiSources() {
+  // `filterSidecarImages` avant le filtre : c'est la présence de `minimal.json` qui disqualifie
+  // `minimal.webp`, et filtrer d'abord la ferait disparaître avant qu'elle ait pu disqualifier.
   const files = fs.existsSync(mapsDir)
-    ? fs.readdirSync(mapsDir).filter(isSupportedSource).sort()
+    ? filterSidecarImages(fs.readdirSync(mapsDir)).filter(isSupportedSource).sort()
     : [];
 
   /** @type {any[]} */

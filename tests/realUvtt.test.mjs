@@ -7,7 +7,7 @@ import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, validateCampaign } from '../js/core/schema.js';
 import {
   SUPPORTED_EXTENSIONS,
-  isSupportedSource,
+  isVttSource,
   findSidecarVideo,
   posterPathFor,
 } from '../scripts/prepare-maps.mjs';
@@ -41,7 +41,7 @@ for (const rel of DOSSIERS) {
   const dossier = path.resolve(rel);
   if (!fs.existsSync(dossier)) continue;
   for (const nom of fs.readdirSync(dossier)) {
-    if (nom.startsWith('.') || !isSupportedSource(nom)) continue;
+    if (nom.startsWith('.') || !isVttSource(nom)) continue;
     fichiers.push({ dossier: rel, nom, chemin: path.join(dossier, nom) });
   }
 }

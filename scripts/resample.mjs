@@ -257,4 +257,35 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
   };
 }
 
+/**
+ * Dimensions en pixels d'une image, avec le **même décodage** que `resample`.
+ *
+ * ⛔ Ne pas appeler `Jimp.read` directement à côté : le WebP exige le greffon `@jimp/wasm-webp`, que
+ * Jimp n'enregistre pas seul. Un appel naïf échoue sur « Mime type image/webp does not support
+ * decoding » — constaté le 12/08/2026 au premier essai réel d'une carte-décor. Cette fonction existe
+ * pour qu'il n'y ait **qu'un seul** chemin de décodage dans le dépôt.
+ *
+ * @param {string} imagePath
+ * @returns {Promise<{ width: number, height: number }>}
+ */
+export async function imageDimensions(imagePath) {
+  const buffer = fs.readFileSync(imagePath);
+  try {
+    const img = await Jimp.fromBuffer(buffer, JPEG_DECODE_OPTIONS);
+    return { width: img.bitmap.width, height: img.bitmap.height };
+  } catch (jimpError) {
+    try {
+      const decoded = await webpFormat().decode(buffer);
+      return { width: decoded.width, height: decoded.height };
+    } catch (webpErr) {
+      const first = jimpError instanceof Error ? jimpError.message : String(jimpError);
+      const second = webpErr instanceof Error ? webpErr.message : String(webpErr);
+      throw new Error(
+        `Impossible de lire les dimensions de ${path.basename(imagePath)}. ` +
+          `Jimp : ${first} — repli WebP : ${second}`
+      );
+    }
+  }
+}
+
 export default resample;

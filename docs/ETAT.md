@@ -1503,6 +1503,34 @@ sens que le chantier annonçait sans le chiffrer (« la tablette paie plus cher 
 une frame — et l'endurance ne signale aucune saccade. À retenir comme **confirmation d'une prédiction**,
 pas comme défaut.
 
+## Chantier Y — la carte-décor, 12 août 2026
+
+**Le préparateur avale désormais une simple image comme fond de carte** (`CHANTIER-Y-CARTE-DECOR.md`).
+
+⭐ **Le constat qui l'a déclenché ne figurait dans aucun critère.** La chaîne n'acceptait que
+`.uvtt`/`.dd2vtt`/`.df2vtt` ; or la bibliothèque réelle du mainteneur ne contient que du `.jpg` et du
+`.pdf` — **1 774 images JPEG**, comptées en parcourant le dossier. Sa bibliothèque entière était donc
+inutilisable par sa propre chaîne : le produit tournait sur cinq cartes de test. C'était le plus grand
+écart entre l'outil et un outil dont on se sert, et rien ne le mesurait.
+
+La densité vient du **nom de fichier** — `Ambush Site_37x28_High res.jpg` fait 5180 × 3920 px, donc
+exactement 140 px/case — validée contre les dimensions réelles de l'image. ⛔ **Aucune valeur par
+défaut**, sur arbitrage du mainteneur : « ce corpus est à 140 px/case mais peut-être qu'un jour j'aurai
+d'autres images, il ne faut pas tout baser là-dessus ». Sans couple lisible, la préparation refuse et
+nomme le remède.
+
+⚠ **Trois choses à retenir pour la suite :**
+
+- **L'essai sur une vraie carte valait tous les tests.** Elle est passée du premier coup, mais elle a
+  fait tomber deux défauts qu'aucun test n'aurait révélés : `maps/minimal.webp` — l'illustration d'une
+  scène de test — était pris pour une carte, et `Jimp.read` ne décode pas le WebP sans son greffon.
+- **Élargir `isSupportedSource` a changé son sens** : il répondait « est-ce un export VTT ? », il
+  répond « est-ce préparable ? ». Un test existant a tenté de parser un binaire. `isVttSource` a été
+  ajouté pour que deux questions distinctes portent deux noms.
+- ⛔ **La carte d'essai a été retirée du dépôt avant tout commit**, artefacts et catalogue compris. Le
+  corpus Stained Karbon est autorisé en **usage privé**, pas en republication, et `maps/` est publié
+  sur GitHub Pages. Les fixtures de test sont des PNG générés dans un dossier temporaire.
+
 ## Revue de couverture des tests — 11 août 2026
 
 Menée sur question du mainteneur (« il nous manque quoi en tests ? »), après la campagne de
@@ -1611,7 +1639,7 @@ Avancement mesuré contre les lots du cahier des charges §11, au **12 août 202
 | **1a — Le plateau** | **11 critères sur 11, fermé le 08/08/2026 par réconciliation.** Les onze étaient acquis, le dernier — 30 fps sous cast — depuis le 05/08/2026 ; aucune case du CdC ne le disait. ⚠ **Ce lot annonçait « 10 sur 11 » en citant deux points ouverts**, ce qui est un décompte impossible : la tenue thermique est **R2-06** et la limite de texture réelle la **question n°1 du §12**. Elles restent ouvertes, mais **ailleurs** |
 | **1b — La prépa MJ** | **4 critères sur 4**, fermé depuis le chantier M et la séance du 05/08/2026 ; cases du CdC cochées le 08/08. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K) |
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
-| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. ✅ **La porte matérielle est fermée le 11/08/2026** : mesure lumière sur la tablette **sous cast actif, 2,6 ms pour un budget de 300 ms**. Le lot 3 n'attend donc plus que du **contenu**, pas du code ni une mesure. |
+| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. ✅ **La porte matérielle est fermée le 11/08/2026** : mesure lumière sur la tablette **sous cast actif, 2,6 ms pour un budget de 300 ms**. ⭐ **Et le critère 1 n'était pas bloqué par du contenu, contrairement à ce qui était écrit ici** : il attendait que la chaîne sache avaler des images, ce que le **chantier Y** livre le 12/08/2026 (`CHANTIER-Y-CARTE-DECOR.md`). Il reste à *faire* — trois images, un `scenes.json` qui les déclare comme trois étages, et le constat que rien ne s'aligne à la main — mais plus rien ne l'empêche |
 | **4 — Hexagone & confort de table** | **2 sur 6 au 12/08/2026.** L-06 avait fermé « Undo restaure l’état fog précédent » ; **le chantier X ferme le ping** (`CHANTIER-X-PING.md`). ⭐ **Ce lot est en réalité deux lots indépendants** : trois critères hexagonaux, et trois de confort de table qui ne dépendent d’aucune décision. Ordre retenu : le confort d’abord — il reste **la mesure au geste**. ⭐ Les deux décisions qui interdisaient d’écrire `HexGrid` sont prises (§12 q.5 et q.6), donc la moitié hexagonale est débloquée quand on voudra |
 | Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** par la section 7 (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6. Le verdict « rampe » rendu par la section 7bis pendant la campagne était un défaut d'arithmétique de boucle, **corrigé le 11/08** : la lecture tenait |
 | §12 Questions ouvertes | **6 au 12/08/2026.** Les q.5 et q.6 — provenance des cartes hexagonales et forme des grandes créatures — sont tranchées : image calibrée plus étage vierge, et rosette centrée à 1/7/19 cases. Elles bloquaient l'écriture de `HexGrid` |

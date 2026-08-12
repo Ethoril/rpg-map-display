@@ -4,14 +4,93 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { parseUvtt } from '../js/import/uvtt.js';
-import { createCampaign, validateCampaign } from '../js/core/schema.js';
-import { resample, MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
+import { createCampaign, createLevel, validateCampaign } from '../js/core/schema.js';
+import { resample, imageDimensions, MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
 import { videoWarnings } from './videoProbe.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 export const SUPPORTED_EXTENSIONS = ['.uvtt', '.dd2vtt', '.df2vtt'];
+
+/**
+ * Images acceptées comme **carte-décor** : un fond de carte sans géométrie.
+ *
+ * ⭐ Existe parce que la bibliothèque réelle du mainteneur — 1 774 images — était **entièrement
+ * inutilisable par sa propre chaîne**, qui n'avalait que de l'UVTT. Aucun critère ne mesurait ça,
+ * et c'était pourtant le plus grand écart entre l'outil et un outil dont on se sert.
+ */
+export const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+
+/**
+ * Bornes de plausibilité d'une densité, en pixels par case.
+ *
+ * ⛔ Elles ne servent pas à juger du goût mais à **valider une lecture de nom de fichier**. Un nom
+ * peut contenir plusieurs couples de nombres — `Ambush Site_37x28_High res` en a un utile, mais
+ * `carte_5180x3920` porterait les pixels et donnerait 1 px/case. Confronter chaque couple aux
+ * dimensions réelles de l'image et écarter l'invraisemblable est ce qui distingue une mesure d'une
+ * devinette.
+ */
+export const MIN_PLAUSIBLE_PX_PER_CELL = 20;
+export const MAX_PLAUSIBLE_PX_PER_CELL = 600;
+
+/**
+ * Écart relatif toléré entre la densité déduite de la largeur et celle déduite de la hauteur.
+ *
+ * Un `37x28` juste donne exactement la même densité sur les deux axes. Un écart signifie que le nom
+ * est faux, ou que l'image a été recadrée : dans les deux cas il faut le dire, pas choisir un axe.
+ */
+export const CELL_DIMENSION_TOLERANCE = 0.02;
+
+/**
+ * Lit les dimensions en cases écrites dans un nom de fichier, validées contre l'image.
+ *
+ * Convention du corpus réel : `Ambush Site_37x28_High res.jpg` fait 5180 × 3920 px, donc
+ * 5180 / 37 = **exactement 140 px/case**. La densité se déduit du nom sans rien saisir et sans
+ * rien mesurer — c'est la source la plus fiable dont on dispose, quand elle est là.
+ *
+ * ⛔ **Aucune valeur par défaut n'est renvoyée.** Ce corpus est à 140 px/case, mais un autre ne le
+ * sera pas : coder cette densité en dur ferait d'une propriété du fournisseur une règle du produit.
+ * Sans lecture valide, cette fonction rend `null` et c'est à l'appelant de mesurer ou de refuser.
+ *
+ * @param {string} fileName - nom de fichier, avec ou sans chemin
+ * @param {number} imageWidth - largeur réelle de l'image, en pixels
+ * @param {number} imageHeight - hauteur réelle de l'image, en pixels
+ * @returns {{ widthCells: number, heightCells: number, pxPerCell: number, warnings: string[] }|null}
+ */
+export function cellDimensionsFromName(fileName, imageWidth, imageHeight) {
+  const base = path.basename(String(fileName ?? ''), path.extname(String(fileName ?? '')));
+  if (!(imageWidth > 0) || !(imageHeight > 0)) return null;
+
+  // Tous les couples du nom, dans l'ordre. `×` compris : les noms d'éditeurs en emploient.
+  const couples = [...base.matchAll(/(\d{1,4})\s*[x×X]\s*(\d{1,4})/g)];
+  for (const m of couples) {
+    const widthCells = Number(m[1]);
+    const heightCells = Number(m[2]);
+    if (!(widthCells > 0) || !(heightCells > 0)) continue;
+
+    const parLargeur = imageWidth / widthCells;
+    const parHauteur = imageHeight / heightCells;
+    if (parLargeur < MIN_PLAUSIBLE_PX_PER_CELL || parLargeur > MAX_PLAUSIBLE_PX_PER_CELL) continue;
+
+    const ecart = Math.abs(parLargeur - parHauteur) / parLargeur;
+    /** @type {string[]} */
+    const warnings = [];
+    if (ecart > CELL_DIMENSION_TOLERANCE) {
+      // On garde la largeur comme référence — c'est l'axe le plus souvent juste sur un recadrage
+      // bas de page — mais on le DIT. Choisir en silence serait exactement ce que l'exigence
+      // d'universalité de l'import interdit.
+      warnings.push(
+        `Dimensions du nom incohérentes : ${widthCells}×${heightCells} cases donne ` +
+          `${parLargeur.toFixed(1)} px/case en largeur mais ${parHauteur.toFixed(1)} en hauteur ` +
+          `(écart ${(ecart * 100).toFixed(1)} %). Densité retenue : celle de la largeur. ` +
+          `Vérifier le nom ou un éventuel recadrage.`
+      );
+    }
+    return { widthCells, heightCells, pxPerCell: parLargeur, warnings };
+  }
+  return null;
+}
 
 /**
  * Conteneurs vidéo acceptés comme **fond animé**, par ordre de préférence.
@@ -177,7 +256,75 @@ export function prepareVideo(videoPath, generatedDir, levelId) {
 export function isSupportedSource(fileName) {
   if (fileName.startsWith('.')) return false;
   const lower = fileName.toLowerCase();
+  if (SUPPORTED_EXTENSIONS.some((ext) => lower.endsWith(ext))) return true;
+  // ⛔ Une affiche de vidéo n'est pas une carte : `x.poster.webp` accompagne `x.dd2vtt` et serait
+  // sinon préparée une seconde fois comme carte-décor, sous un slug qui collisionne presque.
+  if (lower.endsWith(POSTER_SUFFIX)) return false;
+  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Le fichier est-il un **export VTT** — la question d'avant les cartes-décor ?
+ *
+ * ⚠ Existe parce qu'élargir `isSupportedSource` aux images a **changé le sens** de ce prédicat :
+ * il répondait « est-ce un export VTT ? », il répond maintenant « est-ce préparable ? ». Un appelant
+ * qui voulait le premier sens obtient désormais des images, et `tests/realUvtt.test.mjs` a
+ * effectivement tenté de parser un binaire. Deux questions distinctes méritent deux noms.
+ *
+ * @param {string} fileName
+ * @returns {boolean}
+ */
+export function isVttSource(fileName) {
+  if (fileName.startsWith('.')) return false;
+  const lower = fileName.toLowerCase();
   return SUPPORTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Le fichier est-il une **carte-décor** — une image, par opposition à un export VTT ?
+ *
+ * @param {string} fileName
+ * @returns {boolean}
+ */
+export function isImageSource(fileName) {
+  if (!isSupportedSource(fileName)) return false;
+  const lower = fileName.toLowerCase();
+  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Extensions dont une image de même nom de base est **l'illustration**, donc pas une carte.
+ *
+ * `.json` couvre les scènes déjà construites du dépôt : `minimal.json` est une campagne de test et
+ * `minimal.webp` est **son** image.
+ */
+const OWNING_EXTENSIONS = Object.freeze([...SUPPORTED_EXTENSIONS, ...VIDEO_EXTENSIONS, '.json']);
+
+/**
+ * Écarte les images qui accompagnent un autre fichier au lieu d'être des cartes.
+ *
+ * ⭐ **Défaut attrapé au premier essai réel, le 12/08/2026.** Accepter les extensions d'image a fait
+ * prendre `maps/minimal.webp` — l'illustration de la scène de test `maps/minimal.json` — pour une
+ * carte, et toute la préparation a échoué. La règle des affiches (`.poster.webp`) ne suffisait pas :
+ * il faut la règle générale du fichier accompagnant.
+ *
+ * ⛔ Cette fonction **ne juge pas de la densité** : une image orpheline sans dimensions dans son nom
+ * est bien une carte-décor candidate, et son refus doit être bruyant plutôt que silencieux. Ne rien
+ * écarter en silence n'interdit pas de reconnaître ce qui n'a jamais prétendu être une carte.
+ *
+ * @param {string[]} fileNames - noms de fichiers du dossier, sans chemin
+ * @returns {string[]} les mêmes, moins les images accompagnant un autre fichier
+ */
+export function filterSidecarImages(fileNames) {
+  const bases = new Set(
+    fileNames
+      .filter((f) => OWNING_EXTENSIONS.some((ext) => f.toLowerCase().endsWith(ext)))
+      .map((f) => path.basename(f, path.extname(f)).toLowerCase())
+  );
+  return fileNames.filter((f) => {
+    if (!isImageSource(f)) return true;
+    return !bases.has(path.basename(f, path.extname(f)).toLowerCase());
+  });
 }
 
 /**
@@ -227,6 +374,14 @@ export function displayNameFromSlug(slug) {
 export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, options = {}) {
   if (!fs.existsSync(uvttPath)) {
     throw new Error(`Fichier UVTT introuvable : ${uvttPath}`);
+  }
+
+  // ⭐ Bifurcation vers la carte-décor, et elle est **indispensable pour que la fonction serve** :
+  // c'est `prepareMap` qu'appelle l'aperçu de l'outil au double-clic (`prepare-server.mjs`), et le
+  // mainteneur ne passe pas par un terminal. Sans cette ligne, la carte-décor n'existerait que pour
+  // la ligne de commande, donc pour personne.
+  if (isImageSource(path.basename(uvttPath))) {
+    return prepareDecorMap(uvttPath, outputDir, targetPxPerCell, options);
   }
 
   const fileContent = fs.readFileSync(uvttPath, 'utf-8');
@@ -362,6 +517,202 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
     height: resampleResult.height,
     catalogEntry,
     warnings: allWarnings,
+  };
+}
+
+/**
+ * Prépare une **carte-décor** : un fond de carte issu d'une simple image.
+ *
+ * ## Ce qu'une carte-décor est, et ce qu'elle n'est pas
+ *
+ * Une image ne porte **ni murs, ni portes, ni lumières** — elle ne porte que des pixels. L'étage
+ * produit ici a donc une géométrie vide et une **ambiante pleine**, ce qui a une conséquence
+ * heureuse : `fogLayer` fait voir chaque PJ jusqu'au plafond technique quand l'ambiante est active,
+ * au lieu de sa portée nocturne. La carte s'affiche donc autour des pions sans réglage.
+ *
+ * ⚠ Deux limites à connaître, aucune n'est un défaut :
+ *
+ *  1. **Sans pion PJ sur l'étage, les joueurs ne voient rien.** Ce n'est pas propre aux
+ *     cartes-décor — c'est la règle « une lumière n'est pas un œil » du lot 2 — mais elle surprend
+ *     sur une carte sans fog attendu. Poser un pion suffit.
+ *  2. `VISION_MAX_RANGE_CELLS` vaut 20, donc sur une carte de 37 × 28 les coins restent sombres
+ *     tant que personne ne s'en approche. Acceptable pour un fond de combat ; si ça gêne un jour,
+ *     le correctif est un drapeau « pas de fog » sur l'étage, pas un rattrapage ici.
+ *
+ * ## La densité ne se devine pas
+ *
+ * Elle est lue dans le nom (`cellDimensionsFromName`) ou la préparation **échoue avec un message
+ * qui nomme le remède**. ⛔ Pas de valeur par défaut : le corpus du mainteneur est à 140 px/case,
+ * un autre ne le sera pas, et coder cette densité ferait d'une propriété de fournisseur une règle
+ * du produit.
+ *
+ * ## Pourquoi un constructeur d'étage et non un préparateur de carte
+ *
+ * Le préparateur ne traite pas les fichiers un par un : tout passe par des « scene jobs » qui
+ * assemblent la campagne, y compris pour une carte seule. Rendre ici un **étage** plutôt qu'une
+ * carte complète évite de dupliquer ce pipeline — et donne gratuitement la possibilité de **mêler
+ * une image et un export UVTT dans la même campagne à plusieurs étages**, ce que le critère 1 du
+ * lot 3 demande justement.
+ *
+ * @param {string} imagePath - chemin de l'image source
+ * @param {{ id?: string, name?: string, order?: number }|null} lvlSpec - étage voulu par le
+ *   manifeste ; à défaut, tout est dérivé du nom de fichier
+ * @param {string} generatedDir - dossier `maps/generated/`, déjà créé par l'appelant
+ * @param {number} [targetPxPerCell=140] - densité de sortie du rééchantillonnage
+ * @param {object} [options]
+ * @param {number} [options.maxTexturePx]
+ * @param {number} [options.quality]
+ * @returns {Promise<{ level: any, width: number, height: number, warnings: string[] }>}
+ */
+export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPxPerCell = 140, options = {}) {
+  if (!fs.existsSync(imagePath)) {
+    throw new Error(`Image introuvable : ${imagePath}`);
+  }
+
+  const baseName = path.basename(imagePath, path.extname(imagePath));
+  const { width: imageWidth, height: imageHeight } = await imageDimensions(imagePath);
+
+  const dims = cellDimensionsFromName(baseName, imageWidth, imageHeight);
+  if (!dims) {
+    // ⛔ Refuser plutôt que supposer, et dire quoi faire. Un import qui devine une densité produit
+    // une carte silencieusement fausse : les pions tombent entre les cases et rien ne le signale.
+    throw new Error(
+      `Densité inconnue pour « ${path.basename(imagePath)} » (${imageWidth}×${imageHeight} px).\n` +
+        `  Une image ne déclare pas sa taille en cases, et elle ne se devine pas.\n` +
+        `  Remède : renommer le fichier en y incluant les cases, par exemple\n` +
+        `    « ${baseName}_37x28${path.extname(imagePath)} »\n` +
+        `  Aucune densité par défaut n'est appliquée : ce serait produire une carte fausse sans le dire.`
+    );
+  }
+
+  const levelId = lvlSpec?.id ?? baseName;
+  const webpFileName = `${levelId}.webp`;
+  const webpPath = path.join(generatedDir, webpFileName);
+  const resampleResult = await resample(imagePath, targetPxPerCell, {
+    sourcePxPerCell: dims.pxPerCell,
+    widthCells: dims.widthCells,
+    heightCells: dims.heightCells,
+    outputPath: webpPath,
+    maxTexturePx: options.maxTexturePx,
+    quality: options.quality,
+  });
+
+  const displayName = lvlSpec?.name ?? displayNameFromSlug(baseName);
+  // ⭐ Une variante « _Grid » porte déjà un quadrillage peint : en dessiner un second par-dessus
+  // donnerait deux grilles décalées, l'une juste et l'autre pas. Le choix se lit dans le nom parce
+  // que c'est là que le fournisseur l'a écrit, et il n'y a pas d'autre source.
+  const grillePeinte = /grid/i.test(baseName);
+
+  const level = createLevel({
+    id: levelId,
+    name: displayName,
+    order: lvlSpec?.order ?? 0,
+    imageUrl: `maps/generated/${webpFileName}`,
+    pxPerCell: resampleResult.pxPerCell,
+    widthCells: dims.widthCells,
+    heightCells: dims.heightCells,
+    grid: {
+      type: 'square',
+      // Une image n'a pas d'origine de carte déclarée : la grille part du coin, et la calibration
+      // du nom de fichier suppose exactement ça. Un décalage se corrigerait à la main dans l'appli.
+      offsetX: 0,
+      offsetY: 0,
+      color: '#000000',
+      opacity: 0.25,
+      visible: !grillePeinte,
+    },
+    // Géométrie vide, assumée : c'est la définition d'une carte-décor.
+    walls: [],
+    portals: [],
+    lights: [],
+    // Ambiante pleine, non cuite : `baked` signalerait un éclairage déjà peint qu'on ne doit pas
+    // doubler, ce qui n'est pas le cas ici — on ne sait simplement rien de l'éclairage.
+    ambient: { color: '#ffffff', level: 1, baked: false },
+  });
+
+  return {
+    level,
+    width: resampleResult.width,
+    height: resampleResult.height,
+    warnings: [
+      ...dims.warnings,
+      ...resampleResult.warnings,
+      `« ${displayName} » est une carte-décor : ni murs, ni portes, ni lumières. Les lignes de vue ` +
+        `du lot 2 sont inertes sur cet étage, et sans pion PJ posé les joueurs ne verront rien.`,
+      ...(grillePeinte
+        ? ['Grille peinte détectée dans le nom : le quadrillage de l’application est désactivé.']
+        : []),
+    ],
+  };
+}
+
+/**
+ * Prépare une carte-décor **seule**, au même contrat de sortie que `prepareMap`.
+ *
+ * Ne fait qu'emballer `buildDecorLevel` dans la campagne, la scène et l'entrée de catalogue d'une
+ * carte à un étage. Existe pour que l'aperçu de l'outil au double-clic — qui appelle `prepareMap` —
+ * fonctionne sur une image sans que le pipeline à étages ait à changer.
+ *
+ * @param {string} imagePath
+ * @param {string} outputDir
+ * @param {number} [targetPxPerCell=140]
+ * @param {object} [options]
+ * @param {number} [options.maxTexturePx]
+ * @param {number} [options.quality]
+ */
+export async function prepareDecorMap(imagePath, outputDir, targetPxPerCell = 140, options = {}) {
+  const baseName = path.basename(imagePath, path.extname(imagePath));
+  const generatedDir = path.join(outputDir, 'generated');
+  if (!fs.existsSync(generatedDir)) fs.mkdirSync(generatedDir, { recursive: true });
+
+  const decor = await buildDecorLevel(imagePath, null, generatedDir, targetPxPerCell, options);
+  const level = decor.level;
+
+  const campaign = createCampaign({
+    campaignId: `campaign-${baseName}`,
+    name: level.name,
+    levels: [level],
+  });
+  const errors = validateCampaign(campaign);
+  if (errors.length > 0) {
+    throw new Error(`Validation échouée pour ${baseName} : ${errors.join('; ')}`);
+  }
+
+  const sceneFileName = `${baseName}.scene.json`;
+  const scenePath = path.join(generatedDir, sceneFileName);
+  fs.writeFileSync(scenePath, JSON.stringify(campaign, null, 2), 'utf-8');
+  const sceneContent = fs.readFileSync(scenePath, 'utf-8');
+  if (sceneContent.includes('data:') || sceneContent.includes('blob:')) {
+    throw new Error(`Scène ${baseName} contient des URLs temporaires (data: ou blob:)`);
+  }
+
+  const sourceHash = sourceHashOf(imagePath).slice('sha256-'.length);
+
+  return {
+    mapId: baseName,
+    name: level.name,
+    sourceHash,
+    sceneFile: scenePath,
+    imageFile: path.join(generatedDir, `${baseName}.webp`),
+    width: decor.width,
+    height: decor.height,
+    catalogEntry: {
+      id: baseName,
+      name: level.name,
+      sourceUrl: `maps/${path.basename(imagePath)}`,
+      sceneUrl: `maps/generated/${sceneFileName}`,
+      imageUrl: `maps/generated/${baseName}.webp`,
+      sourceHash: `sha256-${sourceHash}`,
+      levelCount: 1,
+      features: {
+        walls: 0,
+        portals: 0,
+        lights: 0,
+        bakedLighting: false,
+        animated: false,
+      },
+    },
+    warnings: decor.warnings,
   };
 }
 
@@ -747,7 +1098,10 @@ export async function prepareMaps(options = {}) {
     fs.mkdirSync(mapsDir, { recursive: true });
   }
 
-  const uvttFiles = fs.readdirSync(mapsDir).filter(isSupportedSource).sort();
+  // ⛔ `filterSidecarImages` a besoin de la liste **entière** du dossier, pas des seules sources :
+  // c'est la présence de `minimal.json` qui disqualifie `minimal.webp`, et filtrer d'abord la ferait
+  // disparaître avant qu'elle ait pu disqualifier quoi que ce soit.
+  const uvttFiles = filterSidecarImages(fs.readdirSync(mapsDir)).filter(isSupportedSource).sort();
 
   if (uvttFiles.length === 0) {
     console.log(
@@ -829,6 +1183,20 @@ export async function prepareMaps(options = {}) {
 
       for (const lvlSpec of sceneJob.levels) {
         const uvttPath = path.join(mapsDir, lvlSpec.source);
+
+        // Carte-décor : une image n'a rien à parser, seulement à mesurer et à rééchantillonner.
+        // Le reste du pipeline — campagne, scène, catalogue, réutilisation par empreinte — ne fait
+        // aucune différence, ce qui permet de mêler images et exports UVTT dans une même campagne.
+        if (isImageSource(lvlSpec.source)) {
+          const decor = await buildDecorLevel(uvttPath, lvlSpec, generatedDir, targetPxPerCell, {
+            maxTexturePx: fabrication.maxTexturePx,
+            quality: fabrication.quality,
+          });
+          parseWarningsAcc.push(...decor.warnings);
+          preparedLevels.push(decor.level);
+          continue;
+        }
+
         const fileContent = fs.readFileSync(uvttPath, 'utf-8');
         const uvttData = JSON.parse(fileContent);
         const { level, imageBase64, warnings: parseWarnings } = parseUvtt(uvttData);
