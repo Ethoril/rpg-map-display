@@ -18,7 +18,7 @@ import { saveFirebaseConfig } from './runtimeConfig.js';
 import { sweep, getLastEvalSegmentCount } from '../vision/sweep.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
-import { ColdDecodeTrial, EnduranceJournal } from './endurance.js';
+import { ColdDecodeTrial, EnduranceJournal, resumeDecodageFroid } from './endurance.js';
 import {
   LoopingPlaybackProgress,
   MIN_PLAYBACK_RATIO,
@@ -173,9 +173,10 @@ async function armerDecodageFroid() {
       'Ne touchez plus la page pendant 2 minutes complètes : la sonde ne programme ni minuterie,',
       'ni frame, ni mise à jour DOM pendant cette attente. Après ce délai, pressez « Mesurer ».',
       '',
-      'Le résultat mesure le second Image.decode() réellement payé après l’inactivité. Il ne peut',
-      'pas prouver que le navigateur a évincé physiquement le bitmap, ni remplacer la première',
-      'frame réelle de la vue joueurs : noter les deux observations dans le rapport R2.',
+      'Le résultat mesure le coût du premier drawImage() réellement payé après l’inactivité —',
+      'pas un Image.decode(), qui réchaufferait le bitmap avant le tracé. Il ne peut pas prouver que',
+      'le navigateur a évincé physiquement le bitmap, ni remplacer la première frame réelle de la',
+      'vue joueurs : noter les deux observations dans le rapport R2.',
     ].join('\n')
   );
 }
@@ -199,7 +200,14 @@ async function mesurerDecodageFroid() {
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
   ctx.getImageData(0, 0, 1, 1);
   const brut = performance.now() - t0;
-  const net = Math.max(0, brut - relecture);
+  // L'arithmétique du critère vit dans `endurance.js`, pure et éprouvée sans navigateur : la
+  // soustraction de la relecture décide du verdict à elle seule, elle ne doit pas être un calcul
+  // en ligne dans une page que seul un test de navigateur peut regarder.
+  const { netMs: net, verdict, tenu } = resumeDecodageFroid(brut, relecture);
+  // Les trois durées non arrondies, pour que le scénario de navigateur puisse vérifier le câblage
+  // sans relire des nombres déjà quantifiés à 0,1 ms par l'affichage — la différence de deux
+  // arrondis contre l'arrondi d'une différence vaut jusqu'à 0,15 ms, soit une fausse rougeur.
+  /** @type {any} */ (window).__coldDecodeDernier = { brut, relecture, net, tenu };
 
   // La doublure du chantier P : un bitmap réduit à 1024 px, peint à la place du plein
   // format tant que celui-ci est froid.
@@ -214,10 +222,6 @@ async function mesurerDecodageFroid() {
   ctx.getImageData(0, 0, 1, 1);
   const reduite = performance.now() - t1;
   doublure.close();
-
-  const verdict = net < 5
-    ? 'Fond < 5 ms : OUI — critère R2-03 tenu sur cette mesure.'
-    : `Fond ≥ 5 ms (${arrondi(net, 1)} ms) : le seuil R2-03 n'est PAS tenu.`;
 
   ecrire(
     [

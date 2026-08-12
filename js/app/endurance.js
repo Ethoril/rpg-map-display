@@ -2,6 +2,49 @@
 
 export const COLD_IDLE_MINIMUM_MS = 120_000;
 
+/** Seuil du critère R2-03 : coût du premier tracé du fond, dans une frame. */
+export const COLD_DRAW_BUDGET_MS = 5;
+
+/**
+ * Coût **net** du premier tracé d'un fond froid, et verdict R2-03 associé.
+ *
+ * ⛔ **La soustraction n'est pas cosmétique, elle décide du verdict.** Le chronomètre encadre
+ * `drawImage` **plus** un `getImageData` qui vide le pipeline GPU — sans ce vidage on mesurerait
+ * une mise en file, pas une peinture. Mais la relecture coûte elle-même quelques millisecondes,
+ * et le seuil est à 5 ms : la garder dans le total fait basculer le verdict à lui seul.
+ *
+ * Cette fonction est pure et vit ici, hors de `diag.js`, précisément pour être éprouvable sans
+ * navigateur — la mutation « retirer la soustraction » doit faire rougir un test, pas passer
+ * inaperçue dans une page qui touche `document` et `performance`.
+ *
+ * La **phrase de verdict** est rendue ici, et non composée dans la page : c'est la seule façon
+ * qu'un test sans navigateur puisse prouver qu'elle se prononce sur le net. Tant qu'elle était
+ * construite dans `diag.js`, la faire porter sur le brut ne faisait rougir aucun test — les durées
+ * réelles d'un Chromium sans charge sont trop petites pour que les deux verdicts diffèrent.
+ *
+ * @param {number} brutMs Durée mesurée de `drawImage` + `getImageData` sur le bitmap froid.
+ * @param {number} relectureMs Durée du même `getImageData` seul, sur un bitmap 1×1 déjà chaud.
+ * @returns {{ netMs: number, tenu: boolean, seuilMs: number, verdict: string }}
+ */
+export function resumeDecodageFroid(brutMs, relectureMs) {
+  if (!Number.isFinite(brutMs) || !Number.isFinite(relectureMs)) {
+    throw new TypeError('Deux durées finies sont requises.');
+  }
+  if (brutMs < 0 || relectureMs < 0) {
+    throw new RangeError('Une durée négative n’est pas une mesure.');
+  }
+  const netMs = Math.max(0, brutMs - relectureMs);
+  const tenu = netMs < COLD_DRAW_BUDGET_MS;
+  return {
+    netMs,
+    tenu,
+    seuilMs: COLD_DRAW_BUDGET_MS,
+    verdict: tenu
+      ? `Fond < ${COLD_DRAW_BUDGET_MS} ms : OUI — critère R2-03 tenu sur cette mesure.`
+      : `Fond ≥ ${COLD_DRAW_BUDGET_MS} ms (${netMs.toFixed(1)} ms) : le seuil R2-03 n'est PAS tenu.`,
+  };
+}
+
 /**
  * Mesure un second `Image.decode()` après une période sans action de la sonde.
  *

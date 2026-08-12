@@ -150,6 +150,22 @@ export class SquareGrid {
   }
 
   /**
+   * @param {number} widthCells
+   * @param {number} heightCells
+   * @returns {Cell[]}
+   */
+  allCells(widthCells, heightCells) {
+    /** @type {Cell[]} */
+    const res = [];
+    for (let a = 0; a < widthCells; a++) {
+      for (let b = 0; b < heightCells; b++) {
+        res.push({ a, b });
+      }
+    }
+    return res;
+  }
+
+  /**
    * @param {Cell} from
    * @param {number} budget
    * @param {Set<string>} blockedEdges

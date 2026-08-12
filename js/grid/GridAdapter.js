@@ -41,6 +41,9 @@
  *   Dijkstra pondéré. Clé = cellKey, valeur = coût cumulé. Interdit le corner-cutting en
  *   carré : une diagonale exige les deux arêtes orthogonales adjacentes libres.
  *
+ * @property {(widthCells: number, heightCells: number) => Cell[]} allCells
+ *   Énumère toutes les cellules de l'étage pour les dimensions données.
+ *
  * @property {(ctx: CanvasRenderingContext2D, viewport?: object) => void} renderGrid
  *   Trace le quadrillage sur le contexte 2D. Seule dépendance de rendu tolérée dans l'adaptateur.
  */

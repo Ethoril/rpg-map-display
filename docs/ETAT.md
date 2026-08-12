@@ -62,9 +62,13 @@
 > remplissable couvrent 120 s d'inactivité, 45 min de cast et 4 h de session. ✅ **R2-05 (cast) et
 > R2-06 (longue durée) sont validés le 12/08/2026** sur confirmation du mainteneur — ses propres
 > essais Mac + tablette + cast n'ont montré aucune difficulté, aucun ralentissement, aucune dérive.
-> ⚠ **R2-03 reste ouvert, et pour une raison technique** : la sonde de décodage froid est fausse — elle
-> chronomètre une file d'attente GPU sur un bitmap réchauffé juste avant la mesure. Le critère n'est
-> donc pas mesuré, et le corriger est du développement, pas un essai.
+> ⚠ **R2-03 reste ouvert, mais l'obstacle a changé de nature.** La sonde était fausse — elle
+> chronométrait une file d'attente GPU sur un bitmap réchauffé juste avant la mesure. **Elle est
+> réparée depuis le 12/08/2026** : le `drawImage` est chronométré sur le bitmap armé sans
+> préchauffage, un `getImageData(0,0,1,1)` vide le pipeline, et le coût de cette relecture est mesuré
+> à part puis retranché. Le verdict porte désormais sur le **coût net**. Ce qui reste n'est plus du
+> développement mais **un relevé sur la tablette**, et il appartient au mainteneur — interdiction
+> n°14, aucun verdict de performance sans la tablette.
 >
 > **Phase R3 automatisable implantée le 7 août 2026 ; lot 3 à 5 critères sur 6.** Le MJ dispose
 > d'un éditeur de liaisons utilisable sans JSON ; la traversée, le suivi de vue, le cadenas et le
@@ -1508,10 +1512,24 @@ et non sa peinture. D'où les deux chiffres impossibles du relevé : **0,2 ms po
 format** — 60 Gpx/s — puis **1 146 ms sur la doublure de 1024 px**, qui est le coût du premier tracé
 payé en retard et imputé au mauvais poste. Les deux décrivent le même travail, mal découpé.
 
-⛔ **Le « OUI — critère R2-03 tenu » qu'imprime cette section est donc un faux vert.** Ne pas le
-citer comme validation de R2-03 : le critère reste ouvert au sens de la mesure. C'est le travers que
-`debugging_lessons` retient sous « une sonde fausse ferme la question », et le commentaire de
-`js/app/diag.js` qui met en garde contre l'erreur de grandeur la commet autrement, six lignes plus bas.
+⛔ **Le « OUI — critère R2-03 tenu » qu'imprimait cette section était donc un faux vert.** C'est le
+travers que `debugging_lessons` retient sous « une sonde fausse ferme la question », et le commentaire
+de `js/app/diag.js` qui mettait en garde contre l'erreur de grandeur la commettait autrement, six
+lignes plus bas.
+
+✅ **Corrigé le 12/08/2026** (G-01). `mesurerDecodageFroid` prend l'image **armée sans être décodée**
+via `ColdDecodeTrial.takeArmedImage()`, chronomètre `drawImage` suivi d'un `getImageData(0,0,1,1)` qui
+vide le pipeline, mesure le coût de cette relecture seule sur un bitmap 1×1 et le **retranche**. La
+page affiche les trois durées et le verdict porte sur le **net**. `Image.decode()` a été retiré de la
+section, avec la raison écrite sur la page : un bitmap ne refroidit qu'une fois, donc mesurer
+`decode()` d'abord réchaufferait le `drawImage` — et c'est le `drawImage` que porte R2-03.
+
+⚠ **Ce qui reste n'est pas du code.** L'arithmétique du verdict vit dans
+`resumeDecodageFroid()` (`js/app/endurance.js`), pure et éprouvée par mutation : la soustraction de la
+relecture **fait basculer le verdict** sur le cas 6,4 / 2,1 ms, et la phrase affichée est rendue par
+cette fonction — la composer dans la page laissait la faire porter sur le brut sans qu'aucun test
+rougisse, les durées d'un Chromium sans charge étant trop petites pour distinguer les deux verdicts.
+Le relevé tablette reste à faire, et il appartient au mainteneur.
 
 **Seul le `Image.decode()` de cette section est exploitable, et il dit quelque chose.** 1 118 ms à
 froid sur `testbig150.webp` contre ~490 ms relevés sur le Mac au chantier N : **2,3×**, exactement le

@@ -37,18 +37,19 @@ import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs'
  * @param {number} w
  * @param {number} h
  * @param {number} px
+ * @param {'square'|'hex'} [type]
  */
-const level = (id, name, order, w, h, px) => ({
+const level = (id, name, order, w, h, px, type = 'square') => ({
   id, name, order,
   imageUrl: '', videoUrl: null, animatedOverlays: [],
   pxPerCell: px, widthCells: w, heightCells: h,
-  grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+  grid: { type, offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
   terrainCost: null, walls: [], portals: [], lights: [],
   ambient: { color: '#ffffff', level: 1, baked: false },
 });
 
 /**
- * Trois étages **hétérogènes** : tailles, proportions et densités toutes différentes.
+ * Quatre étages **hétérogènes** : tailles, proportions, densités et pavages tous différents.
  *
  * ⚠ Les cartes réelles qui ont révélé le trou mesuraient 37 × 28, 45 × 80 et 25 × 48. Les
  * proportions sont conservées mais **les tailles sont réduites**, et ce n'est pas de la
@@ -58,11 +59,18 @@ const level = (id, name, order, w, h, px) => ({
  * couleur franche. La sonde rendait alors « pion absent » pour une raison qui n'avait rien à voir
  * avec les dimensions de l'étage. **Je l'ai d'abord pris pour un défaut du produit ; c'était ma
  * sonde.** Ce que le test doit éprouver est l'hétérogénéité, pas la valeur absolue.
+ *
+ * ⛔ Ne pas remettre 45 × 80 « pour coller aux vraies cartes » : le défaut réapparaîtrait sous la
+ * forme d'un fantôme, et il a déjà coûté trois sondes fausses.
+ *
+ * ⭐ Le quatrième étage est **hexagonal** depuis G-04 : l'hétérogénéité porte désormais aussi sur le
+ * pavage, et c'est le seul scénario de navigateur qui fasse vivre `HexGrid` bout en bout.
  */
 const NIVEAUX = [
   level('embuscade', 'Embuscade', 0, 26, 20, 140),
   level('canyon', 'Canyon', 1, 15, 27, 102.4),
   level('antre', 'Antre', 2, 22, 13, 120),
+  level('caverne-hex', 'Caverne Hex', 3, 12, 12, 140, 'hex'),
 ];
 
 const snapshot = {
@@ -220,12 +228,12 @@ test('⭐ basculer entre des étages de tailles différentes ne fait disparaîtr
   // verrait ici, alors que les sondes de pixels ci-dessus peuvent encore passer par chance.
   const masques = await gm.evaluate(async () => {
     const store = await import('../js/state/store.js');
-    return ['embuscade', 'canyon', 'antre'].map((id) => {
+    return ['embuscade', 'canyon', 'antre', 'caverne-hex'].map((id) => {
       const m = store.getSessionFog(id);
       return m ? String(m).length : 0;
     });
   });
-  expect(masques.filter((n) => n > 0).length, 'les trois étages doivent avoir chacun leur masque').toBe(3);
+  expect(masques.filter((n) => n > 0).length, 'les quatre étages doivent avoir chacun leur masque').toBe(4);
 
   expect(erreurs).toEqual([]);
   await context.close();

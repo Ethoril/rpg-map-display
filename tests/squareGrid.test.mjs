@@ -12,7 +12,8 @@ test('gridFor(level) instaure SquareGrid ou lève sur hex/inconnu', () => {
   assert.equal(grid.type, 'square');
 
   const hexLevel = createLevel({ grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
-  assert.throws(() => gridFor(hexLevel), /Grille hexagonale non supportée/);
+  const hexGrid = gridFor(hexLevel);
+  assert.equal(hexGrid.type, 'hex');
 
   // Type de grille volontairement invalide : un document de campagne peut arriver de
   // Firestore ou du LocalStorage avec n'importe quoi dedans, et le refus doit se produire

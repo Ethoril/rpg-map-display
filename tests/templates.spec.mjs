@@ -256,17 +256,14 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       expect((await config()).radiusCells, `saisie « ${brut} »`).toBe(1);
     }
 
-    // ⚠ Écart constaté entre l'interface et le code, **non corrigé** : le champ déclare
-    // `max="20"` mais le bornage du composant est à 50, et `max` n'empêche rien hors validation
-    // de formulaire. Le maximum effectif est donc 50. Ce test fixe le comportement réel pour que
-    // l'écart soit vu ; il ne dit pas laquelle des deux bornes est la bonne.
+    // Le champ déclare max="20" et le composant borne la saisie à 20 (G-02c).
     expect(await page.getAttribute('#tpl-radius', 'max')).toBe('20');
-    await page.fill('#tpl-radius', '50');
+    await page.fill('#tpl-radius', '20');
     await page.dispatchEvent('#tpl-radius', 'change');
-    expect((await config()).radiusCells, 'le bornage effectif a changé — relire le commentaire').toBe(50);
+    expect((await config()).radiusCells).toBe(20);
     await page.fill('#tpl-radius', '999');
     await page.dispatchEvent('#tpl-radius', 'change');
-    expect((await config()).radiusCells).toBe(50);
+    expect((await config()).radiusCells).toBe(20);
   });
 
   test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {

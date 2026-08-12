@@ -70,6 +70,31 @@ test('diag.html : le protocole R2 s’arme sans minuterie et accepte un relevé 
   expect(texteMesure).toContain('Coût net du premier tracé');
   expect(texteMesure).toContain('Image.decode() a été retiré');
 
+  // ⭐ **Le câblage, pas seulement les étiquettes.** Avant le 12/08/2026 ce test ne vérifiait que
+  // la présence des trois libellés : remplacer `net` par `brut` dans `diag.js` le laissait vert,
+  // et le verdict R2-03 se prononçait alors sur une durée qui inclut la relecture.
+  //
+  // ⛔ Les nombres sont lus **non arrondis** sur `window.__coldDecodeDernier`, jamais reparsés
+  // depuis l'affichage. L'affichage quantifie à 0,1 ms, et la différence de deux arrondis contre
+  // l'arrondi d'une différence s'écarte jusqu'à 0,15 ms : une assertion sur le texte serait fausse
+  // environ une fois sur quatre **sur du code juste**. C'est exactement la fausse rougeur que R-08
+  // vient de chasser de la porte ; ne pas la réintroduire par la petite porte du parsing.
+  //
+  // ⚠ La garde **déterministe** de la soustraction reste le test unitaire de `resumeDecodageFroid`
+  // dans `tests/endurance.test.mjs`, celui qui prouve qu'elle fait basculer le verdict.
+  const releve = await page.evaluate(() => /** @type {any} */ (window).__coldDecodeDernier);
+  console.log(`  R2-03 relevé : brut ${releve.brut} ms, relecture ${releve.relecture} ms, net ${releve.net} ms`);
+
+  expect(releve.relecture, 'une relecture nulle rendrait la soustraction invisible').toBeGreaterThan(0);
+  expect(releve.net).toBe(Math.max(0, releve.brut - releve.relecture));
+
+  // Et le verdict affiché doit suivre le **net**, pas le brut. Sans cette assertion, faire juger
+  // `resumeDecodageFroid(brut, 0)` pour la seule phrase laissait tout vert.
+  expect(texteMesure).toMatch(/critère R2-03 tenu|n'est PAS tenu/);
+  expect(texteMesure).toContain(
+    releve.net < 5 ? 'OUI — critère R2-03 tenu' : "le seuil R2-03 n'est PAS tenu"
+  );
+
   await page.getByRole('button', { name: /Démarrer le journal endurance/ }).click();
   await page.locator('#endurance-fps').fill('30');
   await page.locator('#endurance-temperature').fill('dos tiède');

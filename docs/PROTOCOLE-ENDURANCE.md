@@ -19,10 +19,22 @@ bureau ne peut pas connaître.
 3. Ne plus toucher l’écran ni le navigateur pendant **au moins 120 s**. Ne pas ouvrir le panneau
    de la sonde de rendu et ne pas lancer de mesure FPS. L’outil ne lance ni timer, ni rAF, ni
    rafraîchissement DOM pendant ce silence.
-4. Presser « Mesurer après inactivité » et reporter l’inactivité constatée et la durée de
-   `Image.decode()`.
-5. Refaire le scénario sur la vraie vue joueurs et décrire la première image visible. La durée
-   `Image.decode()` n’est pas à elle seule le temps de cette frame.
+4. Presser « Mesurer après inactivité » et reporter l’inactivité constatée puis les **trois**
+   durées affichées : coût brut, coût de relecture, et **coût net du premier tracé**. C’est le net
+   qui porte le critère.
+5. Refaire le scénario sur la vraie vue joueurs et décrire la première image visible. Le coût net
+   n’est pas à lui seul le temps de cette frame.
+
+⚠ **La sonde ne mesure plus `Image.decode()`, et ce n’est pas un oubli.** Un `drawImage` sur un
+bitmap froid décode implicitement : mesurer `decode()` d’abord réchaufferait le bitmap, et le
+`drawImage` suivant ne mesurerait plus rien. Or c’est bien le `drawImage` que porte R2-03 — le seuil
+de 5 ms est un coût payé *dans une frame*, et les 490 ms historiques du chantier N étaient un
+`drawImage`. Un bitmap ne refroidit qu’une fois : il fallait choisir, et le `drawImage` gagne.
+
+Le chronomètre encadre `drawImage` **plus** un `getImageData` qui vide le pipeline GPU — sans ce
+vidage, on chronométrerait la mise en file d’une commande, pas sa peinture. Le coût de ce vidage est
+mesuré à part sur un bitmap 1×1 et **retranché** : à un seuil de 5 ms, quelques millisecondes de
+relecture changeraient le verdict à elles seules.
 
 Le navigateur ne fournit pas d’API disant qu’il a évincé le bitmap/décodeur. Un résultat bas ne
 prouve donc pas que l’image est restée chaude, et un résultat haut ne dit pas quelle ressource a

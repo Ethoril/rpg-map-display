@@ -140,7 +140,7 @@ export function createTemplateTools(container, options) {
   });
 
   inputRadius.addEventListener('change', () => {
-    const val = Math.max(1, Math.min(50, parseInt(inputRadius.value, 10) || 1));
+    const val = Math.max(1, Math.min(20, parseInt(inputRadius.value, 10) || 1));
     radiusCells = val;
     inputRadius.value = String(val);
   });

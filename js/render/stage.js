@@ -12,6 +12,7 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   'tokens',
   'fog',
   'feedback',
+  'measure',
   // ⭐ Le ping est **au-dessus du fog**, délibérément. Un marqueur « regarde ici » masqué par le
   // brouillard serait invisible sans que le MJ sache pourquoi, et il pointerait dans le vide. Ce
   // n'est pas une fuite : le MJ désigne cet endroit **exprès**, c'est un acte explicite, alors

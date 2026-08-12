@@ -58,9 +58,16 @@ pas violé : le bouton vit dans le panneau MJ, pas sur la carte.
 
 ---
 
-## 2. R2-03 — la sonde de décodage froid est fausse
+## 2. R2-03 — la sonde de décodage froid était fausse ✅ corrigée le 12/08/2026
 
-**C'est le seul reste qui soit un vrai défaut**, et il porte sur un critère qu'on croit fermé.
+> ✅ **Fait (G-01).** Le correctif décrit plus bas est en place : image armée non décodée,
+> `getImageData(0,0,1,1)` pour vider le pipeline, coût de relecture mesuré à part et retranché,
+> verdict sur le net, `Image.decode()` retiré de la section avec sa raison affichée. L'arithmétique
+> et la phrase de verdict vivent dans `resumeDecodageFroid()` (`js/app/endurance.js`) pour être
+> éprouvables sans navigateur. **Ce qui reste est le relevé sur la tablette, et il appartient au
+> mainteneur** (interdiction n°14). Le diagnostic ci-dessous est conservé comme trace.
+
+**C'était le seul reste qui fût un vrai défaut**, et il portait sur un critère qu'on croyait fermé.
 
 `mesurerDecodageFroid` refabrique une `Image` et fait `await image.decode()` **juste avant** de démarrer
 le chronomètre : le bitmap est chaud par construction, et les deux minutes de silence sont annulées à la

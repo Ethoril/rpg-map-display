@@ -19,9 +19,13 @@
 
 - URL image :
 - Inactivité réellement constatée (≥ 120 s) :
-- `Image.decode()` post-inactivité :
+- Coût brut (`drawImage` + vidage du pipeline) :
+- Coût de relecture 1×1, retranché :
+- **Coût net du premier tracé** (la grandeur du critère, seuil < 5 ms) :
 - Première frame réelle de la vue joueurs (durée/perception) :
 - Limite : cette mesure ne prouve pas l’éviction ou la conservation du bitmap par le navigateur.
+- ⚠ `Image.decode()` ne figure plus ici : on ne peut pas mesurer `decode()` **et** `drawImage` sur un
+  bitmap qui ne refroidit qu’une fois. Voir `PROTOCOLE-ENDURANCE.md`, R2-03.
 
 ## R2-05/R2-06 — journal manuel
 

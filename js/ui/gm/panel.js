@@ -39,7 +39,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{isLevelFollowLocked: () => boolean, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{isLevelFollowLocked: () => boolean, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -100,20 +100,12 @@ export function createGMPanel(container, options = {}) {
     </div>
 
     <!--
-      Barre des gestes de séance — Lot 4, le ping (CdC §5.5).
-
-      Hors des onglets pour la même raison que la barre d'étage juste au-dessus : pointer un
-      endroit se fait **en cours de jeu**, depuis n'importe quel outil. L'enfouir dans un onglet
-      obligerait le MJ à quitter son pinceau ou son éditeur de murs pour dire « regarde ici », et
-      le désarmement automatique au changement d'onglet le lui reprendrait aussitôt.
-
-      ⛔ Pas de double-clic sur la carte : un clic MJ a déjà des effets — sélectionner un pion,
-      désigner une destination. Les distinguer imposerait de retarder CHAQUE clic simple de la
-      fenêtre de double-clic, soit ~250 ms ajoutés à toute l'interface pour un geste occasionnel.
+      Barre des gestes de séance — Lot 4, le ping (CdC §5.5) et la mesure (G-03).
     -->
     <div class="gm-session-tools-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #2a2a20; border-bottom: 1px solid #444;">
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Séance</span>
       <button id="gm-ping-arm" type="button" aria-pressed="false" title="Armer le ping, puis cliquer sur la carte : un marqueur apparaît 2 s sur les trois écrans" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #facc15; border: 1px solid #6b5a12; border-radius: 4px; cursor: pointer;">📍 Ping</button>
+      <button id="gm-measure-arm" type="button" aria-pressed="false" title="Armer la mesure, puis cliquer deux points sur la carte" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; cursor: pointer;">📏 Mesurer</button>
       <span id="gm-ping-hint" style="font-size: 0.7rem; color: #888;"></span>
     </div>
 
@@ -303,7 +295,7 @@ export function createGMPanel(container, options = {}) {
   );
   const tabPanes = /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.gm-tab-pane'));
 
-  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'} */
+  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure'} */
   let activeToolName = 'none';
 
   /** @type {ReturnType<typeof createWallEditor>|null} */
@@ -362,26 +354,27 @@ export function createGMPanel(container, options = {}) {
     if (hint) hint.textContent = armed ? 'Cliquez sur la carte' : '';
   }
 
+  function updateMeasureButton() {
+    const btn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-measure-arm'));
+    const hint = container.querySelector('#gm-ping-hint');
+    if (!btn) return;
+    const armed = activeToolName === 'measure';
+    btn.setAttribute('aria-pressed', armed ? 'true' : 'false');
+    btn.style.background = armed ? '#3b82f6' : '#1a1a1a';
+    btn.style.color = armed ? '#ffffff' : '#60a5fa';
+    if (hint) hint.textContent = armed ? 'Cliquer 2 points sur la carte' : '';
+  }
+
   /**
    * Vrai pendant l'exécution de `setActiveTool`, pour détecter les rappels réentrants.
    * @type {boolean}
    */
   let settingActiveTool = false;
 
-  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'} toolName */
+  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure'} toolName */
   function setActiveTool(toolName) {
     if (activeToolName === toolName) return;
 
-    // ⛔ **Garde de réentrance, et elle corrige un défaut latent.** Les désarmements ci-dessous
-    // déclenchent les rappels `onArmChange(false)` des composants, qui rappellent tous
-    // `setActiveTool('none')`. Sans cette garde, désarmer l'outil précédent **écrase l'outil qu'on
-    // vient d'armer** : `setActiveTool('ping')` finissait à `'none'`.
-    //
-    // Le défaut préexistait au ping et n'avait jamais mordu par chance d'ordonnancement : chaque
-    // outil existant s'arme depuis son propre `onArmChange(true)`, donc le `setActiveTool` du
-    // nouveau survient *après* le désarmement de l'ancien. Un appelant direct — ce bouton — tombe
-    // dessus immédiatement. Seul un `'none'` réentrant est ignoré : c'est la seule valeur que les
-    // rappels de désarmement émettent, donc la garde ne peut pas masquer une transition légitime.
     if (settingActiveTool && toolName === 'none') return;
 
     const prevTool = activeToolName;
@@ -399,11 +392,8 @@ export function createGMPanel(container, options = {}) {
    * @param {string} toolName
    */
   function applyToolTransition(prevTool, toolName) {
-
-    // Le ping n'a pas de composant dédié : son seul état est l'armement, porté par ce bouton.
-    // Il passe donc par le même chemin que les autres outils — donc par l'exclusivité mutuelle et
-    // le désarmement au changement d'onglet — sans avoir besoin d'un module à lui.
     if (prevTool === 'ping' || toolName === 'ping') updatePingButton();
+    if (prevTool === 'measure' || toolName === 'measure') updateMeasureButton();
 
     if (prevTool.startsWith('fog-') && !toolName.startsWith('fog-')) {
       fogTools?.disarm();
@@ -1270,7 +1260,13 @@ export function createGMPanel(container, options = {}) {
     () => setActiveTool(activeToolName === 'ping' ? 'none' : 'ping'),
     { signal: listeners.signal }
   );
-  updatePingButton();
+  const measureArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-measure-arm'));
+  measureArmBtn.addEventListener(
+    'click',
+    () => setActiveTool(activeToolName === 'measure' ? 'none' : 'measure'),
+    { signal: listeners.signal }
+  );
+  updateMeasureButton();
 
   levelSelect.addEventListener(
     'change',

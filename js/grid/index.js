@@ -1,9 +1,9 @@
 // @ts-check
 import { SquareGrid } from './SquareGrid.js';
+import { HexGrid } from './HexGrid.js';
 
 /**
  * Retourne l'adaptateur de grille pour l'étage fourni.
- * Lève une erreur si le type est 'hex' (supporté au lot 4) ou inconnu.
  *
  * @param {import('../core/types.js').Level} level
  * @returns {import('./GridAdapter.js').GridAdapter}
@@ -16,7 +16,7 @@ export function gridFor(level) {
     return new SquareGrid(level);
   }
   if (level.grid.type === 'hex') {
-    throw new Error('Grille hexagonale non supportée');
+    return new HexGrid(level);
   }
   throw new Error(`Type de grille inconnu : "${level.grid.type}"`);
 }

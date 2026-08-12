@@ -6,6 +6,7 @@ import { gridFor } from '../js/grid/index.js';
 import { edgeKey } from '../js/core/cellKey.js';
 import {
   computeBlockedEdges,
+  extractBlockedSegments,
   isPortalOpen,
   segmentsIntersect,
   invalidateBlockedEdgesCache,
@@ -226,4 +227,244 @@ test('Test de mutation : la modification du Set retourné depuis le cache ne cor
   const edgesClean = computeBlockedEdges(level, grid);
   assert.equal(edgesClean.has(fakeKey), false, 'Le cache doit restituer un Set propre sans la fausse clé');
   assert.equal(edgesClean.size, 13);
+});
+
+// R-08 : ce test n'asserte **que le compte**. La durée, elle, est une mesure — elle dépend de la
+// charge de la machine et n'a donc pas sa place dans la porte : elle a rougi une fois sur du code
+// juste, pendant un audit qui lançait deux suites en parallèle. Elle vit maintenant dans
+// `tests/mesures/blockedEdgesIndex.spec.mjs`, qui imprime des nombres et n'affirme aucun seuil.
+test('R-01 : computeBlockedEdges rend exactement 2701 arêtes sur testbig150', async () => {
+  const fs = await import('node:fs');
+  assert.ok(
+    fs.existsSync('maps/generated/testbig150.scene.json'),
+    'la scène testbig150 est suivie par git : son absence est une anomalie, pas une raison de sauter le test'
+  );
+  const campaignData = JSON.parse(fs.readFileSync('maps/generated/testbig150.scene.json', 'utf8'));
+  const level = campaignData.levels[0];
+  const grid = gridFor(level);
+
+  invalidateBlockedEdgesCache(level.id);
+  const edges = computeBlockedEdges(level, grid);
+  assert.equal(edges.size, 2701, 'exactement 2701 arêtes bloquées sur testbig150');
+});
+
+test('R-04a : computeBlockedEdges lève si l’adaptateur ne fournit pas allCells', () => {
+  const level = createLevel({
+    id: 'lvl-sans-allcells',
+    grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+    widthCells: 5,
+    heightCells: 5,
+    pxPerCell: 140,
+    walls: [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 5 }]],
+  });
+  const complet = gridFor(level);
+
+  // Le contrat `GridAdapter` garantit `allCells`. Si elle manque, c'est une erreur de
+  // programmation : rendre un ensemble vide ferait rendre zéro arête bloquée, donc **les murs
+  // cesseraient de bloquer en silence**. On exige donc une levée, pas un repli.
+  const ampute = /** @type {any} */ ({
+    type: complet.type,
+    pointFromCell: complet.pointFromCell.bind(complet),
+    mapFromCellPoint: complet.mapFromCellPoint.bind(complet),
+    cellPointFromMap: complet.cellPointFromMap.bind(complet),
+    neighbors: complet.neighbors.bind(complet),
+  });
+
+  invalidateBlockedEdgesCache(level.id);
+  // ⛔ Le motif est **le message du contrat**, pas le simple mot « allCells ». Sans le garde
+  // explicite, l'exécution atteindrait `grid.allCells(...)` douze lignes plus bas et V8 lèverait
+  // « grid.allCells is not a function » — qu'un motif large accepterait, laissant croire que le
+  // garde est éprouvé alors qu'on peut le supprimer sans rien faire rougir.
+  assert.throws(
+    () => computeBlockedEdges(level, ampute),
+    /GridAdapter\.allCells\(\) est requis/,
+    'un adaptateur sans allCells doit lever le message du contrat, jamais rendre un ensemble vide'
+  );
+
+  // Et l'adaptateur complet, lui, bloque bien quelque chose : sans cette seconde moitié, la
+  // levée pourrait venir d'un étage qui n'a de toute façon aucune arête à bloquer.
+  invalidateBlockedEdgesCache(level.id);
+  assert.ok(computeBlockedEdges(level, complet).size > 0);
+});
+
+test('Le cache d’arêtes tient compte du pavage et des dimensions, pas seulement des murs', () => {
+  const murs = [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 5 }]];
+  /** @param {'square'|'hex'} type @param {number} h */
+  const etage = (type, h) => createLevel({
+    id: 'lvl-signature', // ⚠ le MÊME identifiant : c'est tout l'objet du test
+    grid: { type, offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+    widthCells: 5,
+    heightCells: h,
+    pxPerCell: 140,
+    walls: murs,
+  });
+
+  /**
+   * Ce que rend un étage seul, cache vidé — la référence.
+   * @param {import('../js/core/types.js').Level} level
+   * @returns {number}
+   */
+  const seul = (level) => {
+    invalidateBlockedEdgesCache();
+    return computeBlockedEdges(level, gridFor(level)).size;
+  };
+
+  // 1. Changement de pavage, à identifiant et murs identiques.
+  const carre = etage('square', 5);
+  const hex = etage('hex', 5);
+  const refCarre = seul(carre);
+  const refHex = seul(hex);
+  assert.notEqual(refCarre, refHex, 'les deux pavages doivent bien différer, sinon le test ne prouve rien');
+
+  invalidateBlockedEdgesCache();
+  computeBlockedEdges(carre, gridFor(carre)); // remplit le cache sous l'identifiant partagé
+  assert.equal(
+    computeBlockedEdges(hex, gridFor(hex)).size,
+    refHex,
+    'le cache doit être invalidé par le changement de pavage, pas resservir le masque du carré'
+  );
+
+  // 2. Changement de dimensions, qui arrive à chaque recalibrage d'une carte.
+  const haut = etage('square', 5);
+  const bas = etage('square', 2);
+  const refBas = seul(bas);
+  assert.notEqual(seul(haut), refBas, 'les deux hauteurs doivent bien différer');
+
+  invalidateBlockedEdgesCache();
+  computeBlockedEdges(haut, gridFor(haut));
+  assert.equal(
+    computeBlockedEdges(bas, gridFor(bas)).size,
+    refBas,
+    'le cache doit être invalidé par le changement de dimensions'
+  );
+});
+
+test('R-06 : Équivalence stricte index spatial vs force brute (9 formes carré/hex, 122 murs déterministes)', () => {
+  // PRNG LCG déterministe
+  /** @param {number} seed @returns {() => number} */
+  function createLcg(seed) {
+    let s = seed;
+    return () => {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+  }
+
+  // Force brute pure
+  /**
+   * @param {import('../js/core/types.js').Level} level
+   * @param {import('../js/grid/GridAdapter.js').GridAdapter} grid
+   * @returns {Set<string>}
+   */
+  function computeBruteForce(level, grid) {
+    const blocked = new Set();
+    const rawSegments = extractBlockedSegments(level, grid);
+    if (rawSegments.length === 0) return blocked;
+
+    const width = level.widthCells;
+    const height = level.heightCells;
+    const cells = grid.allCells(width, height);
+    const processedEdges = new Set();
+
+    for (const cell of cells) {
+      const centerA = grid.pointFromCell(cell);
+      const neighbors = grid.neighbors(cell);
+
+      for (const n of neighbors) {
+        const key = edgeKey(cell, n);
+        if (processedEdges.has(key)) continue;
+        processedEdges.add(key);
+
+        const centerB = grid.pointFromCell(n);
+
+        for (let i = 0; i < rawSegments.length; i++) {
+          const seg = rawSegments[i];
+          if (segmentsIntersect(seg.p1, seg.p2, centerA, centerB)) {
+            blocked.add(key);
+            break;
+          }
+        }
+      }
+    }
+    return blocked;
+  }
+
+  /**
+   * Murs déterministes couvrant l'étage, denses assez pour couper la plupart des arêtes.
+   * @param {number} graine
+   * @param {number} w
+   * @param {number} h
+   */
+  const murs = (graine, w, h) => {
+    const nextRand = createLcg(graine);
+    /** @type {Array<Array<{ cellX: number, cellY: number }>>} */
+    const res = [];
+    // ⛔ La plage déborde de **1,5 case de chaque côté**, et ce n'est pas de la générosité. Des
+    // murs strictement contenus dans `[0,w] × [0,h]` ne peuvent pas produire le défaut du
+    // 12/08/2026 : un mur dont les DEUX extrémités ont `cellX < 0` — cas courant d'un UVTT importé
+    // qui longe le bord gauche — donnait une plage de seaux vide et n'était rangé nulle part.
+    // 11 arêtes bloquées perdues en silence sur un hex 10 × 8. Un jeu de murs positif est aveugle
+    // à cette classe **par construction**, pas par malchance.
+    /** @param {number} n @returns {number} */
+    const etale = (n) => Math.floor(nextRand() * (n + 3) * 10) / 10 - 1.5;
+    for (let i = 0; i < 120; i++) {
+      res.push([
+        { cellX: etale(w), cellY: etale(h) },
+        { cellX: etale(w), cellY: etale(h) },
+      ]);
+    }
+    // Deux murs de bord posés à la main, pour que la classe soit couverte même si le générateur
+    // change : l'un entièrement à gauche de la carte, l'autre entièrement au-dessus.
+    res.push([{ cellX: -0.5, cellY: -0.5 }, { cellX: -0.5, cellY: h + 0.5 }]);
+    res.push([{ cellX: -0.5, cellY: -0.5 }, { cellX: w + 0.5, cellY: -0.5 }]);
+    return res;
+  };
+
+  // ⭐ Les **petites** formes ne sont pas de la décoration. Deux défauts trouvés le 12 août ne se
+  // voyaient que sur elles :
+  //   — `hex 4 × 2` est la plus petite forme où la clé de déduplication d'arête, si l'un de ses
+  //     deux termes n'est pas un index de case, perd une arête (2,0)|(3,0) **en silence** ;
+  //   — les formes non carrées séparent l'index de boucle de l'index de case, que les 20 × 20
+  //     confondent à la diagonale près.
+  // ⚠ La densité et le décalage varient aussi : `102,4 px/case` est une densité réelle du dépôt
+  // (`heterogeneousLevels`), et un décalage non nul déplace toute l'arithmétique de seau.
+  const FORMES = /** @type {Array<['square'|'hex', number, number, number, number, number]>} */ ([
+    ['square', 20, 20, 140, 0, 0],
+    ['hex', 20, 20, 140, 0, 0],
+    ['hex', 4, 2, 140, 0, 0],
+    ['hex', 5, 3, 140, 0, 0],
+    ['square', 13, 7, 140, 0, 0],
+    ['hex', 13, 7, 140, 0, 0],
+    ['hex', 10, 8, 102.4, 37.5, -12.25],
+    ['hex', 1, 9, 140, 0, 0],
+    ['square', 9, 1, 102.4, -8.5, 3.25],
+  ]);
+
+  for (const [gridType, w, h, px, ox, oy] of FORMES) {
+    const nom = `${gridType} ${w}×${h} @${px}px (${ox},${oy})`;
+    const level = createLevel({
+      id: `lvl-r06-${gridType}-${w}x${h}-${px}-${ox}`,
+      grid: { type: gridType, offsetX: ox, offsetY: oy, color: '#000000', opacity: 0.25, visible: true },
+      widthCells: w,
+      heightCells: h,
+      pxPerCell: px,
+      walls: murs(12345, w, h),
+    });
+    const grid = gridFor(level);
+
+    invalidateBlockedEdgesCache(level.id);
+    const indexedEdges = computeBlockedEdges(level, grid);
+    const bruteEdges = computeBruteForce(level, grid);
+
+    assert.ok(
+      bruteEdges.size > 0,
+      `[${nom}] la force brute doit trouver des arêtes bloquées, sinon la comparaison est vide de sens`
+    );
+
+    assert.deepEqual(
+      Array.from(indexedEdges).sort(),
+      Array.from(bruteEdges).sort(),
+      `[${nom}] l'index doit égaler exactement la force brute (0 manquée, 0 en trop) — ${bruteEdges.size} arêtes attendues`
+    );
+  }
 });

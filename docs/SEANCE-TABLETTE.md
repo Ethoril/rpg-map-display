@@ -174,8 +174,10 @@ décodage asynchrone. **Rien n'est validé tant que cette phase ne l'a pas const
    référence. La chauffe initiale est volontaire.
 ☐ **Ne plus toucher l'écran ni le navigateur pendant au moins 120 s.** Ne pas ouvrir la sonde de
    rendu, ne pas lancer de mesure FPS, ne pas réveiller la tablette « juste pour voir ».
-☐ **« Mesurer après inactivité »** : noter l'inactivité réellement constatée et la durée de
-   `Image.decode()`.
+☐ **« Mesurer après inactivité »** : noter l'inactivité réellement constatée et les **trois**
+   durées affichées — coût brut, coût de relecture, **coût net du premier tracé**. Le critère porte
+   sur le net. `Image.decode()` n'est plus affiché : le mesurer réchaufferait le bitmap avant le
+   `drawImage`, qui est la grandeur de R2-03.
 
 ⛔ **Un geste pendant le silence annule la mesure**, et pas de façon visible : il suffit à faire
 vivre la page pour que le navigateur garde le bitmap. On mesurerait alors un cas chaud en croyant

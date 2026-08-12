@@ -132,6 +132,7 @@ F:\rpg-map-display\
 │   │       ├─ tokens.js          [1a] pions, badges élévation/marqueurs
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
 │   │       ├─ templates.js       [2]  gabarits de zone d'effet
+│   │       ├─ measure.js         [4]  mesure de distance au geste (MJ local)
 │   │       └─ pings.js           [4]  marqueur « regarde ici », transitoire — ⚠ ne lit
 │   │                                  PAS le store : un ping est un geste, pas une donnée,
 │   │                                  et son âge se compte depuis la réception LOCALE

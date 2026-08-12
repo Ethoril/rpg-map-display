@@ -14,6 +14,7 @@ import { LinksLayer } from '../render/layers/links.js';
 import { WallsLayer } from '../render/layers/walls.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
+import { MeasureLayer } from '../render/layers/measure.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
@@ -117,6 +118,9 @@ export async function bootstrapGMApp(options = {}) {
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
   const pingsLayer = new PingsLayer();
+  const measureLayer = new MeasureLayer();
+  /** @type {{ levelId: string, start: import('../core/types.js').MapPoint, end: import('../core/types.js').MapPoint|null, distance: number }|null} */
+  let currentMeasure = null;
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
   const fogLayer = new FogLayer();
 
@@ -635,6 +639,12 @@ export async function bootstrapGMApp(options = {}) {
         }
         layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
+      measure: () => {
+        measureLayer.render(stage.context, grid, activeLevel, {
+          measure: currentMeasure,
+          camera,
+        });
+      },
       pings: () => {
         const result = pingsLayer.render(stage.context, grid, activeLevel, {
           ping: currentPing,
@@ -1066,6 +1076,32 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
+      if (activeToolName === 'measure') {
+        const grid = gridFor(activeLevel);
+        if (!currentMeasure || currentMeasure.levelId !== activeLevel.id || currentMeasure.end !== null) {
+          currentMeasure = {
+            levelId: activeLevel.id,
+            start: intention.mapPos,
+            end: null,
+            distance: 0,
+          };
+        } else {
+          const cellA = grid.cellFromPoint(currentMeasure.start);
+          const cellB = grid.cellFromPoint(intention.mapPos);
+          const distance = (cellA && cellB) ? grid.distance(cellA, cellB) : 0;
+          currentMeasure = {
+            levelId: activeLevel.id,
+            start: currentMeasure.start,
+            end: intention.mapPos,
+            distance,
+          };
+          // ⛔ Zéro publication réseau pour la mesure : c'est un geste local au MJ.
+          gmPanel?.disarmActiveTool?.();
+        }
+        requestRender();
+        return;
+      }
+
       if (activeToolName === 'template-place') {
         if (gmPanel?.templateTools) {
           const cfg = gmPanel.templateTools.getConfig();
@@ -1405,6 +1441,7 @@ export async function bootstrapGMApp(options = {}) {
     gmPanel,
     transport,
     sessionId,
+    getCurrentMeasure: () => currentMeasure,
     destroy,
   };
 }
