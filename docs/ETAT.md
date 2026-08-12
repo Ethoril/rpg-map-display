@@ -1507,6 +1507,13 @@ pas comme défaut.
 
 **Le préparateur avale désormais une simple image comme fond de carte** (`CHANTIER-Y-CARTE-DECOR.md`).
 
+⚠ **Rectification du 12/08, le jour même.** J'ai d'abord écrit ici que le critère 1 du lot 3 « n'était
+pas bloqué par du contenu ». C'est faux, et l'erreur venait d'avoir résumé le critère au lieu de le
+lire : `CHANTIER-S` §169 exige « trois UVTT réels, avec provenance et **droit de diffusion**
+documentés ». Le chantier Y lève le verrou technique — n'importe quelle image passe — mais le verrou
+que le critère nomme est celui de la **licence**, et il tient. Les cartes Stained Karbon sont
+autorisées en usage privé, pas en republication.
+
 ⭐ **Le constat qui l'a déclenché ne figurait dans aucun critère.** La chaîne n'acceptait que
 `.uvtt`/`.dd2vtt`/`.df2vtt` ; or la bibliothèque réelle du mainteneur ne contient que du `.jpg` et du
 `.pdf` — **1 774 images JPEG**, comptées en parcourant le dossier. Sa bibliothèque entière était donc
@@ -1530,6 +1537,54 @@ nomme le remède.
 - ⛔ **La carte d'essai a été retirée du dépôt avant tout commit**, artefacts et catalogue compris. Le
   corpus Stained Karbon est autorisé en **usage privé**, pas en republication, et `maps/` est publié
   sur GitHub Pages. Les fixtures de test sont des PNG générés dans un dossier temporaire.
+
+## Critère 1 du lot 3 — le mécanisme est prouvé, la case attend du contenu diffusable
+
+Vérifié le 12/08/2026, sur demande du mainteneur, après le chantier Y.
+
+**Trois cartes de trois packs différents ont été importées comme trois étages d'une même campagne** —
+37 × 28, 45 × 80 et 25 × 48 cases. Le constat est net :
+
+| | Résultat |
+|---|---|
+| Trois étages préparés en une passe | ✅ `essai-trois-etages`, 3 étages |
+| Alignement manuel nécessaire | **aucun** — les trois `grid.offsetX/offsetY` valent 0 |
+| Dimensions distinctes conservées | ✅ 3 tailles sur 3 |
+| Densités | **140, 102,4 et 140 px/case** |
+
+⭐ **Le détail qui prouve l'indépendance mieux que les tailles** : les densités diffèrent. Le 45 × 80 a
+touché le plafond de texture de 8192 px et s'est rééchantillonné à 102,4 px/case. Une fratrie
+d'étages exportée d'un même projet partagerait une densité unique — c'est d'ailleurs le cas de
+`test_village_complet`, et c'est pourquoi il ne satisfait pas ce critère malgré ses trois étages
+réels. Trois provenances indépendantes, non.
+
+⛔ **La case reste décochée, et c'est volontaire.** Le critère exige « provenance et **droit de
+diffusion** documentés » (`CHANTIER-S` §169). Les cartes de l'essai sont autorisées en usage privé,
+pas en republication, et `maps/` est publié sur GitHub Pages : elles ont été **retirées du dépôt avant
+tout commit**, artefacts, entrée de catalogue et `scenes.json` compris. Ce qui manque n'est donc ni du
+code ni une mesure, mais **trois cartes redistribuables** — un choix d'approvisionnement.
+
+### ⚠ Un trou de couverture trouvé en le faisant, et comblé
+
+`multiLevelJourney.spec.mjs` construit **tous** ses étages aux mêmes dimensions — `pxPerCell: 80`,
+10 × 8. Le parcours à étages n'avait donc jamais été éprouvé sur des étages de **tailles
+différentes**, alors que c'est exactement ce que produit un import de provenances indépendantes. Et
+c'est la forme à laquelle le fog est sensible : un masque relu aux mauvaises dimensions **fait
+disparaître tous les pions** en laissant la zone de vision dessinée — défaut payé en séance le
+07/08/2026. `maskDimensionMismatch.spec.mjs` couvre le cas voisin de la **collision d'identifiants**,
+pas celui-ci.
+
+`tests/heterogeneousLevels.spec.mjs` le comble, sur fixture **synthétique** — trois étages de tailles,
+proportions et densités toutes différentes, parcourus deux fois. Mutation : figer les dimensions de
+décodage du masque le fait rougir dès le deuxième étage.
+
+⛔ **Et la leçon de méthode, pour la troisième fois de la journée : la sonde était fausse, pas le
+produit.** Ce test a accusé le produit à trois reprises avant d'être juste. (1) Au zoom ajusté par
+`fitActiveLevel`, une case de 45 × 80 tombe à **10,2 px** et le liseré d'un pion ne couvre plus aucun
+pixel d'une signature de couleur franche. (2) Basculer le joueur sans attendre le MJ laisse un masque
+**à 0 octet** : le MJ est l'autorité de vision et ne calcule que pour son étage actif. (3) Le masque
+peut exister avant que le canvas soit redessiné, donc un prélèvement sec précède le dessin d'une
+frame. **Aucun défaut du produit dans cette affaire** — il était juste depuis le début.
 
 ## Revue de couverture des tests — 11 août 2026
 
@@ -1639,7 +1694,7 @@ Avancement mesuré contre les lots du cahier des charges §11, au **12 août 202
 | **1a — Le plateau** | **11 critères sur 11, fermé le 08/08/2026 par réconciliation.** Les onze étaient acquis, le dernier — 30 fps sous cast — depuis le 05/08/2026 ; aucune case du CdC ne le disait. ⚠ **Ce lot annonçait « 10 sur 11 » en citant deux points ouverts**, ce qui est un décompte impossible : la tenue thermique est **R2-06** et la limite de texture réelle la **question n°1 du §12**. Elles restent ouvertes, mais **ailleurs** |
 | **1b — La prépa MJ** | **4 critères sur 4**, fermé depuis le chantier M et la séance du 05/08/2026 ; cases du CdC cochées le 08/08. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K) |
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
-| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. ✅ **La porte matérielle est fermée le 11/08/2026** : mesure lumière sur la tablette **sous cast actif, 2,6 ms pour un budget de 300 ms**. ⭐ **Et le critère 1 n'était pas bloqué par du contenu, contrairement à ce qui était écrit ici** : il attendait que la chaîne sache avaler des images, ce que le **chantier Y** livre le 12/08/2026 (`CHANTIER-Y-CARTE-DECOR.md`). Il reste à *faire* — trois images, un `scenes.json` qui les déclare comme trois étages, et le constat que rien ne s'aligne à la main — mais plus rien ne l'empêche |
+| **3 — Étages & lumière** | **5 sur 6 au 07/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. **Reste ouvert : le critère 1**, car la fixture trois étages est synthétique et le dépôt ne fournit pas trois cartes réelles licenciées. ✅ **La porte matérielle est fermée le 11/08/2026** : mesure lumière sur la tablette **sous cast actif, 2,6 ms pour un budget de 300 ms**. Le **chantier Y** (12/08) lève le verrou *technique* du critère 1 — la chaîne avale désormais n'importe quelle image — mais ⚠ **pas le verrou de licence, qui est celui que le critère nomme** : `CHANTIER-S` §169 exige « provenance et **droit de diffusion** documentés ». Le mécanisme est vérifié sur trois cartes indépendantes (voir « Critère 1 du lot 3 » plus bas) ; la case attend du contenu redistribuable |
 | **4 — Hexagone & confort de table** | **2 sur 6 au 12/08/2026.** L-06 avait fermé « Undo restaure l’état fog précédent » ; **le chantier X ferme le ping** (`CHANTIER-X-PING.md`). ⭐ **Ce lot est en réalité deux lots indépendants** : trois critères hexagonaux, et trois de confort de table qui ne dépendent d’aucune décision. Ordre retenu : le confort d’abord — il reste **la mesure au geste**. ⭐ Les deux décisions qui interdisaient d’écrire `HexGrid` sont prises (§12 q.5 et q.6), donc la moitié hexagonale est débloquée quand on voudra |
 | Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** par la section 7 (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6. Le verdict « rampe » rendu par la section 7bis pendant la campagne était un défaut d'arithmétique de boucle, **corrigé le 11/08** : la lecture tenait |
 | §12 Questions ouvertes | **6 au 12/08/2026.** Les q.5 et q.6 — provenance des cartes hexagonales et forme des grandes créatures — sont tranchées : image calibrée plus étage vierge, et rosette centrée à 1/7/19 cases. Elles bloquaient l'écriture de `HexGrid` |
