@@ -1124,11 +1124,40 @@ Critères :
    verrouiller et déverrouiller sont réservés au MJ. Voir §7 et `TRANCHE-L05-PORTES.md` §6.3.
 4. **Ambiance globale ou par étage ?** Le §6 la place par étage ; une cave sombre sous un
    rez éclairé plaide pour ce choix, à confirmer.
-5. **D'où viennent les cartes hexagonales ?** Aucun outil UVTT n'en produit. Soit tu les
-   dessines, soit l'hexagone reste réservé aux étages construits dans l'outil. Ça
-   conditionne l'ampleur réelle du lot 4.
-6. **Forme des grandes créatures en hexagone** (`sizeCells > 1`) : pas de convention
-   établie. À trancher avant d'implémenter `HexGrid`.
+5. ~~**D'où viennent les cartes hexagonales ?**~~ **Tranchée le 12/08/2026 : image calibrée, plus
+   l'étage vierge.** Un étage hexagonal se crée soit sur une **image de fond calibrée à la main**,
+   comme au lot 1a — le MJ règle la largeur **plat-à-plat**, l'application en déduit le pas de rangée
+   par la convention du §4.3 —, soit **vierge**, ce qui est le même chemin sans image, les murs
+   étant tracés avec l'éditeur du lot 2.
+
+   ⛔ **L'import UVTT hexagonal est écarté, et pour une raison plus forte que la difficulté : il est
+   mal posé.** Aucun outil ne déclare sa topologie, et la géométrie de murs d'un export DD2VTT
+   hexagonal est exprimée dans la métrique **carrée** (`ANALYSE-DD2VTT-GRILLES.md` §4.3, vérifié sur
+   deux corpus, le MJ ayant explicitement tenté de forcer l'export). La relire en hexagone
+   déplacerait **chaque** mur, avec une dérive croissante — deux rangées sur quatorze. Aucune
+   quantité de code ne répare une information absente du fichier.
+
+   ⭐ Ce que la chaîne peut faire, en revanche, et qui existe déjà : `js/import/gridPitch.js` détecte
+   un réseau hexagonal **peint** par autocorrélation du profil d'encre. Aujourd'hui il avertit ; il
+   devrait désormais **proposer** la calibration hexagonale, ce qui sert l'exigence d'universalité
+   de l'import — ne jamais rien écarter en silence — au lieu de la contredire.
+6. ~~**Forme des grandes créatures en hexagone** (`sizeCells > 1`)~~ **Tranchée le 12/08/2026 : la
+   rosette centrée, soit 1, 7 puis 19 cases.** `sizeCells` s'y lit comme un **rayon d'anneau** : 1
+   couvre l'hexagone seul, 2 couvre l'hexagone et ses six voisines, 3 ajoute la couronne suivante.
+
+   Le motif de la décision n'est pas l'élégance du nombre, c'est que **la rosette est la seule forme
+   dont le centre reste un centre d'hexagone.** Tout le modèle existant survit donc sans retouche :
+   la sélection, la case de destination, l'origine du champ de vision et le hit-test continuent de
+   désigner *une* case. Une grappe centrée sur un sommet serait tactiquement plus fine — 2 vaudrait
+   3 cases — mais briserait « un pion occupe une case », donc quatre mécanismes déjà livrés et
+   éprouvés.
+
+   ⚠ **Le défaut assumé : la granularité est grossière.** Il n'existe aucun équivalent hexagonal du
+   2×2 carré ; une créature passe de 1 à 7 cases d'un coup. C'est une propriété du pavage
+   hexagonal, pas un manque d'imagination — et c'est précisément pourquoi aucune convention ne
+   s'est établie ailleurs. Si l'usage à la table montre que le saut est intenable, le repli écrit
+   est le **visuel seul** : occuper une case et déborder graphiquement, au prix de `sizeCells`
+   signifiant deux choses selon le type de grille.
 7. ~~**Jeu de marqueurs d'état** (§5.3) : liste et icônes à définir.~~ **Tranchée le
    04/08/2026 : quatorze états, liste close.** À terre, assourdi, aveuglé, brisé, empêtré,
    empoisonné, en flammes, hémorragique, inconscient, sonné, surpris, frénésie, peur, terreur.
