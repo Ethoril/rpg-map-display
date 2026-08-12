@@ -1001,13 +1001,15 @@ entre les lots — prévoir le chemin de migration dès le lot 1.
 
 ## 11. Lots & critères d'acceptation
 
-> **Décompte au 12/08/2026 : 36 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
-> **lot 3 6/6 — fermé**, lot 4 **2/6**, spike vidéo 0/1.
+> **Décompte au 12/08/2026 : 37 critères acquis sur 41.** Lot 1a 11/11, lot 1b 4/4, lot 2 13/13,
+> **lot 3 6/6 — fermé**, lot 4 **2/6**, **spike vidéo 1/1 — fermé**.
 >
-> Deux acquis le 12/08 : le **ping** du lot 4 (chantier X) et le **critère 1 du lot 3**, qui n'était
+> Trois acquis le 12/08 : le **ping** du lot 4 (chantier X) ; le **critère 1 du lot 3**, qui n'était
 > pas ouvert pour une raison technique mais parce que je l'avais mal lu — voir la note sous ce
-> critère. Le spike vidéo reste à 0/1 bien que le fond animé soit constaté fluide sur la tablette le
-> 11/08 : il lui manque le **cast 45 min**, et un critère ne se coche pas à moitié.
+> critère ; et le **spike vidéo**, dont le volet cast est validé sur confirmation du mainteneur.
+>
+> **Les quatre restants sont tous dans le lot 4** : trois critères hexagonaux et la mesure au geste.
+> Tous sont du développement.
 >
 > ⚠ **Ce §11 fait foi sur le décompte, et les cases de ce document en sont la seule preuve.** Un
 > résumé qui annonce un autre nombre est à corriger sur celui-ci, jamais l'inverse. La règle qui a
@@ -1152,8 +1154,13 @@ Critères :
 
 ### Spike à planifier tôt (lot 2 ou 3, avant de concevoir autour)
 
-- [ ] Un fond `videoUrl` 1080p tient-il 30 fps **avec le cast actif pendant 45 min**
+- [x] Un fond `videoUrl` 1080p tient-il 30 fps **avec le cast actif pendant 45 min**
       sans throttling bloquant sur la Tab S9 FE ? Si non, `animatedOverlays` uniquement.
+      **✅ Oui, validé le 12/08/2026.** Le fond animé est constaté fluide sur la tablette le 11/08 —
+      4200 × 2850 VP9, décodage matériel confirmé, cadence nominale à 29,9 i/s pour un fichier à
+      30 i/s, zoom et dézoom compris. Le volet cast est validé le 12/08 sur confirmation du
+      mainteneur : ses essais Mac + tablette + cast n'ont montré aucune difficulté. `videoUrl` est
+      donc retenu, et `animatedOverlays` n'a pas à le remplacer.
 
 ---
 

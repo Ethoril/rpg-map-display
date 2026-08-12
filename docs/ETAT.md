@@ -59,8 +59,12 @@
 > fog, autres couches et résidu sur les vues MJ et joueurs. La sonde multipage écoute la vraie
 > boucle applicative et classe un onglet masqué comme présentation non mesurable, au lieu de faire
 > passer le throttling `requestAnimationFrame` pour un coût Canvas. Les protocoles et le rapport
-> remplissable couvrent 120 s d'inactivité, 45 min de cast et 4 h de session. **R2-03, R2-05 et
-> R2-06 ne sont pas validés** : leurs essais sur la tablette et la TV restent à exécuter.
+> remplissable couvrent 120 s d'inactivité, 45 min de cast et 4 h de session. ✅ **R2-05 (cast) et
+> R2-06 (longue durée) sont validés le 12/08/2026** sur confirmation du mainteneur — ses propres
+> essais Mac + tablette + cast n'ont montré aucune difficulté, aucun ralentissement, aucune dérive.
+> ⚠ **R2-03 reste ouvert, et pour une raison technique** : la sonde de décodage froid est fausse — elle
+> chronomètre une file d'attente GPU sur un bitmap réchauffé juste avant la mesure. Le critère n'est
+> donc pas mesuré, et le corriger est du développement, pas un essai.
 >
 > **Phase R3 automatisable implantée le 7 août 2026 ; lot 3 à 5 critères sur 6.** Le MJ dispose
 > d'un éditeur de liaisons utilisable sans JSON ; la traversée, le suivi de vue, le cadenas et le
@@ -1706,9 +1710,13 @@ que la session **courante**. Rien ne permet aujourd'hui de faire le ménage sur 
 ## Suite produit
 
 Avancement mesuré contre les lots du cahier des charges §11, au **12 août 2026** :
-**36 critères acquis sur 41.** Relevé pour éviter de confondre « le plateau est solide » et
-« le produit est proche ». Deux acquis le 12/08 : le **ping** du lot 4 (chantier X) et le **critère 1
-du lot 3**, qui **ferme le lot 3 à 6/6** — il était satisfait depuis un moment, je l'avais mal lu.
+**37 critères acquis sur 41.** Relevé pour éviter de confondre « le plateau est solide » et
+« le produit est proche ». Trois acquis le 12/08 : le **ping** du lot 4 (chantier X) ; le **critère 1
+du lot 3**, qui **ferme le lot 3 à 6/6** — il était satisfait depuis un moment, je l'avais mal lu ; et
+le **spike vidéo**, fermé par la validation du cast.
+
+⭐ **Les quatre critères restants sont tous dans le lot 4, et tous du développement** : trois pour
+l'hexagone, un pour la mesure au geste. Il n'y a plus aucun critère en attente d'un essai.
 
 > ⚠ **Le décompte fait foi dans le §11 du CdC, pas ici.** Cette table le reprend ; en cas de
 > désaccord, corriger cette table sur le §11. C'est l'inverse du réflexe naturel, et c'est
@@ -1721,7 +1729,7 @@ du lot 3**, qui **ferme le lot 3 à 6/6** — il était satisfait depuis un mome
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
 | **3 — Étages & lumière** | ✅ **6 sur 6, lot fermé le 12/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. La porte matérielle est fermée le 11/08 — mesure lumière sur la tablette **sous cast actif, 2,6 ms pour 300 ms de budget**. ⛔ **Le critère 1 était satisfait par `test_village_complet` depuis un moment** : trois exports réels de 9 Mo au dépôt, importés séparément, offsets à 0, deux liaisons. Il est resté ouvert parce que je l'avais mal lu et que j'en avais fait une question de licence — voir « Lot 3 fermé » plus bas |
 | **4 — Hexagone & confort de table** | **2 sur 6 au 12/08/2026.** L-06 avait fermé « Undo restaure l’état fog précédent » ; **le chantier X ferme le ping** (`CHANTIER-X-PING.md`). ⭐ **Ce lot est en réalité deux lots indépendants** : trois critères hexagonaux, et trois de confort de table qui ne dépendent d’aucune décision. Ordre retenu : le confort d’abord — il reste **la mesure au geste**. ⭐ Les deux décisions qui interdisaient d’écrire `HexGrid` sont prises (§12 q.5 et q.6), donc la moitié hexagonale est débloquée quand on voudra |
-| Spike vidéo 1080p sous cast | ✅ **fond animé constaté fluide sur la Tab S9 FE le 11/08**, 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** par la section 7 (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Reste le cast 45 min — `CHANTIER-W-FOND-ANIME.md` §6. Le verdict « rampe » rendu par la section 7bis pendant la campagne était un défaut d'arithmétique de boucle, **corrigé le 11/08** : la lecture tenait |
+| Spike vidéo 1080p sous cast | ✅ **1/1, fermé le 12/08/2026.** Fond animé constaté fluide sur la Tab S9 FE le 11/08 — 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Le volet **cast** est validé le 12/08 sur confirmation du mainteneur : ses essais Mac + tablette + cast n'ont montré aucune difficulté. `videoUrl` est retenu, `animatedOverlays` n'a pas à le remplacer. Le verdict « rampe » de la section 7bis était un défaut d'arithmétique de boucle, **corrigé le 11/08** : la lecture tenait |
 | §12 Questions ouvertes | **6 au 12/08/2026.** Les q.5 et q.6 — provenance des cartes hexagonales et forme des grandes créatures — sont tranchées : image calibrée plus étage vierge, et rosette centrée à 1/7/19 cases. Elles bloquaient l'écriture de `HexGrid` |
 
 Le substrat est en place : plateau, grille, pions, gestes, transport, persistance, import.
