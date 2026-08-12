@@ -1,7 +1,26 @@
 // @ts-check
 
 /**
- * Couple opaque. Carré : (colonne, ligne). Hexagone : axial (q, r).
+ * Couple opaque. Carré : (colonne, ligne). **Hexagone : décalé `odd-r` (colonne, rangée).**
+ *
+ * ⛔ **Corrigé le 12/08/2026, et c'était une erreur de MA documentation.** Cette ligne disait
+ * « Hexagone : axial (q, r) ». L'axial est juste pour le **calcul** — distance, voisines — mais faux
+ * pour le **stockage** sur une carte rectangulaire, parce que le décalage d'une demi-case par rangée
+ * s'y **accumule**. Mesuré sur l'implémentation qui suivait fidèlement cette ligne : un étage
+ * hexagonal de 12 × 12 voyait sa case (0, 11) décalée de **6 cases** vers la droite, **5 cases
+ * débordaient hors de l'image**, et un tiers de la hauteur restait vide. Sur 65 × 71 : **34,5 cases
+ * hors image, 153 % de la largeur**. C'est exactement le mode de panne dont
+ * `ANALYSE-DD2VTT-GRILLES` §4.3 prévenait — « un hexagone techniquement correct et toujours
+ * désaligné ».
+ *
+ * **Donc : `a` = colonne, `b` = rangée, en décalé `odd-r`** — les rangées impaires décalées d'une
+ * demi-case, sans accumulation. `widthCells` × `heightCells` retrouve son sens de rectangle, et
+ * l'énumération d'un étage redevient un rectangle.
+ *
+ * ⭐ L'axial reste **interne à `HexGrid`** : conversion décalé → cubique en entrée des calculs de
+ * distance et de voisinage, retour en décalé en sortie. Rien de tout cela ne franchit le contrat de
+ * `GridAdapter`, qui ne connaît que `Cell`.
+ *
  * @typedef {{ a: number, b: number }} Cell
  */
 
