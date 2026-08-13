@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-marais-hex_16x16",
+  "name": "Marais — HEX — 16x16",
+  "levels": [
+    {
+      "id": "marais-hex_16x16",
+      "name": "Marais — HEX — 16x16",
+      "order": 0,
+      "imageUrl": "maps/generated/marais-hex_16x16.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "pxPerCell": 140,
+      "widthCells": 16,
+      "heightCells": 16,
+      "grid": {
+        "type": "hex",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "terrainCost": null,
+      "walls": [],
+      "portals": [],
+      "lights": [],
+      "ambient": {
+        "color": "#ffffff",
+        "level": 1,
+        "baked": false
+      }
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "templates": [],
+  "settings": {}
+}

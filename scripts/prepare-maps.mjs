@@ -602,6 +602,21 @@ export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPx
   // donnerait deux grilles décalées, l'une juste et l'autre pas. Le choix se lit dans le nom parce
   // que c'est là que le fournisseur l'a écrit, et il n'y a pas d'autre source.
   const grillePeinte = /grid/i.test(baseName);
+  // ⭐ Le pavage se lit lui aussi dans le nom, par un `_hex`, et pour la même raison que le reste :
+  // une image ne déclare rien, et le seul endroit où l'intention peut être écrite est le nom du
+  // fichier. C'est le geste réel — on prend une carte-décor et on **pose** une grille hexagonale
+  // dessus, aucun fournisseur ne livre d'hexagone.
+  //
+  // ⚠ Ce n'est pas la seule voie : le pavage se change aussi dans le panneau MJ, sur l'étage actif.
+  // Le marqueur sert à ce qu'une carte **reste** hexagonale après régénération, sans quoi il
+  // faudrait refaire le geste à chaque passage de l'outil.
+  //
+  // ⛔ `_hex` ne redimensionne rien. Les cases lues dans le nom restent des colonnes et des
+  // rangées ; en pointe-en-haut, `pxPerCell` est la largeur d'un hexagone et le pas vertical vaut
+  // `pxPerCell × √3/2`. Une carte dessinée pour du carré n'aura donc pas ses hexagones alignés sur
+  // son décor — c'est attendu, et c'est le cas d'usage : le pavage est une couche de jeu, pas une
+  // propriété du dessin.
+  const pavageHex = /(^|[_\-\s])hex([_\-\s]|$)/i.test(baseName);
 
   const level = createLevel({
     id: levelId,
@@ -612,14 +627,17 @@ export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPx
     widthCells: dims.widthCells,
     heightCells: dims.heightCells,
     grid: {
-      type: 'square',
+      type: pavageHex ? 'hex' : 'square',
       // Une image n'a pas d'origine de carte déclarée : la grille part du coin, et la calibration
       // du nom de fichier suppose exactement ça. Un décalage se corrigerait à la main dans l'appli.
       offsetX: 0,
       offsetY: 0,
       color: '#000000',
       opacity: 0.25,
-      visible: !grillePeinte,
+      // Une grille peinte dispense de la nôtre — sauf en hexagonal, où le quadrillage du dessin
+      // est carré : il ne décrit alors plus le pavage joué, et le masquer laisserait le MJ sans
+      // repère pour ses hexagones.
+      visible: pavageHex ? true : !grillePeinte,
     },
     // Géométrie vide, assumée : c'est la définition d'une carte-décor.
     walls: [],

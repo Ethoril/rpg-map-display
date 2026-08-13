@@ -260,8 +260,9 @@ export function createGMPanel(container, options = {}) {
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center;">
             <label for="grid-type">Type de grille :</label>
-            <select id="grid-type" disabled title="Les grilles hexagonales sont hors du lot actuel">
-              <option value="square">Carrée (Square)</option>
+            <select id="grid-type" title="Le pavage de l’étage actif. Les imports UVTT sont carrés ; l’hexagone se pose sur une carte-décor.">
+              <option value="square">Carrée</option>
+              <option value="hex">Hexagonale (pointe en haut)</option>
             </select>
 
             <label for="grid-color">Couleur :</label>
@@ -631,8 +632,12 @@ export function createGMPanel(container, options = {}) {
 
   function updateGridFromUI() {
     const visible = gridVisibleInput.checked;
-    /** @type {import('../../core/types.js').GridType} */
-    const type = 'square';
+    // ⛔ Lu depuis le champ, jamais figé. Cette ligne a valu `'square'` en dur pendant tout le
+    // temps où `HexGrid` n'existait pas ; la rendre constante à nouveau ferait de la liste un
+    // décor qui ne change rien, ce qu'aucune vérification d'affichage ne verrait.
+    const type = /** @type {import('../../core/types.js').GridType} */ (
+      gridTypeSelect.value === 'hex' ? 'hex' : 'square'
+    );
     const color = gridColorInput.value;
     const opacity = parseFloat(gridOpacityInput.value);
 

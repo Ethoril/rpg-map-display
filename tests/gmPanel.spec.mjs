@@ -307,6 +307,20 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     await page.fill('#grid-opacity', '0.6');
     expect((await readGrid())?.opacity).toBe(0.6);
     await expect(page.locator('#grid-opacity-val')).toHaveText('0.6');
+
+    // ⭐ Le pavage, ouvert le 13/08/2026. La liste était `disabled` et n'offrait que « Carrée »
+    // tant que `HexGrid` n'existait pas ; `updateGridFromUI` posait en plus `type = 'square'` **en
+    // dur**. Les deux tenaient ensemble : rétablir la constante laisserait la liste changer à
+    // l'écran sans que l'étage bouge, ce qu'aucune vérification d'affichage ne verrait.
+    await expect(page.locator('#grid-type')).toBeEnabled();
+    expect((await readGrid())?.type).toBe('square');
+
+    await page.selectOption('#grid-type', 'hex');
+    expect((await readGrid())?.type).toBe('hex');
+
+    // Et le retour, sinon on ne prouve que le sens facile.
+    await page.selectOption('#grid-type', 'square');
+    expect((await readGrid())?.type).toBe('square');
   });
 
   test('PC6 Validation : synchronisation du pion créé et déplacé vers le store', async ({ page }) => {

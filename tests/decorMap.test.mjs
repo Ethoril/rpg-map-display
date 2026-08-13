@@ -223,6 +223,44 @@ test('une variante « Grid » éteint le quadrillage de l’application', async 
   });
 });
 
+test('un marqueur « hex » dans le nom pose une grille hexagonale sur la carte-décor', async () => {
+  await dansUnDossierTemporaire(async (dir) => {
+    const hex = path.join(dir, 'marais-hex_10x10.png');
+    const carre = path.join(dir, 'marais_10x10.png');
+    // Une variante quadrillée **et** hexagonale : le quadrillage peint est carré, donc il ne décrit
+    // pas le pavage joué et ne doit pas éteindre celui de l'application.
+    const hexQuadrille = path.join(dir, 'marais-hex_10x10_Grid.png');
+    ecrirePng(hex, 1000, 1000);
+    ecrirePng(carre, 1000, 1000);
+    ecrirePng(hexQuadrille, 1000, 1000);
+
+    const a = await buildDecorLevel(hex, null, dir, 100);
+    const b = await buildDecorLevel(carre, null, dir, 100);
+    const c = await buildDecorLevel(hexQuadrille, null, dir, 100);
+
+    assert.equal(a.level.grid.type, 'hex', 'le marqueur « hex » doit donner un étage hexagonal');
+    assert.equal(b.level.grid.type, 'square', 'sans marqueur, le pavage reste carré');
+    assert.equal(c.level.grid.type, 'hex');
+    assert.equal(
+      c.level.grid.visible,
+      true,
+      'en hexagonal, le quadrillage peint est carré : il ne remplace pas celui de l’application'
+    );
+
+    // ⛔ Le marqueur ne touche ni les cases ni la densité. `pxPerCell` reste la largeur d'un
+    // hexagone ; c'est `HexGrid` qui en déduit le pas vertical.
+    assert.equal(a.level.widthCells, 10);
+    assert.equal(a.level.heightCells, 10);
+    assert.equal(a.level.pxPerCell, b.level.pxPerCell);
+
+    // Et le mot ne doit pas être attrapé au milieu d'un autre : « Hexenwald » n'est pas « hex ».
+    const piege = path.join(dir, 'hexenwald_10x10.png');
+    ecrirePng(piege, 1000, 1000);
+    const d = await buildDecorLevel(piege, null, dir, 100);
+    assert.equal(d.level.grid.type, 'square', '« hexenwald » ne porte pas le marqueur');
+  });
+});
+
 test('⛔ sans densité lisible, la préparation refuse et nomme le remède', async () => {
   await dansUnDossierTemporaire(async (dir) => {
     const image = path.join(dir, 'carte sans dimensions.png');

@@ -1733,8 +1733,25 @@ Avancement mesuré contre les lots du cahier des charges §11, au **12 août 202
 du lot 3**, qui **ferme le lot 3 à 6/6** — il était satisfait depuis un moment, je l'avais mal lu ; et
 le **spike vidéo**, fermé par la validation du cast.
 
-⭐ **Les quatre critères restants sont tous dans le lot 4, et tous du développement** : trois pour
-l'hexagone, un pour la mesure au geste. Il n'y a plus aucun critère en attente d'un essai.
+⭐ **Les quatre critères restants sont tous dans le lot 4** : trois pour l'hexagone, un pour la
+mesure au geste.
+
+> **Mise à jour du 13/08/2026 — le développement des quatre est fait, le décompte ne bouge pas
+> encore.** `HexGrid`, `MeasureLayer` et le sélecteur de pavage du panneau MJ sont livrés et
+> éprouvés. Ce qui manquait au 12/08 n'était pas le code mais **la porte d'entrée** : la liste
+> « Type de grille » était `disabled` et n'offrait que « Carrée », et `updateGridFromUI` posait
+> `type = 'square'` en dur. Les deux sont levés.
+>
+> Reste, avant de cocher :
+> - **le hit-test « au doigt du premier coup »** est un geste, pas un calcul. L'arrondi cubique est
+>   exact sur 16 287 points balayés, mais « au doigt » se constate à la tablette ou dans un
+>   `tests/manuel/`, comme le banc de visée des portes l'a fait pour les portes ;
+> - **les trois autres se cochent sur lecture du mainteneur**, le code et les tests étant là.
+>
+> ⭐ Une **vraie carte hexagonale** est entrée au dépôt le 13/08 pour que le pavage cesse de ne
+> tourner que sur des fixtures : `marais-hex_16x16`, une image de la bibliothèque du mainteneur
+> posée sous grille hexagonale. Le marqueur `_hex` dans le nom de fichier la rend reproductible par
+> `maps:prepare`, au même titre que `_Grid` et que `37x28`.
 
 > ⚠ **Le décompte fait foi dans le §11 du CdC, pas ici.** Cette table le reprend ; en cas de
 > désaccord, corriger cette table sur le §11. C'est l'inverse du réflexe naturel, et c'est
@@ -1746,7 +1763,7 @@ l'hexagone, un pour la mesure au geste. Il n'y a plus aucun critère en attente 
 | **1b — La prépa MJ** | **4 critères sur 4**, fermé depuis le chantier M et la séance du 05/08/2026 ; cases du CdC cochées le 08/08. Bibliothèque de scènes (U-00 à U-06), révélation d’image (§5.8, chantier H), bibliothèque de pions (§5.7, chantiers I **et M**), badge d’élévation (chantier K) |
 | **2 — Lignes de vue, portes & tactique** | **13 sur 13 validés ; lot fermé le 07/08/2026.** L-01 ferme les arêtes bloquées ; L-02 mesure et implémente le sweep ; L-03 réunit les champs de vision ; L-04 livre le fog persistant et ses trois rendus ; L-05 apporte les portes à trois états ; L-06 les outils de fog et l'undo ; L-07 l'éditeur de murs ; L-10 remplace L-08 par des formes réelles découpées par les murs ; L-09 livre les quatorze marqueurs et leurs trois paliers d'affichage. Les trois critères réservés au dispositif réel sont confirmés par le mainteneur le 07/08 : **marqueurs lisibles sur les trois écrans, réponse des portes sous 300 ms et ouverture tactile du premier coup**. Le test e2e d'occlusion des gabarits protège désormais explicitement le `ctx.clip()` du rendu. |
 | **3 — Étages & lumière** | ✅ **6 sur 6, lot fermé le 12/08/2026** — `CHANTIER-S-LOT3-ETAGES-ET-LUMIERE.md`. Le sélecteur et `level.select` synchronisent les vues ; l'éditeur MJ crée des liaisons inter-étages bidirectionnelles ou à sens unique, publiques ou `gmOnly`, sans JSON. Le franchissement reste volontairement en deux temps et sur la case exacte. Un scénario multi-pages couvre téléportation, suivi automatique, cadenas, fog distinct et restauration après F5. L'ambiante, les lumières UVTT et `emitsLight` alimentent le sweep commun ; `baked_lighting` force la pleine ambiance et affiche un avertissement MJ. Firestore v3 répartit parent, niveaux, pions et état global dans une transaction révisionnée tout en lisant encore v2. La porte matérielle est fermée le 11/08 — mesure lumière sur la tablette **sous cast actif, 2,6 ms pour 300 ms de budget**. ⛔ **Le critère 1 était satisfait par `test_village_complet` depuis un moment** : trois exports réels de 9 Mo au dépôt, importés séparément, offsets à 0, deux liaisons. Il est resté ouvert parce que je l'avais mal lu et que j'en avais fait une question de licence — voir « Lot 3 fermé » plus bas |
-| **4 — Hexagone & confort de table** | **2 sur 6 au 12/08/2026.** L-06 avait fermé « Undo restaure l’état fog précédent » ; **le chantier X ferme le ping** (`CHANTIER-X-PING.md`). ⭐ **Ce lot est en réalité deux lots indépendants** : trois critères hexagonaux, et trois de confort de table qui ne dépendent d’aucune décision. Ordre retenu : le confort d’abord — il reste **la mesure au geste**. ⭐ Les deux décisions qui interdisaient d’écrire `HexGrid` sont prises (§12 q.5 et q.6), donc la moitié hexagonale est débloquée quand on voudra |
+| **4 — Hexagone & confort de table** | **2 sur 6 au 12/08/2026.** L-06 avait fermé « Undo restaure l’état fog précédent » ; **le chantier X ferme le ping** (`CHANTIER-X-PING.md`). ⭐ **Ce lot est en réalité deux lots indépendants** : trois critères hexagonaux, et trois de confort de table qui ne dépendent d’aucune décision. Ordre retenu : le confort d’abord — il reste **la mesure au geste**. ⭐ Les deux décisions qui interdisaient d’écrire `HexGrid` sont prises (§12 q.5 et q.6), donc la moitié hexagonale est débloquée quand on voudra. **13/08/2026 : le développement des quatre critères est livré** — `HexGrid` odd-r et son index de murs valable pour tout pavage, `MeasureLayer`, et le sélecteur de pavage ouvert dans le panneau MJ. Le décompte attend la lecture du mainteneur, et le hit-test « au doigt » attend un geste réel. Carte hexagonale réelle au dépôt : `marais-hex_16x16` |
 | Spike vidéo 1080p sous cast | ✅ **1/1, fermé le 12/08/2026.** Fond animé constaté fluide sur la Tab S9 FE le 11/08 — 4200×2850 VP9, zoom et dézoom compris, **décodage matériel confirmé** (`powerEfficient` vrai) et cadence nominale à 29,9 i/s pour un fichier à 30 i/s. Le volet **cast** est validé le 12/08 sur confirmation du mainteneur : ses essais Mac + tablette + cast n'ont montré aucune difficulté. `videoUrl` est retenu, `animatedOverlays` n'a pas à le remplacer. Le verdict « rampe » de la section 7bis était un défaut d'arithmétique de boucle, **corrigé le 11/08** : la lecture tenait |
 | §12 Questions ouvertes | ⭐ **1 seule au 12/08/2026, et elle dort par choix.** Cinq tranchées ce jour-là : q.5 et q.6 (provenance des cartes hex, forme des grandes créatures) qui bloquaient `HexGrid` ; q.1 (plafond de texture à 8192, validé par l'usage) ; q.2 (rester sur Firebase — décision du 07/08 qui n'était consignée que dans ce fichier alors que le §12 fait foi) ; q.4 (ambiance **par étage**, et `settings.ambientLevel` supprimé, car relu par aucun rendu). ⚠ Le décompte annoncé plus haut disait « 6 » : c'était **faux**, j'avais fait 8 − 2 alors que q.3, q.7 et q.8 étaient déjà tranchées. Reste **q.9** — l'approximation de la lumière vue, laissée dormante avec son déclencheur écrit |
 

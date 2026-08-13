@@ -42,6 +42,22 @@
       }
     },
     {
+      "id": "marais-hex_16x16",
+      "name": "Marais — HEX — 16x16",
+      "sourceUrl": "maps/marais-hex_16x16.jpg",
+      "sceneUrl": "maps/generated/marais-hex_16x16.scene.json",
+      "imageUrl": "maps/generated/marais-hex_16x16.webp",
+      "sourceHash": "sha256-d1b3c9463a7840f4b71628a9c4b9b1da00c8ff9b656e7cd898a8e4ead7c17c9a",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 0,
+        "lights": 0,
+        "bakedLighting": false,
+        "animated": false
+      }
+    },
+    {
       "id": "testbig150",
       "name": "Testbig150",
       "sourceUrl": "maps/testbig150.dd2vtt",
