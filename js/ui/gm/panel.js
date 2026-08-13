@@ -260,9 +260,16 @@ export function createGMPanel(container, options = {}) {
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center;">
             <label for="grid-type">Type de grille :</label>
-            <select id="grid-type" title="Le pavage de l’étage actif. Les imports UVTT sont carrés ; l’hexagone se pose sur une carte-décor.">
+            <!-- width:100% et min-width:0 ne sont pas cosmétiques. Un select se dimensionne sur sa
+                 plus longue option et, dans une piste de grille, déborde au lieu de se réduire. Le
+                 13/08/2026 l'option « Hexagonale (pointe en haut) » a fait sortir le panneau de
+                 15 px : invisible sur le poste du mainteneur, rouge sur le runner CI dont les
+                 fontes sont plus larges. La contrainte tient quelle que soit la fonte, là où
+                 raccourcir le libellé n'aurait protégé que jusqu'au prochain libellé. -->
+            <select id="grid-type" style="width: 100%; min-width: 0;"
+                    title="Le pavage de l’étage actif. Pointe en haut, rangées impaires décalées. Les imports UVTT sont carrés ; l’hexagone se pose sur une carte-décor.">
               <option value="square">Carrée</option>
-              <option value="hex">Hexagonale (pointe en haut)</option>
+              <option value="hex">Hexagonale</option>
             </select>
 
             <label for="grid-color">Couleur :</label>
