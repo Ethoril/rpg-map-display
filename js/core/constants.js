@@ -420,6 +420,21 @@ export const VISION_REQUEST_EVENT = 'vision.request';
  */
 export const PORTAL_OPEN_LINE_SCREEN_PX = 3;
 export const PORTAL_OPEN_DASH_SCREEN_PX = 4;
+/**
+ * Porte fermée : mêmes grandeurs que la porte ouverte, en rouge.
+ *
+ * ⭐ Elle ne se dessinait pas du tout, au motif que « l'image de fond contient déjà la porte
+ * fermée ». C'est vrai du dessin de la carte, et faux de la lecture à la table : sur une carte
+ * chargée, une porte fermée se confond avec le décor et rien ne distingue « fermée » de « pas
+ * une porte ». Signalé par le mainteneur après la séance du 16 août 2026.
+ *
+ * La géométrie est **identiquement** celle du vert : les deux états sont des jumeaux qui ne
+ * diffèrent que par la couleur, et cette symétrie est ce qui les rend lisibles ensemble. Elle
+ * hérite aussi de la seule chose qui compte ici — des tirets mesurés en pixels **écran**, donc
+ * encore visibles à la vue « carte entière » de la tablette.
+ */
+export const PORTAL_CLOSED_LINE_SCREEN_PX = 3;
+export const PORTAL_CLOSED_DASH_SCREEN_PX = 4;
 export const PORTAL_LOCKED_LINE_SCREEN_PX = 4;
 export const PORTAL_LOCK_DOT_RADIUS_SCREEN_PX = 5;
 export const PORTAL_LOCK_DOT_MAX_SEGMENT_RATIO = 0.35;

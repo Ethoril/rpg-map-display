@@ -3,6 +3,8 @@
 import {
   PORTAL_OPEN_LINE_SCREEN_PX,
   PORTAL_OPEN_DASH_SCREEN_PX,
+  PORTAL_CLOSED_LINE_SCREEN_PX,
+  PORTAL_CLOSED_DASH_SCREEN_PX,
   PORTAL_LOCKED_LINE_SCREEN_PX,
   PORTAL_LOCK_DOT_RADIUS_SCREEN_PX,
   PORTAL_LOCK_DOT_MAX_SEGMENT_RATIO,
@@ -57,9 +59,8 @@ export class PortalsLayer {
       const pA = grid.mapFromCellPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
       const pB = grid.mapFromCellPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
 
-      // Le battement d'une porte verrouillée qu'on vient de taper. Calculé avant la sortie
-      // anticipée du cas `closed` : il ne concerne que `locked`, mais le lire ici évite de le
-      // dupliquer plus bas.
+      // Le battement d'une porte verrouillée qu'on vient de taper. Relevé ici pour n'être écrit
+      // qu'une fois, mais il ne concerne que `locked`.
       let flashProgress = 0;
       if (flash && flash.portalId === portal.id) {
         const age = now - flash.at;
@@ -69,14 +70,24 @@ export class PortalsLayer {
         }
       }
 
-      // Closed: l'image de fond contient la porte fermée -> rien à dessiner
-      if (!state || state === 'closed') {
-        continue;
-      }
-
       ctx.save();
 
-      if (state === 'open') {
+      if (!state || state === 'closed') {
+        // Porte fermée : pointillé rouge, jumeau exact du vert de la porte ouverte.
+        //
+        // ⛔ Ne pas revenir au « rien à dessiner » d'avant le 16 août 2026 sous prétexte que le
+        // fond de carte montre déjà le battant. Le fond montre un battant ; il ne dit pas que
+        // c'est une porte, ni qu'elle s'ouvre au doigt. Aux joueurs, qui ne voient pas la couche
+        // des murs, une porte fermée était strictement indiscernable du décor.
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = px(PORTAL_CLOSED_LINE_SCREEN_PX);
+        ctx.setLineDash([px(PORTAL_CLOSED_DASH_SCREEN_PX), px(PORTAL_CLOSED_DASH_SCREEN_PX)]);
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(pA.x, pA.y);
+        ctx.lineTo(pB.x, pB.y);
+        ctx.stroke();
+      } else if (state === 'open') {
         // Porte ouverte : trait discret vert discontinu le long du segment
         ctx.strokeStyle = '#22c55e';
         ctx.lineWidth = px(PORTAL_OPEN_LINE_SCREEN_PX);

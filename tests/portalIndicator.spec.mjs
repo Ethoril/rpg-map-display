@@ -23,6 +23,7 @@ const LEVEL = {
   terrainCost: null,
   walls: [],
   portals: [
+    { id: 'p-closed', a: { cellX: 2, cellY: 1 }, b: { cellX: 3, cellY: 1 }, state: 'closed', freestanding: false },
     { id: 'p-locked', a: { cellX: 2, cellY: 2 }, b: { cellX: 3, cellY: 2 }, state: 'locked', freestanding: false },
     { id: 'p-open', a: { cellX: 2, cellY: 4 }, b: { cellX: 3, cellY: 4 }, state: 'open', freestanding: false },
   ],
@@ -168,10 +169,16 @@ function mesurer(page, zoom) {
     return {
       zoomEffectif: app.camera.zoom,
       canvas: `${app.canvas.width}x${app.canvas.height}@${res}`,
-      portesDansLeCanvas: dansLeCanvas(2.15 * 140, 2 * 140) && dansLeCanvas(2.15 * 140, 4 * 140),
+      portesDansLeCanvas:
+        dansLeCanvas(2.15 * 140, 1 * 140) &&
+        dansLeCanvas(2.15 * 140, 2 * 140) &&
+        dansLeCanvas(2.15 * 140, 4 * 140),
       clarteDuFond: fond,
       epaisseurVerrouillee: epaisseur(2 * 140, rouge),
       encreOuverte: encreParPxDeSegment(4 * 140, vert),
+      // La porte FERMÉE, mesurée exactement comme l'ouverte : même sonde, même unité, seule la
+      // couleur change. C'est ce qui rend les deux valeurs comparables entre elles.
+      encreFermee: encreParPxDeSegment(1 * 140, rouge),
       // Le cadenas : l'encre au centre du segment, moins celle d'une portion nue de même taille.
       cadenas: boite(2.5 * 140, 2 * 140, 11) - boite(2.15 * 140, 2 * 140, 11),
     };
@@ -237,6 +244,11 @@ test.describe('Indicateurs de porte — grandeurs d\'écran, pas de carte', () =
     expect(vueTable.epaisseurVerrouillee).toBeGreaterThanOrEqual(3);
     expect(zoomUn.encreOuverte).toBeGreaterThanOrEqual(0.5);
     expect(vueTable.encreOuverte).toBeGreaterThanOrEqual(0.5);
+    // La porte fermée ne dessinait **rien** : mesuré 0 exactement, aux deux zooms. Elle se
+    // confondait donc avec le décor, et c'est ce qu'a signalé le mainteneur après la séance du
+    // 16 août 2026. Le seuil est celui du vert, puisque c'est la même géométrie.
+    expect(zoomUn.encreFermee).toBeGreaterThanOrEqual(0.5);
+    expect(vueTable.encreFermee).toBeGreaterThanOrEqual(0.5);
     expect(zoomUn.cadenas).toBeGreaterThanOrEqual(5);
     expect(vueTable.cadenas).toBeGreaterThanOrEqual(5);
 
