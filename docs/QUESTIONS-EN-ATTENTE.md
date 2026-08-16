@@ -60,7 +60,18 @@ coût uniforme respectant les murs, mesure de distance sans quitter le Zero-UI.
 
 ## B. Décisions d'interface
 
-### B-1 ⭐ Le curseur « Ambiance » est un interrupteur déguisé en variateur
+> ✅ **Les trois sont tranchées le 16 août 2026.** Elles ont été dépouillées avec le mainteneur dans
+> le cadre de l'audit d'ergonomie du panneau MJ : **`docs/AUDIT-UX-MJ.md` fait foi** sur ce qui a
+> été décidé et pourquoi. Ce qui reste ci-dessous est la **description des défauts**, conservée
+> parce qu'elle est mesurée et qu'elle servira à qui les corrigera. ⛔ Ne pas y relire les options :
+> elles sont périmées, le choix est fait.
+>
+> - **B-1 Ambiance** → bascule jour / nuit ; la pénombre graduée est écartée.
+> - **B-2 onglet Image** → le faire marcher ; c'était l'onglet le plus ouvert de la séance.
+> - **B-3 trois onglets à zéro** → absorbée par la décision C-1 de l'audit : deux modes de panneau,
+>   « Préparer » et « Jouer ». Aucun onglet n'est supprimé.
+
+### B-1 ✅ tranchée — Le curseur « Ambiance » est un interrupteur déguisé en variateur
 
 **Le fait, mesuré dans le code.** Le curseur offre 21 positions de 0 à 1 par pas de 0,05. Le moteur
 en lit **une seule chose**, dans `js/render/layers/fogLayer.js` :
@@ -86,7 +97,7 @@ rigoureusement indistinguables.** Le seul cran qui change quoi que ce soit est l
 
 À trancher aussi : `ambient.color` — le supprimer, ou l'implémenter avec (b).
 
-### B-2 ⛔ L'onglet « Image » du panneau MJ : aperçu ou import ?
+### B-2 ✅ tranchée — L'onglet « Image » du panneau MJ : aperçu ou import ?
 
 **Le bug rapporté** — « un fond gris quadrillé, pas l'image » — n'est pas un bug de rendu. L'onglet
 Image construit l'étage **sans `imageUrl`** (`js/ui/gm/importPanel.js:392`) : l'image décodée ne sert
@@ -108,7 +119,7 @@ l'image — c'est le piège.
 
 Dans tous les cas, `tests/gmPanel.spec.mjs:227` est à reprendre.
 
-### B-3 Trois onglets MJ ne servent pas
+### B-3 ✅ absorbée — Trois onglets MJ ne servent pas
 
 Relevé du 11/08 : UVTT, Liaisons et Grille à **zéro ouverture** sur la séance. La section 15 de
 `diag.html` cherche explicitement ça. ⚠ Un relevé, une séance — à confirmer sur une seconde avant de
@@ -217,6 +228,18 @@ lire un nom de test comme une preuve. Ce savoir-faire a attrapé une vingtaine d
 aujourd'hui dans la mémoire de l'assistant et dans `docs/`, pas dans un outil invocable.
 
 **À trancher** : en écrire un, les deux, ou aucun.
+
+> ⚠ **Une moitié de la question est répondue le 16/08/2026.** Le mainteneur a demandé s'il existait
+> un skill à *récupérer* pour une passe UX. Réponse vérifiée : **non**. Les skills ne se téléchargent
+> pas en session — ils se chargent de `.claude/skills/`, de `~/.claude/skills/` ou d'un plugin — et
+> **aucun plugin officiel Anthropic ne porte sur la revue d'ergonomie ou d'accessibilité d'une
+> interface**. Les marketplaces existent (`/plugin marketplace add anthropics/claude-plugins-official`
+> puis `/plugin install <nom>@<marketplace>`) mais n'offrent rien sur ce sujet.
+>
+> ⭐ Et l'audit du 16/08 a montré que le skill n'était pas le besoin : ce qui manquait n'était pas
+> une méthode, c'étaient **trois faits d'usage** que seul le mainteneur détient (voir le tableau en
+> tête de `AUDIT-UX-MJ.md`). Si un skill s'écrit un jour, ce sera **en aval** d'une passe réussie,
+> pour figer ce qui a marché — pas en amont pour la guider.
 
 ### C-5 ⛔ `mapFromCellPoint` ne veut pas dire la même chose selon le pavage — les pions sont faux en hexagonal
 

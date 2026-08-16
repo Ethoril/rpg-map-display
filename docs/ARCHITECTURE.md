@@ -249,6 +249,11 @@ F:\rpg-map-display\
     │                              mesures à l'appui. « Tranche L-01 » ≠ « chantier L »
     ├─ TRAVAIL-2907SOIR.md        [2] reprise du 29/07 au soir : état réel du lot 2 et
     │                              spécifications des trois chantiers restants
+    ├─ AUDIT-UX-MJ.md             audit d'ergonomie du panneau MJ du 16/08/2026, dépouillé et
+    │                              tranché le jour même : plan de travail des passes
+    │                              d'ergonomie, et surtout le POURQUOI de chaque décision, y
+    │                              compris des options écartées. L'avancement, lui, se coche
+    │                              dans ETAT.md
     └─ ETAT.md                    avancement, reprise, corrections du plan
 ```
 
