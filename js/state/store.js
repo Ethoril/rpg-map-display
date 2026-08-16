@@ -750,7 +750,9 @@ export function addLevel(levelData) {
   }
   assertValidCampaign(candidate, `Ajout de l'étage "${levelData?.id || 'inconnu'}"`);
   replaceCampaign(candidate);
-  activeLevelId = levelNormalized.id;
+  if (!activeLevelId) {
+    activeLevelId = levelNormalized.id;
+  }
   notifySubscribers();
 }
 

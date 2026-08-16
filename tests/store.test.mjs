@@ -436,6 +436,21 @@ test('addLevel et updateActiveLevel valident avant mutation', () => {
   assert.deepStrictEqual(getCampaign(), before);
 });
 
+test('addLevel conserve l étage actif existant et ne sélectionne qu à l initialisation vide', () => {
+  // 1. Initialisation sur store vierge : le premier étage est sélectionné
+  loadCampaign(createCampaign({ levels: [] }));
+  assert.strictEqual(getState().activeLevelId, null);
+  const premierEtage = createLevel({ id: 'lvl-1', name: 'Niveau 1' });
+  addLevel(premierEtage);
+  assert.strictEqual(getState().activeLevelId, 'lvl-1');
+
+  // 2. Ajout d'un second étage : l'étage actif reste 'lvl-1'
+  const secondEtage = createLevel({ id: 'lvl-2', name: 'Niveau 2' });
+  addLevel(secondEtage);
+  assert.strictEqual(getState().activeLevelId, 'lvl-1');
+  assert.strictEqual(getCampaign()?.levels.length, 2);
+});
+
 test('updateLevel cible un étage non actif de façon transactionnelle', () => {
   loadCampaign(makeValidCampaign());
   assert.strictEqual(getState().activeLevelId, 'rdc');

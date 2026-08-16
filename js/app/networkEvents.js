@@ -66,9 +66,21 @@ export function applyNetworkEvent(event) {
       return true;
     }
     case 'level.add': {
-      if (!payload.level) return false;
-      store.addLevel(payload.level);
-      return true;
+      if (!payload.level || typeof payload.level !== 'object' || typeof payload.level.id !== 'string' || !payload.level.id) {
+        console.error('Événement "level.add" refusé : payload malformé');
+        return false;
+      }
+      try {
+        store.addLevel(payload.level);
+        return true;
+      } catch (err) {
+        console.error(
+          `Événement "level.add" refusé, étage non ajouté : ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+        return false;
+      }
     }
     case 'level.grid': {
       if (!payload.levelId || !payload.grid) return false;

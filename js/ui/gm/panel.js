@@ -493,7 +493,7 @@ export function createGMPanel(container, options = {}) {
   const fogToolsMount = /** @type {HTMLElement} */ (container.querySelector('#fog-tools-mount'));
 
   createImportPanel(uvttMount, { mode: 'uvtt' });
-  createImportPanel(imageMount, { mode: 'image' });
+  createImportPanel(imageMount, { mode: 'image', transport });
 
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 

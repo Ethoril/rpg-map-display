@@ -180,51 +180,157 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(activeLevel?.imageUrl).toBe('');
   });
 
-  test('Diagnostic Image : calibration 10x8 cases x 140px sans URL ni base64 persistée', async ({
-    page,
+  test('Diagnostic Image : import avec URL, calibration et publication vers le store et la vue joueurs', async ({
+    context,
   }) => {
-    await setupGMView(page);
+    const sessionId = `test-img-${Date.now()}`;
+    const initialLevel = createLevel({
+      id: 'lvl-initial',
+      name: 'Rez-de-chaussée',
+      imageUrl: '',
+      widthCells: 20,
+      heightCells: 15,
+      pxPerCell: 140,
+    });
+    const snapshot = {
+      campaign: createCampaign({
+        campaignId: 'c-test-img',
+        name: 'Test Image Sync',
+        levels: [initialLevel],
+      }),
+      activeLevelId: 'lvl-initial',
+      selectedTokenId: null,
+    };
+
+    const pageGM = await context.newPage();
+    const pagePlayer = await context.newPage();
+
+    await installBrowserTransport(pageGM, sessionId, snapshot);
+    await installBrowserTransport(pagePlayer, sessionId, snapshot);
+
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
+    await pagePlayer.goto(`/player.html?session=${sessionId}`);
+    await waitForApp(pageGM);
+    await waitForApp(pagePlayer);
 
     // Basculer sur l'onglet Image
-    await page.click('.gm-tab-btn[data-tab="import-image"]');
+    await pageGM.click('.gm-tab-btn[data-tab="import-image"]');
 
-    // U-06 : plus aucune URL à saisir dans ce parcours
-    await expect(page.locator('#image-canonical-url')).toHaveCount(0);
-    await expect(page.locator('#btn-validate-image-import')).toBeDisabled();
+    const btnValidate = pageGM.locator('#btn-validate-image-import');
+    const urlInput = pageGM.locator('#image-url-input');
+    const errorMsg = pageGM.locator('#image-error-msg');
 
-    // Charger l'image de test (100x100 px)
-    await page.setInputFiles('#image-file-input', {
-      name: 'map-test.png',
-      mimeType: 'image/png',
-      buffer: TEST_PNG_BUFFER,
-    });
+    await expect(btnValidate).toBeDisabled();
 
-    await expect(page.locator('#btn-validate-image-import')).toBeEnabled();
+    // 1. Lien Google Drive dossier inexploitable
+    await urlInput.fill('https://drive.google.com/drive/folders/1234567890abcdef');
+    await expect(errorMsg).toBeVisible();
+    await expect(errorMsg).toContainText('Ce lien Google Drive ne désigne pas un fichier');
+    await expect(btnValidate).toBeDisabled();
+
+    // 2. URL non persistable (data: / blob:)
+    await urlInput.fill('data:image/png;base64,AAAA');
+    await expect(errorMsg).toBeVisible();
+    await expect(errorMsg).toContainText('URL non persistable');
+    await expect(btnValidate).toBeDisabled();
+
+    // 3. Lien Google Drive fichier : converti en URL CDN
+    await urlInput.fill('https://drive.google.com/file/d/1234567890abcdef_xyz/view?usp=sharing');
+    await expect(urlInput).toHaveValue(
+      'https://drive.google.com/thumbnail?id=1234567890abcdef_xyz&sz=w2000'
+    );
+
+    // 4. URL inexistante / inaccessible
+    await urlInput.fill('maps/fichier-inexistant-404.png');
+    await expect(errorMsg).toBeVisible();
+    await expect(errorMsg).toContainText("L'image n'a pas pu être chargée");
+    await expect(btnValidate).toBeDisabled();
+
+    // 5. URL valide
+    await urlInput.fill('maps/minimal.webp');
+    await expect(errorMsg).toBeHidden();
+    await expect(btnValidate).toBeEnabled();
 
     // Remplir les paramètres de calibration : 10 cases large, 8 cases haut, 140 px/case
-    await page.fill('#img-cells-wide', '10');
-    await page.fill('#img-cells-tall', '8');
-    await page.fill('#img-px-per-cell', '140');
+    await pageGM.fill('#img-cells-wide', '10');
+    await pageGM.fill('#img-cells-tall', '8');
+    await pageGM.fill('#img-px-per-cell', '140');
 
     // Valider l'importation
-    await page.click('#btn-validate-image-import');
+    await btnValidate.click();
 
-    const statusText = page.locator('#image-status');
+    const statusText = pageGM.locator('#image-status');
     await expect(statusText).toBeVisible();
-    await expect(statusText).toContainText('aperçu local');
+    await expect(statusText).toContainText('chargé et publié');
 
-    // Vérifier les propriétés de l'étage dans le store
-    const activeLevel = await page.evaluate(async () => {
+    // Récupérer les données du store GM après import
+    const { initialId, gmActiveLevelId, newLevel } = await pageGM.evaluate(async () => {
       const store = await import('../js/state/store.js');
-      return store.getActiveLevel();
+      const levels = store.getCampaign()?.levels ?? [];
+      const created = levels[levels.length - 1];
+      return {
+        initialId: levels[0]?.id,
+        gmActiveLevelId: store.getActiveLevelId(),
+        newLevel: created,
+      };
     });
 
-    expect(activeLevel).not.toBeNull();
-    expect(activeLevel?.widthCells).toBe(10);
-    expect(activeLevel?.heightCells).toBe(8);
-    expect(activeLevel?.pxPerCell).toBe(140);
-    expect(activeLevel?.grid.type).toBe('square');
-    expect(activeLevel?.imageUrl).toBe('');
+    expect(newLevel).not.toBeNull();
+    expect(newLevel?.widthCells).toBe(10);
+    expect(newLevel?.heightCells).toBe(8);
+    expect(newLevel?.pxPerCell).toBe(140);
+    expect(newLevel?.grid.type).toBe('square');
+    expect(newLevel?.imageUrl).toBe('maps/minimal.webp');
+
+    // Le MJ n'a PAS été déplacé par l'importation d'un nouvel étage
+    expect(gmActiveLevelId).toBe(initialId);
+
+    // ⭐ Temps 1 (Après import) : La vue joueurs reçoit l'étage dans sa campagne avec imageUrl,
+    // mais ne bascule PAS dessus et n'affiche PAS la nouvelle image
+    await pagePlayer.waitForFunction(async (expectedUrl) => {
+      const store = await import('../js/state/store.js');
+      const levels = store.getCampaign()?.levels ?? [];
+      return levels.some((l) => l.imageUrl === expectedUrl);
+    }, 'maps/minimal.webp');
+
+    const playerStateBeforeSwitch = await pagePlayer.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      return {
+        activeLevelId: store.getActiveLevelId(),
+        bgUrl: app.backgroundLayer.currentUrl,
+      };
+    });
+    expect(playerStateBeforeSwitch.activeLevelId).toBe(initialId);
+    expect(playerStateBeforeSwitch.bgUrl).not.toBe('maps/minimal.webp');
+
+    // ⭐ Temps 2 : Le MJ bascule d'étage par la barre, et alors seulement la tablette affiche la carte
+    await pageGM.selectOption('#gm-level-select', newLevel.id);
+
+    await pagePlayer.waitForFunction(async (targetId) => {
+      const store = await import('../js/state/store.js');
+      return store.getActiveLevelId() === targetId;
+    }, newLevel.id);
+
+    // ⚠ `expect.poll`, et surtout PAS un relevé pris juste après le `waitForFunction` ci-dessus.
+    // L'étage actif change **avant** le rendu, donc avant que `load()` soit seulement appelé, et le
+    // décodage de l'image est asynchrone : un relevé immédiat attrape `status: 'loading'`. La
+    // première version passait en local — un aller-retour Playwright coûte assez de millisecondes
+    // pour décoder un webp minuscule — et c'est exactement la forme des rouges CI-seulement que ce
+    // dépôt a déjà payés deux fois (`QUESTIONS-EN-ATTENTE.md` §F).
+    await expect
+      .poll(
+        () =>
+          pagePlayer.evaluate(() => {
+            const app = /** @type {any} */ (window).__RPG_APP__;
+            return {
+              status: app.backgroundLayer.status,
+              currentUrl: app.backgroundLayer.currentUrl,
+            };
+          }),
+        { timeout: 8000 }
+      )
+      .toEqual({ status: 'ready', currentUrl: 'maps/minimal.webp' });
   });
 
   test('Générateur de Pions & Réglages Grille : pion créé et grille modifiée', async ({ page }) => {
@@ -232,15 +338,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
 
     // 1. D'abord importer un étage pour avoir un niveau actif
     await page.click('.gm-tab-btn[data-tab="import-image"]');
-    await page.setInputFiles('#image-file-input', {
-      name: 'map-test.png',
-      mimeType: 'image/png',
-      buffer: TEST_PNG_BUFFER,
-    });
-
-    // Attendre la fin du chargement de l'image avant de calibrer : son `onload`
-    // écrase les cases suggérées (importPanel.js), et écraserait donc 10×8 s'il
-    // arrivait après ces `fill`. Un étage 1×1 refuserait ensuite le pion 2×2.
+    await page.fill('#image-url-input', 'maps/minimal.webp');
     await expect(page.locator('#btn-validate-image-import')).toBeEnabled();
 
     await page.fill('#img-cells-wide', '10');
@@ -328,11 +426,8 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
 
     // Importer étage et ajouter un pion
     await page.click('.gm-tab-btn[data-tab="import-image"]');
-    await page.setInputFiles('#image-file-input', {
-      name: 'dungeon.png',
-      mimeType: 'image/png',
-      buffer: TEST_PNG_BUFFER,
-    });
+    await page.fill('#image-url-input', 'maps/minimal.webp');
+    await expect(page.locator('#btn-validate-image-import')).toBeEnabled();
     await page.click('#btn-validate-image-import');
 
     await page.click('.gm-tab-btn[data-tab="token-maker"]');

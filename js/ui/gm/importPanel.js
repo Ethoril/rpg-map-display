@@ -1,19 +1,25 @@
 // @ts-check
 import { parseUvtt } from '../../import/uvtt.js';
 import { calibrateFromRect } from '../../import/imageCalibrate.js';
-import { createLevel } from '../../core/schema.js';
+import {
+  createLevel,
+  isPersistableAssetUrl,
+  isUnusableGoogleDriveUrl,
+  normalizeImageUrl,
+} from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
 /**
  * @typedef {import('../../core/types.js').Level} Level
+ * @typedef {import('../../transport/Transport.js').Transport} Transport
  */
 
 /**
  * Options d'initialisation du panneau d'importation.
  * @typedef {Object} ImportPanelOptions
  * @property {'uvtt'|'image'|'both'} [mode='both']
+ * @property {Transport} [transport]
  * @property {(result: ReturnType<typeof parseUvtt>) => void} [onImportUvtt]
- * @property {(level: Level) => void} [onImportImage]
  */
 
 /**
@@ -27,6 +33,7 @@ export function createImportPanel(container, options = {}) {
     throw new Error('createImportPanel : conteneur HTML requis');
   }
 
+  const { transport } = options;
   const mode = options.mode || 'both';
 
   const showUvtt = mode === 'uvtt' || mode === 'both';
@@ -72,17 +79,18 @@ export function createImportPanel(container, options = {}) {
         showImage
           ? `
       <!-- Section 2 : Importation Image avec Calibration -->
-      <div class="import-image-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333; opacity: 0.7;">
-        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #888;">⚙️ Diagnostic développeur — Import Image + Calibration</h3>
+      <div class="import-image-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
+        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Import Image & Calibration</h3>
         <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
-          Charge une image classique (JPG/PNG) et définis ses dimensions en cases.
-          Les changements restent locaux et ne sont pas persistés.
+          Indiquez l'URL de l'image (relative au dépôt, HTTPS ou lien Google Drive) pour ajouter et calibrer un étage dans la campagne.
         </p>
 
-        <label style="display: inline-block; padding: 0.5rem 1rem; background: #333; color: #fff; border-radius: 4px; cursor: pointer; text-align: center; margin-bottom: 0.75rem;">
-          <span>Choisir une image (JPG / PNG)</span>
-          <input type="file" id="image-file-input" accept="image/*" style="display: none;" />
-        </label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <label for="image-url-input" style="font-size: 0.85rem; color: #ccc;">URL de l'image (relative ou https://) :</label>
+          <input type="text" id="image-url-input" placeholder="maps/mon-image.webp ou lien Google Drive" style="padding: 0.5rem; background: #1e1e1e; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;" />
+        </div>
+
+        <div id="image-error-msg" style="display: none; padding: 0.5rem; background: #3a1a1a; color: #ff6b6b; border: 1px solid #662222; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.75rem;"></div>
 
         <div class="calibration-controls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
           <label for="img-cells-wide">Cases (largeur) :</label>
@@ -100,7 +108,7 @@ export function createImportPanel(container, options = {}) {
         </div>
 
         <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
-          Charger (aperçu local)
+          Charger et publier l'étage
         </button>
 
         <div id="image-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
@@ -124,7 +132,8 @@ export function createImportPanel(container, options = {}) {
     container.querySelector('#btn-validate-uvtt-import')
   );
 
-  const imageInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#image-file-input'));
+  const imageUrlInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#image-url-input'));
+  const imageErrorMsg = /** @type {HTMLElement|null} */ (container.querySelector('#image-error-msg'));
   const cellsWideInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-cells-wide'));
   const cellsTallInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-cells-tall'));
   const pxPerCellInput = /** @type {HTMLInputElement|null} */ (container.querySelector('#img-px-per-cell'));
@@ -136,7 +145,8 @@ export function createImportPanel(container, options = {}) {
   /** @type {HTMLImageElement|null} */
   let loadedCalibImage = null;
   /** @type {string|null} */
-  let loadedImageDataUrl = null;
+  let loadedNormalizedUrl = null;
+  let activeImageProbeId = 0;
   /** @type {ReturnType<typeof parseUvtt>|null} */
   let pendingUvtt = null;
 
@@ -169,8 +179,7 @@ export function createImportPanel(container, options = {}) {
 
   function refreshImageButton() {
     if (btnValidateImage) {
-      // Sans champ URL, le bouton s'active dès qu'une image est chargée
-      btnValidateImage.disabled = !loadedCalibImage;
+      btnValidateImage.disabled = !loadedCalibImage || !loadedNormalizedUrl;
     }
   }
 
@@ -181,12 +190,12 @@ export function createImportPanel(container, options = {}) {
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = () => {
         try {
-          const text = /** @type {string} */ (e.target?.result);
-          const parsed = parseUvtt(text);
+          const content = String(reader.result || '');
+          const parsed = parseUvtt(content);
 
-          // ⛔ **L'identifiant d'étage vient du nom de fichier, jamais du défaut de `parseUvtt`.**
+          // ── Identifiant dérivé du nom de fichier ─────────────────────────────────────────
           //
           // Un export Dungeondraft ne porte pas d'`id` : le parseur retombe sur `'uvtt-level'`, le
           // même pour toutes les cartes. `store.addLevel` remplaçant en place à identifiant égal,
@@ -330,34 +339,90 @@ export function createImportPanel(container, options = {}) {
     }
   }
 
-  if (imageInput) {
-    imageInput.addEventListener('change', () => {
-      const file = imageInput.files?.[0];
-      if (!file) return;
+  function handleUrlChange() {
+    if (!imageUrlInput) return;
+    if (imageErrorMsg) {
+      imageErrorMsg.style.display = 'none';
+      imageErrorMsg.textContent = '';
+    }
+    const saisie = imageUrlInput.value.trim();
+    if (!saisie) {
+      loadedCalibImage = null;
+      loadedNormalizedUrl = null;
+      drawCalibrationPreview();
+      refreshImageButton();
+      return;
+    }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = /** @type {string} */ (e.target?.result);
-        const img = new Image();
-        img.onload = () => {
-          loadedCalibImage = img;
-          loadedImageDataUrl = dataUrl;
+    if (isUnusableGoogleDriveUrl(saisie)) {
+      if (imageErrorMsg) {
+        imageErrorMsg.textContent =
+          "Ce lien Google Drive ne désigne pas un fichier (un dossier ?). Ouvrez l'image dans Drive, puis copiez son lien de partage.";
+        imageErrorMsg.style.display = 'block';
+      }
+      loadedCalibImage = null;
+      loadedNormalizedUrl = null;
+      drawCalibrationPreview();
+      refreshImageButton();
+      return;
+    }
 
-          // Calcul suggéré des dimensions en cases si pxPerCell est fourni
-          const pxCell = (pxPerCellInput ? parseInt(pxPerCellInput.value, 10) : 140) || 140;
-          const suggestedW = Math.round(img.width / pxCell);
-          const suggestedH = Math.round(img.height / pxCell);
+    const url = normalizeImageUrl(saisie);
+    if (url !== saisie) {
+      imageUrlInput.value = url;
+    }
 
-          if (suggestedW > 0 && cellsWideInput) cellsWideInput.value = String(suggestedW);
-          if (suggestedH > 0 && cellsTallInput) cellsTallInput.value = String(suggestedH);
+    if (!isPersistableAssetUrl(url)) {
+      if (imageErrorMsg) {
+        imageErrorMsg.textContent =
+          'URL non persistable : les images data: et blob: ou absolues non-https sont interdites. Utilisez une URL HTTPS ou relative au dépôt.';
+        imageErrorMsg.style.display = 'block';
+      }
+      loadedCalibImage = null;
+      loadedNormalizedUrl = null;
+      drawCalibrationPreview();
+      refreshImageButton();
+      return;
+    }
 
-          drawCalibrationPreview();
-          refreshImageButton();
-        };
-        img.src = dataUrl;
-      };
-      reader.readAsDataURL(file);
-    });
+    const probeId = ++activeImageProbeId;
+    const probe = new Image();
+    probe.onload = () => {
+      if (probeId !== activeImageProbeId) return;
+      loadedCalibImage = probe;
+      loadedNormalizedUrl = url;
+      if (imageErrorMsg) {
+        imageErrorMsg.style.display = 'none';
+        imageErrorMsg.textContent = '';
+      }
+
+      const pxCell = (pxPerCellInput ? parseInt(pxPerCellInput.value, 10) : 140) || 140;
+      const suggestedW = Math.round(probe.width / pxCell);
+      const suggestedH = Math.round(probe.height / pxCell);
+
+      if (suggestedW > 0 && cellsWideInput) cellsWideInput.value = String(suggestedW);
+      if (suggestedH > 0 && cellsTallInput) cellsTallInput.value = String(suggestedH);
+
+      drawCalibrationPreview();
+      refreshImageButton();
+    };
+    probe.onerror = () => {
+      if (probeId !== activeImageProbeId) return;
+      loadedCalibImage = null;
+      loadedNormalizedUrl = null;
+      if (imageErrorMsg) {
+        imageErrorMsg.textContent = `L'image n'a pas pu être chargée depuis ${url} — vérifiez l'adresse et le partage.`;
+        imageErrorMsg.style.display = 'block';
+      }
+      drawCalibrationPreview();
+      refreshImageButton();
+    };
+    probe.src = url;
+  }
+
+  if (imageUrlInput) {
+    imageUrlInput.addEventListener('input', handleUrlChange);
+    imageUrlInput.addEventListener('change', handleUrlChange);
   }
 
   if (cellsWideInput) cellsWideInput.addEventListener('input', drawCalibrationPreview);
@@ -370,7 +435,7 @@ export function createImportPanel(container, options = {}) {
     btnValidateImage.addEventListener('click', () => {
       if (
         !loadedCalibImage ||
-        !loadedImageDataUrl ||
+        !loadedNormalizedUrl ||
         !cellsWideInput ||
         !cellsTallInput ||
         !pxPerCellInput
@@ -392,7 +457,7 @@ export function createImportPanel(container, options = {}) {
       const level = createLevel({
         id: `level-${Date.now()}`,
         name: 'Carte Image Calibrée',
-        // Pas d'imageUrl persistée — c'est un aperçu local temporaire
+        imageUrl: loadedNormalizedUrl,
         pxPerCell: pxPerCell,
         widthCells: cellsWide,
         heightCells: cellsTall,
@@ -406,20 +471,34 @@ export function createImportPanel(container, options = {}) {
         },
       });
 
-      store.addLevel(level);
+      try {
+        store.addLevel(level);
 
-      const title = document.createElement('strong');
-      title.textContent = '✓ Image calibrée chargée (aperçu local uniquement).';
-      setImportStatus(imageStatus, '#2ecc71', [
-        title,
-        document.createElement('br'),
-        statusText(
-          `Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case)`
-        ),
-      ]);
+        if (transport) {
+          transport.publish({
+            type: 'level.add',
+            payload: { level },
+            at: Date.now(),
+            by: 'gm',
+          });
+        }
 
-      if (options.onImportImage) {
-        options.onImportImage(level);
+        const title = document.createElement('strong');
+        title.textContent = `✓ Étage "${level.name}" chargé et publié.`;
+        setImportStatus(imageStatus, '#2ecc71', [
+          title,
+          document.createElement('br'),
+          statusText(
+            `Dimensions : ${level.widthCells}×${level.heightCells} cases (${Math.round(level.pxPerCell)} px/case)`
+          ),
+        ]);
+      } catch (err) {
+        const title = document.createElement('strong');
+        title.textContent = 'Erreur :';
+        setImportStatus(imageStatus, '#e07070', [
+          title,
+          statusText(` ${err instanceof Error ? err.message : String(err)}`),
+        ]);
       }
     });
   }
