@@ -184,30 +184,37 @@ export function bootstrapPlayerView(options) {
     const exactMovablePc =
       exactTappedToken && isPlayerManipulableToken(exactTappedToken) ? exactTappedToken : null;
 
+    // ⚠ Passer d'un PJ à un autre reste possible même sur la case du pion sélectionné : deux PJ
+    // peuvent être empilés, et le second doit rester désignable au doigt. C'est pour ça que ce
+    // bloc est AVANT le franchissement et non après — le déplacer sous lui rendrait le second PJ
+    // insélectionnable tant que le premier l'est, `findHitToken` départageant par identifiant.
     if (exactMovablePc && exactMovablePc.id !== selectedToken.id) {
       store.selectToken(exactMovablePc.id);
       return;
     }
 
-    if (exactTappedToken && exactTappedToken.id !== selectedToken.id) {
-      // Un PNJ ou un pion interdit présent exactement sur la case n'est jamais une destination de mouvement implicite.
-      onDestinationRejected(targetCell, 'occupied');
-      store.selectToken(null);
-      return;
-    }
-
+    // ── Lot 3, S-03 : franchir une liaison ────────────────────────────────────────────────
+    //
+    // Le geste est délibérément en **deux temps** : amener le pion sur l'escalier, puis retaper
+    // sa case pour monter. Un franchissement en un seul tap ferait changer d'étage à chaque fois
+    // qu'on vise l'escalier pour s'y poster, et la table verrait l'autre étage sans l'avoir
+    // demandé. Retaper sa propre case ne servait à rien jusqu'ici : le geste était libre.
+    //
+    // ⛔ Ce bloc doit rester AVANT le refus « case occupée » ci-dessous, et il y était après le
+    // 16 août 2026 seulement. Rien n'interdit au MJ de poser un PNJ — ou un pion 2×2 — sur la case
+    // où se tient déjà un PJ : `exactTokenAtCell` rend alors le PREMIER pion du tableau, et si
+    // c'est le PNJ, le tap partait en « case occupée » puis désélectionnait, alors que le joueur
+    // avait simplement retapé sa propre case. Il resélectionnait, l'invite de franchissement se
+    // rallumait, le tap refusait encore : boucle sans issue devant toute la table, arbitrée par
+    // l'ordre du tableau de pions. Or taper la case où l'on est déjà n'est jamais un déplacement
+    // vers une case occupée — la question de l'occupation ne s'y pose pas.
     if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
-      // ── Lot 3, S-03 : franchir une liaison ──────────────────────────────────────────────
-      //
-      // Le geste est délibérément en **deux temps** : amener le pion sur l'escalier, puis retaper
-      // sa case pour monter. Un franchissement en un seul tap ferait changer d'étage à chaque fois
-      // qu'on vise l'escalier pour s'y poster, et la table verrait l'autre étage sans l'avoir
-      // demandé. Retaper sa propre case ne servait à rien jusqu'ici : le geste était libre.
       const liaison = store.findLinkAtCell(activeLevel.id, targetCell);
       if (
         liaison &&
         selectedToken.kind === 'pc' &&
         !selectedToken.locked &&
+        !selectedToken.hidden &&
         selectedToken.playerMovable !== false
       ) {
         let destination;
@@ -224,6 +231,13 @@ export function bootstrapPlayerView(options) {
           by: 'players',
         });
       }
+      return;
+    }
+
+    if (exactTappedToken && exactTappedToken.id !== selectedToken.id) {
+      // Un PNJ ou un pion interdit présent exactement sur la case n'est jamais une destination de mouvement implicite.
+      onDestinationRejected(targetCell, 'occupied');
+      store.selectToken(null);
       return;
     }
 

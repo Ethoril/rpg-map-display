@@ -205,6 +205,40 @@ export const EVENT_RETENTION_CLIENT_STALE_AFTER_MS = 120_000;
 export const SESSION_INSPECTION_MAX = 20;
 
 /**
+ * Seuil à partir duquel un client soupçonne SON PROPRE bail d'être périmé. Volontairement
+ * la moitié du seuil serveur, et jamais l'égal.
+ *
+ * ⛔ Ne PAS réaligner sur `EVENT_RETENTION_CLIENT_STALE_AFTER_MS`. Le purgeur compare
+ * l'horodatage SERVEUR du bail ; le client, lui, ne peut dater que la confirmation qu'il
+ * reçoit, donc strictement plus tard que l'écriture côté serveur. À seuils égaux il se
+ * croit encore frais alors que le purgeur l'a déjà sorti de la barrière : c'est le trou de
+ * la séance du 16 août 2026. L'asymétrie est le bon sens des coûts : un faux positif coûte
+ * une lecture d'instantané, un faux négatif coûte une séance désynchronisée.
+ *
+ * Un seuil plus bas ne réintroduit PAS la régression que le test négatif interdit (relire un
+ * instantané écrit 250 ms après la mutation, donc en retard sur l'état local) : un client
+ * dont le bail a 60 s n'a rien appliqué depuis 60 s — il était gelé. L'instantané ne peut
+ * donc pas être en retard sur son état, il ne peut qu'être en avance.
+ */
+export const RETENTION_LEASE_SUSPECT_AFTER_MS = EVENT_RETENTION_CLIENT_STALE_AFTER_MS / 2;
+
+/**
+ * Le bail de rétention est-il assez vieux pour que des événements aient pu être purgés sans
+ * que ce client les lise ? Fonction pure, donc testable sans navigateur ni Firebase.
+ *
+ * `lastWriteAt` à 0 signifie « jamais confirmé par le serveur » : c'est vieux, pas frais. Une
+ * date dans le futur (horloge locale reculée) reste conservatrice et ne périme rien.
+ *
+ * @param {number} lastWriteAt horloge LOCALE de la dernière écriture de curseur CONFIRMÉE
+ * @param {number} now
+ * @param {number} [suspectAfterMs]
+ * @returns {boolean}
+ */
+export function isRetentionLeaseStale(lastWriteAt, now, suspectAfterMs = RETENTION_LEASE_SUSPECT_AFTER_MS) {
+  return now - lastWriteAt > suspectAfterMs;
+}
+
+/**
  * Retourne le dernier curseur dont tous les clients encore actifs ont accus\u00e9 r\u00e9ception.
  * Une trace malform\u00e9e, sans curseur, ou dont l'horodatage serveur n'est pas exploitable
  * bloque le nettoyage : une incertitude ne doit jamais devenir une suppression.
@@ -806,6 +840,10 @@ export class FirebaseTransport {
     this._lastRetentionAttemptAt = 0;
     /** @type {Promise<number>|null} */
     this._retentionPromise = null;
+    /** @type {number} Horloge LOCALE de la dernière écriture de curseur confirmée par le serveur */
+    this._lastRetentionWriteAt = 0;
+    /** @type {Promise<void>|null} Resynchro en vol, partagée par tous les appelants */
+    this._resyncPromise = null;
   }
 
   // --- Authentification -----------------------------------------------------
@@ -987,6 +1025,23 @@ export class FirebaseTransport {
       /** @type {import('firebase/app').FirebaseApp} */ (this._app)
     );
 
+    await this._openEventChannel(epoch);
+  }
+
+  /**
+   * Ouvre le canal d'événements : tampon, barrière de rétention, repère de départ, écoute
+   * vivante, puis activation du bail. Partagé par `connect()` et `resync()` — c'est la
+   * séquence `buffering → draining → live` qui rend la reprise insensible à la course entre
+   * la lecture de l'instantané et les deltas qui arrivent pendant.
+   *
+   * @private
+   * @param {number} epoch
+   * @returns {Promise<void>}
+   */
+  async _openEventChannel(epoch) {
+    const sessionId = /** @type {string} */ (this._sessionId);
+    const db = /** @type {import('firebase/database').Database} */ (this._db);
+
     this._deliveryState = 'buffering';
     this._snapshotPromise = null;
     this._eventBuffer = [];
@@ -994,7 +1049,15 @@ export class FirebaseTransport {
     this._eventsSinceRetentionAttempt = 0;
     this._lastRetentionAttemptAt = 0;
 
-    const eventsRef = ref(this._db, `session/${sessionId}/events`);
+    // ⛔ Ne PAS redater `_lastRetentionWriteAt` ici. Tout ce qui suit peut échouer — lecture du
+    // repère refusée, réseau coupé — et laisserait alors ce client sans écoute, sans bail, mais
+    // avec un bail fraîchement daté : `mayHaveMissedEvents()` répondrait faux pendant tout le
+    // délai de péremption, donc plus aucun retour au premier plan ne retenterait. Laisser la
+    // date VIEILLE sur un canal qui n'a pas su s'ouvrir est précisément ce qui rend la reprise
+    // automatique. Seules `_activateRetentionClient` et `_writeRetentionCursor` datent ce
+    // champ, et uniquement sur confirmation serveur.
+
+    const eventsRef = ref(db, `session/${sessionId}/events`);
 
     // La barrière `joining` doit exister AVANT la lecture du repère. Sans elle, un autre
     // client pourrait publier puis purger entre le `get()` ci-dessous et l'inscription de ce
@@ -1069,6 +1132,76 @@ export class FirebaseTransport {
   }
 
   /**
+   * Le bail de rétention a-t-il péri pendant que l'onglet dormait ? Si oui, des événements
+   * ont pu être purgés sans que ce client les lise : la purge supprime les clés <= frontière,
+   * et `startAfter(curseur)` ne les livrera JAMAIS — elles n'existent plus. C'est le trou
+   * définitif de la séance du 16 août 2026.
+   *
+   * ⛔ Calcul PARESSEUX, sans drapeau ni écouteur `visibilitychange` dans le transport. Une
+   * version antérieure posait son propre écouteur et le REPOSAIT à chaque resynchro : le DOM
+   * classe les écouteurs par ordre d'insertion, donc le transport repassait derrière celui de
+   * l'application, qui lisait alors le drapeau avant qu'il soit posé. Le correctif ne
+   * fonctionnait qu'une fois par chargement de page. Un calcul à la demande ne peut pas être
+   * court-circuité par un ordre d'écouteurs.
+   *
+   * ⛔ Ne PAS non plus fonder ce constat sur « mon curseur a disparu du canal » : la frontière
+   * est le MINIMUM des curseurs actifs, donc le curseur du client le plus en retard est
+   * légitimement supprimé à chaque purge normale.
+   *
+   * @returns {boolean}
+   */
+  mayHaveMissedEvents() {
+    return isRetentionLeaseStale(this._lastRetentionWriteAt, Date.now());
+  }
+
+  /**
+   * Rouvre le canal d'événements sans changer d'identité : `clientId`, `sessionId` et `role`
+   * sont conservés — c'est ce qui distingue une resynchro d'une reconnexion. La présence, elle,
+   * n'est pas coupée : elle appartient au badge de version, et le `clientId` ne bouge pas.
+   *
+   * Après cet appel, `snapshot()` refait une vraie lecture et la séquence
+   * `buffering → draining → live` se rejoue : les événements arrivés pendant la lecture sont
+   * tamponnés puis remis dans l'ordre. C'est ce qui rend la reprise sans course.
+   *
+   * ⛔ Un second réveil pendant l'aller-retour ne doit PAS lancer une resynchro concurrente :
+   * deux `_openEventChannel` s'entrelaceraient, l'incrément d'epoch ferait lever la première
+   * (« Barrière de rétention perdue pendant la connexion ») en erreur affichée au joueur, un
+   * `_liveUnsubscribe` serait écrasé donc une écoute `onChildAdded` fuirait. La resynchro en
+   * vol est donc mémoïsée et partagée.
+   *
+   * @returns {Promise<void>}
+   */
+  resync() {
+    if (this._resyncPromise) return this._resyncPromise;
+    if (!this._db || !this._sessionId || !this._clientId) {
+      return Promise.reject(new Error('Transport non connecté'));
+    }
+    this._resyncPromise = (async () => {
+      if (this._liveUnsubscribe) {
+        this._liveUnsubscribe();
+        this._liveUnsubscribe = null;
+      } else if (this._liveQuery) {
+        off(this._liveQuery);
+      }
+      this._liveQuery = null;
+      // ⛔ Ne PAS attendre ce retrait. Une promesse d'écriture RTDB ne se résout qu'à
+      // l'acquittement serveur et ne rejette JAMAIS hors connexion — or ce code s'exécute
+      // exactement quand le réseau se rétablit à peine. L'attendre laisserait le client sans
+      // aucun écouteur indéfiniment. Le nouveau bail s'écrit de toute façon au même chemin
+      // sous le même `clientId` et écrase celui-ci.
+      this._releaseRetentionClient().catch((err) =>
+        this._reportError(err, 'retrait du curseur de rétention avant resynchro')
+      );
+
+      this._sessionEpoch += 1;
+      await this._openEventChannel(this._sessionEpoch);
+    })().finally(() => {
+      this._resyncPromise = null;
+    });
+    return this._resyncPromise;
+  }
+
+  /**
    * Publie un événement sur le canal temps réel.
    *
    * Volontairement sans valeur de retour (l'interface l'impose) : l'appelant n'attend pas la
@@ -1127,10 +1260,17 @@ export class FirebaseTransport {
         eventCursor: this._eventCursor,
         at: serverTimestamp(),
       });
+      // Daté à la CONFIRMATION, jamais à l'émission : une écriture partie mais jamais arrivée
+      // laisse le bail périmé côté serveur, et c'est cette péremption-là qui ouvre le trou.
+      this._lastRetentionWriteAt = Date.now();
     } catch (err) {
       this._reportError(err, `activation de la rétention "${this._sessionId}"`);
       throw err;
     }
+    // ⛔ Toujours désarmer avant d'armer : une resynchro qui rouvre le canal repasse ici, et
+    // un `setInterval` posé par-dessus un autre laisse le premier battre pour toujours sur un
+    // epoch mort — une minuterie fantôme par réveil.
+    if (this._retentionHeartbeat) clearInterval(this._retentionHeartbeat);
     this._retentionHeartbeat = setInterval(
       () => this._writeRetentionCursor(epoch),
       PRESENCE_HEARTBEAT_MS
@@ -1146,7 +1286,12 @@ export class FirebaseTransport {
     update(this._retentionClientRef, {
       eventCursor: this._eventCursor,
       at: serverTimestamp(),
-    }).catch((err) => this._reportError(err, 'rafra\u00eechissement du curseur de r\u00e9tention'));
+    })
+      .then(() => {
+        // Voir `_activateRetentionClient` : la confirmation serveur, pas l'\u00e9mission.
+        this._lastRetentionWriteAt = Date.now();
+      })
+      .catch((err) => this._reportError(err, 'rafra\u00eechissement du curseur de r\u00e9tention'));
   }
 
   /**
@@ -1313,10 +1458,16 @@ export class FirebaseTransport {
             if (localCamp) {
               const campObj = JSON.parse(localCamp);
               const sessObj = localSess ? JSON.parse(localSess) : {};
+              // ⛔ `activeHandout` fait partie du repli, à l'identique de
+              // `store.loadFromLocalStorage`. `restoreFromSnapshot` remet le champ à `null`
+              // quand il manque : l'omettre effacerait définitivement de la tablette le
+              // document affiché aux joueurs, dès la première resynchro dont la lecture
+              // Firestore échoue.
               etat = {
                 campaign: campObj,
                 activeLevelId: sessObj.activeLevelId,
                 selectedTokenId: sessObj.selectedTokenId,
+                activeHandout: sessObj.activeHandout,
               };
             }
           }
@@ -1334,7 +1485,16 @@ export class FirebaseTransport {
       setTimeout(() => this._activateBufferedEvents(epoch), 0);
       return etat;
     })();
-    return this._snapshotPromise;
+    // ⛔ Ne mémoïser que le succès. Un rejet mémoïsé figerait `_deliveryState` à `'buffering'`
+    // pour toujours : les événements s'empileraient dans `_eventBuffer` sans jamais être
+    // livrés, et tout `snapshot()` ultérieur rendrait le même rejet. Un appel suivant doit
+    // pouvoir retenter.
+    const enCours = this._snapshotPromise;
+    enCours.catch(() => {
+      // Comparaison d'identité : une resynchro a pu remplacer la promesse entre-temps.
+      if (this._snapshotPromise === enCours) this._snapshotPromise = null;
+    });
+    return enCours;
   }
 
   /**

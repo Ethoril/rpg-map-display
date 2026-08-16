@@ -40,6 +40,7 @@ import {
   createSessionCode,
   normalizeSessionId,
   showEvictionOverlay,
+  withDeadline,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
@@ -765,6 +766,12 @@ export async function bootstrapGMApp(options = {}) {
   function acceptEviction(label) {
     unsubscribeEvents?.();
     unsubscribeEvents = null;
+    // Le transport va être coupé : sans ce retrait, un MJ congédié qui revient au premier plan
+    // relancerait une resynchro sur un transport déconnecté et se verrait afficher une erreur
+    // réseau purement cosmétique par-dessus l'écran d'éviction.
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityRestored);
+    }
     if (snapshotTimer !== null) {
       clearTimeout(snapshotTimer);
       snapshotTimer = null;
@@ -908,6 +915,44 @@ export async function bootstrapGMApp(options = {}) {
     store.loadFromLocalStorage(sessionId);
     const persistenceError = store.getLastPersistenceError();
     if (persistenceError) networkStatus.update('error', persistenceError);
+  }
+
+  /**
+   * Le poste MJ dort aussi — c'est même celui dont on change d'onglet. Onglet masqué, il cesse
+   * de rafraîchir son bail de rétention ; passé le délai de péremption, un autre poste purge
+   * des événements qu'il n'a jamais lus et que le canal ne rejouera pas.
+   *
+   * ⛔ La relecture est conditionnée au bail réellement périmé, jamais au simple réveil :
+   * l'instantané est réécrit 250 ms après chaque mutation, donc le relire sans raison ferait
+   * régresser l'état de façon permanente. Voir la même garde dans `player.js`.
+   */
+  const onVisibilityRestored = async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (!transportExtended?.mayHaveMissedEvents?.()) return;
+    // ⛔ Attente BORNÉE, comme dans `player.js` : la réouverture du canal passe par des
+    // opérations réseau qui ne rejettent pas hors connexion, et ce code s'exécute justement
+    // quand le réseau se rétablit à peine. Sans échéance, ce `await` pourrait ne jamais rendre
+    // la main.
+    const reprise = (async () => {
+      await transportExtended.resync();
+      const snapshot = /** @type {any} */ (await transportExtended.snapshot());
+      applyingRemote = true;
+      try {
+        if (snapshot && (snapshot.campaign || snapshot.levels)) {
+          store.restoreFromSnapshot(snapshot, { sessionId });
+        }
+      } finally {
+        applyingRemote = false;
+      }
+    })();
+    try {
+      await withDeadline(reprise, 'resynchro au réveil');
+    } catch (error) {
+      networkStatus.update('error', error);
+    }
+  };
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityRestored);
   }
 
   gmPanel = panelContainer
@@ -1410,6 +1455,7 @@ export async function bootstrapGMApp(options = {}) {
   const destroy = () => {
     if (typeof document !== 'undefined') {
       document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('visibilitychange', onVisibilityRestored);
     }
     pointerInput.detach();
     // Sans ceci, le flux vidéo survit à la destruction de la vue : Chromium continue de

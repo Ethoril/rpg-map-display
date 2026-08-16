@@ -14,13 +14,14 @@ import { PortalsLayer } from '../render/layers/portals.js';
 import { LinksLayer } from '../render/layers/links.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
-import { decodeFogPng } from '../vision/fog.js';
+import { decodeFogPng, getOrExtractMaskAlpha, isCellVisibleInMask } from '../vision/fog.js';
 import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
+import { isPlayerManipulableToken } from '../input/tokenHit.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
 import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
 import { VISION_REQUEST_EVENT } from '../core/constants.js';
-import { createNetworkStatus, connectSession, normalizeSessionId } from './session.js';
+import { createNetworkStatus, connectSession, normalizeSessionId, withDeadline } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 
@@ -34,6 +35,60 @@ const ICON_FULLSCREEN_ENTER =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
 const ICON_FULLSCREEN_EXIT =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h3a2 2 0 0 0 2-2V3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M21 16h-3a2 2 0 0 0-2 2v3"/></svg>';
+
+/**
+ * La case sur laquelle une invite de franchissement a le droit de s'allumer, ou `null`.
+ *
+ * ⚠ Ces conditions doivent rester l'exact équivalent de la branche de franchissement de
+ * `ui/player/bootstrap.js` (« Lot 3, S-03 »). Les dissocier ferait promettre à l'écran un geste
+ * que le tap refuserait ensuite en silence, et le joueur retaperait indéfiniment — c'est-à-dire
+ * précisément le défaut de séance que cette invite existe pour corriger.
+ *
+ * `hidden` en fait partie, et la branche de franchissement de `bootstrap.js` le teste désormais
+ * aussi. Les deux ont été alignées le 16 août 2026 : l'écran se taisait pour un PJ rendu invisible
+ * par le MJ, mais le tap le franchissait quand même — `updateToken` ne purge pas la sélection,
+ * contrairement à `removeToken`, donc une sélection d'avant le masquage survit. Le personnage
+ * changeait d'étage sans que rien n'apparaisse à l'écran.
+ *
+ * ⛔ La visibilité en fait partie aussi, et pour une raison de fond : l'invite se rend AU-DESSUS
+ * du brouillard, donc rien ne la masque. Or `findHitToken` ne consulte pas le fog : un joueur peut
+ * sélectionner son pion à l'aveugle sur un écran noir. Sans garde, « Retaper pour prendre
+ * l'escalier » s'y écrivait, sous un pion que la couche des pions avait écarté — et apprenait au
+ * joueur qu'il y a une liaison là.
+ *
+ * ⚠ Les DEUX conditions de `TokensLayer`, pas une seule. Une première version ne testait que le
+ * masque publié ; c'est nécessaire mais pas suffisant, car la couche des pions écarte en plus tout
+ * pion dont la case d'ancrage n'est pas dans ce masque — PJ hors de toute lumière, masque calculé
+ * pour d'autres, masque en retard d'une publication. L'invite se serait peinte sur du noir dans
+ * tous ces cas-là.
+ *
+ * @param {{selectedToken: import('../core/types.js').Token|null}} state
+ * @param {import('../core/types.js').Level} activeLevel
+ * @param {HTMLCanvasElement|null} visibleCanvas Masque de vision courant de cet étage
+ * @returns {{a: number, b: number}|null}
+ */
+function promptAtCellOf(state, activeLevel, visibleCanvas) {
+  const porteur = state.selectedToken;
+  if (!porteur || porteur.levelId !== activeLevel.id) return null;
+  if (porteur.hidden) return null;
+  if (!isPlayerManipulableToken(porteur)) return null;
+  if (store.getSessionVision(activeLevel.id) === null) return null;
+  const maskAlpha = visibleCanvas
+    ? getOrExtractMaskAlpha(visibleCanvas, activeLevel.widthCells, activeLevel.heightCells)
+    : null;
+  if (!maskAlpha) return null;
+  if (
+    !isCellVisibleInMask(
+      porteur.cell,
+      maskAlpha,
+      activeLevel.widthCells,
+      activeLevel.heightCells
+    )
+  ) {
+    return null;
+  }
+  return porteur.cell;
+}
 
 /**
  * @returns {Promise<() => void>}
@@ -435,7 +490,10 @@ export async function bootstrapPlayerApp(options = {}) {
       },
       links: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        linksLayer.render(stage.context, grid, activeLevel, state.campaign?.links ?? [], { role: 'players', zoom: camera.zoom });
+        linksLayer.render(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
+          role: 'players',
+          zoom: camera.zoom,
+        });
         layerDurations.links = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       moveZone: () => {
@@ -506,6 +564,12 @@ export async function bootstrapPlayerApp(options = {}) {
         animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
           now: Date.now(),
           zoom: camera.zoom,
+        });
+        // ⛔ Au-dessus du brouillard, et pas avec le reste des liaisons au rang 5. L'invite
+        // s'écrit dans la case du VOISIN, que rien ne garantit explorée — voir `renderPrompt`.
+        linksLayer.renderPrompt(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
+          zoom: camera.zoom,
+          promptAtCell: promptAtCellOf(state, activeLevel, getPlayerVisibleCanvas(activeLevel)),
         });
         layerDurations.feedback = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -656,8 +720,37 @@ export async function bootstrapPlayerApp(options = {}) {
     });
   }
 
-  const onVisibilityRestored = () => {
+  const onVisibilityRestored = async () => {
     if (typeof document !== 'undefined' && document.hidden) return;
+    // ⛔ Ne relire l'instantané QUE si le bail de rétention a réellement péri. L'instantané est
+    // réécrit 250 ms après chaque mutation : il peut donc être en retard sur un événement déjà
+    // appliqué ici. Le relire à chaque réveil ferait RÉGRESSER l'état — une porte rouverte, un
+    // pion revenu en arrière — et définitivement, puisque cet événement ne sera pas redélivré.
+    if (transportExtended?.mayHaveMissedEvents?.()) {
+      // ⛔ Attente BORNÉE. Le transport rouvre son canal par des opérations réseau qui ne
+      // rejettent pas hors connexion : sans échéance, ce `await` pourrait ne jamais rendre la
+      // main et `requestVisionResend()` ne partirait plus JAMAIS. Au dépassement on journalise
+      // et on continue ; la resynchro poursuit sa route et s'appliquera si elle aboutit.
+      const reprise = (async () => {
+        await transportExtended.resync();
+        const snapshot = /** @type {any} */ (await transportExtended.snapshot());
+        applyingRemote = true;
+        try {
+          if (snapshot && (snapshot.campaign || snapshot.levels)) {
+            store.restoreFromSnapshot(snapshot, { sessionId });
+          }
+        } finally {
+          applyingRemote = false;
+        }
+      })();
+      try {
+        await withDeadline(reprise, 'resynchro au réveil');
+      } catch (error) {
+        networkStatus.update('error', error);
+      }
+    }
+    // Toujours, et APRÈS la resynchro quand il y en a une : la demande doit partir alors que
+    // l'écoute est rebranchée, sans quoi la réponse du MJ n'atteindrait personne.
     requestVisionResend();
   };
   if (typeof document !== 'undefined') {

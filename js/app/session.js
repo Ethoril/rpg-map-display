@@ -237,6 +237,40 @@ export function showEvictionOverlay(options = {}) {
 }
 
 /**
+ * Délai au-delà duquel une resynchro de réveil est abandonnée par l'appelant.
+ *
+ * ⛔ Une promesse d'écriture ou de lecture réseau ne se résout qu'à l'acquittement serveur et
+ * ne rejette PAS hors connexion. Or la resynchro se déclenche au retour au premier plan,
+ * exactement quand le réseau se rétablit à peine : sans borne, la page attendrait pour
+ * toujours et ne réclamerait jamais la vision au MJ.
+ */
+export const RESYNC_DEADLINE_MS = 10_000;
+
+/**
+ * Course entre un travail réseau et une échéance. L'échec de l'échéance rejette ; le travail,
+ * lui, continue sa vie — s'il aboutit plus tard, son effet reste bon, simplement en retard.
+ *
+ * @template T
+ * @param {Promise<T>} travail
+ * @param {string} libelle ce qui a dépassé l'échéance, pour le bandeau réseau
+ * @param {number} [deadlineMs]
+ * @returns {Promise<T>}
+ */
+export function withDeadline(travail, libelle, deadlineMs = RESYNC_DEADLINE_MS) {
+  /** @type {ReturnType<typeof setTimeout>|undefined} */
+  let minuterie;
+  const echeance = /** @type {Promise<never>} */ (
+    new Promise((_, reject) => {
+      minuterie = setTimeout(
+        () => reject(new Error(`${libelle} : pas de réponse du réseau après ${deadlineMs} ms`)),
+        deadlineMs
+      );
+    })
+  );
+  return Promise.race([travail, echeance]).finally(() => clearTimeout(minuterie));
+}
+
+/**
  * Construit et connecte le transport d'une page. Un transport injecté sert aux tests et au
  * mode LAN ; Firebase est utilisé sinon lorsque sa configuration publique est disponible.
  *

@@ -1,6 +1,14 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
-> Dernière mise à jour : 12 août 2026 — ✅ **le lot 3 est fermé à 6/6 et le décompte passe à 36 sur
+> Dernière mise à jour : 16 août 2026 — **séance MJ + tablette, trois retours du mainteneur et
+> trois correctifs.** Lire « Séance du 16 août 2026 » plus bas. En une ligne chacun : les liaisons
+> d'étage **fonctionnaient** mais leur geste en deux temps était introuvable ; la désynchro de la
+> tablette a une cause nommée, la **purge de rétention qui sort un client endormi de la barrière** ;
+> les portes fermées ne se distinguaient pas du décor. Le petit lag résiduel est **clos sur décision
+> du mainteneur** — « sans conséquence, on arrête de le chasser ». Le décompte du §11 ne bouge pas :
+> ces trois correctifs réparent de l'acquis, ils n'ajoutent aucun critère.
+>
+> Avant cela, le 12 août 2026 — ✅ **le lot 3 est fermé à 6/6 et le décompte passe à 36 sur
 > 41.** Deux acquis le même jour : le **ping** du MJ (chantier X) et le **critère 1 du lot 3**, ce
 > dernier étant satisfait depuis un moment par `test_village_complet` — je l'avais mal lu et j'en
 > avais fait une question de licence. ⛔ **La licence est le domaine du mainteneur et ne conditionne
@@ -1724,6 +1732,92 @@ fenêtre récente supprime le problème au lieu de le rattraper.
 **2. Outil de ménage des sessions passées** — utile en complément, jamais en remplacement.
 `transport.purgeEvents()` **existe déjà** mais n'est câblé que dans `js/app/diag.js`, et ne vide
 que la session **courante**. Rien ne permet aujourd'hui de faire le ménage sur les anciennes.
+
+## Séance du 16 août 2026 — trois retours de table, trois correctifs
+
+Séance réelle Mac + tablette. Quatre retours du mainteneur, dont un clos sans code.
+
+### 0. Le petit lag résiduel — clos sur décision, sans mesure
+
+« Petit lag par moment toujours, mais sans conséquence, pour l'instant on arrête de le chasser. »
+⛔ **Ne pas rouvrir de son propre chef.** La campagne de diagnostics du 11/08 avait déjà conclu à
+l'absence de problème de performance ; c'est la deuxième fois que le sujet est fermé par le
+mainteneur. Il se rouvrira s'il le dit.
+
+### 1. Les liaisons d'étage — le mécanisme marchait, l'invitation manquait
+
+« Les joueurs n'arrivent pas à utiliser les liaisons entre étage, quand on clique dessus ça déplace
+le perso. »
+
+Reproduit avec un pion posé **à côté** de l'escalier — tous les tests existants le posaient
+**dessus**, d'où leur vert. Le geste réel compte trois taps : sélectionner, marcher jusqu'à
+l'escalier, **retaper sa propre case**. Les joueurs s'arrêtaient au deuxième. Le franchissement en
+deux temps est délibéré (`ui/player/bootstrap.js`) et le reste ; ce qui a été ajouté, c'est
+l'invite : `LinksLayer.renderPrompt()` écrit « Retaper pour prendre l'escalier » au-dessus de la
+case dès que le pion sélectionné se tient sur une extrémité franchissable.
+
+⛔ Quatre pièges rencontrés en l'écrivant, chacun commenté à l'endroit qui le prévient :
+
+- **L'invite se rend au rang `feedback`, au-dessus du brouillard**, et pas avec les liaisons au
+  rang 5. Elle s'écrit dans la case du *voisin*, que rien ne garantit explorée : un escalier collé
+  au mur nord laissait le joueur sans texte. Même raison que le ping, déjà écrite dans `stage.js`.
+- **Le libellé vient de `link.kind`, jamais de `level.order`.** `order` est une clé de tri
+  d'affichage, à 0 par défaut, exposée par aucune UI MJ, et `prepare-maps.mjs` la remplit avec
+  l'index dans le pack : un donjon listant la surface puis les sous-sols aurait affiché « monter »
+  à qui descend.
+- **Le dégagement vertical vaut deux tiers du pas de ligne, pas la moitié.** La moitié est juste en
+  carré et fausse en hexagonal — pas odd-r √3/2·px contre demi-hauteur px/√3 — et l'invite
+  retombait sur le pion dès le zoom 0,89.
+- **La branche de franchissement passe avant les arbitrages d'occupation** dans `bootstrap.js`. Un
+  PNJ empilé sur la case d'un PJ faisait partir le tap en « case occupée » puis désélectionnait :
+  le joueur resélectionnait, l'invite se rallumait, boucle sans issue arbitrée par l'ordre du
+  tableau de pions.
+
+### 2. La désynchro de la tablette — une cause nommée, et une reprise automatique
+
+« J'ai eu un moment de désynchro de la tablette, il a fallu que je fasse F5. Peut-être en ayant
+changé d'onglet sur le mac + période d'inactivité, mais je ne suis pas sûr. »
+
+⭐ **Cause établie par lecture, pas par mesure** — l'intuition du mainteneur était la bonne.
+`getAcknowledgedEventFrontier` **ignore les clients dont le bail de rétention a plus de 120 s**,
+puis la purge supprime tout ce qui précède la frontière des clients restants. Or un onglet masqué
+n'écrit plus son curseur : sa minuterie de 30 s est bridée puis gelée par le navigateur. Passé deux
+minutes en arrière-plan, l'écran endormi sort de la barrière, un autre poste purge des événements
+qu'il n'a jamais lus, et son écoute `startAfter(curseur)` ne les lui livrera **jamais**. Trou
+définitif jusqu'au F5 — qui relit l'instantané, d'où la guérison observée.
+
+Correctif : `transport.mayHaveMissedEvents()` et `transport.resync()`. Au retour au premier plan,
+si le bail est périmé, le client rebranche son écoute et relit l'instantané. C'est le F5, sans le
+F5.
+
+⛔ Quatre interdits qui ont chacun coûté un tour, à ne pas défaire :
+
+- **Ne pas relire l'instantané à chaque réveil.** L'instantané est réécrit 250 ms après chaque
+  mutation : il peut être en retard sur un événement déjà appliqué localement, et le relire sans
+  raison ferait **reculer** l'état de façon permanente. Un test négatif l'interdit explicitement.
+- **Ne pas déduire le trou de « mon curseur n'existe plus ».** La purge supprime les clés `<=`
+  frontière, et la frontière est le *minimum* des curseurs actifs : le curseur du client le plus en
+  retard est légitimement supprimé à chaque purge normale.
+- **Le seuil client est la MOITIÉ du seuil serveur** (`RETENTION_LEASE_SUSPECT_AFTER_MS`). Le client
+  date son bail à la confirmation *cliente*, donc plus tard que le `at` serveur : à seuil égal, il
+  se croit frais pendant que le purgeur le considère périmé. Un faux positif coûte une lecture ; un
+  faux négatif coûte une séance.
+- **Le drapeau de soupçon n'est plus un état, c'est un calcul à la demande.** La première version le
+  posait dans un écouteur `visibilitychange` du transport, reposé à chaque resynchro — donc renvoyé
+  en fin de file d'écouteurs, *après* celui de l'application. Vérifié en navigateur : le correctif
+  ne fonctionnait **qu'une seule fois par chargement de page**. Aucun test ne l'attrapait ; il en
+  existe un depuis.
+
+### 3. Les portes fermées — un pointillé rouge, jumeau du vert
+
+« Il faudrait mettre des pointillés rouges sur les portes fermées, sinon elles se confondent dans
+l'environnement. »
+
+Elles ne se dessinaient pas du tout, au motif que « l'image de fond contient déjà la porte
+fermée ». Vrai du dessin de la carte, faux de la lecture à la table — et surtout faux pour les
+joueurs, qui ne voient pas la couche des murs. Même géométrie que la porte ouverte, en rouge ; la
+porte verrouillée garde son trait plein et sa pastille, les trois états restent distincts. Mesure
+ajoutée aux deux zooms, dont la vue « carte entière » de la tablette.
 
 ## Suite produit
 

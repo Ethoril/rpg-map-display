@@ -1,4 +1,4 @@
-# Questions en attente — au 13 août 2026
+# Questions en attente — au 16 août 2026
 
 > **À quoi sert ce document.** Rassembler, en un seul endroit, tout ce qui attend une décision du
 > mainteneur ou une mesure qu'il est seul à pouvoir prendre. Il est écrit pour être dépouillé en
@@ -217,6 +217,74 @@ lire un nom de test comme une preuve. Ce savoir-faire a attrapé une vingtaine d
 aujourd'hui dans la mémoire de l'assistant et dans `docs/`, pas dans un outil invocable.
 
 **À trancher** : en écrire un, les deux, ou aucun.
+
+### C-5 ⛔ `mapFromCellPoint` ne veut pas dire la même chose selon le pavage — les pions sont faux en hexagonal
+
+**Trouvé le 16/08/2026** par la relecture du chantier des liaisons, hors de son périmètre. Ce n'est
+pas une dette dormante : c'est un **défaut actif**, dès qu'une carte hexagonale porte un pion.
+
+Le contrat `GridAdapter.js` dit « unité de case fractionnaire → pixels carte » sans dire *quel* point
+de la case. Les deux implantations ont répondu différemment :
+
+- `SquareGrid.mapFromCellPoint` rend le **coin** : `offset + cellX * pxPerCell` ;
+- `HexGrid.mapFromCellPoint` rend le **centre** : `offset + px * (cellX + 0.5*(ligne&1) + 0.5)`,
+  c'est-à-dire la formule de `pointFromCell` à l'entier près.
+
+`TokensLayer._drawToken` calcule sa boîte par deux appels — coin haut-gauche et coin bas-droit — ce
+qui n'est juste que pour la première convention. Vérifié par le calcul, `pxPerCell` 140, pion 1×1 :
+
+| ligne | largeur dessinée | attendu |
+|---|---|---|
+| paire | `1,5 × px` = **210 px** | 140 |
+| impaire | `0,5 × px` = **70 px** | 140 |
+
+La hauteur est fausse aussi : `√3/2 × px` = 121,2 px au lieu des 161,7 px d'un hexagone pointe en
+haut. Le centre dessiné est décalé de 105 px en ligne paire, 35 px en ligne impaire.
+
+**Pourquoi ce n'est pas corrigé tout de suite** : le choix de convention ne concerne pas que les
+pions. `mapFromCellPoint` sert aussi au rendu des murs, portails et lumières importés — voir son
+commentaire dans `GridAdapter.js` — et l'import UVTT donne ses coordonnées en unités de case
+fractionnaires depuis le **coin**. Changer `HexGrid` pour rendre le coin est probablement la bonne
+réponse, mais elle traverse `portals.js`, `walls.js`, `blockedEdges.js` et l'import. C'est un
+chantier, pas un correctif d'une ligne.
+
+**Ce qui ferme la question** : trancher la convention dans `GridAdapter.js` — coin, et pas centre —
+puis aligner `HexGrid` et vérifier les quatre consommateurs. ⚠ Aucun test ne défend aujourd'hui la
+géométrie d'un pion hexagonal ; il en faudra un avant de toucher quoi que ce soit.
+
+### C-6 ⛔ Deux fonctions de désignation en désaccord — avec deux PJ empilés, c'est le mauvais qui franchit
+
+**Trouvé le 16/08/2026** par la relecture du chantier de l'invite de franchissement. Défaut
+antérieur au chantier, mais rendu visible par lui : il se manifeste maintenant sur un escalier.
+
+Deux fonctions désignent « le pion sur cette case » et ne répondent pas la même chose :
+
+- `findHitToken` (`js/input/tokenHit.js`) départage par **identifiant croissant** ;
+- `exactTokenAtCell` (`js/input/tokenHit.js`) rend **le premier du tableau**.
+
+Rien n'interdit deux PJ sur la même case — `moveTokenToCell` n'empêche pas l'empilement. Avec
+`tokens = [PC_zeta, PC_alpha]`, tous deux sur l'escalier :
+
+1. le joueur tape : `findHitToken` sélectionne **alpha** (identifiant le plus petit), l'invite
+   s'allume pour alpha ;
+2. il retape : `exactTokenAtCell` rend **zeta**, la sélection saute silencieusement sur zeta et
+   l'invite reste allumée — rien à l'écran ne signale le changement ;
+3. il retape : c'est **zeta** qui monte à l'étage.
+
+Le joueur lit « Retaper pour prendre l'escalier », retape, et c'est le personnage d'un autre qui
+part. `PC_alpha` ne peut jamais franchir. ⛔ **Aucun ordre de branches ne répare ce cas** : l'ordre
+inverse rendrait simplement zeta insélectionnable. C'est le désaccord entre les deux fonctions qui
+le crée.
+
+**Ce qui ferme la question** : leur donner le même départage — le plus simple étant de faire rendre
+à `exactTokenAtCell` le même pion que `findHitToken` à distance nulle, c'est-à-dire l'identifiant le
+plus petit plutôt que l'ordre du tableau. ⚠ `exactTokenAtCell` sert aussi au refus « case occupée » ;
+vérifier les deux appelants. Le comportement actuel est figé par le test « deux PJ empilés » de
+`tests/multiLevelJourney.spec.mjs`, qui devra bouger avec le correctif.
+
+**Pourquoi ce n'est pas corrigé tout de suite** : il faut deux PJ exactement sur la même case, ce
+qui ne s'est jamais produit en séance, et le correctif touche un départage dont dépendent la
+désignation et le refus de destination — deux chemins que le chantier O a déjà réglés finement.
 
 ---
 

@@ -36,8 +36,30 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         value: () => Promise.resolve(),
       });
 
-      /** @type {{published: any[], received: any[]}} */
-      const wire = { published: [], received: [] };
+      let documentHidden = false;
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, snapshot: any, setHidden: (hidden: boolean) => void}} */
+      const wire = {
+        published: [],
+        received: [],
+        // Le test décide si le transport prétend avoir manqué des événements, et compte les
+        // resynchros réellement demandées.
+        gap: false,
+        resyncs: 0,
+        // Remplacé par un test qui veut simuler un état que ce client a manqué ; `null` laisse
+        // l'instantané injecté au démarrage.
+        snapshot: null,
+        // Playwright ne sait pas masquer un onglet : la visibilité est pilotée ici, sur les
+        // accesseurs redéfinis juste en dessous.
+        setHidden: (/** @type {boolean} */ hidden) => {
+          documentHidden = hidden;
+          document.dispatchEvent(new Event('visibilitychange'));
+        },
+      };
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => documentHidden });
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => (documentHidden ? 'hidden' : 'visible'),
+      });
       /** @type {any} */ (window).__RPG_TEST_WIRE__ = wire;
 
       class BrowserTestTransport {
@@ -73,10 +95,21 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         }
 
         async snapshot() {
-          return structuredClone(injectedSnapshot);
+          return structuredClone(wire.snapshot ?? injectedSnapshot);
         }
 
         async saveSnapshot() {}
+
+        mayHaveMissedEvents() {
+          return wire.gap === true;
+        }
+
+        async resync() {
+          wire.resyncs += 1;
+          // ⛔ `wire.gap` n'est PAS remis à faux ici : c'est le test qui décide, et il doit
+          // pouvoir déclarer un trou à deux réveils consécutifs. Le vrai transport, lui,
+          // recalcule sa réponse depuis l'âge de son bail à chaque appel.
+        }
 
         isOwnEvent(/** @type {any} */ event) {
           return event?.clientId === this.clientId;

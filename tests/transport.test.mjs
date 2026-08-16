@@ -14,8 +14,10 @@ import {
     FIRESTORE_SNAPSHOT_MAX_BYTES,
     FIRESTORE_SNAPSHOT_WARNING_BYTES,
     getAcknowledgedEventFrontier,
+    isRetentionLeaseStale,
     measureFirestoreSnapshot,
     normalizeExplicitSessionIds,
+    RETENTION_LEASE_SUSPECT_AFTER_MS,
 } from '../js/transport/FirebaseTransport.js';
 import { LocalSocketTransport } from '../js/transport/LocalSocketTransport.js';
 import { createCampaign, TOKEN_IMAGE_MAX_BYTES } from '../js/core/schema.js';
@@ -78,6 +80,26 @@ test('une présence legacy active sans curseur de rétention bloque toute suppre
     );
     assert.equal(staleLegacy.frontier, '-key-020');
     assert.equal(staleLegacy.blocked, false);
+});
+
+test('le client soupçonne son bail périmé AVANT que le purgeur ne le sorte de la barrière', () => {
+    // L'asymétrie est le cœur du correctif : le purgeur juge sur l'horodatage SERVEUR, le
+    // client ne peut dater que la confirmation qu'il reçoit, donc plus tard. À seuils égaux, il
+    // existe une fenêtre où la purge a lieu pendant que le client se croit frais.
+    assert.ok(
+        RETENTION_LEASE_SUSPECT_AFTER_MS < EVENT_RETENTION_CLIENT_STALE_AFTER_MS,
+        'le seuil client doit rester STRICTEMENT inférieur au seuil serveur'
+    );
+
+    const now = 10_000_000;
+    assert.equal(isRetentionLeaseStale(now, now), false, 'un bail à l’instant est frais');
+    assert.equal(isRetentionLeaseStale(now - 59_000, now), false, '59 s reste sous le seuil');
+    assert.equal(isRetentionLeaseStale(now - 61_000, now), true, '61 s dépasse le seuil');
+    // 0 signifie « jamais confirmé par le serveur » : c'est vieux, jamais frais. C'est ce qui
+    // fait retenter un canal qui n'a pas su s'ouvrir, au lieu de le croire à jour deux minutes.
+    assert.equal(isRetentionLeaseStale(0, now), true, 'un bail jamais confirmé est périmé');
+    // Une horloge locale reculée donne un âge négatif : conservateur, donc jamais périmé.
+    assert.equal(isRetentionLeaseStale(now + 60_000, now), false, 'une date future ne périme rien');
 });
 
 test('une lease joining bloque la purge même si un curseur a déjà été observé', () => {
