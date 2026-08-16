@@ -254,6 +254,16 @@ F:\rpg-map-display\
     │                              d'ergonomie, et surtout le POURQUOI de chaque décision, y
     │                              compris des options écartées. L'avancement, lui, se coche
     │                              dans ETAT.md
+    ├─ BRIEF-GEMINI-UX-MJ.md      les tâches d'exécution tirées de l'audit ci-dessus, dans
+    │                              l'ordre, avec critères d'acceptation, preuves par mutation
+    │                              exigées et interdictions citées tâche par tâche. Le « quoi
+    │                              faire » ; l'audit garde le « pourquoi ». Deux vagues : UX-01 à
+    │                              UX-09 sur le panneau, puis UX-10 à UX-14 sur le découplage des
+    │                              étages
+    ├─ CORRECTIF-UX-01.md         ce qui change dans UX-01 après une décision prise pendant son
+    │                              écriture, et ce qui reste bon. La règle qu'il installe vaut
+    │                              pour tout le produit : rien ne se déplace dans le dos de
+    │                              personne
     └─ ETAT.md                    avancement, reprise, corrections du plan
 ```
 

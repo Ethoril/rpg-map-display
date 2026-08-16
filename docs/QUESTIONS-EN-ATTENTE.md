@@ -309,6 +309,240 @@ vérifier les deux appelants. Le comportement actuel est figé par le test « de
 qui ne s'est jamais produit en séance, et le correctif touche un départage dont dépendent la
 désignation et le refus de destination — deux chemins que le chantier O a déjà réglés finement.
 
+### C-7 ⛔ On peut ajouter un étage, on ne peut pas en retirer — et UX-01 va rendre l'ajout facile
+
+**Trouvé le 16/08/2026** en relisant le plan d'implémentation de UX-01. Ce n'est pas un défaut de ce
+plan : c'est une conséquence de son succès.
+
+**Le fait, vérifié.** `js/state/store.js` expose `addLevel` et **aucun `removeLevel`**. Il n'existe
+ni événement `level.delete`, ni `level.remove`, ni aucun bouton de suppression d'étage dans le
+panneau MJ. Le seul moyen de se débarrasser d'un étage est `scene.load`, qui **remplace la campagne
+entière** — donc jette aussi les pions posés, le brouillard travaillé et la position de tout le
+monde.
+
+**Pourquoi ça devient un problème maintenant.** Jusqu'ici l'onglet Image ne publiait rien : ajouter
+un étage en séance ne se produisait pas. UX-01 en fait un geste courant, et `store.addLevel`
+**sélectionne** l'étage qu'il ajoute, donc chaque import bascule la table dessus. Deux imports ratés
+— une mauvaise adresse, une mauvaise calibration — laissent deux étages morts dans la campagne, pour
+toujours, et dans le sélecteur d'étage que le MJ ouvre à chaque changement de niveau.
+
+## ✅ Ce que le mainteneur a tranché le 16/08/2026
+
+**1. Deux gestes, au choix à l'import.** L'onglet Image propose « remplacer l'étage courant » ou
+« ajouter un étage ». Les deux besoins sont réels : recaler une carte ratée, et monter un bâtiment à
+plusieurs niveaux. ⚠ La branche « ajouter » implique donc quand même d'écrire la suppression
+d'étage, qui n'existe pas.
+
+**2. ⭐ Aucun pion ne se place tout seul sur une carte qui vient d'arriver.** Mot pour mot : « si
+j'importe une nouvelle carte en milieu de séance, les pions ne doivent pas être automatiquement
+placés dessus, ce sera à moi de le faire manuellement ».
+
+C'est un **principe**, pas la réponse à un cas particulier. Il décide d'avance tous les cas de ce
+genre : rien ne bouge dans le dos du MJ, sur un plateau que six personnes regardent.
+
+**3. Et le principe se décline différemment selon le geste** — précision du mainteneur le même jour,
+qui va plus loin que ce que j'avais compris :
+
+| Geste | Les pions | La carte, côté joueurs |
+|---|---|---|
+| **Remplacer** l'étage courant | ⭐ **retournent « en réserve »** — ils quittent le plateau, le MJ les repose ensuite | **immédiatement affichée**, quitte à être toute noire tant qu'aucun pion n'y porte de ligne de vue |
+| **Ajouter** un étage | **ne bougent pas** : ils restent exactement où ils sont, sur leur étage | ⭐ **pas affichée** — la tablette ne bascule pas. Elle y viendra quand les joueurs iront, par un escalier ou parce que le MJ les y emmène |
+
+⭐ La ligne « ajouter » a une conséquence immédiate et **elle est déjà partie en développement** :
+`store.addLevel` sélectionne l'étage qu'il ajoute, donc la table basculait sur la nouvelle carte à
+la seconde où le MJ validait. La règle retenue est qu'`addLevel` ne sélectionne que **s'il n'y avait
+pas d'étage actif** — l'initialisation d'une campagne, le seul cas où quelqu'un doit bien être
+choisi. Voir UX-01 dans `BRIEF-GEMINI-UX-MJ.md`.
+
+### ⛔ « La réserve » n'existe pas, et c'est le cœur du chantier
+
+Un `Token` porte aujourd'hui un `levelId` **et** une `cell`, tous deux obligatoires et validés : un
+pion est **toujours quelque part**. Il n'y a aucun endroit où poser un pion qui n'est sur aucune
+carte.
+
+C'est donc une notion neuve, et elle traverse le schéma, la validation, la persistance, le réseau et
+le panneau MJ. Questions ouvertes, à trancher avant d'écrire :
+
+- **Comment se représente un pion en réserve ?** Un `levelId` nul — qui casse un invariant partout —
+  ou une collection séparée dans la campagne, qui en préserve un mais duplique la forme du pion ?
+- **Qui la voit ?** La réserve est-elle un fait de jeu partagé, ou un tiroir du seul poste MJ ? ⚠ Si
+  elle est partagée, elle transite par le réseau et la persistance ; si elle est locale, elle ne
+  survit pas à un F5 du MJ, et les pions seraient perdus.
+- **Le fog et la vision** : un pion en réserve n'émet ni vision ni lumière, et ne doit compter dans
+  aucun calcul. À vérifier partout où les pions sont balayés — `js/vision/`, `computeReachable`,
+  `blockedEdges`.
+
+⚠ **Ne pas confondre la réserve avec la bibliothèque de pions.** La bibliothèque tient des
+**modèles** dont on instancie des copies ; la réserve tient **ces instances-là**, celles qui étaient
+sur le plateau, avec leurs PV, leurs marqueurs et leur histoire.
+
+⭐ **La réserve rend le placement au doigt indispensable**, et il est déjà briefé : UX-08 fait poser
+un pion là où le MJ tape, au lieu de la case (0,0) où ils apparaissent aujourd'hui. Le mainteneur l'a
+redemandé de lui-même le 16/08 — « à l'usage je ne suis pas satisfait des pions qui apparaissent
+automatiquement tout en haut à gauche, je veux pouvoir choisir exactement où ils apparaissent ». Les
+deux besoins sont le même geste : **sortir un pion de la réserve, c'est le poser quelque part.**
+
+### La règle sur les débordements reste, et elle découle du principe
+
+`assertValidCampaign` **borne les pions aux dimensions de leur étage**. Sur la branche « ajouter »,
+où les pions ne bougent pas, la question ne se pose pas. Sur la branche « remplacer », la réserve la
+dissout : les pions ont quitté le plateau, aucun ne peut déborder.
+
+⛔ Elle ressurgira le jour où quelqu'un voudra « garder les pions en place en remplaçant la carte ».
+La réponse est alors **refuser et nommer les pions qui débordent** — jamais les ramener au bord, ce
+qui serait le placement automatique que le principe interdit.
+
+## Ce qui reste à trancher
+
+- **Où vit la suppression d'un étage ?** Panneau MJ en séance, ou seulement outil de préparation
+  comme le reste du CRUD des cartes (voir C-1, qui porte la même question pour les scènes) ?
+- **Que devient ce qui vit sur l'étage supprimé** — pions, murs, portes, masques de fog indexés par
+  étage ? ⚠ Les **liaisons** sont le cas dur : `validateLinks` exige deux étages existants et
+  distincts, donc supprimer un étage peut rendre la campagne invalide, avec la même conséquence que
+  ci-dessus — plus aucune mutation ne passe.
+
+⛔ **Hors périmètre de UX-01** — ne pas l'y ajouter. Le brief Gemini traite une tâche à la fois, et
+ce qui reste demande encore les deux arbitrages ci-dessus.
+
+### C-8 ⭐ Découpler les étages : chacun circule chez soi, les joueurs ne voient que ce qu'ils connaissent
+
+**Demandé le 16/08/2026, et jamais consigné jusque-là** — le mainteneur : « c'est un truc qu'on
+devait faire évoluer à l'avenir ça par contre, on a dû oublier de le consigner ».
+
+## L'état actuel, et pourquoi il gêne
+
+La vue joueurs **suit l'étage actif du MJ**. Il n'y a qu'un seul étage courant pour toute la table,
+et c'est le MJ qui le tient. Conséquence : il ne peut pas aller regarder un autre niveau — vérifier
+une carte, préparer la suite — sans y emmener les six personnes qui le regardent.
+
+## Ce qui est voulu
+
+1. **Les joueurs ont leur propre sélecteur d'étage**, d'une autre forme que celui du MJ. Référence
+   donnée : le projet `E:\Projet_shadowrun`, dont la forme est à reprendre.
+2. **MJ et joueurs circulent indépendamment.** Aucun des deux ne fait basculer l'autre.
+3. ⭐ **Les joueurs ne peuvent choisir qu'un étage « connu » d'eux** — c'est-à-dire un étage sur
+   lequel un pion PJ **a obtenu** une ligne de vue. Précision du mainteneur le 16/08, et elle change
+   tout : c'est du **passé**, pas du présent. « Un joueur visite un étage puis le quitte. La map de
+   cet étage doit rester sélectionnable du côté des joueurs. Simplement ils n'ont plus de ligne de
+   vue active dessus, donc ce sera dans le brouillard de guerre. Les zones préalablement explorées
+   visibles mais sans ligne de vue active. »
+
+### ⭐ Conséquence : « connu » existe déjà, et ne demande aucun champ nouveau
+
+C'est **exactement** la définition du masque **exploré** que le fog persiste par étage depuis L-04,
+avec ses trois rendus — actuellement visible, exploré mais hors vision, jamais vu. Un étage est
+« connu » si son masque exploré existe et n'est pas vide.
+
+⇒ Ni champ de schéma, ni événement réseau, ni migration. La liste des étages offerts aux joueurs se
+**dérive** d'un état déjà calculé, déjà persisté et déjà transmis. Et l'affichage d'un étage connu
+mais quitté est correct **par construction** : le fog sait déjà peindre « exploré sans vision ».
+
+### ⚠ Le piège qui vient avec, et il faut le traiter dans ce chantier
+
+`requestVisionResend`, dans `js/app/player.js`, réclame la vision **du seul étage actif** :
+`payload: { levelId: store.getActiveLevel()?.id ?? null }`.
+
+Or la liste des étages connus est, elle, une propriété de **tous** les étages. Après un F5 de la
+tablette — ou après la resynchro au réveil livrée le 16/08 — la vue joueurs risque de ne récupérer
+le masque que d'un seul étage, et **sa liste d'étages connus s'effondrerait à un**. Les joueurs
+perdraient l'accès à des niveaux qu'ils ont bel et bien explorés.
+
+### ✅ Vérifié le 16/08 — un F5 ne perd rien, une tablette neuve perd tout
+
+Le masque **exploré** est persisté **par étage** dans le stockage local, sous
+`rpg_fog_<sessionId>_<levelId>`, et `getSessionFog` retombe sur le stockage quand sa carte mémoire
+est vide (`js/state/store.js:1356-1367`). Le poste joueurs écrit ce masque à chaque événement de
+fog reçu. Donc :
+
+- **F5 sur la même tablette** → tous les masques déjà reçus reviennent du stockage local. La liste
+  des étages connus est intacte. ✅ Aucun travail.
+- **Tablette neuve, navigation privée, stockage vidé** → aucun masque local. Le seul apport est
+  `requestVisionResend`, qui ne réclame que **l'étage actif**. Le sélecteur n'y offrirait donc que
+  les étages dont un masque est arrivé depuis la connexion.
+
+⛔ **Ce second cas ne sera PAS traité, et ce n'est pas un oubli.** Décision du mainteneur le
+16/08/2026 : « il est totalement inutile de traiter ce cas spécifique ». Le F5 — le cas courant —
+est déjà couvert par la persistance locale ; une tablette entièrement neuve en pleine partie est
+jugée trop rare pour son coût. ⚠ Ne pas rouvrir sans que le cas se soit **réellement produit** en
+séance. Le numéro UX-11 du brief est laissé en place comme pierre tombale, avec sa raison.
+
+## ✅ Ce que la convention autorise déjà, contre toute attente
+
+⛔ L'interdiction n°2 de `CONVENTIONS.md` — « ne jamais ajouter d'élément d'interface à la vue
+joueurs » — **liste explicitement le sélecteur d'étage parmi ce qui a le droit de s'afficher** :
+« Seuls la carte, la grille, l'indicateur d'état des portes, les pions, le fog, **le sélecteur
+d'étage** et les gabarits s'affichent. »
+
+Il n'y a donc **aucune dérogation à demander** : la convention l'avait prévu, il n'a jamais été
+construit. C'est le seul élément du Zero-UI joueurs qui existe sur le papier et pas à l'écran.
+
+## La forme de référence, relevée dans `E:\Projet_shadowrun`
+
+Composant réel : `js/editor.js:318-352` (`renderTabs`), styles `css/style.css:439-455` et
+`:1203-1214`, ancrage `index.html:113`. HTML/CSS/JS sans framework, DOM construit impérativement —
+même famille technique que ce projet-ci.
+
+- **Barre horizontale d'onglets** au-dessus de la carte, un bouton par étage portant son nom.
+- **Au repos** : fond transparent, bordure d'un pixel en couleur primaire, texte en majuscules,
+  `padding: 8px 16px`.
+- **Actif** : fond plein en couleur primaire, texte foncé, gras.
+- **En mode joueur** : la barre devient défilable horizontalement, sans retour à la ligne, avec une
+  **cible tactile d'au moins 44 px de haut** — seule concession tactile du composant.
+- Un re-clic sur l'onglet déjà actif ouvre les propriétés de l'étage plutôt que d'en changer. ⚠ Sans
+  objet ici : la vue joueurs n'a pas d'inspecteur, et n'en aura pas.
+- Changer d'étage y **vide la sélection courante** et désarme l'outil actif.
+
+⛔ **Une chose à ne PAS copier : l'accessibilité.** Le composant de référence n'a aucun `role`, aucun
+`aria-*`, aucune gestion des flèches — ce sont des `<button>` natifs et rien de plus. La barre
+d'onglets MJ de ce projet-ci est conforme depuis R0-04 ; le sélecteur joueurs doit l'être aussi. On
+reprend la **forme**, pas le retard.
+
+## ⭐ Le fait qui contredit l'hypothèse de départ : le projet de référence MASQUE, il ne verrouille pas
+
+J'avais supposé que « les joueurs ne peuvent sélectionner qu'un étage connu » voulait dire une
+entrée **présente mais grisée**. Ce n'est pas ce que fait la référence, et c'est vérifié :
+
+- **côté MJ**, tous les étages sont listés ; ceux que les joueurs n'ont pas découverts portent une
+  bordure en pointillés et `opacity: 0.65`, mais restent **cliquables normalement** — c'est un
+  simple rappel visuel (`store.js:1483` côté MJ, `style.css:453`) ;
+- **côté joueur**, les étages non révélés sont **retirés de la liste** (`store.js:1479-1483`,
+  `isEffectivelyRevealed`). Pas d'onglet grisé, pas de cadenas : **l'entrée n'existe pas dans le
+  DOM**.
+
+⭐ **Et c'est probablement le bon comportement, pour une raison que la forme grisée aurait ratée** :
+un onglet « Étage 3 » verrouillé apprend aux joueurs qu'il **existe** un troisième étage. C'est une
+fuite d'information exactement de la même famille que celles que le fog existe pour empêcher.
+
+⇒ **Recommandation : filtrer à la source, comme la référence.** Si le mainteneur veut malgré tout
+un état « visible mais verrouillé », ce n'est pas une copie — c'est une invention, et elle se paie
+en information donnée à la table.
+
+## Ce qu'il faut concevoir
+
+- **La notion d'« étage connu ».** ⭐ Elle existe peut-être déjà sous un autre nom : le fog persiste
+  un masque **exploré par étage** (`getSessionFog(levelId)`). « Connu » pourrait se lire comme « un
+  masque exploré existe et n'est pas vide pour cet étage » — à vérifier avant d'inventer un champ.
+  ⚠ Si un champ neuf est nécessaire, il traverse le schéma, la persistance et le réseau.
+- **Où vit l'étage actif des joueurs ?** Aujourd'hui `activeLevelId` est unique dans le store. En
+  découpler deux demande soit un second champ, soit un état local à la vue joueurs qui ne voyage
+  pas. ⚠ La seconde forme est probablement la bonne — c'est un point de vue, pas un fait de jeu —
+  mais elle interagit avec la restauration après F5 et avec la resynchro au réveil.
+- **Que devient le suivi automatique du MJ ?** Le cadenas 🔒 suspend déjà la bascule automatique
+  quand un pion change d'étage. Si les vues se découplent, ce cadenas change de sens : à relire
+  avant d'écrire, pas après.
+- **Et le franchissement d'une liaison ?** ⭐ La précision du 16/08 le résout presque seule. La vue
+  joueurs est **partagée par toute la table sur une seule tablette** — « le joueur » n'existe pas
+  individuellement dans ce produit —, donc faire suivre l'écran au pion qui monte emmènerait la
+  table entière et abandonnerait les personnages restés en bas.
+
+  ⇒ **Proposition, à confirmer** : personne ne bascule automatiquement. Le franchissement rend
+  simplement l'étage d'arrivée **connu**, donc offert dans le sélecteur, et la table décide d'y
+  aller ou non. Le pion qui est monté cesse d'apparaître sur l'étage affiché, ce qui est vrai et
+  lisible. C'est la même règle que pour l'ajout d'un étage — **rien ne se déplace dans le dos de
+  personne** —, et elle vaut alors pour tout le produit.
+
+⛔ **Hors périmètre du brief UX en cours** — ne pas l'y glisser.
+
 ---
 
 ## D. Décisions produit encore ouvertes

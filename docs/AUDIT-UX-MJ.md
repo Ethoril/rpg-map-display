@@ -52,10 +52,31 @@ valide, et obtient un fond gris quadrillé. `BackgroundLayer.setImage()` existe 
 **Pourquoi ce point est le premier.** Les autres défauts coûtent des gestes. Celui-ci a coûté cinq
 tentatives dans une seule séance, chacune suivie d'un échec silencieux.
 
-**✅ Décision : le faire marcher.** Câbler `setImage` et empêcher `renderAll` de l'écraser — il
-rappelle `load(activeLevel.imageUrl)` à **chaque frame**, donc une image locale posée naïvement
-disparaîtrait à la frame suivante. Le mainteneur prépare parfois en cours de partie : l'import
-direct d'une image est donc un geste de séance, et il doit aboutir.
+**✅ Décision : le faire marcher.** Le mainteneur prépare parfois en cours de partie : l'import
+d'une image est un geste de séance, et il doit aboutir.
+
+### ⚠ Correction du 16/08, le jour même — ma première formulation était fausse
+
+J'avais écrit « câbler `setImage` et empêcher `renderAll` de l'écraser ». **Cela n'aurait affiché
+l'image que sur l'écran du MJ.** Le mainteneur, à qui un premier plan d'implémentation a été
+soumis : « je veux pouvoir choisir une image qui servira de map, et oui qu'elle devienne visible aux
+joueurs, sinon ça n'a pas d'intérêt ».
+
+Pour que la tablette affiche la carte, `imageUrl` doit être une **adresse qu'elle peut aller
+chercher** — elle ne partage ni le disque du MJ ni sa mémoire. Y mettre l'image elle-même est fermé
+par la borne de persistance : URL relatives ou HTTPS seulement, la seule exception étant l'image de
+pion embarquée et bornée, plafond cumulé 512 Kio, qu'une carte fait sauter d'un coup.
+
+**✅ Chemin retenu : une adresse d'image, comme les handouts.** L'onglet accepte une URL HTTPS ou un
+lien Google Drive, le convertit avec le code qui existe déjà dans `js/ui/gm/handouts.js`, le calibre
+et le publie. ⭐ Le mécanisme est éprouvé et déjà utilisé en séance — Handouts, cinq ouvertures, à
+égalité en tête du relevé. Le sélecteur de fichier local disparaît de cet onglet : garder les deux
+chemins reproduirait le mensonge qu'on corrige.
+
+⛔ **L'envoi de fichier vers un hébergement** — Firebase Storage ou autre — est écarté **pour cette
+tranche, pas pour toujours**. C'est le seul chemin qui garderait le geste « je choisis un fichier »,
+mais il demande un produit de plus, ses règles de sécurité, son quota et un amendement à `STACK.md`.
+Chantier à part entière, à rouvrir quand l'adresse d'image aura montré ses limites à l'usage.
 
 ⚠ `tests/gmPanel.spec.mjs:227` asserte `imageUrl === ''` — **le test certifie le bug**. Il est à
 reprendre en même temps, et c'est lui qui dira si le correctif a mordu.
@@ -82,11 +103,20 @@ n'accepte que `circle` et `cone`.
 
 **✅ Décision : l'implémenter**, contre ma recommandation, qui était de la retirer faute de demande
 en séance. Le mainteneur en a l'usage — mur de feu, souffle, ligne de tir. La couche des gabarits
-sait déjà découper par les murs (`ctx.clip()`, protégé par un test e2e d'occlusion), donc l'essentiel
-du travail est fait.
+sait déjà découper par les murs (`ctx.clip()`, protégé par un test e2e d'occlusion).
 
-⭐ **C'est la seule fonctionnalité neuve de tout ce lot** ; les huit autres points sont des
-réparations. À garder en tête si le temps manque : c'est elle qu'on décale, pas les autres.
+**Précisions du 16/08, qui lèvent le point d'arrêt** :
+- **Largeur réglable, défaut 1 case.** ⚠ C'est un champ de plus au schéma, donc à la validation, au
+  réseau et à la persistance — cette tranche n'est plus du rendu seul.
+- **L'origine peut être libre ou prise sur un pion.** Règle de geste, pas de mode : l'outil armé, un
+  tap sur un pion accroche l'origine à son centre, un tap ailleurs la laisse sous le doigt.
+- ⛔ **La ligne ne suit PAS le pion.** Écarté explicitement, avec ses trois cas non tranchés — pion
+  supprimé, pion qui change d'étage, pion masqué — et son conflit avec le glisser de gabarit qui
+  existe déjà côté joueurs. Aucun champ d'ancrage n'entre dans le schéma.
+
+⭐ **C'est la seule fonctionnalité neuve de tout ce lot**, et depuis l'ajout de la largeur, **la
+seule qui touche au schéma** ; les huit autres points sont des réparations confinées à `js/ui/gm/`
+et `js/render/`. À garder en tête si le temps manque : c'est elle qu'on décale, pas les autres.
 
 ---
 
