@@ -319,6 +319,15 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     await expect(errorMsg).toBeHidden();
     await expect(btnValidate).toBeEnabled();
 
+    // ⚠ **Attendre que la sonde ait fini d'écrire avant de saisir.** Elle remplit elle-même la
+    // calibration à partir des dimensions de l'image — `maps/minimal.webp` fait 640 × 512, soit
+    // 5 × 4 cases à 140 px/case — et une saisie faite pendant qu'une sonde est encore en vol se
+    // fait écraser à son atterrissage. Attrapé par la CI le 17/08/2026 : `widthCells` reçu 5 au
+    // lieu de 10, sur une machine où les sondes reviennent dans un autre ordre. Localement, le
+    // test passait à chaque fois — c'est une course, pas une panne.
+    await expect(pageGM.locator('#img-cells-wide')).toHaveValue('5');
+    await expect(pageGM.locator('#img-cells-tall')).toHaveValue('4');
+
     // Remplir les paramètres de calibration : 10 cases large, 8 cases haut, 140 px/case
     await pageGM.fill('#img-cells-wide', '10');
     await pageGM.fill('#img-cells-tall', '8');
