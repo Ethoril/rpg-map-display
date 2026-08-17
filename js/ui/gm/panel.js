@@ -106,6 +106,42 @@ export function createGMPanel(container, options = {}) {
     <div id="gm-level-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #202832; border-bottom: 1px solid #333;"></div>
 
     <!--
+      Barre de vitalité du pion sélectionné — UX-04.
+
+      Hors des onglets, pour la raison exacte de la barre d'étage : c'est le geste le plus répété
+      d'un combat, et il se paie à chaque coup porté. L'enfouir dans l'onglet Pions obligeait le MJ
+      à quitter son pinceau de fog pour retirer trois points de vie. Masquée tant qu'aucun pion
+      n'est sélectionné, pour ne rien ajouter au bandeau du cas courant.
+
+      ⛔ Elle ne porte QUE ce qui bouge en combat. L'édition complète — nom, image, taille, vitesse,
+      vision, marqueurs — reste dans l'onglet Pions, et il ne faut pas la dupliquer ici.
+
+      ⚠ L'interdiction n°4 de CONVENTIONS.md §8 — « ni barre de points de vie sur un PNJ » — porte
+      sur le RENDU DU PION SUR LE CANVAS, pas sur le panneau MJ. C'est le chantier Q : anneau
+      proportionnel réservé aux PJ, trois crans manuels pour les PNJ, et l'état de santé jamais
+      dérivé des points de vie dans aucun sens. D'où les deux moitiés exclusives ci-dessous :
+      chiffres pour un PJ, crans pour un PNJ. Ne jamais montrer les deux, ne jamais déduire l'une
+      de l'autre.
+
+      ⛔ Aucun backtick dans ce commentaire : il vit dans un template literal, et la chaîne se
+      terminerait là. Le symptôme est un waitForApp qui expire, pas une erreur de syntaxe lisible.
+    -->
+    <div id="gm-vitals-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #2b2230; border-bottom: 1px solid #46374f;">
+      <span id="gm-vitals-label" style="font-size: 0.78rem; color: #d9c2e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9rem;"></span>
+      <div id="gm-vitals-hp" style="display: none; align-items: center; gap: 0.35rem;">
+        <label for="gm-vitals-hp-current" style="font-size: 0.72rem; color: #a892b8; white-space: nowrap;">PV</label>
+        <input id="gm-vitals-hp-current" type="number" min="0" style="width: 3.4rem; min-width: 0; padding: 0.3rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+        <span id="gm-vitals-hp-max" style="font: 0.75rem ui-monospace, monospace; color: #a892b8; white-space: nowrap;"></span>
+      </div>
+      <div id="gm-vitals-health" role="group" aria-label="État de santé du PNJ" style="display: none; align-items: center; gap: 0.3rem;">
+        <button id="gm-vitals-health-unharmed" type="button" data-health="unharmed" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Indemne</button>
+        <button id="gm-vitals-health-wounded" type="button" data-health="wounded" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Blessé</button>
+        <button id="gm-vitals-health-critical" type="button" data-health="critical" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Critique</button>
+      </div>
+      <span id="gm-vitals-hint" style="font-size: 0.72rem; color: #8a7a96;"></span>
+    </div>
+
+    <!--
       Barre des gestes de séance — Lot 4, le ping (CdC §5.5) et la mesure (G-03).
     -->
     <div class="gm-session-tools-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #2a2a20; border-bottom: 1px solid #444;">
@@ -1007,6 +1043,10 @@ export function createGMPanel(container, options = {}) {
   ];
 
   function updateTokenEditUIFromStore() {
+    // ⚠ La barre de vitalité se rafraîchit ICI et nulle part ailleurs : elle lit le même pion
+    // sélectionné que l'onglet, au même instant. Lui donner son propre abonnement au store
+    // ouvrirait la porte à deux vues du même pion décalées d'une notification.
+    updateVitalsBar();
     const selectedToken = store.getSelectedToken();
     const disabled = !selectedToken;
     for (const control of tokenEditControls) control.disabled = disabled;
@@ -1130,16 +1170,47 @@ export function createGMPanel(container, options = {}) {
     { signal: listeners.signal }
   );
 
+  /**
+   * Applique une saisie de PV courants, d'où qu'elle vienne.
+   *
+   * ⛔ Partagée par l'onglet Pions et la barre de vitalité d'UX-04, et il faut qu'elle le reste.
+   * Deux endroits qui bornent, comparent et publient chacun de leur côté finiraient par ne plus
+   * borner pareil — et c'est la valeur que six personnes lisent à l'écran.
+   *
+   * @param {string} saisie
+   * @returns {number|null} la valeur retenue, ou `null` si rien n'était applicable
+   */
+  function applyHpCurrent(saisie) {
+    const selectedToken = store.getSelectedToken();
+    if (!selectedToken || selectedToken.hp === null || selectedToken.hp === undefined) return null;
+    const raw = parseInt(saisie.trim(), 10);
+    const current = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(raw, selectedToken.hp.max));
+    if (current !== selectedToken.hp.current) {
+      applyTokenPatch({ hp: { current, max: selectedToken.hp.max } });
+    }
+    return current;
+  }
+
+  /**
+   * Applique un cran de santé de PNJ, d'où qu'il vienne. Même raison de partage que `applyHpCurrent`.
+   *
+   * ⛔ Refuse un PJ : son état de santé se lit de ses PV par un anneau proportionnel, et
+   * `health` ne se dérive JAMAIS de `hp` ni l'inverse (chantier Q, interdiction n°4).
+   *
+   * @param {'unharmed'|'wounded'|'critical'} health
+   */
+  function applyHealth(health) {
+    const selectedToken = store.getSelectedToken();
+    if (!selectedToken || selectedToken.kind === 'pc' || selectedToken.hp === null) return;
+    if (health === selectedToken.health) return;
+    applyTokenPatch({ health });
+  }
+
   tokenHpCurrent.addEventListener(
     'change',
     () => {
-      const selectedToken = store.getSelectedToken();
-      if (!selectedToken || selectedToken.hp === null || selectedToken.hp === undefined) return;
-      const raw = parseInt(tokenHpCurrent.value.trim(), 10);
-      const current = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(raw, selectedToken.hp.max));
-      tokenHpCurrent.value = String(current);
-      if (current === selectedToken.hp.current) return;
-      applyTokenPatch({ hp: { current, max: selectedToken.hp.max } });
+      const retenu = applyHpCurrent(tokenHpCurrent.value);
+      if (retenu !== null) tokenHpCurrent.value = String(retenu);
     },
     { signal: listeners.signal }
   );
@@ -1171,13 +1242,88 @@ export function createGMPanel(container, options = {}) {
     radio.addEventListener(
       'change',
       () => {
-        const selectedToken = store.getSelectedToken();
-        if (!selectedToken || selectedToken.kind === 'pc' || selectedToken.hp === null) return;
-        if (radio.checked) {
-          const health = /** @type {'unharmed'|'wounded'|'critical'} */ (radio.value);
-          if (health === selectedToken.health) return;
-          applyTokenPatch({ health });
-        }
+        if (!radio.checked) return;
+        applyHealth(/** @type {'unharmed'|'wounded'|'critical'} */ (radio.value));
+      },
+      { signal: listeners.signal }
+    );
+  }
+
+  // ── Barre de vitalité (UX-04) ────────────────────────────────────────────────────────────
+  const vitalsBar = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-bar'));
+  const vitalsLabel = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-label'));
+  const vitalsHpGroup = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-hp'));
+  const vitalsHpCurrent = /** @type {HTMLInputElement|null} */ (container.querySelector('#gm-vitals-hp-current'));
+  const vitalsHpMax = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-hp-max'));
+  const vitalsHealthGroup = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-health'));
+  const vitalsHint = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-hint'));
+  const vitalsHealthBtns = /** @type {HTMLButtonElement[]} */ (
+    Array.from(container.querySelectorAll('#gm-vitals-health button[data-health]'))
+  );
+
+  /**
+   * Reflète le pion sélectionné dans la barre de vitalité.
+   *
+   * ⚠ Appelée depuis `updateTokenEditUIFromStore`, donc à chaque mutation du store : la garde sur
+   * `document.activeElement` n'est pas cosmétique. Sans elle, une mise à jour venue du réseau —
+   * ou notre propre notification — réécrirait le champ que le MJ est en train de remplir, au
+   * caractère près.
+   */
+  function updateVitalsBar() {
+    if (!vitalsBar) return;
+    const pion = store.getSelectedToken();
+    if (!pion) {
+      vitalsBar.style.display = 'none';
+      return;
+    }
+    vitalsBar.style.display = 'flex';
+    if (vitalsLabel) vitalsLabel.textContent = pion.label || pion.id;
+
+    // ⚠ Une variable locale, et pas un booléen `sansPv` : le typage ne suit pas le rétrécissement
+    // à travers un booléen intermédiaire, et `pion.hp` resterait « possiblement nul » à l'usage.
+    const pv = pion.hp ?? null;
+    const estPj = pion.kind === 'pc';
+
+    if (vitalsHpGroup) vitalsHpGroup.style.display = estPj && pv ? 'flex' : 'none';
+    if (vitalsHealthGroup) vitalsHealthGroup.style.display = !estPj && pv ? 'flex' : 'none';
+    if (vitalsHint) {
+      vitalsHint.textContent = pv ? '' : 'Aucun point de vie défini — voir l’onglet Pions';
+    }
+
+    if (estPj && pv && vitalsHpCurrent && vitalsHpMax) {
+      if (document.activeElement !== vitalsHpCurrent) {
+        vitalsHpCurrent.value = String(pv.current);
+      }
+      vitalsHpCurrent.max = String(pv.max);
+      vitalsHpMax.textContent = `/ ${pv.max}`;
+    }
+
+    if (!estPj && pv) {
+      const courant = pion.health || 'unharmed';
+      for (const btn of vitalsHealthBtns) {
+        const actif = btn.dataset.health === courant;
+        btn.setAttribute('aria-pressed', String(actif));
+        btn.style.background = actif ? '#5a3a6a' : '#1a1a1a';
+        btn.style.color = actif ? '#fff' : '#888';
+        btn.style.borderColor = actif ? '#8a6a9a' : '#444';
+      }
+    }
+  }
+
+  vitalsHpCurrent?.addEventListener(
+    'change',
+    () => {
+      const retenu = applyHpCurrent(vitalsHpCurrent.value);
+      if (retenu !== null) vitalsHpCurrent.value = String(retenu);
+    },
+    { signal: listeners.signal }
+  );
+
+  for (const btn of vitalsHealthBtns) {
+    btn.addEventListener(
+      'click',
+      () => {
+        applyHealth(/** @type {'unharmed'|'wounded'|'critical'} */ (btn.dataset.health));
       },
       { signal: listeners.signal }
     );

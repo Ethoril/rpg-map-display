@@ -109,6 +109,51 @@ for (const largeur of [1024, 1440]) {
 
     // ⛔ Contrôle des 10 onglets réellement visités sur les 2 modes
     expect(vus.length, `onglets réellement visités : ${vus.join(', ')}`).toBe(10);
+
+    // 3. UX-04 — la barre de vitalité, VISIBLE, dans ses deux formes.
+    //
+    // ⚠ Sans ce bloc, ce test mesurait la barre **masquée** : elle ne s'affiche qu'avec un pion
+    // sélectionné, et rien plus haut n'en sélectionne. Or sa forme PNJ aligne trois boutons —
+    // « Indemne », « Blessé », « Critique » — dans un panneau qui ne fait que 360 px à 1024, et
+    // c'est exactement la forme du débordement qui a déjà rougi en CI sur des fontes plus larges
+    // (voir la leçon du 13/08 dans QUESTIONS-EN-ATTENTE.md §F). Le mesurer masqué revenait à ne
+    // rien mesurer.
+    for (const [id, kind] of /** @type {[string, 'pc'|'npc'][]} */ ([
+      ['pj-overflow', 'pc'],
+      ['pnj-overflow', 'npc'],
+    ])) {
+      await page.evaluate(
+        async ({ id: identifiant, kind: espece }) => {
+          const [store, schema] = await Promise.all([
+            import('../js/state/store.js'),
+            import('../js/core/schema.js'),
+          ]);
+          // ⚠ L'étage vient d'une fixture de scène : son identifiant se lit, il ne se suppose pas.
+          const levelId = store.getActiveLevelId() ?? undefined;
+          store.addToken(
+            schema.createToken({
+              id: identifiant,
+              // Un nom long exprès : la barre doit le tronquer, pas pousser le reste dehors.
+              label: espece === 'pc' ? 'Aldric de Montcorbeau l’Ancien' : 'Gobelin sanguinaire',
+              kind: espece,
+              levelId,
+              cell: { a: 1, b: 1 },
+              hp: { current: 12, max: 20 },
+            })
+          );
+          store.selectToken(identifiant);
+        },
+        { id, kind }
+      );
+      await expect(page.locator('#gm-vitals-bar')).toBeVisible();
+      await page.waitForTimeout(250);
+      const { debordement, coupable } = await mesure();
+      expect(
+        debordement,
+        `barre de vitalité — ${kind} — ${coupable} dépasse de ${Math.round(debordement)} px`
+      ).toBeLessThan(1);
+    }
+
     expect(erreurs).toEqual([]);
     await context.close();
   });

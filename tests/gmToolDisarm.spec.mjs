@@ -200,6 +200,105 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
   });
 
+  test('UX-04 — la barre de vitalité : chiffres pour un PJ, crans pour un PNJ, sans désarmer', async ({ page }) => {
+    /**
+     * Pose un pion et le sélectionne. L'identifiant est explicite : `addToken` refuse un doublon,
+     * et le dernier cas de ce test repose un PJ après en avoir déjà posé un.
+     *
+     * @param {string} id
+     * @param {'pc'|'npc'} kind
+     * @param {{current: number, max: number}|null} hp
+     */
+    const poserPion = (id, kind, hp) =>
+      page.evaluate(
+        async ({ id: identifiant, kind: k, hp: points }) => {
+          const [store, schema] = await Promise.all([
+            import('../js/state/store.js'),
+            import('../js/core/schema.js'),
+          ]);
+          store.addToken(
+            schema.createToken({
+              id: identifiant,
+              label: k === 'pc' ? 'Aldric' : 'Gobelin',
+              kind: k,
+              levelId: 'level-disarm-1',
+              cell: { a: 8, b: 8 },
+              hp: points,
+            })
+          );
+          store.selectToken(identifiant);
+        },
+        { id, kind, hp }
+      );
+
+    const barre = page.locator('#gm-vitals-bar');
+    const groupePv = page.locator('#gm-vitals-hp');
+    const groupeSante = page.locator('#gm-vitals-health');
+    const outilArme = () =>
+      page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
+    const pionLu = () =>
+      page.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        const pion = store.getSelectedToken();
+        return { health: pion?.health, current: pion?.hp?.current };
+      });
+
+    // Aucun pion sélectionné : la barre n'est pas à l'écran, comme la barre d'étage sur une
+    // campagne à un seul étage. Rien ne s'ajoute au bandeau du cas courant.
+    await expect(barre).toBeHidden();
+
+    // ── Un PJ : des PV chiffrés, et AUCUN cran de santé ────────────────────────────────────
+    await poserPion('pj-vital', 'pc', { current: 12, max: 20 });
+    await expect(barre).toBeVisible();
+    await expect(groupePv).toBeVisible();
+    await expect(groupeSante).toBeHidden();
+    await expect(page.locator('#gm-vitals-hp-max')).toHaveText('/ 20');
+    await expect(page.locator('#gm-vitals-hp-current')).toHaveValue('12');
+
+    // La saisie atteint le store.
+    await page.fill('#gm-vitals-hp-current', '7');
+    await page.locator('#gm-vitals-hp-current').blur();
+    await expect.poll(pionLu).toMatchObject({ current: 7 });
+
+    // ⛔ Un dépassement se borne au maximum et ne se publie pas tel quel : l'anneau du pion se
+    // dessine en proportion, et un courant au-dessus du maximum le ferait déborder.
+    await page.fill('#gm-vitals-hp-current', '999');
+    await page.locator('#gm-vitals-hp-current').blur();
+    await expect(page.locator('#gm-vitals-hp-current')).toHaveValue('20');
+    await expect.poll(pionLu).toMatchObject({ current: 20 });
+
+    // ── Un PNJ : des crans, et AUCUN chiffre ──────────────────────────────────────────────
+    await poserPion('pnj-vital', 'npc', { current: 5, max: 5 });
+    await expect(groupePv).toBeHidden();
+    await expect(groupeSante).toBeVisible();
+    await expect(page.locator('#gm-vitals-health-unharmed')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.click('#gm-vitals-health-critical');
+    // ⛔ L'état de santé ne dérive JAMAIS des points de vie, ni l'inverse (chantier Q,
+    // interdiction n°4) : passer en critique laisse `current` intact, et c'est vérifié ici.
+    await expect.poll(pionLu).toEqual({ health: 'critical', current: 5 });
+    await expect(page.locator('#gm-vitals-health-critical')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#gm-vitals-health-unharmed')).toHaveAttribute('aria-pressed', 'false');
+
+    // ── Et surtout : la barre ne désarme aucun outil ──────────────────────────────────────
+    // C'est la raison pour laquelle la bascule automatique vers l'onglet Pions a été écartée :
+    // elle passerait par `activateTab`, donc par `disarmActiveTool`.
+    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#fog-btn-tool-reveal');
+    expect(await outilArme()).toBe('fog-reveal');
+    await page.click('#gm-vitals-health-wounded');
+    await expect.poll(pionLu).toMatchObject({ health: 'wounded' });
+    expect(await outilArme()).toBe('fog-reveal');
+
+    // Un pion sans points de vie : la barre reste et dit pourquoi elle est vide, plutôt que
+    // d'offrir des contrôles qui ne mèneraient à rien.
+    await poserPion('pj-sans-pv', 'pc', null);
+    await expect(barre).toBeVisible();
+    await expect(groupePv).toBeHidden();
+    await expect(groupeSante).toBeHidden();
+    await expect(page.locator('#gm-vitals-hint')).toContainText('Aucun point de vie');
+  });
+
   test('6. Recliquer le bouton d\'outil actif le désarme (Critère 7 & Amendement A4)', async ({ page }) => {
     await page.click('button[data-tab="fog-tools"]');
     await page.click('#fog-btn-tool-reveal');
