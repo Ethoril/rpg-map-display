@@ -84,7 +84,7 @@ const SCENE = {
           shadows: true,
         },
       ],
-      ambient: { color: '#ffffff', level: 1, baked: false },
+      ambient: { level: 1, baked: false },
     },
   ],
   links: [],

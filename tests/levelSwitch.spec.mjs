@@ -31,7 +31,7 @@ const niveau = (id, nom) => ({
   walls: [],
   portals: [],
   lights: [],
-  ambient: { color: '#ffffff', level: 1, baked: false },
+  ambient: { level: 1, baked: false },
 });
 
 /** @param {string} id @param {string} levelId @param {number} a @param {number} b */

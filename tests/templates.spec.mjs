@@ -293,7 +293,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     walls: [],
     portals: [],
     lights: [],
-    ambient: { color: '#ffffff', level: 1, baked: false },
+    ambient: { level: 1, baked: false },
   };
 
   /**
@@ -838,7 +838,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       ],
       portals: [],
       lights: [],
-      ambient: { color: '#ffffff', level: 1, baked: false },
+      ambient: { level: 1, baked: false },
     };
 
     const templateRed = {

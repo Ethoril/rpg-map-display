@@ -74,7 +74,7 @@ test('Démarrage vue MJ avec campagne restaurée et PJ doté de vision : zéro e
           walls: [],
           portals: [],
           lights: [],
-          ambient: { color: '#ffffff', level: 1, baked: false },
+          ambient: { level: 1, baked: false },
         },
       ],
       links: [],

@@ -26,7 +26,7 @@ test('la sonde de latence documentée s\'exécute et relève un déplacement', a
           animatedOverlays: [], pxPerCell: 100, widthCells: 12, heightCells: 10,
           grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
           terrainCost: null, walls: [], portals: [], lights: [],
-          ambient: { color: '#ffffff', level: 1, baked: false },
+          ambient: { level: 1, baked: false },
         },
       ],
       links: [],

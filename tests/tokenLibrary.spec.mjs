@@ -38,7 +38,7 @@ const FAKE_LEVEL = {
   walls: [],
   portals: [],
   lights: [],
-  ambient: { color: '#ffffff', level: 1, baked: false },
+  ambient: { level: 1, baked: false },
 };
 
 test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {

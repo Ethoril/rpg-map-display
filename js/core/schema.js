@@ -118,14 +118,8 @@ export function normalizeCampaignColors(campaign) {
         }
       }
 
-      // 3. AmbientLight.color
-      if (level.ambient && typeof level.ambient.color === 'string' && !isValidHexColor(level.ambient.color)) {
-        const res = normalizeColor(level.ambient.color);
-        level.ambient.color = res.color;
-        if (res.warning) {
-          console.warn(`[schema] Étage "${levelId}" ambient.color : ${res.warning}`);
-        }
-      }
+      // 3. AmbientLight.color — ⛔ plus rien à normaliser : le champ est retiré (UX-07). Un
+      //    `color` présent dans une campagne enregistrée traverse sans être touché ni relu.
     }
   }
 
@@ -503,7 +497,6 @@ export function createLevel(overrides = {}) {
     portals: overrides.portals ?? [],
     lights: overrides.lights ?? [],
     ambient: {
-      color: '#ffffff',
       level: 1.0,
       baked: false,
       ...(overrides.ambient ?? {}),
@@ -889,10 +882,12 @@ export function validateCampaign(campaign) {
             errors.push(`${lightPrefix} : shadows doit être un booléen`);
           }
         }
-        // Validation de la couleur d'ambiance
-        if (!isValidHexColor(level.ambient.color)) {
-          errors.push(`Étage "${levelId || 'inconnu'}" : éclairage ambiant a une couleur invalide "${level.ambient.color}" (format #RRGGBB attendu)`);
-        }
+        // ⛔ `ambient.color` n'est plus validé, et son absence comme sa présence sont toutes
+        // deux acceptées (UX-07). Aucun rendu ne l'a jamais lu ; le refuser aujourd'hui
+        // rejetterait toutes les campagnes enregistrées avant son retrait.
+        //
+        // ⚠ `level` continue d'accepter tout l'intervalle 0..1 : c'est ce qui laisse charger une
+        // campagne à 0,35. Seule l'écriture par le panneau est devenue binaire.
         if (!Number.isFinite(level.ambient.level) || level.ambient.level < 0 || level.ambient.level > 1) {
           errors.push(`Étage "${levelId || 'inconnu'}" : niveau ambiant invalide (nombre entre 0 et 1 attendu)`);
         }

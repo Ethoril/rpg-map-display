@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createCampaign, createLevel, createToken, validateCampaign } from '../js/core/schema.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
-import { FogLayer } from '../js/render/layers/fogLayer.js';
+import { FogLayer, isAmbientLit } from '../js/render/layers/fogLayer.js';
 import { gridFor } from '../js/grid/index.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
 import * as store from '../js/state/store.js';
@@ -14,7 +14,7 @@ test('Lumière R3 : ambiante et torche passent par les mutations store/réseau v
   store.resetStore();
   const level = createLevel({
     id: 'rdc',
-    ambient: { color: '#ffffff', level: 0, baked: false },
+    ambient: { level: 0, baked: false },
   });
   const token = createToken({ id: 'torche', levelId: 'rdc', kind: 'npc', cell: { a: 2, b: 2 } });
   store.loadCampaign(createCampaign({ levels: [level], tokens: [token] }));
@@ -101,6 +101,54 @@ test('Lumière R3 : le schéma refuse explicitement les sources fixes et portée
   assert.ok(errors.includes('Pion "torche" : emitsLight.intensity invalide (nombre entre 0 et 1 attendu)'));
   assert.ok(errors.includes('Pion "torche" : emitsLight.color invalide "#gg0000" (format #RRGGBB attendu)'));
   assert.ok(errors.includes('Pion "pas-objet" : emitsLight doit être null ou un objet'));
+});
+
+test('UX-07 : le moteur ne distingue que deux ambiances, et une campagne fractionnaire vaut « jour »', () => {
+  /** @param {object} ambient */
+  const eclaire = (ambient) =>
+    isAmbientLit(createLevel({ id: 'rdc', ambient: /** @type {any} */ (ambient) }));
+
+  // ⭐ Le curseur offrait 21 positions de 0 à 1 par pas de 0,05, et `fogLayer` n'en lisait
+  // qu'une chose : `baked || level > 0`. 0,05 et 1,00 étaient rigoureusement indistinguables ;
+  // le seul cran qui changeait quoi que ce soit était le passage par zéro.
+  assert.equal(eclaire({ level: 0, baked: false }), false, 'nuit');
+  assert.equal(eclaire({ level: 1, baked: false }), true, 'jour');
+
+  // Critère 2 : une campagne enregistrée avec une valeur fractionnaire se charge et vaut jour.
+  for (const valeur of [0.05, 0.35, 0.5, 0.95]) {
+    assert.equal(eclaire({ level: valeur, baked: false }), true, `level ${valeur} vaut « jour »`);
+    assert.deepEqual(
+      validateCampaign(createCampaign({ levels: [createLevel({ id: 'rdc', ambient: /** @type {any} */ ({ level: valeur, baked: false }) })] })),
+      [],
+      `une campagne à level ${valeur} doit continuer de se valider`
+    );
+  }
+
+  // Un étage cuit est éclairé quel que soit le niveau : la lumière est déjà dans l'image.
+  assert.equal(eclaire({ level: 0, baked: true }), true, 'baked');
+});
+
+test('UX-07 critère 4 : aucun rendu ne lit ambient.color, vérifié par recherche', () => {
+  // ⛔ Vérification par **recherche dans les sources**, comme le demande le critère : un test de
+  // comportement ne pourrait pas prouver l'absence d'une lecture. Le champ est supprimé du
+  // modèle, mais les campagnes enregistrées en portent un — si un rendu venait à le relire, il
+  // se remettrait à dépendre d'une donnée que plus rien n'alimente.
+  const fichiers = fs
+    .readdirSync('js/render/layers')
+    .filter((nom) => nom.endsWith('.js'))
+    .map((nom) => `js/render/layers/${nom}`)
+    .concat(['js/render/renderer.js', 'js/app/gm.js', 'js/app/player.js']);
+
+  for (const chemin of fichiers) {
+    if (!fs.existsSync(chemin)) continue;
+    const source = fs.readFileSync(chemin, 'utf8');
+    // On cherche la LECTURE du champ, sous ses deux écritures possibles.
+    assert.equal(
+      /ambient\s*(\?\.)?\s*\.\s*color|ambient\[['"]color['"]\]/.test(source),
+      false,
+      `${chemin} lit ambient.color, or ce champ n'existe plus dans le modèle`
+    );
+  }
 });
 
 test('MESURE R3 — testbig150, six PJ et huit sources restent un profil exécutable', () => {

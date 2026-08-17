@@ -511,7 +511,9 @@ test('Une campagne héritée contenant un ARGB est chargée après conversion et
     color: 'ffffffff',
     shadows: true,
   });
-  camp.levels[0].ambient.color = 'ffF7EAE4';
+  // ⛔ `ambient.color` n'est plus ni normalisé ni validé (UX-07) : il est posé ici tel qu'une
+  // campagne enregistrée le porte, et le chargement doit passer outre sans broncher.
+  /** @type {any} */ (camp.levels[0].ambient).color = 'ffF7EAE4';
 
   assert.doesNotThrow(() => {
     loadCampaign(camp);
@@ -520,7 +522,14 @@ test('Une campagne héritée contenant un ARGB est chargée après conversion et
   const state = getState();
   const loadedLight = state.campaign?.levels[0].lights.find((l) => l.id === 'legacy-light');
   assert.equal(loadedLight?.color, '#ffffff');
-  assert.equal(state.campaign?.levels[0].ambient.color, '#F7EAE4');
+  // UX-07 critère 3 : la campagne se charge, et son `ambient.color` hérité traverse sans être
+  // ni relu ni réécrit. On vérifie qu'il est passé **tel quel** : le normaliser reviendrait à
+  // faire vivre un champ dont on a établi qu'il ne sert à rien.
+  assert.equal(
+    /** @type {any} */ (state.campaign?.levels[0].ambient).color,
+    'ffF7EAE4',
+    'un ambient.color hérité doit traverser intact, sans normalisation'
+  );
 });
 
 test('updateToken modifie l elevation et valide la campagne entiere', () => {

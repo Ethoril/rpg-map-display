@@ -278,7 +278,11 @@ test('Validation refuse une couleur hors #RRGGBB sur au moins deux des 8 chemins
     color: 'ffffffff',
     shadows: true,
   });
-  level.ambient.color = 'ffffffff';
+  // ⛔ `ambient.color` était le huitième chemin de couleur ; il a été **retiré** par UX-07 —
+  // importé, validé, persisté, et lu par aucun rendu. On le repose ici en donnée héritée, sale,
+  // exprès : il ne doit plus produire d'erreur, sans quoi toutes les campagnes enregistrées
+  // avant son retrait cesseraient de se charger.
+  /** @type {any} */ (level.ambient).color = 'ffffffff';
 
   const token = createToken({
     id: 't1',
@@ -306,9 +310,13 @@ test('Validation refuse une couleur hors #RRGGBB sur au moins deux des 8 chemins
   });
 
   const errors = validateCampaign(campaign);
-  assert.ok(errors.length >= 4, 'Doit trouver au moins 4 erreurs de format de couleur');
+  assert.ok(errors.length >= 3, 'Doit trouver au moins 3 erreurs de format de couleur');
   assert.ok(errors.some((err) => err.includes('lumière "light-argb"') && err.includes('ffffffff')));
-  assert.ok(errors.some((err) => err.includes('éclairage ambiant') && err.includes('ffffffff')));
+  assert.equal(
+    errors.some((err) => err.includes('éclairage ambiant')),
+    false,
+    'UX-07 : un ambient.color hérité, même mal formé, ne doit plus produire d\'erreur'
+  );
   assert.ok(errors.some((err) => err.includes('Pion "t1"') && err.includes('borderColor invalide')));
   assert.ok(errors.some((err) => err.includes('Gabarit "tpl1"') && err.includes('color invalide')));
 });

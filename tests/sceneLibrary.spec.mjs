@@ -49,7 +49,7 @@ const FAKE_SCENE = {
       walls: [],
       portals: [],
       lights: [],
-      ambient: { color: '#ffffff', level: 1, baked: false },
+      ambient: { level: 1, baked: false },
     },
   ],
   links: [],

@@ -645,7 +645,7 @@ export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPx
     lights: [],
     // Ambiante pleine, non cuite : `baked` signalerait un éclairage déjà peint qu'on ne doit pas
     // doubler, ce qui n'est pas le cas ici — on ne sait simplement rien de l'éclairage.
-    ambient: { color: '#ffffff', level: 1, baked: false },
+    ambient: { level: 1, baked: false },
   });
 
   return {

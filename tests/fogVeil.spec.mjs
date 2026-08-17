@@ -33,7 +33,7 @@ test('Vue MJ : les trois états valent exactement les opacités déclarées', as
       // Carte plate et sans mur : la géométrie n'est pas le sujet, l'opacité l'est.
       const level = createLevel({
         id: 'rdc', widthCells: 30, heightCells: 10, pxPerCell: 10,
-        ambient: { color: '#ffffff', level: 0, baked: false },
+        ambient: { level: 0, baked: false },
       });
       const grid = gridFor(level);
       // Le PJ voit autour de la case (2,5) ; le reste de la carte lui est inconnu.

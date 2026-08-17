@@ -28,7 +28,7 @@ const LEVEL = {
     { id: 'p-open', a: { cellX: 2, cellY: 4 }, b: { cellX: 3, cellY: 4 }, state: 'open', freestanding: false },
   ],
   lights: [],
-  ambient: { color: '#ffffff', level: 1, baked: false },
+  ambient: { level: 1, baked: false },
 };
 
 const SNAPSHOT = {

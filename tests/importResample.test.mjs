@@ -148,7 +148,14 @@ test('parseUvtt convertit les lumières ARGB et lit environment.ambient_light', 
 
   const parsed = parseUvtt(sampleUvtt);
   assert.equal(parsed.lights[0].color, '#F7EAE4');
-  assert.equal(parsed.level.ambient.color, '#112233');
+  // ⛔ UX-07 : seul l'alpha de `ambient_light` porte une information que le moteur exploite. La
+  // teinte n'est plus importée — elle était validée, persistée, et lue par aucun rendu.
+  assert.equal(parsed.level.ambient.level, 1, 'l\'alpha ff de "ff112233" donne une ambiante pleine');
+  assert.equal(
+    'color' in parsed.level.ambient,
+    false,
+    'la teinte ambiante ne doit plus entrer dans le modèle'
+  );
 });
 
 

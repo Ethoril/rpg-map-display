@@ -17,7 +17,7 @@ const FAKE_LEVEL = {
   walls: [],
   portals: [],
   lights: [],
-  ambient: { color: '#ffffff', level: 1, baked: false },
+  ambient: { level: 1, baked: false },
 };
 
 const BASE_TOKEN = {

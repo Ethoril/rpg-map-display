@@ -146,13 +146,18 @@ function buildVisionSignature(level, tokens, grid) {
 }
 
 /**
- * L'ambiante est volontairement binaire pour cette première version : toute valeur strictement
- * positive donne la visibilité « éclairée », zéro laisse uniquement les portées de vision dans le
- * noir et les sources. `baked` force l'état éclairé sans modifier les données importées.
+ * L'ambiante est binaire, et c'est ici que ça se décide : toute valeur strictement positive donne
+ * la visibilité « éclairée », zéro laisse uniquement les portées de vision dans le noir et les
+ * sources. `baked` force l'état éclairé sans modifier les données importées.
+ *
+ * ⭐ **Exporté depuis UX-07** : le panneau MJ n'offre plus qu'une bascule à deux états, parce que
+ * ce prédicat est tout ce que le moteur distingue — le curseur à 21 crans promettait 21 rendus
+ * dont 20 étaient identiques. La lecture reste tolérante aux valeurs fractionnaires des campagnes
+ * enregistrées ; seule l'écriture est devenue binaire.
  *
  * @param {Level} level
  */
-function isAmbientLit(level) {
+export function isAmbientLit(level) {
   return Boolean(level?.ambient?.baked) || Number(level?.ambient?.level) > 0;
 }
 

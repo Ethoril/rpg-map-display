@@ -129,7 +129,7 @@ test('deux vraies pages joueurs convergent via leur transport, sans relais du te
           walls: [],
           portals: [],
           lights: [],
-          ambient: { color: '#ffffff', level: 1, baked: false },
+          ambient: { level: 1, baked: false },
         },
       ],
       links: [],

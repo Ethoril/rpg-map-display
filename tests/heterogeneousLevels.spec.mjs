@@ -45,7 +45,7 @@ const level = (id, name, order, w, h, px, type = 'square') => ({
   pxPerCell: px, widthCells: w, heightCells: h,
   grid: { type, offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
   terrainCost: null, walls: [], portals: [], lights: [],
-  ambient: { color: '#ffffff', level: 1, baked: false },
+  ambient: { level: 1, baked: false },
 });
 
 /**

@@ -255,7 +255,7 @@ test('Critère 1 : deux PJ éloignés donnent deux zones disjointes, rapprochés
   function rendre(cellA, cellB) {
     const level = createLevel({
       id: 'rdc', widthCells: 40, heightCells: 10, pxPerCell: 10,
-      ambient: { color: '#ffffff', level: 0, baked: false },
+      ambient: { level: 0, baked: false },
     });
     const grid = gridFor(level);
     const pcA = createToken({ id: 'pjA', levelId: 'rdc', kind: 'pc', cell: cellA, visionDim: 4 });
@@ -308,7 +308,7 @@ test('Critère 2 : PNJ, visionDim: 0 et pions d un autre étage ne contribuent p
     widthCells: 10,
     heightCells: 10,
     pxPerCell: 10,
-    ambient: { color: '#ffffff', level: 0, baked: false },
+    ambient: { level: 0, baked: false },
   });
   const grid = gridFor(level);
 
@@ -547,7 +547,7 @@ test('Critère 6 : Helper extractBlockedSegments est partagé', () => {
 test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalident la vision', () => {
   const level = createLevel({
     id: 'rdc', widthCells: 12, heightCells: 10, pxPerCell: 10,
-    ambient: { color: '#ffffff', level: 0, baked: false },
+    ambient: { level: 0, baked: false },
     walls: [[{ cellX: 5, cellY: 0 }, { cellX: 5, cellY: 10 }]],
     lights: [{
       id: 'fixed', at: { cellX: 2.5, cellY: 5.5 }, range: 3, intensity: 1,

@@ -281,11 +281,14 @@ export function parseUvtt(jsonInput) {
   // ne le jette donc pas. Sans ça, `"00000000"` — alpha 00, soit *aucune*
   // ambiante — deviendrait `#000000` à `level: 1`, c'est-à-dire du noir plein :
   // l'inverse exact de ce que la source déclare.
-  let ambientColor = '#ffffff';
+  //
+  // ⛔ La **teinte** de la source, elle, est jetée depuis UX-07 : `ambient.color` était importé,
+  // validé, persisté, et lu par aucun rendu. Seul l'alpha porte une information que le moteur
+  // exploite. On continue donc de parser la couleur — c'est elle qui porte l'alpha — mais on
+  // n'en garde que lui.
   let ambientLevel = 1.0;
   if (data.environment && data.environment.ambient_light !== undefined) {
     const parsedAmbient = parseUvttColor(data.environment.ambient_light, { alphaUsed: true });
-    ambientColor = parsedAmbient.color;
     if (typeof parsedAmbient.alpha === 'number') {
       ambientLevel = parsedAmbient.alpha;
     }
@@ -325,7 +328,6 @@ export function parseUvtt(jsonInput) {
     portals,
     lights,
     ambient: {
-      color: ambientColor,
       level: ambientLevel,
       baked,
     },

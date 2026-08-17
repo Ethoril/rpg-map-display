@@ -22,7 +22,7 @@ function level(id, order) {
     grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
     terrainCost: null,
     walls: [[{ cellX: 0, cellY: 0 }, { cellX: 3, cellY: 0 }]],
-    portals: [], lights: [], ambient: { color: '#ffffff', level: 1, baked: false },
+    portals: [], lights: [], ambient: { level: 1, baked: false },
   };
 }
 

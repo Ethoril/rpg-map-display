@@ -85,8 +85,20 @@
  */
 
 /**
+ * Éclairage ambiant d'un étage.
+ *
+ * ⛔ **Portait `color`, retiré le 17/08/2026 (UX-07).** Il était importé, validé, persisté, et
+ * **lu par aucun rendu** : il n'attendait que la pénombre graduée, qui est écartée. Même profil
+ * que `settings.ambientLevel`, supprimé à la question §12 q.4 du cahier des charges.
+ *
+ * ⚠ Les campagnes enregistrées en portent un. La lecture doit continuer de les accepter : un
+ * `color` présent est **ignoré**, jamais refusé — un import qui rejetterait une campagne
+ * existante serait une régression bien plus chère que le défaut corrigé.
+ *
+ * `level` reste un nombre de 0 à 1 **en lecture** pour cette raison ; l'interface, elle,
+ * n'écrit plus que 0 ou 1, parce que `fogLayer` ne distingue que `baked || level > 0`.
+ *
  * @typedef {Object} AmbientLight
- * @property {string} color
  * @property {number} level
  * @property {boolean} baked
  */

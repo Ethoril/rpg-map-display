@@ -89,9 +89,16 @@ export function createGMPanel(container, options = {}) {
     </div>
 
     <div id="gm-light-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.75rem; background: #2a2518; border-bottom: 1px solid #4d4224;">
-      <label for="gm-ambient-level" style="font-size: 0.78rem; color: #ead59a; white-space: nowrap;">Ambiance</label>
-      <input id="gm-ambient-level" type="range" min="0" max="1" step="0.05" value="1" style="flex: 1; accent-color: #e0ad32;" />
-      <output id="gm-ambient-value" for="gm-ambient-level" style="min-width: 2.4rem; font: 0.75rem ui-monospace, monospace; color: #ead59a;">1.00</output>
+      <span style="font-size: 0.78rem; color: #ead59a; white-space: nowrap;">Ambiance</span>
+      <!-- ⛔ Bascule à DEUX états, pas un curseur (UX-07). Le curseur offrait 21 positions dont
+           le moteur ne distinguait que deux : fogLayer ne lit que "baked ou level > 0", donc
+           0,05 et 1,00 étaient rigoureusement indistinguables. L'interface dit désormais ce que
+           le moteur fait. ⛔ La pénombre graduée est écartée : c'est le seul chemin de l'audit
+           où une erreur ferait voir aux joueurs ce qu'ils ne devraient pas voir. -->
+      <div id="gm-ambient-toggle" role="group" aria-label="Ambiance lumineuse" style="display: inline-flex; flex-shrink: 0; border-radius: 4px; overflow: hidden; border: 1px solid #6a5620;">
+        <button id="gm-ambient-day" type="button" aria-pressed="true" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #e0ad32; color: #241b06; border: none; cursor: pointer;">☀ Jour</button>
+        <button id="gm-ambient-night" type="button" aria-pressed="false" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #1a1a1a; color: #888; border: none; border-left: 1px solid #6a5620; cursor: pointer;">🌙 Nuit</button>
+      </div>
       <span id="gm-baked-warning" role="status" style="display: none; font-size: 0.75rem; color: #ffd166;">⚠ Éclairage déjà cuit : ambiante forcée</span>
     </div>
 
@@ -1463,45 +1470,56 @@ export function createGMPanel(container, options = {}) {
   updateTokenEditUIFromStore();
 
   // ── Ambiance lumineuse (Lot 3, S-05) ──────────────────────────────────────────────────
-  const ambientInput = /** @type {HTMLInputElement} */ (container.querySelector('#gm-ambient-level'));
-  const ambientValue = /** @type {HTMLOutputElement} */ (container.querySelector('#gm-ambient-value'));
+  const ambientDayBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-ambient-day'));
+  const ambientNightBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-ambient-night'));
   const bakedWarning = /** @type {HTMLElement} */ (container.querySelector('#gm-baked-warning'));
 
   function updateLightBarFromStore() {
     const level = store.getRenderSnapshot().activeLevel;
     const baked = Boolean(level?.ambient?.baked);
-    const value = baked ? 1 : Math.max(0, Math.min(1, Number(level?.ambient?.level) || 0));
-    if (document.activeElement !== ambientInput) ambientInput.value = String(value);
-    ambientValue.value = value.toFixed(2);
-    ambientValue.textContent = value.toFixed(2);
-    ambientInput.disabled = !level || baked;
+    // ⛔ **Le prédicat du moteur, et pas un autre** : `fogLayer.isAmbientLit` rend
+    // `baked || level > 0`. Une campagne enregistrée avec `ambient.level: 0.35` vaut donc
+    // « jour », et c'est ce qu'il faut afficher — la lecture continue d'accepter les valeurs
+    // fractionnaires, seule l'écriture devient binaire.
+    const isDay = baked || Number(level?.ambient?.level) > 0;
+    const disabled = !level || baked;
+
+    for (const [btn, actif] of /** @type {[HTMLButtonElement, boolean][]} */ ([
+      [ambientDayBtn, isDay],
+      [ambientNightBtn, !isDay],
+    ])) {
+      btn.setAttribute('aria-pressed', String(actif));
+      btn.style.background = actif ? '#e0ad32' : '#1a1a1a';
+      btn.style.color = actif ? '#241b06' : '#888';
+      btn.disabled = disabled;
+      btn.style.cursor = disabled ? 'default' : 'pointer';
+      btn.style.opacity = disabled ? '0.55' : '1';
+    }
     bakedWarning.style.display = baked ? 'inline' : 'none';
   }
 
-  ambientInput.addEventListener(
-    'change',
-    () => {
-      const level = store.getRenderSnapshot().activeLevel;
-      if (!level || level.ambient?.baked) return;
-      const ambient = {
-        ...level.ambient,
-        level: Math.max(0, Math.min(1, Number(ambientInput.value))),
-      };
-      try {
-        store.updateLevel(level.id, { ambient });
-        transport?.publish({
-          type: 'level.ambient',
-          payload: { levelId: level.id, ambient },
-          at: Date.now(),
-          by: 'gm',
-        });
-      } catch (err) {
-        console.error('Mise à jour de l’ambiance refusée :', err);
-        updateLightBarFromStore();
-      }
-    },
-    { signal: listeners.signal }
-  );
+  /** @param {boolean} day */
+  function setAmbientDay(day) {
+    const level = store.getRenderSnapshot().activeLevel;
+    // Un étage à l'éclairage cuit n'a pas d'ambiance à régler : elle est déjà dans l'image.
+    if (!level || level.ambient?.baked) return;
+    const ambient = { ...level.ambient, level: day ? 1 : 0 };
+    try {
+      store.updateLevel(level.id, { ambient });
+      transport?.publish({
+        type: 'level.ambient',
+        payload: { levelId: level.id, ambient },
+        at: Date.now(),
+        by: 'gm',
+      });
+    } catch (err) {
+      console.error('Mise à jour de l’ambiance refusée :', err);
+    }
+    updateLightBarFromStore();
+  }
+
+  ambientDayBtn.addEventListener('click', () => setAmbientDay(true), { signal: listeners.signal });
+  ambientNightBtn.addEventListener('click', () => setAmbientDay(false), { signal: listeners.signal });
 
   // ── Barre d'étage (Lot 3, S-02) ──────────────────────────────────────────────────────────
   const levelBarMount = /** @type {HTMLElement|null} */ (container.querySelector('#gm-level-bar'));

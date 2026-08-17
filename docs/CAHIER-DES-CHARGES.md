@@ -631,7 +631,7 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
     portals: [{ id, a: CellPoint, b: CellPoint, state: 'closed', freestanding: false }],
                                         // state: 'open'|'closed'|'locked' (§7, amendement 03/08)
     lights:  [{ id, at: CellPoint, range, intensity, color, shadows: true }],
-    ambient: { color: '#ffffff', level: 1.0, baked: false }
+    ambient: { level: 1.0, baked: false }   // `color` retiré le 17/08/2026 — voir ci-dessous
   }],
 
   links: [{
@@ -1220,6 +1220,23 @@ Critères :
    fixtures de test qui le renseignaient. Un réglage qu'on peut écrire sans effet finit par piéger
    quelqu'un qui croit le régler. `CampaignSettings` reste comme conteneur vide : **ne rien y remettre
    sans un lecteur en face.**
+
+   > **Amendement UX-07 (17/08/2026) — le curseur devient une bascule, et `ambient.color` tombe.**
+   > Le curseur offrait 21 positions de 0 à 1 par pas de 0,05, et `fogLayer` n'en lisait qu'une
+   > chose : `baked || level > 0`. **0,05 et 1,00 étaient rigoureusement indistinguables** ; le seul
+   > cran qui changeait quoi que ce soit était le passage par zéro. Le panneau MJ porte désormais
+   > deux boutons, ☀ Jour et 🌙 Nuit, qui écrivent exactement 1 ou 0.
+   >
+   > ⛔ **La pénombre graduée est écartée**, et pas seulement reportée : c'est le seul chemin de
+   > l'audit d'ergonomie où une erreur ferait voir aux joueurs ce qu'ils ne devraient pas voir, et
+   > personne n'a réclamé la nuance en séance.
+   >
+   > **`ambient.color` est supprimé** — même profil que `settings.ambientLevel` ci-dessus :
+   > importé depuis l'UVTT, validé, persisté, et **lu par aucun rendu**. Il n'attendait que la
+   > pénombre graduée. ⚠ **La lecture reste tolérante** : un `ambient.color` présent dans une
+   > campagne enregistrée est ignoré sans erreur, et un `level` fractionnaire s'y charge et vaut
+   > « jour ». Un import qui rejetterait une campagne existante serait une régression bien plus
+   > chère que le défaut corrigé.
 5. ~~**D'où viennent les cartes hexagonales ?**~~ **Tranchée le 12/08/2026 : image calibrée, plus
    l'étage vierge.** Un étage hexagonal se crée soit sur une **image de fond calibrée à la main**,
    comme au lot 1a — le MJ règle la largeur **plat-à-plat**, l'application en déduit le pas de rangée
