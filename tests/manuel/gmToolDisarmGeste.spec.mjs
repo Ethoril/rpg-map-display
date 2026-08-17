@@ -580,8 +580,14 @@ test.describe('GESTE R1-08 — Désarmement des outils MJ, glisser réel bloquan
     }) => {
       const depart = await getTokenCell(page);
 
+      if (outil.onglet === 'wall-editor') {
+        await page.click('#gm-mode-prep');
+      }
       await page.click(`button[data-tab="${outil.onglet}"]`);
       await page.click(outil.armer);
+      if (outil.onglet === 'wall-editor') {
+        await page.click('#gm-mode-play');
+      }
       await page.click('button[data-tab="token-maker"]');
 
       const outilApres = await page.evaluate(() => {

@@ -298,6 +298,32 @@ plus cher qu'avant.
 Idem pour une saisie en cours : passer en « Jouer » puis revenir ne doit pas vider les champs de
 l'éditeur de liaisons ni ceux de l'import.
 
+## ⛔ Contrainte n°1 bis : un outil armé ne doit jamais devenir invisible
+
+> Ajoutée le 16/08/2026, après relecture du plan d'implémentation. **C'est un ajout de périmètre**,
+> conséquence directe de la contrainte ci-dessus, et elle se retourne contre elle si on l'ignore.
+
+L'armement vit au niveau de l'application : `canStartBrush` ne consulte jamais la barre d'onglets.
+Donc si le MJ arme le pinceau de fog en mode Jouer puis bascule en Préparer pour tracer un mur, le
+pinceau **reste armé** — c'est voulu — mais son onglet est masqué, donc l'indicateur
+`.gm-tab-active-tool` disparaît avec lui. Le MJ tape sur la carte pour tracer, et **il révèle du
+brouillard** devant toute la table.
+
+⛔ **Ne résous pas cela en désarmant** : la décision inverse est prise et motivée. L'armement doit
+devenir visible **hors de la barre d'onglets** dès que le mode courant ne contient plus l'onglet qui
+le porte — un rappel nommant l'outil, avec de quoi le désarmer d'un seul clic. Sans cela, on échange
+un défaut connu contre un défaut silencieux, ce qui est un mauvais échange.
+
+## ⛔ Contrainte n°1 ter : l'activation « douce » d'onglet reste privée
+
+La bascule de mode doit activer un onglet du nouveau mode **sans** désarmer, alors qu'`activateTab`
+désarme toujours. Deux chemins d'activation vont donc coexister.
+
+⚠ Le chemin qui ne désarme pas doit être **strictement privé** — pas un paramètre optionnel
+d'`activateTab` qu'un appelant pourrait passer, pas une fonction exportée. Sinon l'amendement A3,
+qui protège précisément contre l'outil qu'on croit désarmé, se troue en silence au premier
+remaniement.
+
 ## ⛔ Contrainte n°2, qui vient de l'acquis : l'accessibilité est conforme, n'y touche pas
 
 La barre d'onglets est conforme depuis R0-04 — `role="tablist"`, `role="tab"`, `aria-selected`,
@@ -327,8 +353,39 @@ deux, pas seulement celui affiché par défaut.
 4. `tests/gmPanelOverflow.spec.mjs` vert à 1024 et 1440 px, **dans les deux modes**.
 5. Les attributs ARIA de la barre d'onglets sont inchangés, et la navigation au clavier fonctionne
    dans les deux modes.
-6. **Preuve par mutation** : fais que la bascule appelle `disarmActiveTool()`, et vérifie que le
-   critère 2 rougit. C'est la régression la plus probable de toute cette tâche.
+6. ⭐ **L'outil armé AGIT encore après la bascule**, et pas seulement se déclare armé. Un coup de
+   pinceau sur la carte depuis l'autre mode empile bien un undo de fog.
+7. Un rappel visible nomme l'outil armé dès que son onglet n'appartient plus au mode courant, et
+   porte un désarmement qui fonctionne depuis ce mode. Il disparaît au retour sur le mode qui porte
+   l'onglet.
+8. **Trois preuves par mutation.**
+   - **(a)** Fais que la bascule appelle `disarmActiveTool()` → le critère 2 rougit. C'est la
+     régression la plus probable de toute cette tâche.
+   - **(b)** Masque le rappel → le critère 7 rougit.
+   - **(c)** ⭐ **Casse l'EFFET en laissant le drapeau intact** — par exemple `canStartBrush` qui
+     rend `false` hors du mode « Jouer » → le critère 6 rougit **pendant que le critère 2 passe**.
+     C'est la mutation qui compte : sans elle, la survie de l'outil n'est prouvée que sur
+     `getActiveToolName()`, c'est-à-dire sur une étiquette. Ce dépôt a déjà attrapé un mock qui
+     implémentait l'inverse du mécanisme testé ; un outil peut se déclarer armé pendant que le
+     prédicat qui le fait agir est cassé. Vérifié le 16/08 : la preuve sur l'étiquette **ne voyait
+     pas** cette panne.
+
+## ⛔ Sur la retouche des tests existants : le clic de mode, et rien d'autre
+
+Les onglets de préparation ne sont plus atteignables par défaut : `sceneLibrary.spec.mjs`,
+`linkEditor.spec.mjs`, `sceneSync.spec.mjs`, `wallEditor.spec.mjs`, `templates.spec.mjs` et les
+deux suites de désarmement doivent gagner un clic sur `#gm-mode-prep`. C'est légitime — et c'est
+aussi la forme exacte de « j'adapte les tests jusqu'au vert ».
+
+**La règle : on ajoute le clic de mode, on ne touche à aucune assertion.** Si un test échoue encore
+après ce seul ajout, ⛔ **arrête-toi et signale-le** : c'est que la bascule a changé un comportement
+qu'elle ne devait pas changer. Liste dans ton rapport chaque fichier touché et la nature exacte de
+la modification.
+
+⚠ Une exception constatée et acceptée : `tests/gmToolDisarm.spec.mjs` change la destination d'un
+changement d'onglet de `handouts` à `link-editor`, parce que `handouts` n'est plus atteignable depuis
+le mode Préparer. L'invariant testé — changer d'onglet désarme — est conservé ; seule la destination
+change, et c'était la seule issue.
 
 ---
 

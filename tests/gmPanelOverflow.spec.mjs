@@ -39,8 +39,8 @@ const SNAPSHOT = {
   activeHandout: null,
 };
 
-/** Onglets du panneau, par leur libellé exact tel que rendu. */
-const ONGLETS = ['📂 Cartes', 'UVTT', 'Image', 'Pions', 'Handouts', '🌫️ Fog', '🧱 Murs', '↕ Liaisons', '📐 Gabarits', 'Grille'];
+const ONGLETS_JOUER = ['Pions', 'Handouts', '🌫️ Fog', '📐 Gabarits'];
+const ONGLETS_PREPARER = ['📂 Cartes', 'UVTT', 'Image', '🧱 Murs', '↕ Liaisons', 'Grille'];
 
 // 1024 est la largeur basse annoncée tenue par la phase R0 ; 1440 est le poste du MJ.
 for (const largeur of [1024, 1440]) {
@@ -80,21 +80,35 @@ for (const largeur of [1024, 1440]) {
 
     /** @type {string[]} */
     const vus = [];
-    for (const nom of ONGLETS) {
-      const bouton = page.locator('#gm-panel button', { hasText: nom }).first();
-      if ((await bouton.count()) === 0) continue;
+
+    // 1. Parcours du mode Jouer (mode par défaut)
+    await page.click('#gm-mode-play');
+    for (const nom of ONGLETS_JOUER) {
+      const bouton = page.locator('.gm-tabs-header button', { hasText: nom }).first();
       await bouton.click();
       await page.waitForTimeout(250);
       const { debordement, coupable } = await mesure();
       vus.push(nom);
       // 1 px de tolérance : les rectangles sont fractionnaires.
-      expect(debordement, `onglet « ${nom} » — ${coupable} dépasse de ${Math.round(debordement)} px`)
+      expect(debordement, `mode Jouer — onglet « ${nom} » — ${coupable} dépasse de ${Math.round(debordement)} px`)
         .toBeLessThan(1);
     }
 
-    // ⛔ Sans ce contrôle, un changement de libellé d'onglet viderait la boucle et le test
-    // deviendrait vert en ne vérifiant plus rien.
-    expect(vus.length, `onglets réellement visités : ${vus.join(', ')}`).toBeGreaterThanOrEqual(8);
+    // 2. Parcours du mode Préparer
+    await page.click('#gm-mode-prep');
+    for (const nom of ONGLETS_PREPARER) {
+      const bouton = page.locator('.gm-tabs-header button', { hasText: nom }).first();
+      await bouton.click();
+      await page.waitForTimeout(250);
+      const { debordement, coupable } = await mesure();
+      vus.push(nom);
+      // 1 px de tolérance : les rectangles sont fractionnaires.
+      expect(debordement, `mode Préparer — onglet « ${nom} » — ${coupable} dépasse de ${Math.round(debordement)} px`)
+        .toBeLessThan(1);
+    }
+
+    // ⛔ Contrôle des 10 onglets réellement visités sur les 2 modes
+    expect(vus.length, `onglets réellement visités : ${vus.join(', ')}`).toBe(10);
     expect(erreurs).toEqual([]);
     await context.close();
   });

@@ -8,6 +8,7 @@ import { createFogTools } from './fogTools.js';
 import { createWallEditor } from './wallEditor.js';
 import { createLinkEditor } from './linkEditor.js';
 import { createTemplateTools } from './templateTools.js';
+import { createLevelSelector } from './levelSelector.js';
 import { VERSION } from '../../core/version.js';
 import { GM_SESSION_STORAGE_KEY, STATUS_MARKER_IDS, STATUS_MARKER_LABEL_FR } from '../../core/constants.js';
 import { isStatusMarker } from '../../core/schema.js';
@@ -39,7 +40,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{isLevelFollowLocked: () => boolean, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{isLevelFollowLocked: () => boolean, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -66,15 +67,25 @@ export function createGMPanel(container, options = {}) {
   container.style.fontFamily = 'system-ui, sans-serif';
 
   container.innerHTML = `
-    <!-- Barre de session : le code à dicter, et le seul geste qui permette d'en changer.
-         sessionStorage survivant à la restauration d'onglets, une session peut coller
-         après un redémarrage complet ; sans ce bouton il n'existait aucun moyen de la
-         quitter depuis l'interface. -->
-    <div class="gm-session-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; background: #232323; border-bottom: 1px solid #333;">
+    <!-- Barre de session : le code à dicter, et le sélecteur de mode Jouer / Préparer -->
+    <div class="gm-session-bar" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; padding: 0.6rem 0.75rem; background: #232323; border-bottom: 1px solid #333;">
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Session</span>
-      <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.2em; color: #4a90e2;"></code>
-      <button id="gm-evict-others" style="margin-left: auto; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Déconnecte les autres écrans MJ de cette session">Autres MJ</button>
-      <button id="gm-leave-session" style="padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
+      <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.1em; color: #4a90e2; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></code>
+      
+      <!-- Sélecteur de mode : Jouer / Préparer (UX-03) -->
+      <div id="gm-mode-selector" role="group" aria-label="Mode du panneau" style="display: inline-flex; flex-shrink: 0; border-radius: 4px; overflow: hidden; border: 1px solid #444;">
+        <button id="gm-mode-play" type="button" aria-pressed="true" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #2e7d32; color: #fff; border: none; cursor: pointer;">Jouer</button>
+        <button id="gm-mode-prep" type="button" aria-pressed="false" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #1a1a1a; color: #888; border: none; border-left: 1px solid #444; cursor: pointer;">Préparer</button>
+      </div>
+
+      <button id="gm-evict-others" style="margin-left: auto; flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Déconnecte les autres écrans MJ de cette session">Autres MJ</button>
+      <button id="gm-leave-session" style="flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
+    </div>
+
+    <!-- Rappel d'outil armé hors mode (UX-03 Critère 7) -->
+    <div id="gm-active-tool-banner" style="display: none; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.75rem; background: #3a2810; border-bottom: 1px solid #7a4f10; font-size: 0.8rem; color: #f5a623;">
+      <span id="gm-active-tool-text" style="font-weight: 500;">⚡ Outil armé</span>
+      <button id="gm-disarm-active-tool" type="button" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; background: #5a3810; color: #fff; border: 1px solid #9a6520; border-radius: 3px; cursor: pointer;">Désarmer</button>
     </div>
 
     <div id="gm-light-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.75rem; background: #2a2518; border-bottom: 1px solid #4d4224;">
@@ -92,12 +103,7 @@ export function createGMPanel(container, options = {}) {
       quitter son pinceau de fog ou son éditeur de murs pour monter d'un niveau. Elle est masquée
       tant que la campagne n'a qu'un seul étage, pour ne rien ajouter au bandeau du cas courant.
     -->
-    <div id="gm-level-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #202832; border-bottom: 1px solid #333;">
-      <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
-      <select id="gm-level-select" style="flex: 1; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
-      <button id="gm-level-lock" type="button" aria-pressed="false" title="Cadenas : suspend la bascule automatique quand un pion change d'étage. Les pions montent quand même." style="padding: 0.3rem 0.55rem; font-size: 0.9rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🔓</button>
-      <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
-    </div>
+    <div id="gm-level-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #202832; border-bottom: 1px solid #333;"></div>
 
     <!--
       Barre des gestes de séance — Lot 4, le ping (CdC §5.5) et la mesure (G-03).
@@ -111,48 +117,23 @@ export function createGMPanel(container, options = {}) {
 
     <!-- Barre d'onglets du panneau MJ -->
     <div class="gm-tabs-header" role="tablist" aria-label="Outils du meneur de jeu">
-      <button class="gm-tab-btn" type="button" id="gm-tab-scene-library" role="tab" data-tab="scene-library" aria-controls="tab-content-scene-library" aria-selected="false" tabindex="-1">📂 Cartes</button>
-      <button class="gm-tab-btn active" type="button" id="gm-tab-import-uvtt" role="tab" data-tab="import-uvtt" aria-controls="tab-content-import-uvtt" aria-selected="true" tabindex="0">UVTT</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-import-image" role="tab" data-tab="import-image" aria-controls="tab-content-import-image" aria-selected="false" tabindex="-1">Image</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-token-maker" role="tab" data-tab="token-maker" aria-controls="tab-content-token-maker" aria-selected="false" tabindex="-1">Pions</button>
+      <!-- Mode Jouer (4 onglets) -->
+      <button class="gm-tab-btn active" type="button" id="gm-tab-token-maker" role="tab" data-tab="token-maker" aria-controls="tab-content-token-maker" aria-selected="true" tabindex="0">Pions</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-handouts" role="tab" data-tab="handouts" aria-controls="tab-content-handouts" aria-selected="false" tabindex="-1">Handouts</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-fog-tools" role="tab" data-tab="fog-tools" aria-controls="tab-content-fog-tools" aria-selected="false" tabindex="-1">🌫️ Fog</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-wall-editor" role="tab" data-tab="wall-editor" aria-controls="tab-content-wall-editor" aria-selected="false" tabindex="-1">🧱 Murs</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-link-editor" role="tab" data-tab="link-editor" aria-controls="tab-content-link-editor" aria-selected="false" tabindex="-1">↕ Liaisons</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-template-tools" role="tab" data-tab="template-tools" aria-controls="tab-content-template-tools" aria-selected="false" tabindex="-1">📐 Gabarits</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-grid-settings" role="tab" data-tab="grid-settings" aria-controls="tab-content-grid-settings" aria-selected="false" tabindex="-1">Grille</button>
+      <!-- Mode Préparer (6 onglets) -->
+      <button class="gm-tab-btn" type="button" id="gm-tab-scene-library" role="tab" data-tab="scene-library" aria-controls="tab-content-scene-library" aria-selected="false" tabindex="-1" style="display: none;">📂 Cartes</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-import-uvtt" role="tab" data-tab="import-uvtt" aria-controls="tab-content-import-uvtt" aria-selected="false" tabindex="-1" style="display: none;">UVTT</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-import-image" role="tab" data-tab="import-image" aria-controls="tab-content-import-image" aria-selected="false" tabindex="-1" style="display: none;">Image</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-wall-editor" role="tab" data-tab="wall-editor" aria-controls="tab-content-wall-editor" aria-selected="false" tabindex="-1" style="display: none;">🧱 Murs</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-link-editor" role="tab" data-tab="link-editor" aria-controls="tab-content-link-editor" aria-selected="false" tabindex="-1" style="display: none;">↕ Liaisons</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-grid-settings" role="tab" data-tab="grid-settings" aria-controls="tab-content-grid-settings" aria-selected="false" tabindex="-1" style="display: none;">Grille</button>
     </div>
 
     <!-- Conteneurs de contenu des onglets -->
     <div class="gm-tabs-content" style="flex: 1; overflow-y: auto; padding: 1rem;">
-      <div id="tab-content-scene-library" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-scene-library" hidden>
-        <div id="scene-library-mount"></div>
-      </div>
-
-      <div id="tab-content-fog-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-fog-tools" hidden>
-        <div id="fog-tools-mount"></div>
-      </div>
-
-      <div id="tab-content-wall-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-wall-editor" hidden>
-        <div id="wall-editor-mount"></div>
-      </div>
-      <div id="tab-content-link-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-link-editor" hidden>
-        <div id="link-editor-mount"></div>
-      </div>
-
-      <div id="tab-content-template-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-template-tools" hidden>
-        <div id="template-tools-mount"></div>
-      </div>
-
-      <div id="tab-content-import-uvtt" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-uvtt">
-        <div id="import-uvtt-mount"></div>
-      </div>
-
-      <div id="tab-content-import-image" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-image" hidden>
-        <div id="import-image-mount"></div>
-      </div>
-
-      <div id="tab-content-token-maker" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-token-maker" hidden>
+      <div id="tab-content-token-maker" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-token-maker">
         <div class="token-elevation-section" style="margin-bottom: 1.5rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
           <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Pion sélectionné</h3>
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -249,6 +230,34 @@ export function createGMPanel(container, options = {}) {
         <div id="handouts-mount"></div>
       </div>
 
+      <div id="tab-content-fog-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-fog-tools" hidden>
+        <div id="fog-tools-mount"></div>
+      </div>
+
+      <div id="tab-content-template-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-template-tools" hidden>
+        <div id="template-tools-mount"></div>
+      </div>
+
+      <div id="tab-content-scene-library" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-scene-library" hidden>
+        <div id="scene-library-mount"></div>
+      </div>
+
+      <div id="tab-content-import-uvtt" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-uvtt" hidden>
+        <div id="import-uvtt-mount"></div>
+      </div>
+
+      <div id="tab-content-import-image" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-image" hidden>
+        <div id="import-image-mount"></div>
+      </div>
+
+      <div id="tab-content-wall-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-wall-editor" hidden>
+        <div id="wall-editor-mount"></div>
+      </div>
+
+      <div id="tab-content-link-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-link-editor" hidden>
+        <div id="link-editor-mount"></div>
+      </div>
+
       <div id="tab-content-grid-settings" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-grid-settings" hidden>
         <div class="grid-settings-form" style="display: flex; flex-direction: column; gap: 1rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
           <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Réglages de la Grille</h3>
@@ -297,6 +306,48 @@ export function createGMPanel(container, options = {}) {
     versionBadge = mountGMVersionBadge(footerEl, { transport, role: 'gm' });
   }
 
+  // --- Gestion des modes « Jouer » et « Préparer » (UX-03) ---
+  const playModeBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-mode-play'));
+  const prepModeBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-mode-prep'));
+  const activeToolBanner = /** @type {HTMLElement|null} */ (container.querySelector('#gm-active-tool-banner'));
+  const activeToolText = container.querySelector('#gm-active-tool-text');
+  const disarmActiveToolBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-disarm-active-tool'));
+
+  /** @type {Record<'play'|'prep', string[]>} */
+  const MODE_TABS = {
+    play: ['token-maker', 'handouts', 'fog-tools', 'template-tools'],
+    prep: ['scene-library', 'import-uvtt', 'import-image', 'wall-editor', 'link-editor', 'grid-settings'],
+  };
+
+  /** @type {Record<string, string>} */
+  const TOOL_TAB_MAP = {
+    'fog-reveal': 'fog-tools',
+    'fog-hide': 'fog-tools',
+    'wall-draw': 'wall-editor',
+    'wall-delete': 'wall-editor',
+    'link-place': 'link-editor',
+    'template-place': 'template-tools',
+  };
+
+  /** @type {Record<string, string>} */
+  const TOOL_LABELS = {
+    'fog-reveal': 'Brouillard (Révéler)',
+    'fog-hide': 'Brouillard (Masquer)',
+    'wall-draw': 'Murs (Tracer)',
+    'wall-delete': 'Murs (Effacer)',
+    'link-place': 'Liaisons (Poser)',
+    'template-place': 'Gabarits (Poser)',
+  };
+
+  /** @type {'play'|'prep'} */
+  let currentMode = 'play';
+
+  /** @type {Record<'play'|'prep', string>} */
+  const lastActiveTabByMode = {
+    play: 'token-maker',
+    prep: 'scene-library',
+  };
+
   // --- Gestion de la navigation par onglets & outil actif centralisé (CORRECTIF DESARMEMENT §3.1) ---
   const tabButtons = /** @type {NodeListOf<HTMLButtonElement>} */ (
     container.querySelectorAll('.gm-tab-btn')
@@ -314,6 +365,25 @@ export function createGMPanel(container, options = {}) {
   let templateTools = null;
   /** @type {ReturnType<typeof createFogTools>|null} */
   let fogTools = null;
+
+  function updateActiveToolBanner() {
+    if (!activeToolBanner) return;
+    const ownerTab = TOOL_TAB_MAP[activeToolName];
+    const isHiddenByMode = Boolean(ownerTab && !MODE_TABS[currentMode].includes(ownerTab));
+
+    if (isHiddenByMode) {
+      activeToolBanner.style.display = 'flex';
+      if (activeToolText) {
+        activeToolText.textContent = `⚡ Outil armé : ${TOOL_LABELS[activeToolName] || activeToolName}`;
+      }
+    } else {
+      activeToolBanner.style.display = 'none';
+    }
+  }
+
+  disarmActiveToolBtn?.addEventListener('click', () => {
+    disarmActiveTool();
+  }, { signal: listeners.signal });
 
   function updateTabToolIndicators() {
     tabButtons.forEach((btn) => {
@@ -424,6 +494,7 @@ export function createGMPanel(container, options = {}) {
     }
 
     updateTabToolIndicators();
+    updateActiveToolBanner();
     requestRender();
   }
 
@@ -431,14 +502,22 @@ export function createGMPanel(container, options = {}) {
     setActiveTool('none');
   }
 
-  /** @param {HTMLElement} btn */
-  function activateTab(btn) {
-    // Désarmer l'outil actif à tout changement d'onglet (Amendement A3)
-    if (activeToolName !== 'none') {
-      disarmActiveTool();
+  /**
+   * Routine privée de bascule visuelle d'onglet (inaccessible depuis l'extérieur).
+   * Utilisée par activateTab (après désarmement A3) et par setMode (sans désarmer l'outil armé).
+   *
+   * @param {HTMLElement} btn
+   */
+  function applyTabSelection(btn) {
+    const targetTab = btn.dataset.tab;
+    if (!targetTab) return;
+
+    for (const [modeName, tabs] of Object.entries(MODE_TABS)) {
+      if (tabs.includes(targetTab)) {
+        lastActiveTabByMode[/** @type {'play'|'prep'} */ (modeName)] = targetTab;
+      }
     }
 
-    const targetTab = btn.dataset.tab;
     tabButtons.forEach((button) => {
       const isTarget = button === btn;
       button.setAttribute('aria-selected', String(isTarget));
@@ -453,7 +532,73 @@ export function createGMPanel(container, options = {}) {
     });
   }
 
-  const tabList = Array.from(tabButtons);
+  /**
+   * Activation d'onglet par clic ou raccourci utilisateur (applique sans exception l'amendement A3).
+   * @param {HTMLElement} btn
+   */
+  function activateTab(btn) {
+    // Désarmer l'outil actif à tout changement d'onglet (Amendement A3)
+    if (activeToolName !== 'none') {
+      disarmActiveTool();
+    }
+    applyTabSelection(btn);
+  }
+
+  /**
+   * Bascule entre les modes « Jouer » et « Préparer ».
+   * ⛔ Ne désarme JAMAIS l'outil actif.
+   *
+   * @param {'play'|'prep'} mode
+   */
+  function setMode(mode) {
+    if (mode !== 'play' && mode !== 'prep') return;
+    currentMode = mode;
+
+    if (playModeBtn) {
+      playModeBtn.setAttribute('aria-pressed', String(mode === 'play'));
+      playModeBtn.style.background = mode === 'play' ? '#2e7d32' : '#1a1a1a';
+      playModeBtn.style.color = mode === 'play' ? '#fff' : '#888';
+    }
+
+    if (prepModeBtn) {
+      prepModeBtn.setAttribute('aria-pressed', String(mode === 'prep'));
+      prepModeBtn.style.background = mode === 'prep' ? '#2e7d32' : '#1a1a1a';
+      prepModeBtn.style.color = mode === 'prep' ? '#fff' : '#888';
+    }
+
+    const allowedTabs = MODE_TABS[mode];
+
+    // Afficher ou masquer les boutons d'onglets
+    tabButtons.forEach((btn) => {
+      const tabName = btn.dataset.tab;
+      const isAllowed = Boolean(tabName && allowedTabs.includes(tabName));
+      btn.style.display = isAllowed ? '' : 'none';
+    });
+
+    // Vérifier si l'onglet actuellement sélectionné est visible dans le nouveau mode
+    const currentActiveBtn = Array.from(tabButtons).find((b) => b.classList.contains('active'));
+    const currentActiveTab = currentActiveBtn?.dataset.tab;
+
+    if (!currentActiveTab || !allowedTabs.includes(currentActiveTab)) {
+      // Activer l'onglet mémorisé pour ce mode (ou le premier onglet) via la routine privée sans désarmer
+      let targetTab = lastActiveTabByMode[mode];
+      if (!allowedTabs.includes(targetTab)) {
+        targetTab = allowedTabs[0];
+      }
+      const targetBtn = Array.from(tabButtons).find((b) => b.dataset.tab === targetTab);
+      if (targetBtn) {
+        applyTabSelection(targetBtn);
+      }
+    } else {
+      currentActiveBtn.tabIndex = 0;
+    }
+
+    updateActiveToolBanner();
+  }
+
+  playModeBtn?.addEventListener('click', () => setMode('play'), { signal: listeners.signal });
+  prepModeBtn?.addEventListener('click', () => setMode('prep'), { signal: listeners.signal });
+
   tabButtons.forEach((btn) => {
     btn.addEventListener('click', () => activateTab(/** @type {HTMLElement} */ (btn)), {
       signal: listeners.signal,
@@ -461,21 +606,23 @@ export function createGMPanel(container, options = {}) {
     btn.addEventListener(
       'keydown',
       /** @param {KeyboardEvent} event */ (event) => {
-        const currentIndex = tabList.indexOf(btn);
+        const visibleTabs = Array.from(tabButtons).filter((b) => b.style.display !== 'none');
+        const currentIndex = visibleTabs.indexOf(/** @type {HTMLButtonElement} */ (btn));
+        if (currentIndex === -1) return;
         let nextIndex = currentIndex;
         if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-          nextIndex = (currentIndex + 1) % tabList.length;
+          nextIndex = (currentIndex + 1) % visibleTabs.length;
         } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-          nextIndex = (currentIndex - 1 + tabList.length) % tabList.length;
+          nextIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length;
         } else if (event.key === 'Home') {
           nextIndex = 0;
         } else if (event.key === 'End') {
-          nextIndex = tabList.length - 1;
+          nextIndex = visibleTabs.length - 1;
         } else {
           return;
         }
         event.preventDefault();
-        const nextTab = /** @type {HTMLElement} */ (tabList[nextIndex]);
+        const nextTab = /** @type {HTMLElement} */ (visibleTabs[nextIndex]);
         nextTab.focus();
         activateTab(nextTab);
       },
@@ -1156,10 +1303,7 @@ export function createGMPanel(container, options = {}) {
 
   updateTokenEditUIFromStore();
 
-  // ── Barre d'étage (Lot 3, S-02) ──────────────────────────────────────────────────────────
-  const levelBar = /** @type {HTMLElement} */ (container.querySelector('#gm-level-bar'));
-  const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
-  const levelStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-level-status'));
+  // ── Ambiance lumineuse (Lot 3, S-05) ──────────────────────────────────────────────────
   const ambientInput = /** @type {HTMLInputElement} */ (container.querySelector('#gm-ambient-level'));
   const ambientValue = /** @type {HTMLOutputElement} */ (container.querySelector('#gm-ambient-value'));
   const bakedWarning = /** @type {HTMLElement} */ (container.querySelector('#gm-baked-warning'));
@@ -1200,69 +1344,25 @@ export function createGMPanel(container, options = {}) {
     { signal: listeners.signal }
   );
 
-  /**
-   * Reflète les étages de la campagne et l'étage actif.
-   *
-   * ⚠ Ne reconstruit les options que si la **liste** a changé. Les reconstruire à chaque
-   * notification du store — donc à chaque déplacement de pion — refermerait la liste déroulante
-   * sous le doigt du MJ en pleine sélection, et ferait clignoter le champ pendant les animations.
-   */
-  function updateLevelBarFromStore() {
-    // ⚠ `getLevelSummaries()` et surtout PAS `getCampaign()`. Ce dernier clone et gèle toute la
-    // campagne — 2,49 ms mesurés sur une carte de 65 × 71 et 1338 murs — et cette fonction tourne
-    // à **chaque mutation du store**, donc à chaque déplacement de pion. La première version
-    // payait le clonage de tous les murs pour n'en tirer qu'une liste de noms.
-    const etages = store.getLevelSummaries();
-    const actif = store.getActiveLevelId();
-
-    // Un seul étage : la barre n'apporte rien, elle disparaît.
-    levelBar.style.display = etages.length > 1 ? 'flex' : 'none';
-    if (etages.length === 0) return;
-
-    // Signature explicite, lisible et sans caractères de contrôle littéraux.
-    const signature = JSON.stringify(etages.map((l) => [l.id, l.name]));
-    if (levelSelect.dataset.signature !== signature) {
-      levelSelect.dataset.signature = signature;
-      levelSelect.replaceChildren(
-        ...etages.map((l) => {
-          const opt = document.createElement('option');
-          opt.value = l.id;
-          opt.textContent = l.name || l.id;
-          return opt;
-        })
-      );
-    }
-    if (actif && levelSelect.value !== actif) levelSelect.value = actif;
-  }
-
-  // ── Cadenas de bascule automatique (Lot 3, S-04) ─────────────────────────────────────────
-  //
-  // Purement local au poste MJ, et **volontairement pas dans la campagne** : c'est un réglage de
-  // conduite de séance, pas un fait de jeu. Le mettre dans le document le ferait voyager jusqu'aux
-  // tablettes et survivre à la partie, alors qu'il ne concerne que ce que le MJ veut montrer dans
-  // les dix prochaines minutes.
-  const levelLockBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-level-lock'));
-  let levelFollowLocked = false;
-
-  function renderLevelLock() {
-    levelLockBtn.textContent = levelFollowLocked ? '🔒' : '🔓';
-    levelLockBtn.setAttribute('aria-pressed', String(levelFollowLocked));
-    levelLockBtn.style.background = levelFollowLocked ? '#3a2f1a' : '#1a1a1a';
-    levelLockBtn.style.color = levelFollowLocked ? '#e0c080' : '#888';
-    levelLockBtn.style.borderColor = levelFollowLocked ? '#6a5530' : '#444';
-    levelStatus.style.color = '#888';
-    levelStatus.textContent = levelFollowLocked ? 'bascule auto suspendue' : '';
-  }
-
-  levelLockBtn.addEventListener(
-    'click',
-    () => {
-      levelFollowLocked = !levelFollowLocked;
-      renderLevelLock();
-    },
-    { signal: listeners.signal }
-  );
-  renderLevelLock();
+  // ── Barre d'étage (Lot 3, S-02) ──────────────────────────────────────────────────────────
+  const levelBarMount = /** @type {HTMLElement|null} */ (container.querySelector('#gm-level-bar'));
+  const levelSelector = levelBarMount
+    ? createLevelSelector(levelBarMount, {
+        getLevels: () => store.getLevelSummaries(),
+        getActiveLevelId: () => store.getActiveLevelId(),
+        onSelectLevel: (cible) => {
+          store.selectLevel(cible);
+          // ⚠ Publier APRÈS la mutation locale, et seulement si elle a réussi : annoncer un étage que
+          // le MJ n'a pas pu adopter enverrait la table où lui-même n'est pas.
+          transport?.publish({
+            type: 'level.select',
+            payload: { levelId: cible },
+            at: Date.now(),
+            by: 'gm',
+          });
+        },
+      })
+    : null;
 
   // Le ping passe par `setActiveTool`, donc désarmer un autre outil est gratuit : c'est
   // l'exclusivité mutuelle existante qui s'en charge, pas un traitement particulier ici.
@@ -1280,39 +1380,11 @@ export function createGMPanel(container, options = {}) {
   );
   updateMeasureButton();
 
-  levelSelect.addEventListener(
-    'change',
-    () => {
-      const cible = levelSelect.value;
-      if (!cible || cible === store.getActiveLevelId()) return;
-      try {
-        store.selectLevel(cible);
-      } catch (err) {
-        levelStatus.style.color = '#e74c3c';
-        levelStatus.textContent = err instanceof Error ? err.message : String(err);
-        updateLevelBarFromStore();
-        return;
-      }
-      levelStatus.style.color = '#888';
-      levelStatus.textContent = '';
-      // ⚠ Publier APRÈS la mutation locale, et seulement si elle a réussi : annoncer un étage que
-      // le MJ n'a pas pu adopter enverrait la table où lui-même n'est pas.
-      transport?.publish({
-        type: 'level.select',
-        payload: { levelId: cible },
-        at: Date.now(),
-        by: 'gm',
-      });
-    },
-    { signal: listeners.signal }
-  );
-
-  updateLevelBarFromStore();
   updateLightBarFromStore();
 
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
-    updateLevelBarFromStore();
+    levelSelector?.update();
     updateLightBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();
@@ -1329,7 +1401,11 @@ export function createGMPanel(container, options = {}) {
 
   return {
     /** Le cadenas de bascule automatique est-il armé ? Lu par `app/gm.js` (Lot 3, S-04). */
-    isLevelFollowLocked: () => levelFollowLocked,
+    isLevelFollowLocked: () => levelSelector?.isLevelFollowLocked() ?? false,
+    /** Mode actuel du panneau ('play' | 'prep') */
+    getMode: () => currentMode,
+    /** Bascule le mode du panneau ('play' | 'prep') sans désarmer d'outil actif */
+    setMode,
     tokenMaker,
     fogTools,
     wallEditor,
@@ -1341,6 +1417,7 @@ export function createGMPanel(container, options = {}) {
     destroy: () => {
       listeners.abort();
       unsubscribeStore();
+      levelSelector?.destroy();
       versionBadge?.detach();
       sceneLibrary?.destroy();
       tokenLibrary?.destroy();

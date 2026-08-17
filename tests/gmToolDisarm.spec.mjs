@@ -110,6 +110,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     });
 
     // Aller sur l'onglet Murs et armer
+    await page.click('#gm-mode-prep');
     await page.click('button[data-tab="wall-editor"]');
     await page.click('#wall-btn-arm');
 
@@ -119,8 +120,8 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     if (!box) throw new Error('canvas boundingBox est null');
     await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.2);
 
-    // Changer d'onglet vers Handouts
-    await page.click('button[data-tab="handouts"]');
+    // Changer d'onglet vers Liaisons
+    await page.click('button[data-tab="link-editor"]');
 
     // Vérifier qu'aucun mur n'a été créé
     const finalWallCount = await page.evaluate(async () => {
@@ -130,6 +131,73 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     });
 
     expect(finalWallCount).toBe(initialWallCount);
+  });
+
+  test('UX-03 — un outil survit à la bascule de mode, agit encore, et le bandeau le dit', async ({ page }) => {
+    // ⭐ Ce test lève deux réserves de la relecture d'UX-03, et il n'existait pas.
+    //
+    // 1. La survie de l'outil n'était prouvée que sur `getActiveToolName()`, c'est-à-dire sur
+    //    l'ÉTIQUETTE. Ce dépôt a déjà attrapé un mock qui implémentait l'inverse du mécanisme
+    //    testé : un outil peut se déclarer armé pendant que le prédicat qui le fait agir est
+    //    cassé. On mesure donc ici son EFFET — le pinceau peint-il encore ?
+    // 2. La séquence réellement dangereuse n'était jouée par aucun test : armer dans un mode,
+    //    basculer de mode, et toucher la carte SANS passer par un onglet. C'est celle-là qui se
+    //    produira en séance, et c'est la seule que le bandeau protège.
+    //
+    // ⛔ Le comportement figé ici est VOULU, pas subi : le mainteneur a explicitement demandé que
+    // l'outil survive à la bascule, parce qu'il prépare parfois en cours de partie. Le bandeau est
+    // la contrepartie. Ne pas « corriger » ce test en faisant désarmer la bascule.
+    // ⚠ Deux libellés, pas un : `fogTools.updateUI` écrit « Annuler (n) » quand la pile porte
+    // quelque chose et « Annuler » tout court quand elle est vide. Une sonde qui n'attend que la
+    // forme parenthésée rend −1 sur une pile vide et ne distingue plus « pile à zéro » de « bouton
+    // introuvable ». On garde −1 pour le seul cas aveugle, celui qui doit faire échouer la sonde
+    // elle-même plutôt que le correctif.
+    const undoCount = () =>
+      page.evaluate(() => {
+        const texte = document.querySelector('#fog-btn-undo')?.textContent ?? '';
+        const found = /Annuler \((\d+)\)/.exec(texte);
+        if (found) return Number(found[1]);
+        return /Annuler/.test(texte) ? 0 : -1;
+      });
+    const toolName = () =>
+      page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
+
+    // Mode Jouer, l'onglet Fog lui appartient : on arme, et le bandeau n'a rien à dire.
+    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#fog-btn-tool-reveal');
+    expect(await toolName()).toBe('fog-reveal');
+    await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
+    const avant = await undoCount();
+    expect(avant, 'la pile d’undo du fog doit être lisible').toBeGreaterThanOrEqual(0);
+
+    // Bascule vers Préparer : l'onglet Fog disparaît, l'outil reste armé, le bandeau prend le
+    // relais de l'indicateur d'onglet — qui n'est plus visible.
+    await page.click('#gm-mode-prep');
+    expect(await toolName()).toBe('fog-reveal');
+    await expect(page.locator('#gm-active-tool-banner')).toBeVisible();
+
+    // ⭐ L'EFFET, et non l'étiquette : un coup de pinceau sur la carte empile bien un undo.
+    const board = page.locator('#board');
+    const box = await board.boundingBox();
+    if (!box) throw new Error('canvas boundingBox est null');
+    await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.35);
+    await expect.poll(undoCount, { timeout: 8000 }).toBeGreaterThan(avant);
+
+    // Le bouton du bandeau est la porte de sortie : elle doit marcher depuis l'autre mode.
+    await page.click('#gm-disarm-active-tool');
+    expect(await toolName()).toBe('none');
+    await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
+
+    // Et l'amendement A3 tient toujours par-dessus toute cette plomberie : un clic d'ONGLET
+    // désarme, même quand l'outil vient d'un autre mode que celui affiché.
+    await page.click('#gm-mode-play');
+    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#fog-btn-tool-reveal');
+    await page.click('#gm-mode-prep');
+    expect(await toolName()).toBe('fog-reveal');
+    await page.click('button[data-tab="wall-editor"]');
+    expect(await toolName()).toBe('none');
+    await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
   });
 
   test('6. Recliquer le bouton d\'outil actif le désarme (Critère 7 & Amendement A4)', async ({ page }) => {

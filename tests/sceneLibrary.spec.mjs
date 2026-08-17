@@ -94,6 +94,7 @@ async function setupWithCatalog(page, fixtures = {}) {
   );
 
   await page.goto('/gm.html');
+  await page.click('#gm-mode-prep');
   await page.waitForSelector('.gm-tab-btn[data-tab="scene-library"]');
   await page.click('.gm-tab-btn[data-tab="scene-library"]');
 

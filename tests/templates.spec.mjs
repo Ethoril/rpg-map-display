@@ -61,6 +61,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     });
 
     // Armer l'éditeur de murs
+    await page.click('#gm-mode-prep');
     await page.click('button[data-tab="wall-editor"]');
     await page.click('#wall-btn-arm');
 
@@ -70,7 +71,8 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     });
     expect(wallArmed).toBe(true);
 
-    // Basculer sur Gabarits et armer les gabarits
+    // Basculer sur le mode Jouer, puis sur Gabarits et armer les gabarits
+    await page.click('#gm-mode-play');
     await page.click('button[data-tab="template-tools"]');
     await page.click('#tpl-toggle-arm');
 

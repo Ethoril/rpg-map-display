@@ -35,7 +35,8 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
       store.loadCampaign(campaign);
     });
 
-    // Basculer sur l'onglet Murs et armer l'éditeur
+    // Basculer sur le mode Préparer, puis sur l'onglet Murs et armer l'éditeur
+    await page.click('#gm-mode-prep');
     await page.click('button[data-tab="wall-editor"]');
     await page.click('#wall-btn-arm');
 
@@ -152,6 +153,7 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
     expect(initialWallCount).toBe(0);
 
     // Armer l'éditeur
+    await page.click('#gm-mode-prep');
     await page.click('button[data-tab="wall-editor"]');
     await page.click('#wall-btn-arm');
 
