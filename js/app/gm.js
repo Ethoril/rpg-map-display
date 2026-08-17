@@ -19,7 +19,7 @@ import { MeasureLayer } from '../render/layers/measure.js';
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
 import { findHitTemplate } from '../input/templateHit.js';
-import { findHitToken } from '../input/tokenHit.js';
+import { findHitToken, exactTokenAtCell } from '../input/tokenHit.js';
 import { FrameProbe } from '../render/probe.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
@@ -1167,15 +1167,18 @@ export async function bootstrapGMApp(options = {}) {
           // se pose ne peuvent alors pas diverger. C'est volontairement solidaire de la
           // désignation, y compris de son défaut connu C-5 sur grille hexagonale — corriger
           // l'un sans l'autre les ferait se contredire.
+          //
+          // ⛔ **Désignation EXACTE, pas la tolérance de `findHitToken`.** Celle-ci applique une
+          // marge de 24 px écran, plafonnée à 0,75 case : elle est faite pour *viser* un pion,
+          // geste indulgent et réversible. Ancrer une origine demande l'inverse — de la
+          // précision. Avec la marge, poser un mur de feu dans la case VOISINE du guerrier
+          // faisait sauter l'origine sur le guerrier, et la ligne partait un demi-pas trop tôt.
+          // Le brief dit « si le tap tombe sur un pion » : c'est la case, pas son voisinage.
           const posGrid = gridFor(activeLevel);
-          const hitToken = findHitToken(
-            posGrid,
-            activeLevel,
-            intention.mapPos,
-            camera.zoom,
-            state.campaign?.tokens ?? [],
-            { deprioritize: (t) => !!t.locked }
-          );
+          const tapCell = posGrid.cellFromPoint(intention.mapPos);
+          const hitToken = tapCell
+            ? exactTokenAtCell(activeLevel, tapCell, state.campaign?.tokens ?? [])
+            : null;
           let origin = intention.mapPos;
           if (hitToken) {
             const size = hitToken.sizeCells || 1;
@@ -1209,6 +1212,16 @@ export async function bootstrapGMApp(options = {}) {
           gmPanel.templateTools.disarm();
           requestRender();
         }
+        return;
+      }
+
+      if (activeToolName === 'token-place') {
+        // UX-08 : le pion généré se pose sur la case tapée. La construction et la publication
+        // restent dans le panneau, qui tient le pion en attente et le transport — ici on ne
+        // fournit que ce que seule la vue connaît : l'étage courant et la case sous le doigt.
+        const grid = gridFor(activeLevel);
+        const cell = grid.cellFromPoint(intention.mapPos);
+        if (cell) gmPanel?.placePendingTokenAt?.(activeLevel.id, cell);
         return;
       }
 

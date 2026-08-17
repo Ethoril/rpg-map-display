@@ -40,7 +40,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{isLevelFollowLocked: () => boolean, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{isLevelFollowLocked: () => boolean, hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -370,6 +370,7 @@ export function createGMPanel(container, options = {}) {
     'wall-delete': 'wall-editor',
     'link-place': 'link-editor',
     'template-place': 'template-tools',
+    'token-place': 'token-maker',
   };
 
   /** @type {Record<string, string>} */
@@ -380,6 +381,7 @@ export function createGMPanel(container, options = {}) {
     'wall-delete': 'Murs (Effacer)',
     'link-place': 'Liaisons (Poser)',
     'template-place': 'Gabarits (Poser)',
+    'token-place': 'Pion (Poser)',
   };
 
   /** @type {'play'|'prep'} */
@@ -397,8 +399,25 @@ export function createGMPanel(container, options = {}) {
   );
   const tabPanes = /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.gm-tab-pane'));
 
-  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure'} */
+  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'} */
   let activeToolName = 'none';
+
+  /**
+   * Pion généré, en attente de la case où le MJ va taper (UX-08).
+   *
+   * ⚠ Il vit **ici** et non dans `tokenMaker` : le générateur sert aussi à `prepare.html`, qui
+   * n'a ni carte ni geste de pose. Lui donner un état d'armement obligerait à le neutraliser
+   * là-bas, et un état qu'on doit désactiver ailleurs finit toujours par s'y rallumer.
+   *
+   * @type {import('../../core/types.js').Token|null}
+   */
+  let pendingToken = null;
+
+  function clearPendingToken() {
+    if (!pendingToken) return;
+    pendingToken = null;
+    tokenMaker?.setStatus('Pose annulée : le pion généré n’a pas été ajouté.', '#aaa');
+  }
 
   /** @type {ReturnType<typeof createWallEditor>|null} */
   let wallEditor = null;
@@ -492,7 +511,7 @@ export function createGMPanel(container, options = {}) {
    */
   let settingActiveTool = false;
 
-  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'ping'|'measure'} toolName */
+  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'} toolName */
   function setActiveTool(toolName) {
     if (activeToolName === toolName) return;
 
@@ -527,6 +546,13 @@ export function createGMPanel(container, options = {}) {
     }
     if (prevTool === 'template-place' && toolName !== 'template-place') {
       templateTools?.disarm();
+    }
+    // ⭐ Le pion en attente meurt avec l'armement, quelle qu'en soit la cause : changement
+    // d'onglet, autre outil armé, Échap, ou pose effectuée. Le garder vivant après un
+    // désarmement le ferait ressurgir au prochain armement, des minutes plus tard, avec un nom
+    // et une image que le MJ ne relierait plus à rien.
+    if (prevTool === 'token-place' && toolName !== 'token-place') {
+      clearPendingToken();
     }
 
     if (toolName === 'none') {
@@ -756,7 +782,11 @@ export function createGMPanel(container, options = {}) {
           by: 'gm',
         });
       },
-      getTemplates: () => store.getState().campaign?.templates ?? [],
+      // ⚠ `getRenderSnapshot` et **pas** `getState` : ce dernier fait un `structuredClone` puis un
+      // `deepFreeze` de toute la campagne — murs et portails compris — à chaque notification du
+      // store, y compris quand l'onglet Gabarits est fermé. Mesuré : 0,50 ms contre 0,002 ms.
+      // C'est la faute déjà commise par la barre d'étage du lot 3, documentée sur `getCampaign`.
+      getTemplates: () => store.getRenderSnapshot().campaign?.templates ?? [],
       // ⚠ Publier **seulement si le store a bien retiré quelque chose**, comme `onRemoveWall`
       // juste au-dessus. Un événement émis sur une absence ferait voyager un retrait qui n'a
       // pas eu lieu, et le rejeu d'un lot le rendrait indistinguable d'un vrai.
@@ -798,22 +828,21 @@ export function createGMPanel(container, options = {}) {
       });
   }
 
-  // Initialisation du générateur de pions avec ajout direct au store lors de la génération
+  // ⭐ **« Générer » ARME l'outil, il n'ajoute plus (UX-08).** Le pion partait en `cell: {a: 0,
+  // b: 0}` codé en dur, donc un PNJ créé en séance apparaissait à l'angle de la carte — souvent
+  // hors écran, souvent sous le brouillard — et il fallait le glisser jusqu'à sa place sous les
+  // yeux de la table. C'est le comportement de tout le reste du panneau : le gabarit, le ping,
+  // la pose d'extrémité A d'une liaison.
+  //
+  // ⛔ L'armement passe par `setActiveTool` et **pas par un mécanisme parallèle** : c'est lui qui
+  // garantit l'exclusivité mutuelle, donc qu'armer la pose d'un pion désarme le pinceau de fog,
+  // et réciproquement.
   const tokenMaker = createTokenMaker(tokenMakerMount, {
     defaultLevelId: store.getActiveLevelId(),
     onGenerate: (token, _dataUrl) => {
-      // Ajout automatique du pion généré au store
-      store.addToken(token);
-
-      // Envoi sur le réseau si transport disponible
-      if (transport) {
-        transport.publish({
-          type: 'token.add',
-          payload: { token },
-          at: Date.now(),
-          by: 'gm',
-        });
-      }
+      pendingToken = token;
+      setActiveTool('token-place');
+      tokenMaker.setStatus('Pion prêt : tapez la carte pour le poser.', '#f5a623');
     },
   });
 
@@ -1580,9 +1609,50 @@ export function createGMPanel(container, options = {}) {
     }
   });
 
+  /**
+   * Pose le pion en attente sur une case, l'ajoute à la campagne et le publie (UX-08).
+   *
+   * ⛔ Le désarmement est **automatique après la pose**, comme le gabarit et la pose de liaison —
+   * pas comme le pinceau de fog, qui reste armé et dont l'exception est assumée ailleurs. Un
+   * PNJ créé se pose une fois ; rester armé collerait un second exemplaire au clic suivant.
+   *
+   * ⚠ Le `levelId` est celui de l'étage **au moment de la pose**, pas celui du moment de la
+   * génération : le MJ peut avoir changé d'étage entre les deux, et le pion doit atterrir là
+   * où il regarde.
+   *
+   * @param {string} levelId
+   * @param {import('../../core/types.js').Cell} cell
+   * @returns {boolean} true si le pion a été posé
+   */
+  function placePendingTokenAt(levelId, cell) {
+    if (!pendingToken || !levelId || !cell) return false;
+    const token = { ...pendingToken, levelId, cell: { a: cell.a, b: cell.b } };
+    try {
+      store.addToken(token);
+    } catch (err) {
+      // Une case hors limites est le cas courant : on le dit et on **reste armé**, pour que le
+      // MJ retape à l'intérieur sans avoir à régénérer son pion.
+      tokenMaker.setStatus(err instanceof Error ? err.message : String(err), '#e74c3c');
+      return false;
+    }
+    transport?.publish({
+      type: 'token.add',
+      payload: { token },
+      at: Date.now(),
+      by: 'gm',
+    });
+    pendingToken = null;
+    tokenMaker.setStatus(`Pion posé en ${cell.a}, ${cell.b}.`, '#2ecc71');
+    setActiveTool('none');
+    return true;
+  }
+
   return {
     /** Le cadenas de bascule automatique est-il armé ? Lu par `app/gm.js` (Lot 3, S-04). */
     isLevelFollowLocked: () => levelSelector?.isLevelFollowLocked() ?? false,
+    /** Y a-t-il un pion généré en attente de sa case ? */
+    hasPendingToken: () => pendingToken !== null,
+    placePendingTokenAt,
     /** Mode actuel du panneau ('play' | 'prep') */
     getMode: () => currentMode,
     /** Bascule le mode du panneau ('play' | 'prep') sans désarmer d'outil actif */

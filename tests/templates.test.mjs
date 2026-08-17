@@ -306,9 +306,16 @@ test('UX-06 : widthCells — absent vaut 1 sans erreur, invalide refusé en nomm
   // serait une régression plus chère que la forme ajoutée.
   assert.deepEqual(validateCampaign(avecGabarit({})), [], 'un gabarit sans widthCells doit se valider');
   assert.deepEqual(validateCampaign(avecGabarit({ widthCells: 3 })), []);
+  // ⚠ `null` est l'idiome d'absence du reste du schéma (`terrainCost`, `videoUrl`,
+  // `emitsLight`). Le refuser rejetterait en bloc une campagne qu'un producteur écrirait ainsi.
+  assert.deepEqual(
+    validateCampaign(avecGabarit({ widthCells: null })),
+    [],
+    'un widthCells null vaut absence, donc 1, et ne doit pas faire échouer la campagne'
+  );
 
   // Critère 6 : zéro, négatif, fractionnaire — refusés, et le message nomme le gabarit.
-  for (const mauvais of [0, -2, 1.5, '3', null, Number.NaN]) {
+  for (const mauvais of [0, -2, 1.5, '3', Number.NaN]) {
     const errs = validateCampaign(avecGabarit({ widthCells: mauvais }));
     assert.equal(
       errs.some((e) => e.includes('tpl-largeur') && e.includes('widthCells invalide')),

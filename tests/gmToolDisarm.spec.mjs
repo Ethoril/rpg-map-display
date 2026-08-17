@@ -313,3 +313,139 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     expect(activeTool).toBe('none');
   });
 });
+
+/**
+ * UX-08 — « Générer » arme la pose, et le pion se pose là où l'on tape.
+ *
+ * `tokenMaker` créait le pion en `cell: { a: 0, b: 0 }`, **en dur** : un PNJ créé en cours de
+ * séance apparaissait à l'angle de la carte, souvent hors écran, souvent sous le brouillard, et
+ * il fallait le glisser jusqu'à sa place sous les yeux de la table.
+ */
+test.describe('UX-08 — Un pion créé se pose là où l\'on tape', () => {
+  const PNG_1x1 =
+    'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwvjb3YAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAXSURBVHic7cExAQAAAMKg9U9tCj8gAAAAAAB4BhVMAAFxPbfKAAAAAElFTkSuQmCC';
+
+  test.beforeEach(async ({ page }) => {
+    const sessionId = `test-ux08-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, null);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await page.evaluate(async () => {
+      const [store, schema] = await Promise.all([
+        import('../js/state/store.js'),
+        import('../js/core/schema.js'),
+      ]);
+      const level = schema.createLevel({
+        id: 'lvl-ux08', name: 'Étage UX-08', widthCells: 20, heightCells: 20, pxPerCell: 140,
+      });
+      store.loadCampaign(schema.createCampaign({ levels: [level] }));
+    });
+  });
+
+  /** @param {import('@playwright/test').Page} page */
+  async function genererUnPion(page) {
+    await page.click('button[data-tab="token-maker"]');
+    await page.setInputFiles('#token-file-input', {
+      name: 'pnj.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(PNG_1x1, 'base64'),
+    });
+    await expect(page.locator('#btn-generate-token')).toBeEnabled();
+    await page.click('#btn-generate-token');
+  }
+
+  /** @param {import('@playwright/test').Page} page */
+  const outilActif = (page) =>
+    page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.getActiveToolName());
+
+  /** @param {import('@playwright/test').Page} page */
+  const pions = (page) =>
+    page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return (store.getState().campaign?.tokens ?? []).map((t) => ({ id: t.id, cell: t.cell }));
+    });
+
+  test('Critères 1 et 3 : le pion se pose sur la case tapée, jamais en (0,0), et l\'outil se désarme seul', async ({ page }) => {
+    await genererUnPion(page);
+
+    // ⭐ Générer n'ajoute plus rien : il ARME. C'est la moitié du critère que le test doit voir,
+    // sinon un code qui ajoute ET arme passerait au vert.
+    expect(await outilActif(page), 'générer doit armer la pose').toBe('token-place');
+    expect(await pions(page), 'générer ne doit ajouter aucun pion à lui seul').toEqual([]);
+
+    // Tap au centre de la case (7, 5) : (7,5 × 140 ; 5,5 × 140).
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 7.5 * 140, y: 5.5 * 140 },
+        screenPos: { x: 300, y: 300 },
+      });
+    });
+
+    const poses = await pions(page);
+    expect(poses.length, 'le tap doit avoir posé le pion').toBe(1);
+    expect(poses[0].cell, 'le pion se pose sur la case tapée, jamais en (0,0)').toEqual({ a: 7, b: 5 });
+    expect(await outilActif(page), 'l\'outil se désarme seul après la pose').toBe('none');
+
+    // Le pion part sur le réseau par l'événement qui existait déjà, pas un nouveau.
+    const publies = await page.evaluate(() =>
+      /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+        .filter((/** @type {any} */ e) => e.type === 'token.add')
+        .map((/** @type {any} */ e) => e.payload.token.cell)
+    );
+    expect(publies).toEqual([{ a: 7, b: 5 }]);
+
+    // Un second tap ne doit pas coller un deuxième exemplaire.
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 2.5 * 140, y: 2.5 * 140 },
+        screenPos: { x: 100, y: 100 },
+      });
+    });
+    expect((await pions(page)).length, 'l\'outil désarmé ne pose plus rien').toBe(1);
+  });
+
+  test('Critère 2 : armer la pose d\'un pion désarme l\'outil précédent, et réciproquement', async ({ page }) => {
+    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#fog-btn-tool-reveal');
+    expect(await outilActif(page)).toBe('fog-reveal');
+
+    await genererUnPion(page);
+    expect(await outilActif(page), 'la pose de pion prend la main').toBe('token-place');
+    expect(
+      await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.fogTools?.getActiveTool()),
+      'le pinceau de fog doit avoir été désarmé'
+    ).toBe('none');
+
+    // Réciproquement : armer le fog abandonne la pose du pion.
+    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#fog-btn-tool-reveal');
+    expect(await outilActif(page)).toBe('fog-reveal');
+    expect(
+      await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.hasPendingToken()),
+      'le pion en attente ne doit pas survivre au désarmement'
+    ).toBe(false);
+  });
+
+  test('Critère 4 : un changement d\'onglet en cours d\'armement désarme, comme pour les autres outils', async ({ page }) => {
+    await genererUnPion(page);
+    expect(await outilActif(page)).toBe('token-place');
+
+    await page.click('button[data-tab="handouts"]');
+    expect(await outilActif(page), 'changer d\'onglet désarme (amendement A3)').toBe('none');
+    expect(
+      await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.hasPendingToken())
+    ).toBe(false);
+
+    // Et le tap qui suit ne pose rien : c'est la panne que le désarmement doit empêcher.
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 7.5 * 140, y: 5.5 * 140 },
+        screenPos: { x: 300, y: 300 },
+      });
+    });
+    expect(await pions(page)).toEqual([]);
+  });
+});

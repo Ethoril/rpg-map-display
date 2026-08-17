@@ -709,7 +709,9 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       levelId: 'lvl-ligne',
       shape: /** @type {const} */ ('line'),
       origin: { x: 2.5 * 140, y: 3 * 140 },
-      radiusCells: 3,
+      // 2 cases et non 3 : le coin avant doit tenir dans le canvas, que le panneau MJ réduit à
+      // 540 px de large. Une sonde hors cadre mesurerait du vide et se tairait.
+      radiusCells: 2,
       directionDeg: 0,
       widthCells: 1,
       color: '#ef4444',
@@ -724,10 +726,20 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     // Sur l'axe : peint dans les deux cas — c'est le témoin que la sonde regarde bien un rendu
     // vivant. À une case sous l'axe : hors de la bande à largeur 1 (± 70 px), dedans à
     // largeur 3 (± 210 px).
+    //
+    // ⚠ **Un point de chaque côté, et c'est indispensable.** Une revue à contexte neuf a montré
+    // qu'avec la seule sonde du dessous, un rendu traçant la bande *entièrement d'un côté de
+    // l'axe* — deux fois trop étroite, et décentrée — passait au vert. Une seule sonde prouve
+    // « élargir peint plus loin », pas « la bande est symétrique », et c'est la symétrie qui est
+    // la décision du 16/08.
     const surLAxe = { x: 2.7 * 140, y: 3 * 140 };
     const uneCaseSousLAxe = { x: 2.7 * 140, y: 4 * 140 };
+    const uneCaseSurLAxe = { x: 2.7 * 140, y: 2 * 140 };
+    // Coin avant du rectangle, à `hypot(longueur, demi-largeur)` de l'origine : au-delà du
+    // disque de sweep si son rayon n'est pas élargi. Sans mur ici, donc rien ne doit le rogner.
+    const coinAvant = { x: 2.5 * 140 + 2 * 140 - 8, y: 3 * 140 + 210 - 8 };
 
-    const etroite = await mesurerRouge(page, [surLAxe, uneCaseSousLAxe]);
+    const etroite = await mesurerRouge(page, [surLAxe, uneCaseSousLAxe, uneCaseSurLAxe, coinAvant]);
     expect(etroite.dansLeCanvas).toBe(true);
 
     await page.evaluate(async () => {
@@ -737,11 +749,13 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       store.placeTemplate({ ...t, widthCells: 3 });
     });
 
-    const large = await mesurerRouge(page, [surLAxe, uneCaseSousLAxe]);
+    const large = await mesurerRouge(page, [surLAxe, uneCaseSousLAxe, uneCaseSurLAxe, coinAvant]);
 
     const contexte =
       `axe ${etroite.dominances[0].toFixed(2)} → ${large.dominances[0].toFixed(2)}, ` +
-      `hors axe ${etroite.dominances[1].toFixed(2)} → ${large.dominances[1].toFixed(2)}`;
+      `dessous ${etroite.dominances[1].toFixed(2)} → ${large.dominances[1].toFixed(2)}, ` +
+      `dessus ${etroite.dominances[2].toFixed(2)} → ${large.dominances[2].toFixed(2)}, ` +
+      `coin ${etroite.dominances[3].toFixed(2)} → ${large.dominances[3].toFixed(2)}`;
 
     // ⭐ La comparaison porte sur le MÊME point avant et après l'élargissement : elle ne dépend
     // donc d'aucune hypothèse sur la couleur du fond à cet endroit, et un rendu qui ignorerait
@@ -750,8 +764,21 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     expect(large.dominances[0], `${contexte} : la ligne large n'est plus peinte sur son axe`).toBeGreaterThan(40);
     expect(
       large.dominances[1] - etroite.dominances[1],
-      `${contexte} : élargir la ligne n'a rien peint à une case de l'axe`
+      `${contexte} : élargir la ligne n'a rien peint à une case SOUS l'axe`
     ).toBeGreaterThan(25);
+    expect(
+      large.dominances[2] - etroite.dominances[2],
+      `${contexte} : élargir la ligne n'a rien peint à une case AU-DESSUS de l'axe — la bande ` +
+        'n\'est pas centrée sur l\'axe'
+    ).toBeGreaterThan(25);
+
+    // ⭐ Le coin avant : il n'est atteint que si le rayon du sweep couvre `hypot(longueur,
+    // demi-largeur)`. Avec le rayon d'avant — la longueur seule — le disque le rognait, et
+    // aucune sonde ne le voyait.
+    expect(
+      large.dominances[3],
+      `${contexte} : le coin avant de la ligne large n'est pas peint — le disque de sweep le rogne`
+    ).toBeGreaterThan(40);
   });
 
   test('13. Critère 4 : la ligne part du centre du pion touché, et du doigt sur une case vide', async ({ page }) => {
@@ -801,13 +828,19 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await poserEn({ x: 300, y: 310 });
     // Tap sur une case vide, loin du pion : l'origine reste sous le doigt.
     await poserEn({ x: 1120, y: 210 });
+    // ⭐ Tap dans la case **voisine** du pion, à 20 px de son bord : l'origine ne doit PAS
+    // sauter dessus. Une revue à contexte neuf a montré que `findHitToken` — la désignation —
+    // applique une marge de 24 px écran, plafonnée à 0,75 case : indulgente pour *viser* un
+    // pion, elle est fausse pour *ancrer* une ligne, et faisait partir un mur de feu un
+    // demi-pas trop tôt. L'ancrage exige la case, pas le voisinage.
+    await poserEn({ x: 580, y: 420 });
 
     const origines = await page.evaluate(async () => {
       const store = await import('../js/state/store.js');
       return (store.getState().campaign?.templates ?? []).map((t) => t.origin);
     });
 
-    expect(origines.length, 'les deux poses doivent avoir produit deux gabarits').toBe(2);
+    expect(origines.length, 'les trois poses doivent avoir produit trois gabarits').toBe(3);
     expect(origines[0], 'posée sur un pion, l\'origine doit être le centre du pion').toEqual({
       x: 420,
       y: 420,
@@ -816,6 +849,10 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       x: 1120,
       y: 210,
     });
+    expect(
+      origines[2],
+      'posée dans la case voisine du pion, l\'origine ne doit pas sauter sur le pion'
+    ).toEqual({ x: 580, y: 420 });
   });
 
   test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {

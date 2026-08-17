@@ -230,12 +230,9 @@ export function createFogTools(container, options) {
   });
 
   btnHideAll.addEventListener('click', async () => {
-    console.log('[FOG_TOOLS] btnHideAll clicked');
     const levelId = getActiveLevelId();
-    console.log('[FOG_TOOLS] levelId:', levelId);
     if (!levelId) return;
     const fog = getExploredFog(levelId);
-    console.log('[FOG_TOOLS] fog:', fog ? 'FOUND' : 'NULL');
     if (!fog) return;
 
     await pushUndoState();

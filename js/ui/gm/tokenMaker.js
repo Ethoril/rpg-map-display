@@ -638,6 +638,21 @@ export function createTokenMaker(container, options = {}) {
     downloadToken,
     populateFromToken,
     resetForm,
+    /**
+     * Réécrit la ligne d'état du générateur.
+     *
+     * ⚠ Elle est publique parce que **le sort du pion généré ne se décide plus ici** : depuis
+     * UX-08, le panneau MJ l'arme et attend un tap sur la carte, tandis que `prepare.html`
+     * l'écrit sur le disque. Laisser le générateur annoncer « Pion ajouté » dans les deux cas
+     * serait exactement le mensonge d'interface que ce lot corrige ailleurs.
+     *
+     * @param {string} text
+     * @param {string} [color]
+     */
+    setStatus: (text, color = '#aaa') => {
+      status.style.color = color;
+      status.textContent = text;
+    },
     getCurrentToken: () => currentToken,
     getCurrentDataUrl: () => currentDataUrl,
     /**

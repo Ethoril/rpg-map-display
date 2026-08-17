@@ -1128,8 +1128,15 @@ export function validateCampaign(campaign) {
       //
       // ⚠ Seul le rendu de la ligne le lit ; le cercle et le cône l'ignorent. On ne fait pas un
       // schéma par forme pour un champ.
+      //
+      // ⚠ `null` vaut absence **au même titre que `undefined`**, et ce n'est pas une largesse :
+      // `terrainCost`, `videoUrl` et `emitsLight` emploient déjà `null` comme idiome d'absence
+      // dans ce même schéma. Une campagne qu'un producteur écrirait avec `widthCells: null`
+      // serait sinon rejetée **en bloc** par `loadCampaign` — exactement la régression que la
+      // tolérance ci-dessus existe pour empêcher.
       if (
         template.widthCells !== undefined &&
+        template.widthCells !== null &&
         (typeof template.widthCells !== 'number' ||
           !Number.isInteger(template.widthCells) ||
           template.widthCells <= 0)

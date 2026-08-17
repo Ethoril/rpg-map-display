@@ -10,6 +10,39 @@ const TEST_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwvjb3YAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAXSURBVHic7cExAQAAAMKg9U9tCj8gAAAAAAB4BhVMAAFxPbfKAAAAAElFTkSuQmCC';
 const TEST_PNG_BUFFER = Buffer.from(TEST_PNG_BASE64, 'base64');
 
+/**
+ * Pose le pion en attente sur une case, par le geste réel de tap.
+ *
+ * ⚠ **Ajouté par UX-08, et c'est la seule modification apportée à ces deux scénarios.** « Générer »
+ * n'ajoute plus le pion : il **arme** la pose, et le pion atterrit là où le MJ tape ensuite. Les
+ * assertions qui suivent sont inchangées — elles décrivent toujours un pion présent dans la
+ * campagne, avec son étage, sa taille et son image embarquée.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {number} cellX
+ * @param {number} cellY
+ */
+async function poserLePionEnAttente(page, cellX, cellY) {
+  await page.evaluate(
+    async ({ x, y }) => {
+      const [store, grid] = await Promise.all([
+        import('../js/state/store.js'),
+        import('../js/grid/index.js'),
+      ]);
+      const level = store.getActiveLevel();
+      if (!level) throw new Error('aucun étage actif : le pion ne peut pas être posé');
+      // + 0,5 case pour viser le milieu, et non l'arête.
+      const pt = grid.gridFor(level).mapFromCellPoint({ cellX: x + 0.5, cellY: y + 0.5 });
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: pt.x, y: pt.y },
+        screenPos: { x: 200, y: 200 },
+      });
+    },
+    { x: cellX, y: cellY }
+  );
+}
+
 // Charge le fichier fixture minimal.uvtt
 const MINIMAL_UVTT_PATH = path.resolve('fixtures/synthetic/minimal.uvtt');
 const MINIMAL_UVTT_CONTENT = fs.readFileSync(MINIMAL_UVTT_PATH, 'utf-8');
@@ -393,6 +426,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     await page.fill('#token-label', 'Chevalier');
     await page.fill('#token-size-cells', '2');
     await page.click('#btn-generate-token');
+    await poserLePionEnAttente(page, 2, 2);
 
     // Vérifier que le pion a été directement ajouté aux tokens du store
     const tokens = await page.evaluate(async () => {
@@ -478,6 +512,7 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     });
     await page.fill('#token-label', 'Dragon');
     await page.click('#btn-generate-token');
+    await poserLePionEnAttente(page, 3, 3);
 
     // Vérifier que l'état du store contient l'étage et le pion
     const state = await page.evaluate(async () => {
