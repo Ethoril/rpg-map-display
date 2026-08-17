@@ -1126,6 +1126,24 @@ export function validateCampaign(campaign) {
       ) {
         errors.push(`Gabarit "${tId}" : radiusCells invalide "${template.radiusCells}"`);
       }
+      // ⛔ `widthCells` est validé **quand il est présent, quelle que soit la forme**, et son
+      // absence vaut 1 sans jamais faire échouer la validation : les gabarits enregistrés avant
+      // UX-06 ne le portent pas, et un import qui rejetterait une campagne existante serait une
+      // régression plus chère que la forme ajoutée.
+      //
+      // ⚠ Seul le rendu de la ligne le lit ; le cercle et le cône l'ignorent. On ne fait pas un
+      // schéma par forme pour un champ.
+      if (
+        template.widthCells !== undefined &&
+        (typeof template.widthCells !== 'number' ||
+          !Number.isInteger(template.widthCells) ||
+          template.widthCells <= 0)
+      ) {
+        errors.push(
+          `Gabarit "${tId}" : widthCells invalide "${template.widthCells}" ` +
+            '(entier strictement positif attendu ; absent vaut 1)'
+        );
+      }
       if (typeof template.visibleToPlayers !== 'boolean') {
         errors.push(`Gabarit "${tId}" : visibleToPlayers invalide "${template.visibleToPlayers}"`);
       }

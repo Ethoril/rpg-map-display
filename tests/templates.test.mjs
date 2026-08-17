@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { createCampaign, createLevel, validateCampaign } from '../js/core/schema.js';
+import { findHitTemplate } from '../js/input/templateHit.js';
 import { gridFor } from '../js/grid/index.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
 import { sweep } from '../js/vision/sweep.js';
@@ -277,6 +278,89 @@ test('Schema : validateCampaign valide les origin MapPoint et refuse les gabarit
   };
   const err4 = validateCampaign(c4);
   assert.equal(err4.some((e) => e.includes('tpl-bad-dir') && e.includes('directionDeg invalide')), true);
+});
+
+test('UX-06 : widthCells — absent vaut 1 sans erreur, invalide refusé en nommant le gabarit', () => {
+  const level = createLevel({ id: 'lvl1' });
+  const campaign = createCampaign({ levels: [level] });
+
+  /** @param {object} extra */
+  const avecGabarit = (extra) => ({
+    ...campaign,
+    templates: [
+      {
+        id: 'tpl-largeur',
+        levelId: 'lvl1',
+        shape: 'line',
+        origin: { x: 100, y: 100 },
+        radiusCells: 4,
+        directionDeg: 0,
+        color: '#ef4444',
+        visibleToPlayers: true,
+        ...extra,
+      },
+    ],
+  });
+
+  // ⛔ Critère 5 : une campagne enregistrée AVANT UX-06 ne porte pas le champ. La rejeter
+  // serait une régression plus chère que la forme ajoutée.
+  assert.deepEqual(validateCampaign(avecGabarit({})), [], 'un gabarit sans widthCells doit se valider');
+  assert.deepEqual(validateCampaign(avecGabarit({ widthCells: 3 })), []);
+
+  // Critère 6 : zéro, négatif, fractionnaire — refusés, et le message nomme le gabarit.
+  for (const mauvais of [0, -2, 1.5, '3', null, Number.NaN]) {
+    const errs = validateCampaign(avecGabarit({ widthCells: mauvais }));
+    assert.equal(
+      errs.some((e) => e.includes('tpl-largeur') && e.includes('widthCells invalide')),
+      true,
+      `widthCells ${JSON.stringify(mauvais)} doit être refusé en nommant le gabarit`
+    );
+  }
+});
+
+test('UX-06 : findHitTemplate désigne une ligne — poignée, corps, et la largeur compte', () => {
+  const level = createLevel({ id: 'lvl1', pxPerCell: 140 });
+  /** @param {number} widthCells */
+  const ligne = (widthCells) => ({
+    id: 'tpl-ligne',
+    levelId: 'lvl1',
+    shape: /** @type {const} */ ('line'),
+    origin: { x: 700, y: 700 },
+    radiusCells: 4, // 560 px vers l'Est
+    directionDeg: 0,
+    widthCells,
+    color: '#ef4444',
+    visibleToPlayers: true,
+  });
+
+  // Poignée d'origine : déplacement, comme la pointe du cône.
+  const surLaPoignee = findHitTemplate(level, [ligne(1)], { x: 700, y: 700 }, 1, 140, false);
+  assert.equal(surLaPoignee?.mode, 'move');
+
+  // Corps : pivot.
+  const surLeCorps = findHitTemplate(level, [ligne(1)], { x: 1100, y: 700 }, 1, 140, false);
+  assert.equal(surLeCorps?.mode, 'rotate');
+
+  // Au-delà de la longueur : rien. 700 + 560 = 1260.
+  assert.equal(findHitTemplate(level, [ligne(1)], { x: 1300, y: 700 }, 1, 140, false), null);
+
+  // ⭐ La largeur compte, et c'est ce qui distingue la ligne du segment : à 100 px de l'axe, le
+  // point est DEHORS pour une largeur de 1 case (±70 px) et DEDANS pour 3 cases (±210 px).
+  assert.equal(
+    findHitTemplate(level, [ligne(1)], { x: 1000, y: 800 }, 1, 140, false),
+    null,
+    'largeur 1 : un point à 100 px de l\'axe est hors de la ligne'
+  );
+  assert.equal(
+    findHitTemplate(level, [ligne(3)], { x: 1000, y: 800 }, 1, 140, false)?.mode,
+    'rotate',
+    'largeur 3 : le même point est dans la ligne'
+  );
+
+  // Une ligne pivotée : le test se fait dans le repère de l'axe, pas en coordonnées carte.
+  const versLeSud = { ...ligne(1), directionDeg: 90 };
+  assert.equal(findHitTemplate(level, [versLeSud], { x: 700, y: 1100 }, 1, 140, false)?.mode, 'rotate');
+  assert.equal(findHitTemplate(level, [versLeSud], { x: 1100, y: 700 }, 1, 140, false), null);
 });
 
 test('Événements réseau template.place et template.move dans networkEvents.js', () => {

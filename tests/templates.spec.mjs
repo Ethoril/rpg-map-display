@@ -471,6 +471,353 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     ]);
   });
 
+  /**
+   * UX-06 — la forme « ligne ».
+   *
+   * ⭐ La seule fonctionnalité neuve du lot, et la seule qui touche au schéma : `widthCells`
+   * traverse `core/schema.js`, `core/types.js`, l'événement `template.place` et la persistance.
+   */
+  const NIVEAU_LIGNE = {
+    ...NIVEAU_UX05,
+    id: 'lvl-ligne',
+    name: 'Étage Ligne',
+    // Mur vertical entre les colonnes 3 et 4, de y = 0 à y = 6 cases — le mur du scénario 4.
+    walls: [[{ cellX: 3, cellY: 0 }, { cellX: 3, cellY: 6 }]],
+  };
+
+  /** @param {any[]} templates @param {any[]} [tokens] @param {any[]} [walls] */
+  const snapshotLigne = (templates, tokens = [], walls = NIVEAU_LIGNE.walls) => ({
+    campaign: {
+      schemaVersion: 2,
+      campaignId: 'cmp-ligne',
+      name: 'Campagne Ligne',
+      levels: [{ ...NIVEAU_LIGNE, walls }],
+      links: [],
+      tokens,
+      templates,
+      settings: {},
+    },
+    activeLevelId: 'lvl-ligne',
+    selectedTokenId: null,
+  });
+
+  /**
+   * Lève le brouillard, fixe la caméra, et rend une frame. Protocole du scénario 4, extrait
+   * pour que les sondes de la ligne le partagent mot pour mot.
+   *
+   * @param {import('@playwright/test').Page} page
+   */
+  async function preparerSonde(page) {
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+    await page.click('#fog-btn-reveal-all');
+    await expect(page.locator('#fog-btn-undo')).toHaveText(/Annuler \((?!0\))\d+\)/);
+    await page.evaluate(async () => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      await new Promise((resolve) => {
+        const premier = () => {
+          app.frameLoop.removeListener(premier);
+          app.camera.setPan(3 * 140, 3 * 140);
+          app.camera.setZoom(1);
+          const second = () => {
+            app.frameLoop.removeListener(second);
+            resolve(null);
+          };
+          app.frameLoop.addListener(second);
+          app.frameLoop.requestFrame();
+        };
+        app.frameLoop.addListener(premier);
+        app.frameLoop.requestFrame();
+      });
+    });
+  }
+
+  /**
+   * Dominance rouge (R − (G+B)/2) moyennée sur 10 × 10 px écran autour de chaque MapPoint,
+   * après une frame fraîche. Rend aussi la vérification que les points sont bien dans le canvas :
+   * une sonde hors cadre mesurerait du vide et se tairait.
+   *
+   * @param {import('@playwright/test').Page} page
+   * @param {{x: number, y: number}[]} points
+   * @returns {Promise<{dansLeCanvas: boolean, dominances: number[]}>}
+   */
+  function mesurerRouge(page, points) {
+    return page.evaluate(async (pts) => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      await new Promise((resolve) => {
+        const l = () => {
+          app.frameLoop.removeListener(l);
+          resolve(null);
+        };
+        app.frameLoop.addListener(l);
+        app.frameLoop.requestFrame();
+      });
+
+      const res = app.stage?.resolution ?? 1;
+      const marge = 30;
+      /** @param {{x: number, y: number}} pt */
+      const dansLeCanvas = (pt) => {
+        const p = app.camera.mapToScreen(pt);
+        return (
+          p.screenX > marge &&
+          p.screenY > marge &&
+          p.screenX < app.canvas.width / res - marge &&
+          p.screenY < app.canvas.height / res - marge
+        );
+      };
+      /** @param {{x: number, y: number}} pt */
+      const dominance = (pt) => {
+        const p = app.camera.mapToScreen(pt);
+        const d = app.context.getImageData(
+          Math.round((p.screenX - 5) * res),
+          Math.round((p.screenY - 5) * res),
+          Math.round(10 * res),
+          Math.round(10 * res)
+        ).data;
+        let somme = 0;
+        for (let i = 0; i < d.length; i += 4) somme += d[i] - (d[i + 1] + d[i + 2]) / 2;
+        return somme / (d.length / 4);
+      };
+
+      return {
+        dansLeCanvas: pts.every(dansLeCanvas),
+        dominances: pts.map(dominance),
+      };
+    }, points);
+  }
+
+  test('10. Critères 1 et 3 : la ligne n\'est plus grisée, se pose avec sa largeur, se déplace et pivote', async ({ page }) => {
+    const sessionId = `test-template-ux06-pose-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, snapshotLigne([], [], []));
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await page.click('button[data-tab="template-tools"]');
+
+    // L'option était grisée depuis le lot 2 : « Ligne (bientôt) ».
+    await expect(page.locator('#tpl-shape option[value="line"]')).not.toBeDisabled();
+
+    // La largeur ne concerne que la ligne, et ne s'affiche que pour elle.
+    await expect(page.locator('#tpl-width-row')).toBeHidden();
+    await page.selectOption('#tpl-shape', 'line');
+    await expect(page.locator('#tpl-width-row')).toBeVisible();
+
+    await page.fill('#tpl-radius', '4');
+    await page.dispatchEvent('#tpl-radius', 'change');
+    await page.click('.tpl-width-preset[data-width="3"]');
+    await page.click('.tpl-color-preset[data-color="#f59e0b"]');
+    await page.uncheck('#tpl-visible');
+
+    await page.click('#tpl-toggle-arm');
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 350, y: 420 },
+        screenPos: { x: 300, y: 300 },
+      });
+    });
+
+    const pose = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const t = store.getState().campaign?.templates?.[0];
+      return t
+        ? {
+            shape: t.shape,
+            origin: t.origin,
+            radiusCells: t.radiusCells,
+            widthCells: t.widthCells,
+            color: t.color,
+            visibleToPlayers: t.visibleToPlayers,
+            directionDeg: t.directionDeg,
+          }
+        : null;
+    });
+    expect(pose, 'aucune ligne posée : le reste ne prouverait rien').not.toBeNull();
+    expect(pose?.shape).toBe('line');
+    expect(pose?.origin).toEqual({ x: 350, y: 420 });
+    expect(pose?.radiusCells).toBe(4);
+    expect(pose?.widthCells, 'la largeur saisie n\'atteint pas le gabarit').toBe(3);
+    expect(pose?.color).toBe('#f59e0b');
+    expect(pose?.visibleToPlayers).toBe(false);
+
+    // ⭐ Le champ voyage bien dans `template.place`, et pas seulement dans le store local.
+    const publie = await page.evaluate(() =>
+      /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+        .filter((/** @type {any} */ e) => e.type === 'template.place')
+        .map((/** @type {any} */ e) => ({
+          shape: e.payload.template.shape,
+          widthCells: e.payload.template.widthCells,
+        }))
+    );
+    expect(publie).toEqual([{ shape: 'line', widthCells: 3 }]);
+
+    // Déplacement et pivot, comme le cône.
+    const apres = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const t = store.getState().campaign?.templates[0];
+      if (!t) throw new Error('aucun gabarit à déplacer');
+      store.moveTemplate(t.id, { x: 700, y: 700 }, 90);
+      const apresMove = store.getState().campaign?.templates[0];
+      return { origin: apresMove?.origin, directionDeg: apresMove?.directionDeg, widthCells: apresMove?.widthCells };
+    });
+    expect(apres.origin).toEqual({ x: 700, y: 700 });
+    expect(apres.directionDeg).toBe(90);
+    expect(apres.widthCells, 'template.move ne doit pas toucher à la largeur').toBe(3);
+  });
+
+  test('11. Critère 2 : la ligne est découpée par les murs (sonde de pixels, comme le cône)', async ({ page }) => {
+    const sessionId = `test-template-ux06-occlusion-${Date.now()}`;
+    // Ligne partant de {x: 350, y: 420}, vers l'Est, 3 cases de long (420 px, donc jusqu'à
+    // x = 770 sans mur) et 1 case de large. Le mur est à x = 3 × 140 = 420.
+    const ligne = {
+      id: 'tpl-ligne-clip',
+      levelId: 'lvl-ligne',
+      shape: /** @type {const} */ ('line'),
+      origin: { x: 2.5 * 140, y: 3 * 140 },
+      radiusCells: 3,
+      directionDeg: 0,
+      widthCells: 1,
+      color: '#ef4444',
+      visibleToPlayers: true,
+    };
+    await installBrowserTransport(page, sessionId, snapshotLigne([ligne]));
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await preparerSonde(page);
+
+    // Contrôle : sur l'axe, entre l'origine et le mur. Assertion : 14 px après le mur, à
+    // l'abscisse 3,1 case dont le scénario 4 a établi que le fond y est clair — plus loin, le
+    // fond verdit et la dominance rouge n'y distingue plus rien.
+    const { dansLeCanvas, dominances } = await mesurerRouge(page, [
+      { x: 2.7 * 140, y: 3 * 140 },
+      { x: 3.1 * 140, y: 3 * 140 },
+    ]);
+    const [avantLeMur, derriereLeMur] = dominances;
+    const contexte = `avant ${avantLeMur.toFixed(2)}, derrière ${derriereLeMur.toFixed(2)}`;
+
+    expect(dansLeCanvas, `${contexte} : les échantillons sont hors du canvas`).toBe(true);
+    expect(avantLeMur, `${contexte} : la ligne n'est pas peinte devant le mur`).toBeGreaterThan(40);
+    expect(
+      derriereLeMur,
+      `${contexte} : la ligne a débordé derrière le mur (défaut de ctx.clip)`
+    ).toBeLessThan(20);
+  });
+
+  test('12. Critère 3 : la largeur s\'applique au rendu, et pas seulement au schéma', async ({ page }) => {
+    const sessionId = `test-template-ux06-largeur-${Date.now()}`;
+    const ligne = {
+      id: 'tpl-ligne-largeur',
+      levelId: 'lvl-ligne',
+      shape: /** @type {const} */ ('line'),
+      origin: { x: 2.5 * 140, y: 3 * 140 },
+      radiusCells: 3,
+      directionDeg: 0,
+      widthCells: 1,
+      color: '#ef4444',
+      visibleToPlayers: true,
+    };
+    // Sans mur : ce scénario mesure la largeur, pas l'occlusion.
+    await installBrowserTransport(page, sessionId, snapshotLigne([ligne], [], []));
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await preparerSonde(page);
+
+    // Sur l'axe : peint dans les deux cas — c'est le témoin que la sonde regarde bien un rendu
+    // vivant. À une case sous l'axe : hors de la bande à largeur 1 (± 70 px), dedans à
+    // largeur 3 (± 210 px).
+    const surLAxe = { x: 2.7 * 140, y: 3 * 140 };
+    const uneCaseSousLAxe = { x: 2.7 * 140, y: 4 * 140 };
+
+    const etroite = await mesurerRouge(page, [surLAxe, uneCaseSousLAxe]);
+    expect(etroite.dansLeCanvas).toBe(true);
+
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const t = store.getState().campaign?.templates[0];
+      if (!t) throw new Error('aucune ligne à élargir');
+      store.placeTemplate({ ...t, widthCells: 3 });
+    });
+
+    const large = await mesurerRouge(page, [surLAxe, uneCaseSousLAxe]);
+
+    const contexte =
+      `axe ${etroite.dominances[0].toFixed(2)} → ${large.dominances[0].toFixed(2)}, ` +
+      `hors axe ${etroite.dominances[1].toFixed(2)} → ${large.dominances[1].toFixed(2)}`;
+
+    // ⭐ La comparaison porte sur le MÊME point avant et après l'élargissement : elle ne dépend
+    // donc d'aucune hypothèse sur la couleur du fond à cet endroit, et un rendu qui ignorerait
+    // `widthCells` rendrait les deux mesures identiques.
+    expect(etroite.dominances[0], `${contexte} : la ligne étroite n'est pas peinte sur son axe`).toBeGreaterThan(40);
+    expect(large.dominances[0], `${contexte} : la ligne large n'est plus peinte sur son axe`).toBeGreaterThan(40);
+    expect(
+      large.dominances[1] - etroite.dominances[1],
+      `${contexte} : élargir la ligne n'a rien peint à une case de l'axe`
+    ).toBeGreaterThan(25);
+  });
+
+  test('13. Critère 4 : la ligne part du centre du pion touché, et du doigt sur une case vide', async ({ page }) => {
+    const sessionId = `test-template-ux06-ancrage-${Date.now()}`;
+    // Pion 2 × 2 sur les cases (2,2) à (3,3) : son rectangle carte va de (280, 280) à
+    // (560, 560), donc son centre est en (420, 420).
+    const pion = {
+      id: 'pj-ancrage',
+      levelId: 'lvl-ligne',
+      cell: { a: 2, b: 2 },
+      sizeCells: 2,
+      kind: /** @type {const} */ ('pc'),
+      imageUrl: '',
+      borderColor: '#000000',
+      label: 'Souffleur',
+      hidden: false,
+      visionBright: 10,
+      visionDim: 10,
+      emitsLight: null,
+      speedCells: 6,
+      playerMovable: true,
+      locked: false,
+      elevation: 0,
+      markers: [],
+      hp: { current: 10, max: 10 },
+      health: /** @type {const} */ ('unharmed'),
+    };
+    await installBrowserTransport(page, sessionId, snapshotLigne([], [pion], []));
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    await page.click('button[data-tab="template-tools"]');
+    await page.selectOption('#tpl-shape', 'line');
+
+    /** @param {{x: number, y: number}} mapPos */
+    const poserEn = async (mapPos) => {
+      await page.click('#tpl-toggle-arm');
+      await page.evaluate((pos) => {
+        /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+          type: 'tap',
+          mapPos: pos,
+          screenPos: { x: 300, y: 300 },
+        });
+      }, mapPos);
+    };
+
+    // Tap dans le pion, mais franchement décentré : l'origine doit s'accrocher au centre.
+    await poserEn({ x: 300, y: 310 });
+    // Tap sur une case vide, loin du pion : l'origine reste sous le doigt.
+    await poserEn({ x: 1120, y: 210 });
+
+    const origines = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return (store.getState().campaign?.templates ?? []).map((t) => t.origin);
+    });
+
+    expect(origines.length, 'les deux poses doivent avoir produit deux gabarits').toBe(2);
+    expect(origines[0], 'posée sur un pion, l\'origine doit être le centre du pion').toEqual({
+      x: 420,
+      y: 420,
+    });
+    expect(origines[1], 'posée sur une case vide, l\'origine reste sous le doigt').toEqual({
+      x: 1120,
+      y: 210,
+    });
+  });
+
   test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {
     const sessionId = `test-template-e2e-4-${Date.now()}`;
     const levelWithWall = {

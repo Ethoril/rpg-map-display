@@ -103,11 +103,20 @@ export class TemplatesLayer {
       const radiusPx = (template.radiusCells || 1) * cellPx;
       const color = template.color || '#ef4444';
       const shape = template.shape || 'circle';
+      // Absence de `widthCells` = 1 : les gabarits d'avant UX-06 ne le portent pas.
+      const halfWidthPx = (Math.max(1, template.widthCells ?? 1) * cellPx) / 2;
 
       ctx.save();
 
       // 1. Découpe par le polygone de sweep s'il y a des murs/obstacles
-      const sweepPoly = sweep(origin, segments, radiusPx);
+      //
+      // ⚠ Le sweep est un disque autour de l'origine, donc son rayon doit couvrir le point le
+      // plus ÉLOIGNÉ que la forme peut atteindre — sinon il rogne la forme là où aucun mur ne
+      // l'arrête. Pour une ligne, ce point est un coin du rectangle, à `hypot(longueur, demi-
+      // largeur)` : une ligne de 4 cases sur 3 de large perdrait ses deux coins avant. Élargir
+      // le disque ne fait rien fuir, c'est la forme tracée ensuite qui borne la peinture.
+      const sweepRadiusPx = shape === 'line' ? Math.hypot(radiusPx, halfWidthPx) : radiusPx;
+      const sweepPoly = sweep(origin, segments, sweepRadiusPx);
       if (sweepPoly && sweepPoly.length >= 3) {
         ctx.beginPath();
         ctx.moveTo(sweepPoly[0].x, sweepPoly[0].y);
@@ -127,6 +136,26 @@ export class TemplatesLayer {
         const halfRad = ((CONE_ANGLE_DEG / 2) * Math.PI) / 180;
         ctx.moveTo(origin.x, origin.y);
         ctx.arc(origin.x, origin.y, radiusPx, dirRad - halfRad, dirRad + halfRad);
+        ctx.closePath();
+      } else if (shape === 'line') {
+        // Rectangle partant de l'origine, de `radiusCells` cases de long dans la direction, et
+        // de `widthCells` cases de large **centrées sur l'axe** : un mur de feu tracé depuis un
+        // pion doit s'étendre autant de part et d'autre de la ligne de tir, sinon la forme
+        // dépend du sens dans lequel on l'a fait pivoter.
+        const dirRad = ((template.directionDeg || 0) * Math.PI) / 180;
+        const ux = Math.cos(dirRad);
+        const uy = Math.sin(dirRad);
+        // Normale à l'axe, dans le même repère carte (y vers le bas).
+        const nx = -uy;
+        const ny = ux;
+        const ax = origin.x + nx * halfWidthPx;
+        const ay = origin.y + ny * halfWidthPx;
+        const bx = origin.x - nx * halfWidthPx;
+        const by = origin.y - ny * halfWidthPx;
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax + ux * radiusPx, ay + uy * radiusPx);
+        ctx.lineTo(bx + ux * radiusPx, by + uy * radiusPx);
+        ctx.lineTo(bx, by);
         ctx.closePath();
       }
 

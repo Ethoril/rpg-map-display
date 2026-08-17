@@ -171,10 +171,13 @@
  * @property {string} id
  * @property {string} levelId
  * @property {TemplateShape} shape
- * @property {MapPoint} origin Position sur la carte (centre pour cercle, pointe pour cône)
- * @property {number} radiusCells
+ * @property {MapPoint} origin Position sur la carte (centre pour cercle, pointe pour cône,
+ *   départ de l'axe pour la ligne)
+ * @property {number} radiusCells Rayon, ou **longueur** pour la ligne
  * @property {number} directionDeg Orientation en degrés (0 = Est, sens horaire)
- * @property {number} widthCells
+ * @property {number} [widthCells] Largeur de la ligne en cases. **Optionnel, et il doit le
+ *   rester** : les gabarits enregistrés avant UX-06 ne le portent pas, leur absence vaut 1.
+ *   Lu par le seul rendu de la ligne ; le cercle et le cône l'ignorent.
  * @property {string} color
  * @property {boolean} visibleToPlayers
  */

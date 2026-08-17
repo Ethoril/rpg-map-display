@@ -1150,15 +1150,52 @@ export async function bootstrapGMApp(options = {}) {
       if (activeToolName === 'template-place') {
         if (gmPanel?.templateTools) {
           const cfg = gmPanel.templateTools.getConfig();
+
+          // ⭐ **Une règle de geste, et aucun champ de plus** (UX-06) : l'outil de pose étant
+          // armé, si le tap tombe sur un pion, l'origine s'accroche au centre de ce pion ;
+          // sinon elle reste sous le doigt. Un souffle part d'une gueule, un tir part d'un
+          // tireur, et viser le centre d'un pion à la main coûte un geste à chaque sort.
+          //
+          // ⛔ Le gabarit ne RESTE PAS attaché au pion : une fois posé, il se déplace et pivote
+          // à la main comme les autres. L'option « la ligne suit le pion » a été écartée avec
+          // ses trois cas non tranchés — pion supprimé, pion qui change d'étage, pion masqué —
+          // et son conflit avec le glisser de gabarit qui existe déjà côté joueurs. Il n'y a
+          // donc **ni identifiant de pion dans le gabarit, ni case à cocher**.
+          //
+          // ⚠ Le centre se calcule comme le milieu du RECTANGLE que `findHitToken` teste, avec
+          // les deux mêmes appels à `mapFromCellPoint` : ce qui est désigné et là où l'origine
+          // se pose ne peuvent alors pas diverger. C'est volontairement solidaire de la
+          // désignation, y compris de son défaut connu C-5 sur grille hexagonale — corriger
+          // l'un sans l'autre les ferait se contredire.
+          const posGrid = gridFor(activeLevel);
+          const hitToken = findHitToken(
+            posGrid,
+            activeLevel,
+            intention.mapPos,
+            camera.zoom,
+            state.campaign?.tokens ?? [],
+            { deprioritize: (t) => !!t.locked }
+          );
+          let origin = intention.mapPos;
+          if (hitToken) {
+            const size = hitToken.sizeCells || 1;
+            const coinA = posGrid.mapFromCellPoint({ cellX: hitToken.cell.a, cellY: hitToken.cell.b });
+            const coinB = posGrid.mapFromCellPoint({
+              cellX: hitToken.cell.a + size,
+              cellY: hitToken.cell.b + size,
+            });
+            origin = { x: (coinA.x + coinB.x) / 2, y: (coinA.y + coinB.y) / 2 };
+          }
+
           /** @type {import('../core/types.js').Template} */
           const template = {
             id: cfg.templateId,
             levelId: activeLevel.id,
             shape: cfg.shape,
-            origin: intention.mapPos,
+            origin,
             radiusCells: cfg.radiusCells,
             directionDeg: 0,
-            widthCells: 1,
+            widthCells: cfg.widthCells,
             color: cfg.color,
             visibleToPlayers: cfg.visibleToPlayers,
           };

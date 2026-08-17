@@ -53,6 +53,8 @@ export function createTemplateTools(container, options) {
   /** @type {TemplateShape} */
   let shape = 'circle';
   let radiusCells = 4;
+  // ⛔ Défaut 1, décidé le 16/08 : c'est la ligne d'un souffle ou d'un tir, pas une nappe.
+  let widthCells = 1;
   let color = '#ef4444';
   let visibleToPlayers = true;
   let currentTemplateId = generateTemplateId();
@@ -68,7 +70,7 @@ export function createTemplateTools(container, options) {
         <select id="tpl-shape" style="background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 0.4rem; border-radius: 4px; font-size: 0.85rem;">
           <option value="circle" selected>Cercle (disque)</option>
           <option value="cone">Cône (60°)</option>
-          <option value="line" disabled>Ligne (bientôt)</option>
+          <option value="line">Ligne (rectangle)</option>
         </select>
       </div>
 
@@ -81,6 +83,18 @@ export function createTemplateTools(container, options) {
             <button class="tpl-rad-preset" data-rad="2" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">2</button>
             <button class="tpl-rad-preset" data-rad="4" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">4</button>
             <button class="tpl-rad-preset" data-rad="6" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">6</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tpl-width-row" style="display: none; flex-direction: column; gap: 0.3rem;">
+        <label style="font-size: 0.75rem; color: #aaa;">Largeur de la ligne (cases)</label>
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <input id="tpl-width" type="number" min="1" max="20" step="1" value="${widthCells}" style="flex: 1; background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 0.4rem; border-radius: 4px; font-size: 0.85rem;" />
+          <div style="display: flex; gap: 0.2rem;">
+            <button class="tpl-width-preset" data-width="1" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">1</button>
+            <button class="tpl-width-preset" data-width="2" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">2</button>
+            <button class="tpl-width-preset" data-width="3" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">3</button>
           </div>
         </div>
       </div>
@@ -124,6 +138,18 @@ export function createTemplateTools(container, options) {
   const selectShape = /** @type {HTMLSelectElement} */ (container.querySelector('#tpl-shape'));
   const checkVisible = /** @type {HTMLInputElement} */ (container.querySelector('#tpl-visible'));
   const list = /** @type {HTMLElement} */ (container.querySelector('#tpl-list'));
+  const inputWidth = /** @type {HTMLInputElement} */ (container.querySelector('#tpl-width'));
+  const widthRow = /** @type {HTMLElement} */ (container.querySelector('#tpl-width-row'));
+
+  /**
+   * La largeur ne s'affiche que pour la ligne : elle est validée quelle que soit la forme, mais
+   * seule la ligne la lit. Un champ visible qui ne changerait rien au cercle posé serait un
+   * mensonge de la même famille que celui de l'onglet Image.
+   */
+  function updateWidthRow() {
+    if (!widthRow?.style) return;
+    widthRow.style.display = shape === 'line' ? 'flex' : 'none';
+  }
 
   /**
    * Reconstruit la liste des gabarits posés, un bouton de retrait par ligne.
@@ -237,9 +263,16 @@ export function createTemplateTools(container, options) {
     color = inputColor.value;
   });
 
+  inputWidth?.addEventListener('change', () => {
+    const val = Math.max(1, Math.min(20, parseInt(inputWidth.value, 10) || 1));
+    widthCells = val;
+    inputWidth.value = String(val);
+  });
+
   selectShape.addEventListener('change', () => {
     const val = /** @type {TemplateShape} */ (selectShape.value);
-    if (val === 'circle' || val === 'cone') shape = val;
+    if (val === 'circle' || val === 'cone' || val === 'line') shape = val;
+    updateWidthRow();
   });
 
   checkVisible.addEventListener('change', () => {
@@ -254,6 +287,14 @@ export function createTemplateTools(container, options) {
     });
   });
 
+  container.querySelectorAll('.tpl-width-preset').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const w = parseInt(btn.getAttribute('data-width') || '1', 10);
+      widthCells = w;
+      if (inputWidth) inputWidth.value = String(w);
+    });
+  });
+
   container.querySelectorAll('.tpl-color-preset').forEach((btn) => {
     btn.addEventListener('click', () => {
       const c = btn.getAttribute('data-color') || '#ef4444';
@@ -262,6 +303,7 @@ export function createTemplateTools(container, options) {
     });
   });
 
+  updateWidthRow();
   refresh();
 
   return {
@@ -273,6 +315,7 @@ export function createTemplateTools(container, options) {
       templateId: currentTemplateId,
       shape,
       radiusCells,
+      widthCells,
       color,
       visibleToPlayers,
     }),

@@ -63,6 +63,33 @@ export function isPointInCone(origin, directionDeg, radiusPx, mapPos) {
 }
 
 /**
+ * Indique si un point carte tombe dans le rectangle d'une ligne.
+ *
+ * Le test se fait dans le repère de l'axe : projection le long de la direction pour la
+ * longueur, projection sur la normale pour la largeur. ⛔ Ne pas le refaire par une
+ * comparaison de coordonnées carte — il faudrait ressortir la rotation, et c'est exactement
+ * l'erreur de « grandeur dans le mauvais espace » que ce dépôt a déjà payée.
+ *
+ * @param {MapPoint} origin Départ de l'axe
+ * @param {number} directionDeg Direction de l'axe (0 = Est, sens horaire)
+ * @param {number} lengthPx Longueur en pixels carte
+ * @param {number} widthPx Largeur totale en pixels carte, centrée sur l'axe
+ * @param {MapPoint} mapPos Position testée
+ * @returns {boolean}
+ */
+export function isPointInLine(origin, directionDeg, lengthPx, widthPx, mapPos) {
+  const dirRad = (directionDeg * Math.PI) / 180;
+  const ux = Math.cos(dirRad);
+  const uy = Math.sin(dirRad);
+  const dx = mapPos.x - origin.x;
+  const dy = mapPos.y - origin.y;
+  const along = dx * ux + dy * uy;
+  if (along < 0 || along > lengthPx) return false;
+  const across = dx * -uy + dy * ux;
+  return Math.abs(across) <= widthPx / 2;
+}
+
+/**
  * Recherche le gabarit sous le curseur/doigt.
  *
  * @param {Level} level Étage courant
@@ -110,6 +137,16 @@ export function findHitTemplate(level, templates, mapPos, zoom = 1, cellScale = 
       }
       // Corps du cône
       if (isPointInCone(t.origin, t.directionDeg || 0, radiusPx, mapPos)) {
+        return { template: t, mode: 'rotate' };
+      }
+    } else if (t.shape === 'line') {
+      // Même partage que le cône, et pour la même raison : la poignée d'origine déplace, le
+      // corps pivote. Un seul geste par zone, sinon on ne sait pas ce que le doigt va faire.
+      if (distToOrigin <= handleRadiusMap) {
+        return { template: t, mode: 'move' };
+      }
+      const widthPx = Math.max(1, t.widthCells ?? 1) * cellPx;
+      if (isPointInLine(t.origin, t.directionDeg || 0, radiusPx, widthPx, mapPos)) {
         return { template: t, mode: 'rotate' };
       }
     }
