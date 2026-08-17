@@ -268,6 +268,209 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     expect((await config()).radiusCells).toBe(20);
   });
 
+  /**
+   * UX-05 — le retrait d'un gabarit, par le doigt et par la liste.
+   *
+   * Le seul retrait possible était « Effacer les gabarits de l'étage » : retirer le cône d'un
+   * sort résolu effaçait aussi la zone de ténèbres posée deux tours plus tôt.
+   *
+   * ⚠ **Deux gabarits dans chaque scénario, jamais un seul.** Un test à un gabarit ne peut pas
+   * distinguer « retire le désigné » de « retire le premier du tableau », et c'est précisément la
+   * faute que le brief demande de rendre impossible.
+   */
+  const NIVEAU_UX05 = {
+    id: 'lvl-ux05',
+    name: 'Étage UX-05',
+    order: 0,
+    imageUrl: 'maps/minimal.webp',
+    videoUrl: null,
+    animatedOverlays: [],
+    pxPerCell: 140,
+    widthCells: 12,
+    heightCells: 8,
+    grid: { type: /** @type {const} */ ('square'), offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: false },
+    terrainCost: null,
+    walls: [],
+    portals: [],
+    lights: [],
+    ambient: { color: '#ffffff', level: 1, baked: false },
+  };
+
+  /**
+   * @param {string} id
+   * @param {{x: number, y: number}} origin
+   * @param {string} color
+   */
+  const gabaritUX05 = (id, origin, color) => ({
+    id,
+    levelId: 'lvl-ux05',
+    shape: /** @type {const} */ ('circle'),
+    origin,
+    radiusCells: 1, // 140 px : les deux gabarits ne se recouvrent pas
+    directionDeg: 0,
+    widthCells: 1,
+    color,
+    visibleToPlayers: true,
+  });
+
+  /** @param {any[]} templates @param {any[]} [portals] */
+  const snapshotUX05 = (templates, portals = []) => ({
+    campaign: {
+      schemaVersion: 2,
+      campaignId: 'cmp-ux05',
+      name: 'Campagne UX-05',
+      levels: [{ ...NIVEAU_UX05, portals }],
+      links: [],
+      tokens: [],
+      templates,
+      settings: {},
+    },
+    activeLevelId: 'lvl-ux05',
+    selectedTokenId: null,
+  });
+
+  /** @param {import('@playwright/test').Page} page */
+  const idsDesGabarits = (page) =>
+    page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return (store.getState().campaign?.templates ?? []).map((t) => t.id);
+    });
+
+  test('7. Critères 1 et 3 : l\'appui long retire le gabarit désigné, lui seul, et le retrait atteint les joueurs', async ({ context }) => {
+    const sessionId = `test-template-ux05-longpress-${Date.now()}`;
+    const snapshot = snapshotUX05([
+      gabaritUX05('tpl-garde', { x: 210, y: 350 }, '#3b82f6'),
+      gabaritUX05('tpl-cible', { x: 1050, y: 350 }, '#ef4444'),
+    ]);
+
+    const pageGM = await context.newPage();
+    await installBrowserTransport(pageGM, sessionId, snapshot);
+    await pageGM.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(pageGM);
+
+    const pagePlayer = await context.newPage();
+    await installBrowserTransport(pagePlayer, sessionId, snapshot);
+    await pagePlayer.goto(`/player.html?session=${sessionId}`);
+    await waitForApp(pagePlayer);
+
+    expect(await idsDesGabarits(pagePlayer)).toEqual(['tpl-garde', 'tpl-cible']);
+
+    // Appui long sur l'origine de `tpl-cible`, qui n'est PAS le premier du tableau.
+    await pageGM.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'longPress',
+        mapPos: { x: 1050, y: 350 },
+        screenPos: { x: 400, y: 300 },
+      });
+    });
+
+    expect(
+      await idsDesGabarits(pageGM),
+      'le MJ doit avoir perdu le gabarit désigné, et lui seul'
+    ).toEqual(['tpl-garde']);
+
+    // ⭐ Le critère 3 se lit chez les joueurs, pas sur l'écran du MJ : un retrait local qui ne
+    // publierait rien laisserait la table avec un cône fantôme sous les yeux.
+    await expect.poll(() => idsDesGabarits(pagePlayer)).toEqual(['tpl-garde']);
+
+    const publies = await pageGM.evaluate(() =>
+      /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+        .filter((/** @type {any} */ e) => e.type === 'template.remove')
+        .map((/** @type {any} */ e) => e.payload)
+    );
+    expect(publies, 'un seul retrait publié, portant l\'identifiant désigné').toEqual([
+      { templateId: 'tpl-cible' },
+    ]);
+
+    // Rejeu du même événement chez les joueurs : sans effet, et sans emporter le réducteur.
+    const rejeu = await pagePlayer.evaluate(async () => {
+      const net = await import('../js/app/networkEvents.js');
+      const store = await import('../js/state/store.js');
+      const mute = net.applyNetworkEvent({
+        type: 'template.remove',
+        payload: { templateId: 'tpl-cible' },
+        at: Date.now(),
+        by: 'gm',
+      });
+      return { mute, ids: (store.getState().campaign?.templates ?? []).map((t) => t.id) };
+    });
+    expect(rejeu.mute, 'un rejeu ne doit pas se déclarer mutant').toBe(false);
+    expect(rejeu.ids).toEqual(['tpl-garde']);
+  });
+
+  test('8. Critère 2 : le bouton de la liste retire le même gabarit, et la liste suit le store', async ({ page }) => {
+    const sessionId = `test-template-ux05-liste-${Date.now()}`;
+    await installBrowserTransport(
+      page,
+      sessionId,
+      snapshotUX05([
+        gabaritUX05('tpl-garde', { x: 210, y: 350 }, '#3b82f6'),
+        gabaritUX05('tpl-cible', { x: 1050, y: 350 }, '#ef4444'),
+      ])
+    );
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+
+    await page.click('button[data-tab="template-tools"]');
+    await expect(page.locator('#tpl-list .tpl-row')).toHaveCount(2);
+
+    await page.click('.tpl-remove[data-template-id="tpl-cible"]');
+
+    expect(await idsDesGabarits(page)).toEqual(['tpl-garde']);
+    // La liste se rafraîchit sur la mutation du store, sans qu'on rouvre l'onglet.
+    await expect(page.locator('#tpl-list .tpl-row')).toHaveCount(1);
+    await expect(page.locator('#tpl-list .tpl-row')).toHaveAttribute('data-template-id', 'tpl-garde');
+
+    const publies = await page.evaluate(() =>
+      /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+        .filter((/** @type {any} */ e) => e.type === 'template.remove')
+        .map((/** @type {any} */ e) => e.payload)
+    );
+    expect(publies).toEqual([{ templateId: 'tpl-cible' }]);
+  });
+
+  test('9. Critère 4 : un gabarit posé sur une porte — l\'appui long verrouille la porte, pas le gabarit', async ({ page }) => {
+    const sessionId = `test-template-ux05-porte-${Date.now()}`;
+    // La porte occupe l'arête verticale de la case (3, 2) à (3, 3) : son milieu carte est
+    // {x: 420, y: 350}. Le gabarit y est posé par-dessus, exactement là où le doigt tombera.
+    const porte = {
+      id: 'porte-ux05',
+      a: { cellX: 3, cellY: 2 },
+      b: { cellX: 3, cellY: 3 },
+      state: /** @type {const} */ ('closed'),
+      freestanding: false,
+    };
+    await installBrowserTransport(
+      page,
+      sessionId,
+      snapshotUX05([gabaritUX05('tpl-sur-la-porte', { x: 420, y: 350 }, '#ef4444')], [porte])
+    );
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'longPress',
+        mapPos: { x: 420, y: 350 },
+        screenPos: { x: 400, y: 300 },
+      });
+    });
+
+    const etat = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const campaign = store.getState().campaign;
+      return {
+        porte: campaign?.levels[0].portals[0].state,
+        gabarits: (campaign?.templates ?? []).map((t) => t.id),
+      };
+    });
+
+    expect(etat.porte, 'la porte doit gagner l\'arbitrage de l\'appui long').toBe('locked');
+    expect(etat.gabarits, 'le gabarit sous la porte ne doit pas avoir été retiré').toEqual([
+      'tpl-sur-la-porte',
+    ]);
+  });
+
   test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {
     const sessionId = `test-template-e2e-4-${Date.now()}`;
     const levelWithWall = {

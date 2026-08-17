@@ -10,9 +10,18 @@
  * @typedef {Object} TemplateToolsOptions
  * @property {() => string|null} getActiveLevelId
  * @property {(levelId: string) => void} [onClearTemplates]
+ * @property {() => Template[]} [getTemplates] Gabarits de la campagne, tous étages confondus
+ * @property {(templateId: string) => void} [onRemoveTemplate]
  * @property {(armed: boolean) => void} [onArmChange]
  * @property {() => void} [requestRender]
  */
+
+/** @type {Record<TemplateShape, string>} */
+const SHAPE_LABEL_FR = {
+  circle: 'Cercle',
+  cone: 'Cône',
+  line: 'Ligne',
+};
 
 let templateCounter = 0;
 
@@ -31,7 +40,14 @@ export function createTemplateTools(container, options) {
     throw new Error('createTemplateTools : conteneur HTML requis');
   }
 
-  const { getActiveLevelId, onClearTemplates, onArmChange, requestRender } = options;
+  const {
+    getActiveLevelId,
+    onClearTemplates,
+    getTemplates,
+    onRemoveTemplate,
+    onArmChange,
+    requestRender,
+  } = options;
 
   let armed = false;
   /** @type {TemplateShape} */
@@ -93,6 +109,11 @@ export function createTemplateTools(container, options) {
           Effacer les gabarits de l'étage
         </button>
       </div>
+
+      <div style="border-top: 1px solid #333; margin-top: 0.4rem; padding-top: 0.6rem;">
+        <strong style="font-size: 0.8rem; color: #eee;">Gabarits posés sur cet étage</strong>
+        <div id="tpl-list" style="display: grid; gap: 0.35rem; margin-top: 0.45rem;"></div>
+      </div>
     </div>
   `;
 
@@ -102,6 +123,73 @@ export function createTemplateTools(container, options) {
   const inputColor = /** @type {HTMLInputElement} */ (container.querySelector('#tpl-color'));
   const selectShape = /** @type {HTMLSelectElement} */ (container.querySelector('#tpl-shape'));
   const checkVisible = /** @type {HTMLInputElement} */ (container.querySelector('#tpl-visible'));
+  const list = /** @type {HTMLElement} */ (container.querySelector('#tpl-list'));
+
+  /**
+   * Reconstruit la liste des gabarits posés, un bouton de retrait par ligne.
+   *
+   * ⭐ **C'est le filet de l'appui long, et il est demandé pour ça.** Un gabarit sous un pion,
+   * ou hors de l'écran après un déplacement de caméra, n'est pas atteignable au doigt. Sans
+   * cette liste il reste des cas sans issue — le genre qui se découvre en séance, devant la
+   * table, avec pour seul remède d'effacer tout l'étage.
+   *
+   * ⛔ **Elle ne montre que l'étage actif**, comme le bouton d'effacement juste au-dessus.
+   * Lister les gabarits des autres étages offrirait un retrait dont l'effet est invisible à
+   * l'écran : on ne saurait pas si le bon a été retiré. Le filet des autres étages est la barre
+   * d'étage, qui les rend visibles avant de les toucher.
+   */
+  function refresh() {
+    const all = getTemplates?.();
+    // Sans source de gabarits, il n'y a pas de liste à tenir : le composant reste utilisable
+    // pour la seule pose (c'est ainsi qu'il est monté dans les tests unitaires).
+    if (!all || !list) return;
+
+    const levelId = getActiveLevelId?.() ?? null;
+    const posed = levelId ? all.filter((t) => t && t.levelId === levelId) : [];
+
+    if (posed.length === 0) {
+      const vide = document.createElement('p');
+      vide.style.cssText = 'margin: 0; font-size: 0.75rem; color: #888;';
+      vide.textContent = 'Aucun gabarit posé sur cet étage.';
+      list.replaceChildren(vide);
+      return;
+    }
+
+    list.replaceChildren(
+      ...posed.map((t) => {
+        const row = document.createElement('div');
+        row.className = 'tpl-row';
+        row.setAttribute('data-template-id', t.id);
+        row.style.cssText =
+          'display: flex; gap: 0.4rem; align-items: center; padding: 0.3rem 0.35rem; border: 1px solid #444; border-radius: 4px;';
+
+        const chip = document.createElement('span');
+        chip.style.cssText = `width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid #fff; background: ${t.color};`;
+
+        const text = document.createElement('span');
+        text.style.cssText = 'flex: 1; font-size: 0.75rem; color: #ddd;';
+        const forme = SHAPE_LABEL_FR[t.shape] ?? t.shape;
+        const largeur = t.shape === 'line' ? `, largeur ${t.widthCells ?? 1}` : '';
+        const cache = t.visibleToPlayers ? '' : ' · MJ seul';
+        text.textContent = `${forme} — rayon ${t.radiusCells}${largeur}${cache}`;
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'tpl-remove';
+        remove.setAttribute('data-template-id', t.id);
+        remove.style.cssText =
+          'padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;';
+        remove.textContent = 'Retirer';
+        remove.addEventListener('click', () => {
+          onRemoveTemplate?.(t.id);
+          requestRender?.();
+        });
+
+        row.append(chip, text, remove);
+        return row;
+      })
+    );
+  }
 
   function updateUI() {
     if (armed) {
@@ -174,10 +262,13 @@ export function createTemplateTools(container, options) {
     });
   });
 
+  refresh();
+
   return {
     isArmed: () => armed,
     setArmed,
     disarm: () => setArmed(false),
+    refresh,
     getConfig: () => ({
       templateId: currentTemplateId,
       shape,

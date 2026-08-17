@@ -1268,6 +1268,19 @@ export async function bootstrapGMApp(options = {}) {
       const state = store.getState();
       if (!state.activeLevel) return;
       const grid = gridFor(state.activeLevel);
+
+      // ⛔ **L'appui long arbitre en faveur de la PORTE, et c'est ici que ça se décide.**
+      //
+      // Deux gestes partagent désormais cet appui : verrouiller une porte (L-05) et retirer un
+      // gabarit (UX-05). Un gabarit posé sur une porte — le cas courant, on souffle dans un
+      // couloir — les rend ambigus. La porte gagne parce que c'est le geste le plus ancien et
+      // le plus utilisé, et parce que ses conséquences sont asymétriques : une porte qu'on
+      // rate se retape, un gabarit retiré par erreur se repose de zéro avec son rayon, sa
+      // couleur et son orientation.
+      //
+      // ⚠ Ne pas « améliorer » cet ordre en départageant par distance ou par ce qui est
+      // dessiné au-dessus : la règle doit rester lisible sans mesurer, sinon le MJ ne peut
+      // pas prévoir ce que son doigt va faire.
       const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos);
       if (hitPortal) {
         const targetState = hitPortal.state === 'locked' ? 'closed' : 'locked';
@@ -1282,6 +1295,25 @@ export async function bootstrapGMApp(options = {}) {
           at: Date.now(),
           by: 'gm',
         });
+        return;
+      }
+
+      const hitTemplate = findHitTemplate(
+        state.activeLevel,
+        state.campaign?.templates ?? [],
+        intention.mapPos,
+        camera.zoom,
+        0,
+        false
+      );
+      if (hitTemplate && store.removeTemplate(hitTemplate.template.id)) {
+        transport?.publish({
+          type: 'template.remove',
+          payload: { templateId: hitTemplate.template.id },
+          at: Date.now(),
+          by: 'gm',
+        });
+        requestRender();
       }
       return;
     }

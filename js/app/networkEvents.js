@@ -471,6 +471,23 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    case 'template.remove': {
+      if (!payload.templateId || typeof payload.templateId !== 'string') {
+        console.error('Événement "template.remove" refusé : payload malformé');
+        return false;
+      }
+      try {
+        // ⭐ Le `false` du store passe tel quel : un gabarit déjà retiré rend `false` **sans
+        // lever**, ce qui rend le rejeu inoffensif (`CONVENTIONS.md` §4). Rendre `true` par
+        // confort ferait croire à une mutation qui n'a pas eu lieu.
+        return store.removeTemplate(payload.templateId);
+      } catch (err) {
+        console.error(
+          `Événement "template.remove" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+    }
     case 'template.clear': {
       if (!payload.levelId || typeof payload.levelId !== 'string') {
         console.error('Événement "template.clear" refusé : payload malformé');

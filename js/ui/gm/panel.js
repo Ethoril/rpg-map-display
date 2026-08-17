@@ -749,6 +749,19 @@ export function createGMPanel(container, options = {}) {
           by: 'gm',
         });
       },
+      getTemplates: () => store.getState().campaign?.templates ?? [],
+      // ⚠ Publier **seulement si le store a bien retiré quelque chose**, comme `onRemoveWall`
+      // juste au-dessus. Un événement émis sur une absence ferait voyager un retrait qui n'a
+      // pas eu lieu, et le rejeu d'un lot le rendrait indistinguable d'un vrai.
+      onRemoveTemplate: (templateId) => {
+        if (!store.removeTemplate(templateId)) return;
+        transport?.publish({
+          type: 'template.remove',
+          payload: { templateId },
+          at: Date.now(),
+          by: 'gm',
+        });
+      },
       onArmChange: (armed) => {
         if (armed) {
           setActiveTool('template-place');
@@ -1531,6 +1544,10 @@ export function createGMPanel(container, options = {}) {
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
     levelSelector?.update();
+    // La liste des gabarits se rafraîchit sur **toute** mutation du store, et pas seulement
+    // sur ses propres gestes : un gabarit retiré par appui long sur la carte, ou par un
+    // événement réseau, doit disparaître de la liste sans qu'on rouvre l'onglet.
+    templateTools?.refresh();
     updateLightBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();

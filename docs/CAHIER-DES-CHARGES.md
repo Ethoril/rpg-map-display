@@ -790,12 +790,14 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `ping` | **MJ seul** (amendé le 12/08/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
 | `ambient.set` | MJ | throttlé |
 | `handout.show` / `handout.hide` | MJ | ponctuel |
-| `template.place` / `clear` | MJ | ponctuel |
+| `template.place` / `remove` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
+
+> **Amendement UX-05 (17/08/2026)** : `template.remove` porte `{ templateId: string }` et retire **un** gabarit. Il est demandé par le mainteneur et n'est donc pas une invention de la couche réseau (`CONVENTIONS.md` §4). Son absence rendait `template.clear` seul retrait possible : retirer le cône d'un sort résolu effaçait aussi la zone de ténèbres posée deux tours plus tôt. Rejeu inoffensif — un gabarit déjà retiré rend `false` sans lever. `template.move` **est** émis depuis L-10 malgré l'amendement ci-dessus, par le glisser de gabarit ; il ne porte que l'origine et la direction.
 
 ### Règles
 

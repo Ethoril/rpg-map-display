@@ -1119,6 +1119,39 @@ export function moveTemplate(templateId, origin, directionDeg) {
 }
 
 /**
+ * Retire un gabarit et lui seul.
+ *
+ * Sur le modèle de `removeLink` : l'absence est **idempotente et silencieuse** — elle rend
+ * `false` sans lever ni notifier. C'est ce qui rend l'événement `template.remove` rejouable
+ * sans précaution du côté de l'appelant (`CONVENTIONS.md` §4).
+ *
+ * ⛔ Ne pas confondre avec `clearTemplates`, qui efface tout l'étage. Le seul retrait possible
+ * était celui-là, et retirer le cône d'un sort résolu effaçait aussi la zone de ténèbres posée
+ * deux tours plus tôt.
+ *
+ * @param {string} templateId
+ * @returns {boolean} true si un gabarit a été retiré
+ */
+export function removeTemplate(templateId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!templateId || typeof templateId !== 'string') {
+    throw new Error('Identifiant de gabarit requis');
+  }
+
+  const index = (campaign.templates || []).findIndex((t) => t.id === templateId);
+  if (index < 0) return false;
+
+  const candidate = structuredClone(campaign);
+  candidate.templates.splice(index, 1);
+  assertValidCampaign(candidate, `Retrait du gabarit "${templateId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
  * Supprime tous les gabarits d'un étage donné.
  *
  * @param {string} levelId

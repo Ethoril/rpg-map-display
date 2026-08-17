@@ -108,6 +108,96 @@ test('Store placeTemplate, moveTemplate et clearTemplates (idempotence, déplace
   unsub();
 });
 
+test('UX-05 : store.removeTemplate retire le gabarit désigné, et lui seul', () => {
+  store.resetStore();
+  const lvl1 = createLevel({ id: 'lvl1', name: 'Étage 1' });
+  const campaign = createCampaign({ levels: [lvl1] });
+  store.loadCampaign(campaign);
+
+  /** @param {string} id */
+  const gabarit = (id) => ({
+    id,
+    levelId: 'lvl1',
+    shape: /** @type {const} */ ('circle'),
+    origin: { x: 350, y: 350 },
+    radiusCells: 3,
+    directionDeg: 0,
+    widthCells: 1,
+    color: '#ef4444',
+    visibleToPlayers: true,
+  });
+
+  // ⚠ Trois gabarits, et on retire celui du MILIEU : avec un seul, un code qui retirerait
+  // `templates[0]` au lieu du désigné passerait au vert. C'est la faute que ce test défend.
+  store.placeTemplate(gabarit('tpl-a'));
+  store.placeTemplate(gabarit('tpl-b'));
+  store.placeTemplate(gabarit('tpl-c'));
+
+  let notifs = 0;
+  const unsub = store.subscribe(() => {
+    notifs++;
+  });
+
+  assert.equal(store.removeTemplate('tpl-b'), true);
+  assert.deepEqual(
+    store.getState().campaign?.templates.map((t) => t.id),
+    ['tpl-a', 'tpl-c'],
+    'seul le gabarit désigné doit partir'
+  );
+  assert.equal(notifs, 1, 'un retrait effectif notifie une fois');
+
+  // Absence idempotente et silencieuse, sur le modèle de `removeLink` : ni erreur, ni
+  // notification. C'est ce qui rend le rejeu de `template.remove` inoffensif.
+  assert.equal(store.removeTemplate('tpl-b'), false);
+  assert.equal(store.getState().campaign?.templates.length, 2);
+  assert.equal(notifs, 1, 'une absence ne doit pas notifier');
+
+  assert.throws(() => store.removeTemplate(''), /Identifiant de gabarit requis/);
+
+  unsub();
+});
+
+test('UX-05 : événement réseau template.remove — validé, idempotent au rejeu, malformé refusé', () => {
+  store.resetStore();
+  const level = createLevel({ id: 'lvl1' });
+  store.loadCampaign(createCampaign({ levels: [level] }));
+
+  const template = {
+    id: 'tpl-net-remove',
+    levelId: 'lvl1',
+    shape: /** @type {const} */ ('cone'),
+    origin: { x: 700, y: 700 },
+    radiusCells: 3,
+    directionDeg: 0,
+    widthCells: 1,
+    color: '#10b981',
+    visibleToPlayers: true,
+  };
+  const autre = { ...template, id: 'tpl-net-garde', origin: { x: 100, y: 100 } };
+  store.placeTemplate(template);
+  store.placeTemplate(autre);
+
+  /** @param {object} payload */
+  const remove = (payload) =>
+    applyNetworkEvent({ type: 'template.remove', payload, at: Date.now(), by: 'gm' });
+
+  assert.equal(remove({ templateId: 'tpl-net-remove' }), true);
+  assert.deepEqual(
+    store.getState().campaign?.templates.map((t) => t.id),
+    ['tpl-net-garde'],
+    'le voisin du gabarit retiré doit rester'
+  );
+
+  // Rejeu : même état, aucun jet. Un réducteur qui lèverait ici emporterait tous les
+  // événements suivants du lot (`CONVENTIONS.md` §4 et §6).
+  assert.equal(remove({ templateId: 'tpl-net-remove' }), false);
+  assert.equal(store.getState().campaign?.templates.length, 1);
+
+  assert.equal(remove({ templateId: 42 }), false);
+  assert.equal(remove({}), false);
+  assert.equal(store.getState().campaign?.templates.length, 1);
+});
+
 test('Schema : validateCampaign valide les origin MapPoint et refuse les gabarits malformés (L-10)', () => {
   const level = createLevel({ id: 'lvl1' });
   const campaign = createCampaign({ levels: [level] });
