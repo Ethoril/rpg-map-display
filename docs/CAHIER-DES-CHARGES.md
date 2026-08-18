@@ -792,6 +792,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `handout.show` / `handout.hide` | MJ | ponctuel |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
+| `token.reserve` | MJ | ponctuel — `{ tokenId }`, voir l amendement UX-14 |
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
 
@@ -1318,3 +1319,25 @@ Critères :
    dévoiler parce qu'un PJ aperçoit une lampe par une porte. Tant que le cas reste théorique,
    l'approximation tient. Tentative de reproduction sur `testvideo-3` le 11/08/2026 : les murs
    obliques de la tour bloquent la ligne vers les lampes, le cas ne s'est pas déclenché.
+
+> **Amendement UX-14 (18/08/2026) — la réserve de pions.** `token.reserve` porte `{ tokenId }` et
+> range un pion **hors du plateau**, avec son état entier : ses PV, ses marqueurs, son élévation et
+> son nom voyagent avec lui. Rejeu inoffensif — un pion déjà rangé rend `false` sans lever.
+>
+> ⛔ **Aucun `token.unreserve`, et c'est délibéré** : ressortir un pion, c'est le **poser**, donc
+> `token.add`, qui existe déjà, porte le pion entier et est idempotent par identifiant. Deux
+> chemins vers un même état final finissent par ne plus se rejoindre. Le réducteur de `token.add`
+> retire donc le pion de la réserve quand l'identifiant y figure, dans la même transaction.
+>
+> **Forme retenue** (décision du mainteneur du 18/08) : une collection séparée
+> `campaign.reserve: Token[]`, et **non** un `levelId` nul. L'invariant « un pion est toujours
+> quelque part » reste vrai pour `tokens`, et surtout **aucun balayage de pions ne change** — la
+> vision, la lumière, `computeReachable` et `blockedEdges` lisent `tokens`. Qu'un pion rangé
+> éclaire une pièce devient structurellement impossible, au lieu d'être une garde à ne pas oublier
+> dans cinq fichiers.
+>
+> ⚠ `reserve` est **optionnel** : les campagnes enregistrées avant cette tranche ne le portent pas,
+> et leur absence vaut réserve vide. Les pions y conservent `levelId` et `cell` comme **trace de
+> provenance**, non comme position : le schéma ne les valide donc ni contre les étages existants ni
+> contre les bornes de la carte. Le jeu d'identifiants, lui, est **commun aux deux collections** —
+> c'est ce qui interdit qu'un pion soit à la fois posé et rangé.

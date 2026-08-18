@@ -217,6 +217,32 @@ export function applyNetworkEvent(event) {
     case 'token.add': {
       if (!payload.token) return false;
       if (campaign?.tokens.some((token) => token.id === payload.token.id)) return false;
+
+      // ⭐ **Poser un pion qui vient de la réserve, c'est le SORTIR de la réserve** (UX-14). Sans
+      // cette branche, un poste qui reçoit le `token.add` garderait le pion dans les deux
+      // collections à la fois, et le schéma refuserait la campagne suivante — `knownTokenIds` est
+      // commun aux deux.
+      //
+      // ⛔ Pas de `token.unreserve` : deux chemins vers un même état final finissent par ne plus
+      // se rejoindre. Ici, un seul événement décrit le geste, et `placeTokenFromReserve` valide la
+      // case dans la même transaction.
+      if (campaign?.reserve?.some((token) => token.id === payload.token.id)) {
+        try {
+          return store.placeTokenFromReserve(
+            payload.token.id,
+            payload.token.levelId,
+            payload.token.cell
+          );
+        } catch (err) {
+          console.error(
+            `Événement "token.add" refusé (pion en réserve) : ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+          return false;
+        }
+      }
+
       store.addToken(payload.token);
       return true;
     }
@@ -426,6 +452,32 @@ export function applyNetworkEvent(event) {
       } catch (err) {
         console.error(
           `Événement "wall.remove" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+    }
+
+    // ── UX-14 : la réserve ────────────────────────────────────────────────────────────────
+    //
+    // ⛔ **Un seul événement neuf, et pas deux.** Ranger un pion est une mutation qui lui est
+    // propre, donc `token.reserve`. Le ressortir, en revanche, c'est le POSER : `token.add`
+    // existe déjà, il porte le pion entier, et il est idempotent par identifiant. Inventer un
+    // `token.unreserve` aurait donné deux chemins pour un même état final, qui auraient fini par
+    // ne plus se rejoindre.
+    //
+    // ⚠ Le réducteur retire donc le pion de la réserve quand un `token.add` porte un
+    // identifiant qui y figure : sans cela, un rejeu ou un poste en retard garderait le pion
+    // dans les deux collections à la fois — l'état incohérent que le schéma refuse.
+    case 'token.reserve': {
+      if (!payload.tokenId || typeof payload.tokenId !== 'string') {
+        console.error('Événement "token.reserve" refusé : payload malformé');
+        return false;
+      }
+      try {
+        return store.reserveToken(payload.tokenId);
+      } catch (err) {
+        console.error(
+          `Événement "token.reserve" refusé : ${err instanceof Error ? err.message : String(err)}`
         );
         return false;
       }

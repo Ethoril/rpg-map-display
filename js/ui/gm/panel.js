@@ -255,9 +255,21 @@ export function createGMPanel(container, options = {}) {
 
           <p id="token-edit-status" style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #888; min-height: 1rem;"></p>
 
+          <button id="btn-reserve-token" disabled style="margin-top: 0.5rem; width: 100%; padding: 0.5rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Retire le pion du plateau sans le supprimer : il garde ses points de vie, ses marqueurs et son nom.">
+            Ranger en réserve
+          </button>
+
           <button id="btn-delete-token" disabled style="margin-top: 0.5rem; width: 100%; padding: 0.5rem; background: #5f2530; color: #fff; border: 1px solid #7a2f3c; border-radius: 4px; cursor: pointer;">
             Supprimer ce pion
           </button>
+
+          <div id="gm-reserve-drawer" style="display: none; border-top: 1px solid #444; margin-top: 0.75rem; padding-top: 0.75rem;">
+            <strong style="font-size: 0.85rem;">Réserve</strong>
+            <p style="margin: 0.2rem 0 0.45rem 0; font-size: 0.72rem; color: #888;">
+              Pions retirés du plateau, avec leur état. « Poser » arme la pose : tapez ensuite la carte.
+            </p>
+            <div id="gm-reserve-list" style="display: grid; gap: 0.35rem;"></div>
+          </div>
         </div>
         <div class="token-library-section" style="margin-bottom: 1.5rem;">
           <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Bibliothèque de pions</h3>
@@ -413,10 +425,30 @@ export function createGMPanel(container, options = {}) {
    */
   let pendingToken = null;
 
+  /**
+   * Le pion en attente vient-il de la réserve (UX-14) ou du générateur (UX-08) ?
+   *
+   * ⭐ **Le geste est le même, et c'est voulu** : sortir un pion de la réserve, c'est le poser
+   * quelque part. Seule la mutation finale diffère — `placeTokenFromReserve` au lieu d'`addToken`
+   * — parce qu'elle doit retirer le pion de la réserve dans la MÊME transaction. Deux gestes
+   * distincts auraient demandé deux armements, donc deux exclusivités mutuelles à tenir.
+   */
+  let pendingFromReserve = false;
+
   function clearPendingToken() {
     if (!pendingToken) return;
+    const venaitDeLaReserve = pendingFromReserve;
     pendingToken = null;
-    tokenMaker?.setStatus('Pose annulée : le pion généré n’a pas été ajouté.', '#aaa');
+    pendingFromReserve = false;
+    // Un pion de la réserve n'est pas perdu quand on annule : il y est resté tout du long, la
+    // réserve n'ayant été touchée qu'à la pose. Le dire, sinon le MJ le croit égaré.
+    tokenMaker?.setStatus(
+      venaitDeLaReserve
+        ? 'Pose annulée : le pion est resté en réserve.'
+        : 'Pose annulée : le pion généré n’a pas été ajouté.',
+      '#aaa'
+    );
+    updateReserveDrawer();
   }
 
   /** @type {ReturnType<typeof createWallEditor>|null} */
@@ -841,6 +873,7 @@ export function createGMPanel(container, options = {}) {
     defaultLevelId: store.getActiveLevelId(),
     onGenerate: (token, _dataUrl) => {
       pendingToken = token;
+      pendingFromReserve = false;
       setActiveTool('token-place');
       tokenMaker.setStatus('Pion prêt : tapez la carte pour le poser.', '#f5a623');
     },
@@ -1065,6 +1098,84 @@ export function createGMPanel(container, options = {}) {
   const tokenEditLocked = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-locked'));
   const tokenEditStatus = /** @type {HTMLElement} */ (container.querySelector('#token-edit-status'));
   const btnDeleteToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-delete-token'));
+  const btnReserveToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-reserve-token'));
+  const reserveDrawer = /** @type {HTMLElement|null} */ (container.querySelector('#gm-reserve-drawer'));
+  const reserveList = /** @type {HTMLElement|null} */ (container.querySelector('#gm-reserve-list'));
+
+  /**
+   * Les trois crans de santé, dans les mots du panneau (⛔ interdiction n°4 : un PNJ n'a jamais
+   * de PV chiffrés, ni ici ni ailleurs — c'est le chantier Q).
+   *
+   * @type {Record<string, string>}
+   */
+  const SANTE_LABEL_FR = { unharmed: 'Indemne', wounded: 'Blessé', critical: 'Critique' };
+
+  /**
+   * Reconstruit le tiroir de la réserve (UX-14).
+   *
+   * ⛔ **La réserve tient des INSTANCES, pas des modèles.** Ne pas la confondre avec la
+   * bibliothèque de pions, deux onglets plus loin : celle-ci tient des modèles dont on instancie
+   * des copies ; la réserve tient *ces pions-là*, ceux qui étaient sur le plateau, avec leurs
+   * points de vie, leurs marqueurs et leur histoire. La ligne les affiche pour cette raison —
+   * un « Gobelin » sans ses 3 PV restants ne se reconnaît pas.
+   */
+  function updateReserveDrawer() {
+    if (!reserveDrawer || !reserveList) return;
+    const enReserve = store.getReserve();
+    reserveDrawer.style.display = enReserve.length > 0 ? 'block' : 'none';
+    if (enReserve.length === 0) {
+      reserveList.replaceChildren();
+      return;
+    }
+
+    reserveList.replaceChildren(
+      ...enReserve.map((pion) => {
+        const ligne = document.createElement('div');
+        ligne.className = 'gm-reserve-row';
+        ligne.dataset.tokenId = pion.id;
+        ligne.style.cssText =
+          'display: flex; gap: 0.4rem; align-items: center; padding: 0.3rem 0.35rem; border: 1px solid #444; border-radius: 4px;';
+
+        const pastille = document.createElement('span');
+        pastille.style.cssText = `width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid #fff; background: ${pion.borderColor};`;
+
+        const texte = document.createElement('span');
+        texte.style.cssText = 'flex: 1; font-size: 0.75rem; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+        // ⛔ **Interdiction n°4 : JAMAIS de PV chiffrés pour un PNJ**, et l'ordre des branches est
+        // tout ce qui la tient. Un PNJ *porte* souvent des `hp` — le panneau les édite — mais ce
+        // qu'on en montre est l'état de santé à trois crans, sans jamais dériver l'un de l'autre
+        // (chantier Q). Tester `hp` en premier suffisait à trahir « 3/7 » dans le tiroir, et c'est
+        // le test qui l'a attrapé, pas la relecture.
+        const vitalite =
+          pion.kind === 'npc'
+            ? ` — ${SANTE_LABEL_FR[pion.health] ?? pion.health}`
+            : pion.hp
+            ? ` — ${pion.hp.current}/${pion.hp.max} PV`
+            : '';
+        texte.textContent = `${pion.label}${vitalite}`;
+        texte.title = texte.textContent;
+
+        const poser = document.createElement('button');
+        poser.type = 'button';
+        poser.className = 'gm-reserve-place';
+        poser.dataset.tokenId = pion.id;
+        poser.style.cssText =
+          'padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;';
+        poser.textContent = 'Poser';
+        poser.addEventListener('click', () => {
+          // ⭐ Exactement l'armement d'UX-08, avec la même exclusivité mutuelle : sortir un pion
+          // de la réserve, c'est le poser quelque part.
+          pendingToken = pion;
+          pendingFromReserve = true;
+          setActiveTool('token-place');
+          tokenMaker.setStatus(`« ${pion.label} » prêt : tapez la carte pour le poser.`, '#f5a623');
+        });
+
+        ligne.append(pastille, texte, poser);
+        return ligne;
+      })
+    );
+  }
 
   const tokenHpCurrent = /** @type {HTMLInputElement} */ (container.querySelector('#token-hp-current'));
   const tokenHpMax = /** @type {HTMLInputElement} */ (container.querySelector('#token-hp-max'));
@@ -1100,6 +1211,7 @@ export function createGMPanel(container, options = {}) {
     const disabled = !selectedToken;
     for (const control of tokenEditControls) control.disabled = disabled;
     btnDeleteToken.disabled = disabled;
+    btnReserveToken.disabled = disabled;
 
     if (!selectedToken) {
       tokenEditLabel.value = '';
@@ -1466,6 +1578,31 @@ export function createGMPanel(container, options = {}) {
 
   // La suppression est irréversible — il n'y a pas d'annulation dans le modèle — donc elle
   // se confirme, comme « quitter la session » plus haut.
+  btnReserveToken.addEventListener(
+    'click',
+    () => {
+      const selectedToken = store.getSelectedToken();
+      if (!selectedToken) return;
+      const tokenId = selectedToken.id;
+      try {
+        if (!store.reserveToken(tokenId)) return;
+      } catch (err) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
+        return;
+      }
+      transport?.publish({
+        type: 'token.reserve',
+        payload: { tokenId },
+        at: Date.now(),
+        by: 'gm',
+      });
+      tokenEditStatus.style.color = '#2ecc71';
+      tokenEditStatus.textContent = 'Pion rangé en réserve, avec son état.';
+    },
+    { signal: listeners.signal }
+  );
+
   btnDeleteToken.addEventListener(
     'click',
     () => {
@@ -1497,6 +1634,7 @@ export function createGMPanel(container, options = {}) {
   );
 
   updateTokenEditUIFromStore();
+  updateReserveDrawer();
 
   // ── Ambiance lumineuse (Lot 3, S-05) ──────────────────────────────────────────────────
   const ambientDayBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-ambient-day'));
@@ -1595,6 +1733,7 @@ export function createGMPanel(container, options = {}) {
     // sur ses propres gestes : un gabarit retiré par appui long sur la carte, ou par un
     // événement réseau, doit disparaître de la liste sans qu'on rouvre l'onglet.
     templateTools?.refresh();
+    updateReserveDrawer();
     updateLightBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();
@@ -1628,7 +1767,14 @@ export function createGMPanel(container, options = {}) {
     if (!pendingToken || !levelId || !cell) return false;
     const token = { ...pendingToken, levelId, cell: { a: cell.a, b: cell.b } };
     try {
-      store.addToken(token);
+      // ⚠ Deux mutations pour un seul geste : un pion de la réserve doit en SORTIR dans la même
+      // transaction où il entre sur le plateau, sinon il existe deux fois — et le schéma refuse
+      // la campagne suivante, son jeu d'identifiants étant commun aux deux collections.
+      if (pendingFromReserve) {
+        if (!store.placeTokenFromReserve(token.id, levelId, cell)) return false;
+      } else {
+        store.addToken(token);
+      }
     } catch (err) {
       // Une case hors limites est le cas courant : on le dit et on **reste armé**, pour que le
       // MJ retape à l'intérieur sans avoir à régénérer son pion.
@@ -1642,8 +1788,10 @@ export function createGMPanel(container, options = {}) {
       by: 'gm',
     });
     pendingToken = null;
+    pendingFromReserve = false;
     tokenMaker.setStatus(`Pion posé en ${cell.a}, ${cell.b}.`, '#2ecc71');
     setActiveTool('none');
+    updateReserveDrawer();
     return true;
   }
 

@@ -346,6 +346,10 @@ export function createCampaign(overrides = {}) {
     levels,
     links: overrides.links ?? [],
     tokens: overrides.tokens ?? [],
+    // ⛔ Les pions HORS du plateau (UX-14). Vide par défaut, et **jamais** balayée par la vision,
+    // la lumière ou l'accessibilité : celles-ci lisent `tokens`, et c'est précisément ce qui rend
+    // structurellement impossible qu'un pion rangé éclaire une pièce.
+    reserve: overrides.reserve ?? [],
     templates: overrides.templates ?? [],
     // ⛔ `settings` est un conteneur réservé, et il est **vide**. Il portait `ambientLevel`, retiré
     // le 12/08/2026 en tranchant la question n°4 du §12 : l'ambiante est **par étage**
@@ -931,11 +935,32 @@ export function validateCampaign(campaign) {
 
   if (!Array.isArray(campaign.tokens)) {
     errors.push('tokens doit être un tableau');
+  } else if (campaign.reserve !== undefined && !Array.isArray(campaign.reserve)) {
+    errors.push('reserve doit être un tableau');
   } else {
     const knownTokenIds = new Set();
-    for (const token of campaign.tokens) {
+
+    // ⭐ **La réserve est validée par les MÊMES règles que le plateau** (UX-14), et parcourue
+    // dans la même boucle. Deux blocs de validation pour une seule forme de pion finiraient par
+    // ne plus valider pareil, et c'est un pion qui revient sur la carte qui le paierait.
+    //
+    // ⛔ Deux exceptions, et deux seulement : l'existence de l'étage et les bornes de la case.
+    // Un pion en réserve n'est **nulle part** — son `levelId` et sa `cell` sont conservés comme
+    // trace de l'endroit d'où il vient, et rien de plus. Les exiger valides rendrait une campagne
+    // invalide dès qu'on supprime l'étage dont un pion en réserve venait.
+    //
+    // ⚠ `knownTokenIds` est **commun aux deux collections** : c'est ce qui interdit qu'un même
+    // pion soit à la fois sur le plateau et en réserve, l'état incohérent le plus probable.
+    const aValider = [
+      ...campaign.tokens.map((/** @type {any} */ token) => ({ token, enReserve: false })),
+      ...(Array.isArray(campaign.reserve)
+        ? campaign.reserve.map((/** @type {any} */ token) => ({ token, enReserve: true }))
+        : []),
+    ];
+
+    for (const { token, enReserve } of aValider) {
       if (!token || typeof token !== 'object') {
-        errors.push('Objet token invalide dans tokens');
+        errors.push(enReserve ? 'Objet token invalide dans reserve' : 'Objet token invalide dans tokens');
         continue;
       }
 
@@ -949,8 +974,9 @@ export function validateCampaign(campaign) {
         knownTokenIds.add(token.id);
       }
 
-      // 1. Validation du levelId
-      if (!token.levelId || !levelsById.has(token.levelId)) {
+      // 1. Validation du levelId — sur le plateau seulement : un pion en réserve n'est nulle
+      //    part, et son levelId n'est qu'une trace de sa provenance.
+      if (!enReserve && (!token.levelId || !levelsById.has(token.levelId))) {
         errors.push(`Pion "${tokenId}" : levelId inconnu "${token.levelId}"`);
       }
 
@@ -1046,7 +1072,7 @@ export function validateCampaign(campaign) {
         errors.push(`Pion "${tokenId}" : health invalide "${token.health}"`);
       }
 
-      const level = levelsById.get(token.levelId);
+      const level = enReserve ? null : levelsById.get(token.levelId);
       if (
         level &&
         cell &&
@@ -1068,9 +1094,12 @@ export function validateCampaign(campaign) {
     // Le plafond cumulé se vérifie sur la campagne, pas sur le pion : c'est le
     // document Firestore de 1 MiB qui est en jeu, et il n'a pas de propriétaire
     // parmi les pions.
+    // ⚠ La réserve compte dans le plafond : ses pions embarquent leur image comme les autres, et
+    // c'est le document Firestore de 1 MiB qui est en jeu — il ne fait pas la différence entre un
+    // pion posé et un pion rangé.
     let octetsEmbarques = 0;
     let pionsEmbarques = 0;
-    for (const token of campaign.tokens) {
+    for (const { token } of aValider) {
       if (typeof token?.imageUrl === 'string' && token.imageUrl.startsWith('data:')) {
         octetsEmbarques += token.imageUrl.length;
         pionsEmbarques += 1;

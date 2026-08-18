@@ -213,6 +213,23 @@
  * @property {Level[]} levels
  * @property {Link[]} links
  * @property {Token[]} tokens
+ * @property {Token[]} [reserve] Pions **hors du plateau** (UX-14).
+ *
+ *   ⛔ Collection séparée, et non un `levelId` nul : l'invariant « un pion est toujours quelque
+ *   part » reste vrai pour `tokens`, et **aucun balayage de pions ne change**. La vision, la
+ *   lumière, `computeReachable` et `blockedEdges` parcourent `tokens` ; il est donc
+ *   structurellement impossible qu'un pion rangé éclaire une pièce, au lieu d'être une garde
+ *   qu'on peut oublier dans l'un des cinq endroits.
+ *
+ *   Les pions y conservent leur `levelId` et leur `cell` : ce n'est plus une position, c'est la
+ *   trace de l'endroit d'où ils viennent. Le schéma ne les valide donc pas contre les étages.
+ *
+ *   ⚠ Ne pas confondre avec la **bibliothèque** de pions : celle-ci tient des *modèles* dont on
+ *   instancie des copies ; la réserve tient *ces instances-là*, celles qui étaient sur le plateau,
+ *   avec leurs PV, leurs marqueurs et leur histoire.
+ *
+ *   Optionnel dans le typedef, et il doit le rester : les campagnes enregistrées avant UX-14 ne
+ *   le portent pas, et leur absence vaut réserve vide.
  * @property {Template[]} templates
  * @property {CampaignSettings} settings
  */

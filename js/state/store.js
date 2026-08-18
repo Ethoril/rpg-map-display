@@ -1053,6 +1053,95 @@ export function removeToken(tokenId) {
 }
 
 /**
+ * Range un pion du plateau dans la réserve, avec tout son état (UX-14).
+ *
+ * ⭐ **Le pion n'est pas recréé, il est déplacé.** Ses PV, ses marqueurs, son élévation et son
+ * nom voyagent avec lui : c'est ce qui distingue la réserve de la bibliothèque, qui ne tient que
+ * des modèles. Un PNJ blessé rangé pendant un changement de décor doit revenir blessé.
+ *
+ * Absence idempotente et silencieuse, comme `removeTemplate` et `removeLink` : un pion déjà
+ * rangé rend `false` sans lever ni notifier, ce qui rend l'événement réseau rejouable.
+ *
+ * @param {string} tokenId
+ * @returns {boolean} true si un pion a été rangé
+ */
+export function reserveToken(tokenId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!tokenId || typeof tokenId !== 'string') {
+    throw new Error('Identifiant de pion requis');
+  }
+
+  const index = campaign.tokens.findIndex((t) => t.id === tokenId);
+  if (index < 0) return false;
+
+  const candidate = structuredClone(campaign);
+  if (!Array.isArray(candidate.reserve)) candidate.reserve = [];
+  const [pion] = candidate.tokens.splice(index, 1);
+  candidate.reserve.push(pion);
+
+  assertValidCampaign(candidate, `Mise en réserve du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+
+  // Un pion rangé ne peut pas rester sélectionné : la barre de vitalité et la zone de
+  // déplacement désigneraient un pion qui n'est plus sur aucune carte.
+  if (getSelectedTokenId() === tokenId) {
+    clearSelectionState();
+  }
+
+  notifySubscribers();
+  return true;
+}
+
+/**
+ * Ressort un pion de la réserve et le pose sur une case (UX-14).
+ *
+ * ⭐ **UX-08 est la moitié visible de ce geste** : sortir un pion de la réserve, c'est le poser
+ * quelque part. Les deux ne font qu'un, et c'est pourquoi le panneau réutilise le même armement.
+ *
+ * @param {string} tokenId
+ * @param {string} levelId
+ * @param {import('../core/types.js').Cell} cell
+ * @returns {boolean} true si un pion a été posé
+ */
+export function placeTokenFromReserve(tokenId, levelId, cell) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!tokenId || typeof tokenId !== 'string') {
+    throw new Error('Identifiant de pion requis');
+  }
+  if (!cell || !Number.isInteger(cell.a) || !Number.isInteger(cell.b)) {
+    throw new Error('Case valide requise');
+  }
+
+  const index = (campaign.reserve ?? []).findIndex((t) => t.id === tokenId);
+  if (index < 0) return false;
+
+  const candidate = structuredClone(campaign);
+  const [pion] = (candidate.reserve ?? []).splice(index, 1);
+  candidate.tokens.push({ ...pion, levelId, cell: { a: cell.a, b: cell.b } });
+
+  // ⚠ La validation est celle du plateau, bornes comprises : c'est ici que se refuse une case
+  // hors carte, et le pion **reste en réserve** si elle échoue, puisque la campagne candidate
+  // est jetée. Sans cette transaction, un pion pourrait disparaître des deux collections.
+  assertValidCampaign(candidate, `Pose du pion "${tokenId}" depuis la réserve`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
+ * Les pions actuellement en réserve, dans leur ordre de rangement.
+ *
+ * @returns {import('../core/types.js').Token[]}
+ */
+export function getReserve() {
+  return campaign?.reserve ?? [];
+}
+
+/**
  * Pose ou met à jour un gabarit sur la campagne.
  *
  * @param {import('../core/types.js').Template} templateData
