@@ -34,17 +34,14 @@ autre**. Trois fonctions pures exportées de `js/app/diag.js` ; les tests assert
 du verdict**, pas un nombre intermédiaire. Mutation revérifiée indépendamment : retirer la
 soustraction du vidage de pipeline fait rougir le test, la restauration le rend vert.
 
-### ⚠ Où exactement le travail s'est arrêté
+### ✅ Où exactement le travail s'est arrêté
 
-**Épuisement des jetons, le 18/08 au soir.** L'arbre de `autonome/2026-08` porte, **non commités** :
+**M2 est commitée et poussée** sur `autonome/2026-08` (`999ff2a`), suivie de la mesure M1 et des
+observations de terrain (`727fe2e`). Arbre propre, rien en attente.
 
-- `diag.html`, `js/app/diag.js`, `tests/diagLightField.test.mjs` — la tranche M2 ;
-- `docs/PLAN-SUITE.md` — la mesure M1 et les observations de terrain.
-
-⚠ **`pnpm run verify` était en cours et son résultat n'a pas été lu.** Donc : **relancer la porte
-avant de committer quoi que ce soit.** Ne pas se fier au vert rapporté par le sous-agent, ni à un
-run antérieur — un premier passage a été contaminé (le fichier a été muté pendant qu'il tournait) et
-doit être ignoré.
+La porte a été passée **seule et jusqu'au bout**, code de sortie réel capturé hors de tout tube :
+`CODE_REEL=0`, 205 e2e, 3 gestes. Deux passages antérieurs ont été écartés — l'un contaminé par une
+mutation en vol, l'autre par une collision entre deux exécutions simultanées.
 
 ### Un point de vigilance sur M2
 
