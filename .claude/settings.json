@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git fetch --quiet 2>/dev/null; git rev-list --left-right --count origin/main...main 2>/dev/null | awk -F'\\t' '{ if ($1==\"0\" && $2==\"0\") m=\"synchronise avec origin/main\"; else m=$1\" commit(s) de retard, \"$2\" non pousse(s) - lancer /reprise avant toute analyse\"; printf \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"SessionStart\\\",\\\"additionalContext\\\":\\\"Etat git : %s.\\\"}}\", m }'",
+            "timeout": 20,
+            "statusMessage": "Ecart avec origin/main..."
+          }
+        ]
+      }
+    ]
+  }
+}

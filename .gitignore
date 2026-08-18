@@ -43,4 +43,13 @@ maps/.preview/
 maps/generated/.recipes.json
 .DS_Store
 *.log
-.claude/
+# Configuration Claude Code. Le dossier était ignoré en entier, ce qui empêchait le crochet
+# et les skills d'atteindre l'autre machine — or les deux machines ne se parlent que par git.
+# On garde donc ce qui est partagé, et on continue d'ignorer ce qui est personnel :
+# `settings.local.json` porte des permissions propres au poste.
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+
+# Boite aux lettres du test de reveil Antigravity (18/08/2026). Jetable.
+bridge/
