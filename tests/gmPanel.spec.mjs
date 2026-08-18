@@ -381,8 +381,19 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(playerStateBeforeSwitch.activeLevelId).toBe(initialId);
     expect(playerStateBeforeSwitch.bgUrl).not.toBe('maps/minimal.webp');
 
-    // ⭐ Temps 2 : Le MJ bascule d'étage par la barre, et alors seulement la tablette affiche la carte
-    await pageGM.selectOption('#gm-level-select', newLevel.id);
+    // ⭐ Temps 2 : la table va **elle-même** sur le nouvel étage, et alors seulement elle affiche
+    // la carte. Ce second temps prouve que l'image est bien arrivée et bien lisible — sans lui, le
+    // temps 1 ne distingue pas « reçue » de « perdue ».
+    //
+    // ⚠ **C'était « le MJ bascule d'étage par la barre » jusqu'au 18/08/2026.** UX-10 a coupé ce
+    // couplage : le MJ change d'étage sans emmener personne. Le geste qui remplace le sien est
+    // celui du sélecteur d'étage de la vue joueurs (UX-12) ; en attendant, on appelle ce que ce
+    // sélecteur appellera. L'invariant testé — l'image publiée est affichable par la table — est
+    // conservé mot pour mot ; seul le geste qui l'y amène change, et c'était la seule issue.
+    await pagePlayer.evaluate(async (targetId) => {
+      const store = await import('../js/state/store.js');
+      store.selectLevel(targetId);
+    }, newLevel.id);
 
     await pagePlayer.waitForFunction(async (targetId) => {
       const store = await import('../js/state/store.js');

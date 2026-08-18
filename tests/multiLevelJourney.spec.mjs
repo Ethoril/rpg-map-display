@@ -24,7 +24,7 @@ const state = (page) => page.evaluate(async () => {
 /** @param {import('@playwright/test').Page} page */
 const tapLink = (page) => page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({ type: 'tap', mapPos: { x: 200, y: 200 }, screenPos: { x: 0, y: 0 } }));
 
-test('R3-03 — téléportation, suivi/cadenas MJ et fog restauré restent cohérents sur trois étages', async ({ browser }) => {
+test('R3-03/UX-10 — téléportation, découplage des deux vues et fog restauré sur trois étages', async ({ browser }) => {
   const context = await browser.newContext();
   const sessionId = `journey-r3-${Date.now()}`;
   const gm = await context.newPage();
@@ -33,21 +33,39 @@ test('R3-03 — téléportation, suivi/cadenas MJ et fog restauré restent cohé
   await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
   await Promise.all([waitForApp(gm), waitForApp(player)]);
 
-  // Le fog est bien indexé par étage : le MJ produit un masque pour le RDC, puis pour l'étage 1.
+  // Le fog est bien indexé par étage : le MJ produit un masque pour le RDC.
   await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('rdc')), { timeout: 8000 }).not.toBeNull();
 
-  // Deux taps : sélectionner le pion puis franchir exactement l'escalier. Le MJ suit le pion.
+  // Deux taps : sélectionner le pion puis franchir exactement l'escalier.
   await tapLink(player); await tapLink(player);
-  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1', token: { levelId: 'et1', cell: { a: 2, b: 2 } } });
-  await expect.poll(() => state(gm), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1', token: { levelId: 'et1' } });
+
+  // ⭐ UX-10 : le pion monte, **aucun écran ne bouge**. Ce test asseyait l'inverse jusqu'au
+  // 18/08/2026 — « Le MJ suit le pion » — et c'est précisément le couplage qu'on a coupé : la
+  // vue joueurs est une seule tablette partagée, la faire suivre abandonnait ceux restés en bas.
+  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'rdc', token: { levelId: 'et1', cell: { a: 2, b: 2 } } });
+  await expect.poll(() => state(gm), { timeout: 8000 }).toMatchObject({ activeLevelId: 'rdc', token: { levelId: 'et1' } });
+
+  // ⭐ Et pourtant l'étage d'arrivée devient CONNU : son masque exploré naît à l'instant où le PJ
+  // y obtient une ligne de vue, sans que le MJ ait eu à y aller. Sans cela, le découplage aurait
+  // rendu l'étage inatteignable pour la table — un étage sans masque n'est pas « connu » (UX-12).
   await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('et1')), { timeout: 8000 }).not.toBeNull();
 
-  // Le cadenas suspend seulement le suivi visuel : le pion redescend mais le MJ reste à l'étage 1.
-  await gm.click('#gm-level-lock');
-  await expect(gm.locator('#gm-level-lock')).toHaveAttribute('aria-pressed', 'true');
+  // ⭐ **Pour redescendre, la table doit d'abord aller voir là-haut.** C'est la conséquence
+  // assumée du découplage : le pion monté ne s'affiche plus sur l'étage affiché, donc on ne peut
+  // ni le désigner ni le faire redescendre sans changer d'étage. Le geste qui manque est le
+  // sélecteur d'étage de la vue joueurs (UX-12) ; en attendant, on appelle ce que ce sélecteur
+  // appellera. ⚠ Ce choix d'étage est **local** : il ne publie rien, et la vue MJ ne bouge pas.
+  await player.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    store.selectLevel('et1');
+  });
+  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1' });
+  expect(await state(gm), 'le choix de la table ne doit pas déplacer le MJ').toMatchObject({ activeLevelId: 'rdc' });
+
+  // Le pion redescend : là encore, aucun écran ne suit.
   await tapLink(player); await tapLink(player);
-  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ token: { levelId: 'rdc' } });
-  await expect.poll(() => state(gm), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1', token: { levelId: 'rdc' } });
+  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1', token: { levelId: 'rdc' } });
+  await expect.poll(() => state(gm), { timeout: 8000 }).toMatchObject({ activeLevelId: 'rdc', token: { levelId: 'rdc' } });
 
   const fogBeforeReload = await gm.evaluate(async () => { const store = await import('../js/state/store.js'); return [store.getSessionFog('rdc'), store.getSessionFog('et1')]; });
   expect(fogBeforeReload[0]).not.toBeNull(); expect(fogBeforeReload[1]).not.toBeNull();

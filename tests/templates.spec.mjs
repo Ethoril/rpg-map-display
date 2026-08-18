@@ -853,6 +853,26 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       origines[2],
       'posée dans la case voisine du pion, l\'origine ne doit pas sauter sur le pion'
     ).toEqual({ x: 580, y: 420 });
+
+    // ⛔ **Le cercle est libre, par définition.** Décision du mainteneur du 17/08 : un cône part
+    // d'une gueule et une ligne d'un tireur — leur origine EST un personnage. Un disque, lui, se
+    // centre sur un point du terrain qu'on choisit, et le faire sauter sur un pion retirerait au
+    // MJ le seul geste qui compte pour cette forme. Même tap que la première pose de ce test,
+    // autre forme, résultat opposé — et c'est bien ce contraste qui est la règle.
+    await page.selectOption('#tpl-shape', 'circle');
+    await poserEn({ x: 300, y: 310 });
+
+    const apresCercle = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const tpl = store.getState().campaign?.templates ?? [];
+      const dernier = tpl[tpl.length - 1];
+      return dernier ? { shape: dernier.shape, origin: dernier.origin } : null;
+    });
+    expect(apresCercle?.shape).toBe('circle');
+    expect(
+      apresCercle?.origin,
+      'un cercle posé sur un pion garde son origine sous le doigt : il est libre par définition'
+    ).toEqual({ x: 300, y: 310 });
   });
 
   test('4. Rendu visuel & occlusion : découpe stricte par les murs (ctx.clip)', async ({ page }) => {

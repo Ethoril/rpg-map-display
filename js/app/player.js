@@ -385,6 +385,37 @@ export async function bootstrapPlayerApp(options = {}) {
   const cameraFollow = urlParams.get('camera') === 'follow';
   store.setSessionId(sessionId);
 
+  // ── UX-10 : la vue joueurs a SON étage affiché ────────────────────────────────────────────
+  //
+  // ⛔ **C'est un point de vue, pas un fait de jeu.** Il ne voyage donc pas sur le réseau et
+  // n'entre pas dans le document de campagne — exactement la raison qui gardait le cadenas du MJ
+  // hors de la campagne : le mettre dans le document le ferait voyager jusqu'aux autres postes et
+  // survivre à la partie.
+  //
+  // Le stockage local suffit, et il est nécessaire : sans lui, un F5 de la tablette la ramènerait
+  // sur l'étage que le MJ regardait au moment de l'instantané, c'est-à-dire précisément le
+  // couplage qu'on vient de couper.
+  const CLE_ETAGE_JOUEURS = `rpg_player_level_${sessionId}`;
+
+  const lireEtageMemorise = () => {
+    try {
+      return localStorage.getItem(CLE_ETAGE_JOUEURS) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  /** @param {string|null} levelId */
+  const memoriserEtage = (levelId) => {
+    try {
+      if (levelId) localStorage.setItem(CLE_ETAGE_JOUEURS, levelId);
+      else localStorage.removeItem(CLE_ETAGE_JOUEURS);
+    } catch {
+      // Un stockage plein ou refusé ne doit pas empêcher de jouer : on perd la mémoire de
+      // l'étage au prochain rechargement, rien de plus.
+    }
+  };
+
   let restoredCamera = false;
   try {
     const saved = localStorage.getItem(`rpg_camera_${sessionId}`);
@@ -636,6 +667,10 @@ export async function bootstrapPlayerApp(options = {}) {
   const unsubscribeStore = store.subscribe(() => {
     requestRender();
     scheduleSnapshot();
+    // L'étage affiché est mémorisé à chaque changement, et pas seulement quand la table en
+    // choisit un : c'est ce qui fait qu'un F5 retrouve l'étage où la séance en était, y
+    // compris avant qu'un sélecteur existe pour en changer (UX-12).
+    memoriserEtage(store.getActiveLevelId());
   });
 
   /** @type {(() => void)|null} */
@@ -665,6 +700,15 @@ export async function bootstrapPlayerApp(options = {}) {
         }
         return;
       }
+      // ⛔ **`level.select` est ignoré ici, et c'est tout UX-10.** Le MJ change d'étage pour
+      // vérifier une carte ou préparer la suite ; la table n'a aucune raison d'y être emmenée.
+      // L'événement continue d'exister et de circuler — il porte l'étage du MJ, dont son propre
+      // instantané a besoin — mais il ne décide plus de ce que six personnes regardent.
+      //
+      // ⚠ Il est écarté **avant** `applyNetworkEvent` et non dans le réducteur : le réducteur est
+      // partagé par les deux vues, et le MJ, lui, doit continuer de l'appliquer.
+      if (event.type === 'level.select') return;
+
       applyingRemote = true;
       try {
         applyNetworkEvent(event);
@@ -678,7 +722,15 @@ export async function bootstrapPlayerApp(options = {}) {
       applyingRemote = true;
       try {
         if (snapshot && (snapshot.campaign || snapshot.levels)) {
-          store.restoreFromSnapshot(snapshot, { sessionId });
+          // ⭐ L'étage mémorisé localement **prime sur celui de l'instantané**, qui est celui du
+          // MJ. Sans cette ligne, chaque rechargement de la tablette la ramènerait sur l'étage du
+          // MJ : le découplage tiendrait pendant la séance et se déferait au premier F5.
+          // `restoreFromSnapshot` retombe sur le premier étage si l'identifiant mémorisé ne
+          // désigne plus rien — un étage supprimé entre deux séances, par exemple.
+          store.restoreFromSnapshot(snapshot, {
+            sessionId,
+            activeLevelId: lireEtageMemorise() ?? undefined,
+          });
         } else {
           store.loadFromLocalStorage(sessionId);
           const persistenceError = store.getLastPersistenceError();

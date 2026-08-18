@@ -94,7 +94,18 @@ const aLaVision = (page, levelId) =>
     return typeof store.getSessionVision(id) === 'string';
   }, levelId);
 
-test('S-02 : le MJ change d\'étage, la tablette suit et reçoit la vision du nouvel étage', async ({
+/**
+ * UX-10 — le MJ change d'étage, et la table NE LE SUIT PLUS.
+ *
+ * ⚠ **Ce test s'appelait « la tablette suit » jusqu'au 18/08/2026.** C'était le couplage exact
+ * qu'UX-10 coupe : il n'y avait qu'un seul `activeLevelId`, et le MJ ne pouvait pas aller
+ * vérifier une carte ou préparer la suite sans y emmener les six personnes qui le regardent.
+ *
+ * Ce qui reste vrai, et que le test continue de vérifier : la tablette **reçoit** la vision du
+ * nouvel étage. C'est même ce qui rend le découplage utilisable — le jour où la table décide d'y
+ * aller, l'étage est déjà connu d'elle.
+ */
+test("UX-10 : le MJ change d'étage, la tablette ne bouge pas mais reçoit la vision du nouvel étage", async ({
   browser,
 }) => {
   const context = await browser.newContext();
@@ -123,12 +134,14 @@ test('S-02 : le MJ change d\'étage, la tablette suit et reçoit la vision du no
 
   // Le MJ monte à l'étage, par le vrai geste : la liste déroulante.
   await mj.selectOption('#gm-level-select', 'etage');
+  await expect.poll(() => etageActif(mj), { timeout: 8000 }).toBe('etage');
 
-  // 1. La tablette suit.
-  await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
+  // 1. ⭐ La tablette NE SUIT PAS. C'est le critère 1 d'UX-10.
+  await joueur.waitForTimeout(1200);
+  expect(await etageActif(joueur), 'la table ne doit pas être emmenée par le MJ').toBe('rdc');
 
-  // 2. ⚠ Et elle reçoit la vision du NOUVEL étage. Sans cela, elle afficherait le voile
-  //    « exploré mais non visible » partout, là où le PJ de l'étage voit.
+  // 2. ⚠ Et pourtant elle reçoit la vision du NOUVEL étage : le découplage porte sur ce qu'on
+  //    AFFICHE, pas sur ce qu'on reçoit. Sans cela, l'étage serait noir le jour où la table y va.
   await expect.poll(() => aLaVision(joueur, 'etage'), { timeout: 8000 }).toBe(true);
 
   // 3. Le masque du rez-de-chaussée n'est pas écrasé par celui de l'étage : chaque étage garde le
@@ -209,52 +222,99 @@ const etageDuPion = (page, tokenId) =>
     return t ? `${t.levelId}:${t.cell.a},${t.cell.b}` : null;
   }, tokenId);
 
-for (const cadenas of [false, true]) {
-  test(`S-03/S-04 : franchir l'escalier téléporte le pion${cadenas ? ', et le cadenas suspend la bascule' : ' et bascule la vue'}`, async ({
-    browser,
-  }) => {
-    const context = await browser.newContext();
-    const sessionId = `liaison-${cadenas ? 'verrouille' : 'libre'}-${Date.now()}`;
-    /** @type {string[]} */
-    const erreurs = [];
+/**
+ * UX-10 — le franchissement ne fait plus basculer AUCUN écran.
+ *
+ * ⚠ **Ce test testait l'inverse jusqu'au 18/08/2026**, et il le testait dans les deux sens :
+ * une variante « la vue suit » et une variante « le cadenas suspend le suivi ». Les deux
+ * décrivaient un couplage qui n'existe plus, et le cadenas 🔒 a disparu avec lui.
+ *
+ * La raison est celle qui gouverne toute la vague : **rien ne se déplace dans le dos de
+ * personne**. Elle mord plus fort ici qu'ailleurs, parce que la vue joueurs est **une seule
+ * tablette partagée** : suivre le pion qui monte emmenait toute la table et abandonnait les
+ * personnages restés en bas.
+ */
+test("UX-10 : franchir l'escalier téléporte le pion, et ne déplace ni l'écran du MJ ni celui de la table", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `liaison-decouplee-${Date.now()}`;
+  /** @type {string[]} */
+  const erreurs = [];
 
-    const joueur = await context.newPage();
-    joueur.on('pageerror', (e) => erreurs.push(`joueur: ${e.message}`));
-    await installBrowserTransport(joueur, sessionId, SNAPSHOT_LIAISON);
-    await joueur.goto('/player.html');
-    await waitForApp(joueur);
+  const joueur = await context.newPage();
+  joueur.on('pageerror', (e) => erreurs.push(`joueur: ${e.message}`));
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT_LIAISON);
+  await joueur.goto('/player.html');
+  await waitForApp(joueur);
 
-    const mj = await context.newPage();
-    mj.on('pageerror', (e) => erreurs.push(`mj: ${e.message}`));
-    await installBrowserTransport(mj, sessionId, SNAPSHOT_LIAISON);
-    await mj.goto('/gm.html');
-    await waitForApp(mj);
+  const mj = await context.newPage();
+  mj.on('pageerror', (e) => erreurs.push(`mj: ${e.message}`));
+  await installBrowserTransport(mj, sessionId, SNAPSHOT_LIAISON);
+  await mj.goto('/gm.html');
+  await waitForApp(mj);
 
-    if (cadenas) {
-      await mj.click('#gm-level-lock');
-      await expect(mj.locator('#gm-level-lock')).toHaveAttribute('aria-pressed', 'true');
-    }
+  // Le joueur sélectionne son pion, puis retape sa case pour prendre l'escalier.
+  await taper(joueur, 3, 3, 100);
+  await taper(joueur, 3, 3, 100);
 
-    // Le joueur sélectionne son pion, puis retape sa case pour prendre l'escalier.
-    await taper(joueur, 3, 3, 100);
-    await taper(joueur, 3, 3, 100);
+  // 1. Le pion a bien changé d'étage ET de case, sur les deux postes : le franchissement
+  //    lui-même est inchangé, c'est une mutation de l'état de jeu que tous appliquent.
+  await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
+  await expect.poll(() => etageDuPion(mj, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
 
-    // 1. Le pion a changé d'étage ET de case, sur les deux postes.
-    await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
-    await expect.poll(() => etageDuPion(mj, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
+  // 2. ⭐ Aucune des deux vues ne bouge. Le pion monté cesse simplement d'apparaître sur
+  //    l'étage affiché — c'est vrai, et c'est lisible.
+  await joueur.waitForTimeout(1200);
+  expect(await etageActif(mj), 'le MJ ne doit pas suivre le pion qui monte').toBe('rdc');
+  expect(await etageActif(joueur), 'la table ne doit pas être emmenée').toBe('rdc');
 
-    // 2. La vue suit — ou pas, selon le cadenas. C'est toute la différence entre les deux cas,
-    //    et le franchissement lui-même est identique : le cadenas ne retient pas les pions.
-    if (cadenas) {
-      await joueur.waitForTimeout(1200);
-      expect(await etageActif(mj)).toBe('rdc');
-      expect(await etageActif(joueur)).toBe('rdc');
-    } else {
-      await expect.poll(() => etageActif(mj), { timeout: 8000 }).toBe('etage');
-      await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
-    }
+  // 3. Rien de nouveau ne transite, et surtout aucun `level.select` : la bascule ne s'est pas
+  //    contentée de ne pas s'afficher, elle n'a pas été publiée. Vérifié sur ce qui est
+  //    RÉELLEMENT parti sur le canal, pas seulement sur l'état final.
+  const publies = await mj.evaluate(() =>
+    /** @type {any} */ (window).__RPG_TEST_WIRE__.published.map((/** @type {any} */ e) => e.type)
+  );
+  expect(
+    publies,
+    "aucun level.select ne doit partir d'un franchissement"
+  ).not.toContain('level.select');
 
-    expect(erreurs).toEqual([]);
-    await context.close();
+  expect(erreurs).toEqual([]);
+  await context.close();
+});
+
+/**
+ * UX-10 critère 3 — l'étage affiché côté joueurs survit à un rechargement.
+ *
+ * ⚠ **C'est la moitié qui se perd le plus facilement.** Le découplage peut tenir toute la séance
+ * et se défaire au premier F5 : l'instantané servi par le transport porte l'étage du MJ, et sans
+ * mémoire locale la tablette y retomberait — exactement le couplage qu'on vient de couper.
+ */
+test('UX-10 : après un F5, la tablette retrouve SON étage, pas celui du MJ', async ({ browser }) => {
+  const context = await browser.newContext();
+  const sessionId = `f5-etage-${Date.now()}`;
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  // La table va voir l'étage — le geste que lui donnera le sélecteur d'UX-12.
+  await joueur.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    store.selectLevel('etage');
   });
-}
+  await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
+
+  // ⚠ L'instantané servi au rechargement porte `activeLevelId: 'rdc'`, celui du MJ : c'est
+  // exactement ce contre quoi la mémoire locale protège.
+  await joueur.reload();
+  await waitForApp(joueur);
+
+  await expect
+    .poll(() => etageActif(joueur), { timeout: 8000 })
+    .toBe('etage');
+
+  await context.close();
+});

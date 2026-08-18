@@ -844,32 +844,68 @@ export async function bootstrapGMApp(options = {}) {
         applyingRemote = false;
       }
 
-      // ── Lot 3, S-04 : la bascule automatique appartient au MJ ──────────────────────────
+      // ── UX-10 : le franchissement ne fait plus basculer AUCUN écran ────────────────────
       //
-      // ⚠ **Après `applyNetworkEvent`, et c'est essentiel** : avant, le franchissement n'est pas
-      // encore appliqué et le pion porte toujours son ancien étage. Placé plus haut, ce bloc
-      // aurait comparé l'étage de départ à l'étage actif et n'aurait jamais rien basculé.
+      // ⛔ **Le bloc de bascule automatique du lot 3 (S-04) est retiré ici, cadenas compris.**
+      // Il faisait suivre le MJ au pion qui montait, et publiait un `level.select` qui emmenait
+      // la table avec lui.
       //
-      // Le franchissement lui-même est appliqué par tous — c'est une mutation de l'état de jeu.
-      // Mais **où la table regarde** est une décision, et elle revient au MJ seul : lui seul sait
-      // si le groupe s'est séparé volontairement. Laisser chaque poste basculer de son côté
-      // donnerait autant de vues que d'écrans dès qu'un pion monte pendant que les autres restent.
+      // La raison est la règle qui gouverne toute cette vague : **rien ne se déplace dans le dos
+      // de personne**. Et elle mord plus fort ici qu'ailleurs, parce que la vue joueurs est **une
+      // seule tablette partagée** : suivre le pion qui monte emmenait toute la table et
+      // abandonnait les personnages restés en bas.
       //
-      // Le cadenas suspend la bascule sans empêcher le franchissement : les pions montent, la vue
-      // reste où le MJ l'a laissée.
-      if (mute && event.type === 'link.traverse' && !gmPanel?.isLevelFollowLocked?.()) {
-        const pionDeplace = store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId);
-        if (pionDeplace && pionDeplace.levelId !== store.getActiveLevelId()) {
+      // L'étage d'arrivée devient simplement **connu** — son masque exploré existe dès que le
+      // pion y voit — et il est donc offert dans le sélecteur des joueurs (UX-12). La table y va
+      // quand elle décide d'y aller. Le pion monté cesse d'apparaître sur l'étage affiché :
+      // c'est vrai, et c'est lisible.
+      //
+      // ⚠ Le cadenas 🔒 disparaît avec ce bloc : il n'existait que pour se soustraire à cette
+      // bascule. Un cadenas qui ne suspend plus rien serait un contrôle qui ment, exactement le
+      // défaut que ce lot corrige ailleurs.
+
+      // ── UX-10 : l'étage d'arrivée devient CONNU, sans que personne n'y soit emmené ────────
+      //
+      // ⭐ Conséquence directe et non évidente du retrait de la bascule : `syncVision` ne calcule
+      // que pour l'étage actif du MJ. Sans le suivi, un PJ pouvait monter un escalier sans
+      // qu'aucun masque exploré ne naisse jamais là-haut — et un étage sans masque n'est pas
+      // « connu », donc il n'apparaîtrait pas dans le sélecteur des joueurs (UX-12). Le
+      // découplage aurait rendu l'étage d'arrivée inatteignable pour la table.
+      //
+      // On calcule donc **une fois**, à l'instant précis où un pion PJ y obtient une ligne de
+      // vue. C'est exactement la notion que le brief demande, prise au passé.
+      //
+      // ⚠ `fogLayer` est une instance partagée : la calculer pour un autre étage écrase son état
+      // courant. D'où l'`invalidate()` qui suit — sans lui, l'étage actif du MJ garderait la
+      // signature de l'étage d'arrivée et ne se recalculerait pas.
+      if (mute && event.type === 'link.traverse') {
+        const pionMonte = store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId);
+        const etageArrivee = pionMonte
+          ? store.getCampaign()?.levels.find((l) => l.id === pionMonte.levelId)
+          : null;
+        if (pionMonte?.kind === 'pc' && etageArrivee && etageArrivee.id !== store.getActiveLevelId()) {
           try {
-            store.selectLevel(pionDeplace.levelId);
-            transport?.publish({
-              type: 'level.select',
-              payload: { levelId: pionDeplace.levelId },
-              at: Date.now(),
-              by: 'gm',
-            });
+            const fogArrivee = getExploredFog(etageArrivee);
+            if (fogArrivee) {
+              const grilleArrivee = gridFor(etageArrivee);
+              fogLayer.updateVision(
+                grilleArrivee,
+                etageArrivee,
+                store.getCampaign()?.tokens ?? [],
+                { extractSegments: extractBlockedSegments }
+              );
+              const polys = fogLayer.getVisiblePolygons();
+              if (polys.length > 0) {
+                const coin0 = grilleArrivee.mapFromCellPoint({ cellX: 0, cellY: 0 });
+                const coin1 = grilleArrivee.mapFromCellPoint({ cellX: 1, cellY: 0 });
+                fogArrivee.reveal(polys, coin0, Math.abs(coin1.x - coin0.x));
+                scheduleFogPublish(etageArrivee.id, fogArrivee);
+              }
+            }
           } catch (err) {
             networkStatus.update('error', err);
+          } finally {
+            fogLayer.invalidate();
           }
         }
       }
@@ -1174,8 +1210,15 @@ export async function bootstrapGMApp(options = {}) {
           // précision. Avec la marge, poser un mur de feu dans la case VOISINE du guerrier
           // faisait sauter l'origine sur le guerrier, et la ligne partait un demi-pas trop tôt.
           // Le brief dit « si le tap tombe sur un pion » : c'est la case, pas son voisinage.
+          // ⛔ **Le CERCLE est exclu de l'accrochage, et c'est une décision du mainteneur
+          // (17/08/2026) : « le cercle doit être 100 % libre par définition ».** Un cône part
+          // d'une gueule et une ligne d'un tireur — leur origine EST un personnage. Un disque,
+          // lui, se centre sur un point du terrain qu'on choisit, et le faire sauter sur un pion
+          // parce que le doigt est tombé dessus retirerait au MJ le seul geste qui compte pour
+          // cette forme.
+          const accrochable = cfg.shape !== 'circle';
           const posGrid = gridFor(activeLevel);
-          const tapCell = posGrid.cellFromPoint(intention.mapPos);
+          const tapCell = accrochable ? posGrid.cellFromPoint(intention.mapPos) : null;
           const hitToken = tapCell
             ? exactTokenAtCell(activeLevel, tapCell, state.campaign?.tokens ?? [])
             : null;

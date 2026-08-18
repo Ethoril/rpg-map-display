@@ -12,7 +12,6 @@
  * Interface retournée par createLevelSelector.
  * @typedef {Object} LevelSelector
  * @property {() => void} update - Met à jour les options et la sélection en fonction de l'état
- * @property {() => boolean} isLevelFollowLocked - Le cadenas de bascule automatique est-il armé ?
  * @property {() => void} destroy - Nettoie les écouteurs d'événements
  */
 
@@ -33,41 +32,23 @@ export function createLevelSelector(container, options) {
   container.innerHTML = `
     <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
     <select id="gm-level-select" style="flex: 1; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
-    <button id="gm-level-lock" type="button" aria-pressed="false" title="Cadenas : suspend la bascule automatique quand un pion change d'étage. Les pions montent quand même." style="padding: 0.3rem 0.55rem; font-size: 0.9rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🔓</button>
     <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
   `;
 
   const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
-  const levelLockBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-level-lock'));
   const levelStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-level-status'));
 
-  // ── Cadenas de bascule automatique (Lot 3, S-04) ─────────────────────────────────────────
+  // ⛔ **Le cadenas 🔒 a été retiré par UX-10 (18/08/2026).**
   //
-  // Purement local au poste MJ, et **volontairement pas dans la campagne** : c'est un réglage de
-  // conduite de séance, pas un fait de jeu. Le mettre dans le document le ferait voyager jusqu'aux
-  // tablettes et survivre à la partie, alors qu'il ne concerne que ce que le MJ veut montrer dans
-  // les dix prochaines minutes.
-  let levelFollowLocked = false;
-
-  function renderLevelLock() {
-    levelLockBtn.textContent = levelFollowLocked ? '🔒' : '🔓';
-    levelLockBtn.setAttribute('aria-pressed', String(levelFollowLocked));
-    levelLockBtn.style.background = levelFollowLocked ? '#3a2f1a' : '#1a1a1a';
-    levelLockBtn.style.color = levelFollowLocked ? '#e0c080' : '#888';
-    levelLockBtn.style.borderColor = levelFollowLocked ? '#6a5530' : '#444';
-    levelStatus.style.color = '#888';
-    levelStatus.textContent = levelFollowLocked ? 'bascule auto suspendue' : '';
-  }
-
-  levelLockBtn.addEventListener(
-    'click',
-    () => {
-      levelFollowLocked = !levelFollowLocked;
-      renderLevelLock();
-    },
-    { signal: listeners.signal }
-  );
-  renderLevelLock();
+  // Il ne servait qu'à se soustraire à la bascule automatique du MJ quand un pion changeait
+  // d'étage. Cette bascule n'existe plus : un franchissement ne déplace désormais AUCUN écran,
+  // parce que la vue joueurs est une seule tablette partagée et que suivre le pion qui monte
+  // abandonnait les personnages restés en bas.
+  //
+  // ⚠ Ne pas le remettre « au cas où » : un cadenas qui ne suspend plus rien est un contrôle
+  // qui ment, et c'est le défaut que ce lot corrige partout ailleurs. Ce qui reste vrai de son
+  // commentaire d'origine — un réglage de conduite de séance n'entre pas dans la campagne —
+  // vaut maintenant pour l'étage affiché de la vue joueurs, qui est local lui aussi.
 
   levelSelect.addEventListener(
     'change',
@@ -122,7 +103,6 @@ export function createLevelSelector(container, options) {
 
   return {
     update,
-    isLevelFollowLocked: () => levelFollowLocked,
     destroy: () => listeners.abort(),
   };
 }
