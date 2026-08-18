@@ -50,3 +50,59 @@ canvas {
   pointer-events: none;
   display: none;
 }
+
+/* ── Sélecteur d'étage de la vue joueurs (UX-12) ────────────────────────────────────────────
+   Forme reprise du projet de référence : barre horizontale au-dessus de la carte, fond
+   transparent au repos, bordure d'un pixel, fond plein et texte foncé pour l'étage affiché.
+
+   ⚠ Cible tactile de 44 px de haut au minimum, et défilement horizontal SANS retour à la
+   ligne : sur une tablette, une barre qui passe à deux lignes mange la carte, et un onglet de
+   30 px se rate un doigt sur trois. */
+#player-level-tabs {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: none;
+  gap: 6px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  /* Le défilement de la barre ne doit pas devenir un pan de la carte. */
+  touch-action: pan-x;
+  background: rgba(0, 0, 0, 0.35);
+  scrollbar-width: none;
+}
+
+#player-level-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.player-level-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: #eee;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.player-level-tab[aria-selected='true'] {
+  font-weight: bold;
+  color: #111;
+  background: #eee;
+  border-color: #eee;
+}
+
+/* ⛔ Le focus reste VISIBLE : la barre MJ est conforme depuis R0-04, et on ne reprend pas le
+   retard d'accessibilité de la référence, qui n'en avait aucun. */
+.player-level-tab:focus-visible {
+  outline: 3px solid #4a90e2;
+  outline-offset: 2px;
+}

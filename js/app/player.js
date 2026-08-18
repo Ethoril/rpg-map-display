@@ -15,6 +15,7 @@ import { LinksLayer } from '../render/layers/links.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
 import { decodeFogPng, getOrExtractMaskAlpha, isCellVisibleInMask } from '../vision/fog.js';
+import { createPlayerLevelSelector } from '../ui/player/levelSelector.js';
 import { gridFor } from '../grid/index.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { isPlayerManipulableToken } from '../input/tokenHit.js';
@@ -321,6 +322,13 @@ export async function bootstrapPlayerApp(options = {}) {
   };
   let lStart = 0;
 
+  // ⚠ Déclaré AVANT le décodeur de masques, et c'est nécessaire : la connaissance d'un étage
+  // (UX-12) ne devient vraie qu'au retour d'un décodage **asynchrone**, qui ne passe pas par le
+  // store. Sans ce rafraîchissement depuis le , la barre resterait vide jusqu'à la
+  // prochaine mutation — c'est-à-dire, sur un étage quitté, jamais.
+  /** @type {{ update: () => void, destroy: () => void }|null} */
+  let playerLevelSelector = null;
+
   /** @type {Map<string, { png: string, canvas: any }>} */
   const playerExploredCanvasMap = new Map();
 
@@ -342,6 +350,7 @@ export async function bootstrapPlayerApp(options = {}) {
       // écraser la valeur que le transport a déjà remplacée dans le store.
       if (store.getSessionFog(level.id) !== png) return;
       playerExploredCanvasMap.set(level.id, { png, canvas });
+      playerLevelSelector?.update();
       requestRender();
     });
 
@@ -664,6 +673,74 @@ export async function bootstrapPlayerApp(options = {}) {
     }, 250);
   }
 
+// ── UX-12 : « connu des joueurs » se DÉRIVE, il ne s'invente pas ──────────────────────────
+  //
+  // Un étage est connu si son masque **exploré** existe et n'est pas vide. C'est exactement la
+  // notion demandée — « un pion PJ **a obtenu** une ligne de vue » — prise au passé : un étage
+  // visité puis quitté reste connu, et s'affiche dans son brouillard, ce que le fog sait peindre
+  // depuis L-04.
+  //
+  // ⛔ **Ni champ de schéma, ni événement réseau, ni migration.** Tout est déjà là.
+  //
+  // ⚠ L'existence du masque ne suffit pas : le MJ peut tout remasquer d'un étage (« Masquer
+  // tout »), ce qui publie un masque **présent et vide**. Un étage entièrement remasqué doit
+  // redevenir inconnu, sans quoi la barre offrirait un onglet menant à un écran noir.
+  //
+  /** @type {Map<string, { png: string, connu: boolean }>} */
+  const connuCache = new Map();
+
+  /** @param {string} levelId */
+  function estConnuDesJoueurs(levelId) {
+    const png = store.getSessionFog(levelId);
+    if (!png) return false;
+
+    const enCache = connuCache.get(levelId);
+    if (enCache && enCache.png === png) return enCache.connu;
+
+    const level = store.getRenderSnapshot().campaign?.levels.find((l) => l.id === levelId) ?? null;
+    if (!level) return false;
+
+    // Réutilise le cache de décodage du rendu : le masque n'est décodé qu'une fois par PNG, et
+    // `getOrExtractMaskAlpha` met en cache le tableau d'alpha sur le canvas lui-même. Le seul
+    // coût répété est le parcours ci-dessous, sur un tableau à l'échelle de la CASE et non du
+    // pixel de carte.
+    const canvas = getPlayerExploredCanvas(level);
+
+    // ⛔ **Ne jamais conclure depuis un canvas qui ne correspond pas à ce PNG.** Le décodage est
+    // asynchrone : tant qu'il est en vol, `getPlayerExploredCanvas` rend le canvas du masque
+    // PRÉCÉDENT. Conclure là-dessus puis mettre en cache sous le nouveau PNG figeait la réponse
+    // pour toujours — un étage remasqué puis révélé de nouveau ne redevenait jamais connu, et le
+    // rafraîchissement qui suit le décodage ne pouvait plus rien y changer.
+    const dejaDecode = playerExploredCanvasMap.get(levelId);
+    if (!canvas || dejaDecode?.png !== png) return enCache?.connu ?? false;
+
+    const alpha = getOrExtractMaskAlpha(canvas, level.widthCells, level.heightCells);
+    const connu = Boolean(alpha && alpha.some((a) => a > 0));
+    connuCache.set(levelId, { png, connu });
+    return connu;
+  }
+
+  const levelTabsMount = /** @type {HTMLElement|null} */ (
+    document.getElementById('player-level-tabs')
+  );
+  playerLevelSelector = levelTabsMount
+    ? createPlayerLevelSelector(levelTabsMount, {
+        getLevels: () => store.getLevelSummaries(),
+        getActiveLevelId: () => store.getActiveLevelId(),
+        isKnown: estConnuDesJoueurs,
+        // ⛔ Choix **local** : il ne publie rien et ne déplace pas la vue MJ. C'est un point de
+        // vue, pas un fait de jeu — même raison qu'UX-10, dont ce sélecteur est la moitié
+        // visible.
+        onSelectLevel: (levelId) => {
+          try {
+            store.selectLevel(levelId);
+          } catch (err) {
+            console.error('Choix d’étage refusé :', err);
+          }
+        },
+      })
+    : null;
+
   const unsubscribeStore = store.subscribe(() => {
     requestRender();
     scheduleSnapshot();
@@ -671,6 +748,7 @@ export async function bootstrapPlayerApp(options = {}) {
     // choisit un : c'est ce qui fait qu'un F5 retrouve l'étage où la séance en était, y
     // compris avant qu'un sélecteur existe pour en changer (UX-12).
     memoriserEtage(store.getActiveLevelId());
+    playerLevelSelector?.update();
   });
 
   /** @type {(() => void)|null} */
@@ -878,6 +956,7 @@ export async function bootstrapPlayerApp(options = {}) {
     playerControls.detach();
     versionBadge.detach();
     handoutOverlay.detach();
+    playerLevelSelector?.destroy();
     cleanupMobileLocks();
     unsubscribeStore();
     unsubscribeEvents?.();
