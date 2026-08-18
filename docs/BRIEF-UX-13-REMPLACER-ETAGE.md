@@ -91,3 +91,97 @@ Par prudence, pas par blocage : elle traverse quatre fichiers de plus (`importPa
 `fogTools.js`, `panel.js`, `networkEvents.js`) et porte deux pièges — le masque de mêmes
 dimensions, et le sens exact de « affichée immédiatement » depuis le découplage. La bâcler en fin
 de fenêtre aurait produit le genre de faux vert que ce dépôt paye ensuite en séance.
+
+---
+
+# Amendement du 18/08/2026 — arbitrage du mainteneur et revue du plan d'implémentation
+
+> Écrit après lecture du plan d'implémentation de Gemini. Ce qui suit **prime sur les sections
+> ci-dessus** partout où les deux se contredisent.
+
+## ✅ Arbitrage du mainteneur : la géométrie est effacée
+
+**« Remplacer » vide `walls`, `portals` et `lights`.** J'avais soulevé le risque — l'usage le plus
+probable est un meilleur scan de *la même* carte, et l'effacement détruit alors des heures de
+tracé sans retour possible. **Le mainteneur a tranché pour l'effacement**, sans confirmation
+supplémentaire. C'est donc le comportement à implémenter.
+
+⛔ Ne pas ajouter de boîte de dialogue « êtes-vous sûr ». Elle a été explicitement écartée : un
+dialogue de plus en pleine séance coûte plus qu'il ne protège. Le geste est nommé « Remplacer », et
+il remplace.
+
+## ⛔ Une SEULE transaction, et c'est le point le plus important de cette tranche
+
+Le plan enchaîne `store.reserveToken()` × N **puis** `store.updateLevel()`. Ce sont deux
+transactions, et leur ordre est **forcé** : les pions doivent quitter le plateau avant que la carte
+rétrécisse, sinon `assertValidCampaign` refuse la mutation pour « position hors limites de
+l'étage ». Donc si `updateLevel` échoue, le MJ se retrouve avec **un plateau vide et l'ancienne
+carte** — état à moitié appliqué, sans annulation, devant la table.
+
+**Il faut donc `store.replaceLevelMap(levelId, patch)`**, qui sur **un seul** `structuredClone` :
+déplace les pions de cet étage vers `reserve`, vide `walls`/`portals`/`lights`, applique le patch,
+`assertValidCampaign`, `replaceCampaign`, **une seule** `notifySubscribers`. Le panneau publie
+ensuite les événements, une fois la mutation acquise.
+
+⚠ C'est la forme de **toutes** les mutations de ce store, et le commentaire de `removeToken` dit
+pourquoi elle a été généralisée : « avec un `splice`, l'état fautif serait déjà en place quand on
+s'en apercevrait ».
+
+## ⚠ L'événement porte un `patch`, pas un `level`
+
+Le plan nomme le champ `level` alors qu'il contient un partiel. C'est trompeur pour le prochain
+lecteur, et le dépôt a déjà sa convention : `token.update` porte `{ tokenId, patch }`, avec des
+**valeurs absolues** et non des deltas — c'est ce qui le rend rejouable. Donc
+`level.replace` → `{ levelId, patch }`.
+
+## ⚠ `clearFog(levelId)` publierait le masque d'un autre étage
+
+Le `scheduleFogPublish` injecté dans le panneau n'est pas celui de `gm.js` : c'est l'emballage
+`(immediate = true) => { … }` de `js/app/gm.js`, qui **résout lui-même l'étage actif** et ignore
+tout identifiant. Un `clearFog(levelId)` qui honore `levelId` pour effacer et l'ignore pour publier
+est une API qui ment — elle marche pour UX-13, où l'étage remplacé *est* l'étage actif, et elle
+piège le premier appelant suivant.
+
+Deux issues acceptables : `clearFog()` **sans paramètre**, qui agit sur l'étage actif et le dit ;
+ou élargir le publieur injecté pour qu'il accepte un `levelId`. La première suffit ici.
+
+⚠ Et il faut **vider la pile d'undo** de cet étage, sans y pousser d'état au préalable : annuler
+ramènerait la forme révélée de l'*ancienne* carte sur la nouvelle.
+
+## ⚠ Le masque de vision VISIBLE n'est pas traité par le plan
+
+Seul l'exploré est effacé. `store.getSessionVision(levelId)` garde le polygone visible de l'ancienne
+carte, et la vue joueurs le lit (`getPlayerVisibleCanvas`). Il *devrait* finir vide, puisque plus
+aucun pion n'a de ligne de vue sur cet étage — mais c'est une hypothèse sur l'ordonnancement de
+`syncVision`, pas une vérification. **À passer en critère e2e**, sinon c'est un faux vert en
+attente.
+
+## ⚠ Pas de `store.subscribe` dans `importPanel`
+
+`createImportPanel` ne rend que `{ drawCalibrationPreview }` : aucun `destroy`, donc aucun endroit
+pour se désabonner, donc une fuite à chaque démontage du panneau. Exposer un `refresh()` et le
+faire appeler par l'abonnement **déjà existant** de `panel.js`, exactement comme
+`templateTools.refresh()` depuis UX-05.
+
+## Mineur, à signaler et pas forcément à corriger
+
+Les nouvelles dimensions peuvent laisser la caméra hors cadre après remplacement. Si tu ne le
+traites pas, dis-le dans ton rapport plutôt que de le laisser se découvrir en séance.
+
+## Critères d'acceptation — révisés
+
+Les critères 1, 5, 6 et 7 de la section précédente sont inchangés. Les autres deviennent :
+
+2. Après remplacement : l'étage porte la nouvelle `imageUrl`, ses nouvelles dimensions, sa nouvelle
+   densité et son nouveau calage de grille ; **son identifiant ne change pas**, aucun étage n'est
+   ajouté, et `walls`, `portals` et `lights` sont **vides**.
+3. Tous les pions qui étaient sur cet étage sont en réserve, avec leurs PV et leurs marqueurs.
+   Ceux des autres étages n'ont pas bougé.
+4. Le masque exploré **et** le masque de vision visible de l'étage sont vides après remplacement,
+   **y compris quand la nouvelle carte a exactement les mêmes dimensions que l'ancienne**.
+8. ⭐ **Atomicité** : si la mutation est refusée — par exemple une calibration qui produirait un
+   étage invalide — **rien** n'a changé : les pions sont toujours sur le plateau, la carte est
+   toujours l'ancienne. Un test doit provoquer ce refus, et pas seulement le cas nominal.
+9. **Trois preuves par mutation**, au lieu de deux : les deux prévues, plus (c) **casser
+   l'atomicité** — ranger les pions puis échouer sur l'étage — et vérifier que le critère 8
+   rougit.
