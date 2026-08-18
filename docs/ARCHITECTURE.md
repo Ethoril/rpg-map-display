@@ -14,7 +14,9 @@ Ceux marqués `[stub]` existent dès le lot 1a mais ne contiennent qu'une interf
 implémentation qui lève.
 
 ```
-F:\rpg-map-display\
+rpg-map-display/                  racine du dépôt — les deux postes de développement
+│                                      l'ont sur des lettres de lecteur différentes, et
+│                                      tout ce qui suit est relatif à cette racine
 │
 ├─ index.html                     [1b] page d'accueil : choix MJ / joueurs et saisie de la
 │                                      session. Aucun module chargé, donc AUCUNE import map
