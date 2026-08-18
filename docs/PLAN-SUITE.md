@@ -32,7 +32,36 @@
 Aucune ne modifie le produit ; chacune conditionne une décision. C'est la doctrine du projet, et
 elle a déjà évité une migration de moteur pour 3 % de gain.
 
-### M1 — le coût réel du compositing du fog
+### ✅ M1 — RELEVÉE LE 18/08/2026, ET LE VERDICT EST BRUTAL
+
+Relevé du mainteneur sur la Tab S9 FE, vue joueurs, `testbig150`, `?probe=1`, pendant un pincement :
+
+| Image | Total | Fond | **Fog** |
+|---|---|---|---|
+| 11 | 3103 ms | 1131 ms | **1700,7 ms** |
+| 10 | 1963 ms | 0,0 ms | **1651,6 ms** |
+| 9 | 1624 ms | 0,2 ms | **1586,1 ms** |
+| 6 | 1875 ms | 0,3 ms | **1593,2 ms** |
+| 5 | 1865 ms | 0,3 ms | **1579,9 ms** |
+
+⭐ **Le fog est plat entre 1580 et 1700 ms, quel que soit le zoom.** C'est exactement la signature
+annoncée : une composition coûte en proportion de sa surface de **destination**, et cette surface est
+la carte entière. Pour un budget de 33 ms par image, c'est **~50 fois le budget**. Le défaut jumeau
+des pions avait été mesuré à 848 ms sur un poste de bureau ; la tablette paie le double.
+
+Le mainteneur confirme par ailleurs que **le village passe bien mieux** — cohérent, le coût suit la
+surface de la carte et non la complexité de la scène.
+
+⚠ **Un second coût, non anticipé** : le **fond** à 1131–1431 ms sur les images où il se redessine, 0
+sur les autres. C'est un problème **distinct** du fog, à instruire séparément — voir le chantier P,
+qui avait traité le décodage initial mais pas ce redessin.
+
+**Conséquence sur ce plan : la phase 2 n'est plus « souhaitable pour la mémoire », c'est la première
+chose à faire.** Il ne s'agit plus de 245 Mio retenus mais d'une carte injouable. Et le « petit lag
+résiduel au zoom », clos le 16/08 comme sans conséquence, avait cette cause — invisible sur les
+petites cartes, écrasante sur les grandes.
+
+### M1 — le protocole, conservé pour mémoire
 
 ⭐ **L'instrumentation existe déjà.** `FrameProbe` enregistre la durée **par couche**, et son tableau
 porte une colonne `background` et une colonne `fog` côte à côte, image par image
@@ -245,3 +274,22 @@ commit.
 ⚠ **Un test vert ne prouve rien tant qu'on n'a pas cassé le mécanisme qu'il prétend couvrir et vu le
 rouge.** Voir `.claude/skills/muter/SKILL.md` et ses sept familles de faux verts déjà rencontrées
 ici.
+
+---
+
+## 10. Signalé en séance réelle le 18/08/2026 — à instruire, non diagnostiqué
+
+Trois observations du mainteneur pendant le relevé M1. **Aucune n'est diagnostiquée** : elles sont
+consignées telles qu'observées, sans hypothèse.
+
+1. ⚠ **L'import d'une carte a remplacé l'étage sans demander.** Or UX-13, livrée le 18/08, ajoute
+   précisément le choix « remplacer l'étage courant ou ajouter ». Régression possible sur du travail
+   livré le jour même.
+2. ⚠ **La tablette a exigé un F5** pour voir le nouvel étage après ce remplacement. C'est le
+   symptôme qu'UX-13 devait supprimer.
+3. **Les lignes de vue de `testbig150` paraissent absurdes.** La carte est documentée comme « une
+   carte de **mesure**, pas de campagne », avec 1338 murs générés : l'intuition du mainteneur — une
+   carte mal faite — est plausible, mais elle se vérifie plutôt qu'elle ne se croit. Ne pas conclure
+   à un défaut du sweep sans avoir regardé les données.
+
+⛔ **Ne pas empiler ces trois-là sur le chantier en cours.** Une tranche à la fois.
