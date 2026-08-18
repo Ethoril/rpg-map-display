@@ -806,6 +806,83 @@ export function updateLevel(levelId, levelUpdates) {
 }
 
 /**
+ * Remplace la carte d'un étage en une seule transaction atomique (UX-13).
+ *
+ * Déplace tous les pions de cet étage vers la réserve, vide la géométrie
+ * (`walls`, `portals`, `lights`), applique le patch de carte et valide l'ensemble
+ * sur un unique `structuredClone` avant adoption et notification unique.
+ *
+ * @param {string} levelId Identifiant de l'étage à remplacer
+ * @param {Omit<Partial<Level>, 'grid'> & {grid?: Partial<import('../core/types.js').GridConfig>}} patch Propriétés de carte à appliquer
+ * @returns {string[]} Liste des identifiants des pions déplacés en réserve
+ */
+export function replaceLevelMap(levelId, patch) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!levelId || typeof levelId !== 'string') {
+    throw new Error("Identifiant d'étage requis");
+  }
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    throw new Error("Patch d'étage requis");
+  }
+  const idx = campaign.levels.findIndex((l) => l.id === levelId);
+  if (idx === -1) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+  if (patch.id !== undefined && patch.id !== levelId) {
+    throw new Error(
+      `Remplacement de l'étage "${levelId}" refusé : son identifiant ne peut pas être modifié`
+    );
+  }
+
+  const candidate = structuredClone(campaign);
+  if (!Array.isArray(candidate.reserve)) {
+    candidate.reserve = [];
+  }
+
+  /** @type {string[]} */
+  const reservedTokenIds = [];
+  /** @type {import('../core/types.js').Token[]} */
+  const remainingTokens = [];
+
+  for (const token of candidate.tokens) {
+    if (token.levelId === levelId) {
+      candidate.reserve.push(token);
+      reservedTokenIds.push(token.id);
+    } else {
+      remainingTokens.push(token);
+    }
+  }
+  candidate.tokens = remainingTokens;
+
+  const currentLevel = candidate.levels[idx];
+  const gridUpdates = patch.grid || {};
+  candidate.levels[idx] = {
+    ...currentLevel,
+    ...patch,
+    walls: [],
+    portals: [],
+    lights: [],
+    grid: {
+      ...currentLevel.grid,
+      ...gridUpdates,
+    },
+  };
+
+  assertValidCampaign(candidate, `Remplacement de la carte de l'étage "${levelId}"`);
+  replaceCampaign(candidate);
+
+  const selectedId = getSelectedTokenId();
+  if (selectedId && reservedTokenIds.includes(selectedId)) {
+    clearSelectionState();
+  }
+
+  notifySubscribers();
+  return reservedTokenIds;
+}
+
+/**
  * Modifie l'état d'un portail sur un étage.
  *
  * @param {string} levelId

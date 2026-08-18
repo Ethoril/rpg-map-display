@@ -264,6 +264,22 @@ export function createFogTools(container, options) {
     });
   });
 
+  /**
+   * Efface le masque de brouillard de l'étage actif et publie la mise à zéro (UX-13).
+   * Vide également la pile d'undo de cet étage sans y empiler d'état préalable.
+   */
+  async function clearFog() {
+    const levelId = getActiveLevelId();
+    if (!levelId) return;
+    const fog = getExploredFog(levelId);
+    if (!fog) return;
+
+    fog.clear();
+    clearUndoStack(levelId);
+    scheduleFogPublish();
+    requestRender();
+  }
+
   btnUndo.addEventListener('click', () => {
     undo();
   });
@@ -277,6 +293,7 @@ export function createFogTools(container, options) {
     pushUndoState,
     clearUndoStack,
     undo,
+    clearFog,
     disarm: () => {
       activeTool = 'none';
       updateUI();

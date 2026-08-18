@@ -82,6 +82,31 @@ export function applyNetworkEvent(event) {
         return false;
       }
     }
+    case 'level.replace': {
+      if (
+        !payload.levelId ||
+        typeof payload.levelId !== 'string' ||
+        !payload.patch ||
+        typeof payload.patch !== 'object' ||
+        Array.isArray(payload.patch)
+      ) {
+        console.error('Événement "level.replace" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((level) => level.id === payload.levelId)) {
+        console.error(`Événement "level.replace" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      try {
+        store.replaceLevelMap(payload.levelId, payload.patch);
+        return true;
+      } catch (err) {
+        console.error(
+          `Événement "level.replace" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+    }
     case 'level.grid': {
       if (!payload.levelId || !payload.grid) return false;
       if (!campaign?.levels.some((level) => level.id === payload.levelId)) return false;

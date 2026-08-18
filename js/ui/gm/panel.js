@@ -741,7 +741,11 @@ export function createGMPanel(container, options = {}) {
   const fogToolsMount = /** @type {HTMLElement} */ (container.querySelector('#fog-tools-mount'));
 
   createImportPanel(uvttMount, { mode: 'uvtt' });
-  createImportPanel(imageMount, { mode: 'image', transport });
+  const importPanelImage = createImportPanel(imageMount, {
+    mode: 'image',
+    transport,
+    onClearFog: () => fogTools?.clearFog(),
+  });
 
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
@@ -1729,6 +1733,7 @@ export function createGMPanel(container, options = {}) {
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
     levelSelector?.update();
+    importPanelImage?.refresh();
     // La liste des gabarits se rafraîchit sur **toute** mutation du store, et pas seulement
     // sur ses propres gestes : un gabarit retiré par appui long sur la carte, ou par un
     // événement réseau, doit disparaître de la liste sans qu'on rouvre l'onglet.

@@ -793,12 +793,15 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
 | `token.reserve` | MJ | ponctuel — `{ tokenId }`, voir l amendement UX-14 |
+| `level.replace` | MJ | ponctuel — `{ levelId, patch }`, voir l amendement UX-13 |
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 
 > **Amendement UX-05 (17/08/2026)** : `template.remove` porte `{ templateId: string }` et retire **un** gabarit. Il est demandé par le mainteneur et n'est donc pas une invention de la couche réseau (`CONVENTIONS.md` §4). Son absence rendait `template.clear` seul retrait possible : retirer le cône d'un sort résolu effaçait aussi la zone de ténèbres posée deux tours plus tôt. Rejeu inoffensif — un gabarit déjà retiré rend `false` sans lever. `template.move` **est** émis depuis L-10 malgré l'amendement ci-dessus, par le glisser de gabarit ; il ne porte que l'origine et la direction.
+
+> **Amendement UX-13 (18/08/2026)** : `level.replace` porte `{ levelId, patch }` et remplace le contenu d'un étage existant sur place (`imageUrl`, dimensions, pas de grille, géométrie vidée). Contrairement à `level.add`, il ne crée pas d'étage et s'applique immédiatement pour quiconque affichait déjà cet étage. Les pions de l'étage sont déplacés en réserve via autant d'événements `token.reserve` distincts, et le brouillard de l'étage est réinitialisé.
 
 ### Règles
 

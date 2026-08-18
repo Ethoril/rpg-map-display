@@ -20,6 +20,7 @@ import * as store from '../../state/store.js';
  * @property {'uvtt'|'image'|'both'} [mode='both']
  * @property {Transport} [transport]
  * @property {(result: ReturnType<typeof parseUvtt>) => void} [onImportUvtt]
+ * @property {() => void} [onClearFog]
  */
 
 /**
@@ -107,9 +108,14 @@ export function createImportPanel(container, options = {}) {
           <canvas id="image-calibration-canvas" width="300" height="180" style="width: 100%; height: 100%; display: block;"></canvas>
         </div>
 
-        <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
-          Charger et publier l'étage
-        </button>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+            Ajouter un étage
+          </button>
+          <button id="btn-replace-image-import" style="width: 100%; padding: 0.5rem; background: #4a3a3a; color: #ffcccc; border: 1px solid #663333; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+            Remplacer l'étage courant
+          </button>
+        </div>
 
         <div id="image-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
       </div>
@@ -140,12 +146,14 @@ export function createImportPanel(container, options = {}) {
   const calibCanvas = /** @type {HTMLCanvasElement|null} */ (container.querySelector('#image-calibration-canvas'));
   const calibCtx = calibCanvas ? calibCanvas.getContext('2d') : null;
   const btnValidateImage = /** @type {HTMLButtonElement|null} */ (container.querySelector('#btn-validate-image-import'));
+  const btnReplaceImage = /** @type {HTMLButtonElement|null} */ (container.querySelector('#btn-replace-image-import'));
   const imageStatus = /** @type {HTMLElement|null} */ (container.querySelector('#image-status'));
 
   /** @type {HTMLImageElement|null} */
   let loadedCalibImage = null;
   /** @type {string|null} */
   let loadedNormalizedUrl = null;
+  let lastProbedUrl = /** @type {string|null} */ (null);
   let activeImageProbeId = 0;
   /** @type {ReturnType<typeof parseUvtt>|null} */
   let pendingUvtt = null;
@@ -178,8 +186,13 @@ export function createImportPanel(container, options = {}) {
   }
 
   function refreshImageButton() {
+    const hasImage = Boolean(loadedCalibImage && loadedNormalizedUrl);
     if (btnValidateImage) {
-      btnValidateImage.disabled = !loadedCalibImage || !loadedNormalizedUrl;
+      btnValidateImage.disabled = !hasImage;
+    }
+    if (btnReplaceImage) {
+      const activeId = store.getActiveLevelId();
+      btnReplaceImage.disabled = !hasImage || !activeId;
     }
   }
 
@@ -341,14 +354,17 @@ export function createImportPanel(container, options = {}) {
 
   function handleUrlChange() {
     if (!imageUrlInput) return;
-    if (imageErrorMsg) {
-      imageErrorMsg.style.display = 'none';
-      imageErrorMsg.textContent = '';
-    }
     const saisie = imageUrlInput.value.trim();
+    if (saisie === lastProbedUrl) return;
+    lastProbedUrl = saisie;
+
     if (!saisie) {
       loadedCalibImage = null;
       loadedNormalizedUrl = null;
+      if (imageErrorMsg) {
+        imageErrorMsg.style.display = 'none';
+        imageErrorMsg.textContent = '';
+      }
       drawCalibrationPreview();
       refreshImageButton();
       return;
@@ -503,9 +519,93 @@ export function createImportPanel(container, options = {}) {
     });
   }
 
+  if (btnReplaceImage) {
+    btnReplaceImage.addEventListener('click', () => {
+      if (
+        !loadedCalibImage ||
+        !loadedNormalizedUrl ||
+        !cellsWideInput ||
+        !cellsTallInput ||
+        !pxPerCellInput
+      ) {
+        return;
+      }
+
+      const activeLevelId = store.getActiveLevelId();
+      if (!activeLevelId) return;
+
+      const cellsWide = Math.max(1, parseInt(cellsWideInput.value, 10) || 20);
+      const cellsTall = Math.max(1, parseInt(cellsTallInput.value, 10) || 15);
+      const pxPerCell = Math.max(10, parseInt(pxPerCellInput.value, 10) || 140);
+
+      const calibration = calibrateFromRect({
+        rectPx: { w: loadedCalibImage.width, h: loadedCalibImage.height },
+        cellsWide,
+        cellsHigh: cellsTall,
+        imageSize: { w: loadedCalibImage.width, h: loadedCalibImage.height },
+      });
+
+      const patch = {
+        imageUrl: loadedNormalizedUrl,
+        pxPerCell: pxPerCell,
+        widthCells: cellsWide,
+        heightCells: cellsTall,
+        grid: {
+          type: /** @type {'square'|'hex'} */ ('square'),
+          offsetX: calibration.offsetX || 0,
+          offsetY: calibration.offsetY || 0,
+          color: '#000000',
+          opacity: 0.25,
+          visible: true,
+        },
+      };
+
+      try {
+        const reservedTokenIds = store.replaceLevelMap(activeLevelId, patch);
+
+        if (transport) {
+          transport.publish({
+            type: 'level.replace',
+            payload: { levelId: activeLevelId, patch },
+            at: Date.now(),
+            by: 'gm',
+          });
+          for (const tokenId of reservedTokenIds) {
+            transport.publish({
+              type: 'token.reserve',
+              payload: { tokenId },
+              at: Date.now(),
+              by: 'gm',
+            });
+          }
+        }
+
+        options.onClearFog?.();
+
+        const title = document.createElement('strong');
+        title.textContent = '✓ Étage courant remplacé et publié.';
+        setImportStatus(imageStatus, '#2ecc71', [
+          title,
+          document.createElement('br'),
+          statusText(
+            `Dimensions : ${cellsWide}×${cellsTall} cases (${Math.round(pxPerCell)} px/case). Pions rangés en réserve, brouillard réinitialisé.`
+          ),
+        ]);
+      } catch (err) {
+        const title = document.createElement('strong');
+        title.textContent = 'Erreur :';
+        setImportStatus(imageStatus, '#e07070', [
+          title,
+          statusText(` ${err instanceof Error ? err.message : String(err)}`),
+        ]);
+      }
+    });
+  }
+
   drawCalibrationPreview();
 
   return {
     drawCalibrationPreview,
+    refresh: refreshImageButton,
   };
 }
