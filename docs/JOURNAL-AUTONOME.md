@@ -101,13 +101,32 @@ facteur `2/√3` de la hauteur hexagonale → **3 tests sur 7 rougissent**. La h
 réellement assertée. C'est le point où un test paresseux serait passé — il aurait vérifié la largeur
 et ignoré la hauteur, qui était fausse elle aussi dans le défaut d'origine.
 
-### ⚠ Deux choses en attente d'un arbitrage du mainteneur
+### ✅ Les deux points ouverts sont réglés le jour même — ne pas les rouvrir
 
-1. **Pion hexagonal multi-cases** : boîte englobante mise à l'échelle, ou union réelle des cases
-   occupées ? Le code fait aujourd'hui le premier. Ça corrige la parité, ça ne prétend pas
-   reproduire la rosette.
-2. **Étage neuf côté joueurs** : faut-il publier un masque entièrement noir pour qu'il apparaisse
-   dans leur sélecteur, ou une table ne doit-elle voir que les étages où elle est allée ?
+1. **Pion hexagonal multi-cases : il n'y avait aucun arbitrage à demander.**
+   `HexGrid.cellsOccupied` définit depuis le lot 1a qu'un pion de taille N occupe le **disque
+   hexagonal de rayon N−1** — 7 hexagones en taille 2, 19 en taille 3. Le dessin **doit** suivre
+   cette définition : un pion qui déborde semble bloquer un passage qu'il laisse libre.
+
+   Le dessin ne la suivait pas : l'échelle linéaire rendait un pion de taille 2 **d'un tiers trop
+   petit** (280 px au lieu de 420). ✅ **Corrigé** (`0cc2d3c`).
+
+   ⚠ **Deux tests verrouillaient l'erreur** — l'extrapolation du sous-agent figée en assertion. Ils
+   ont été **corrigés, pas assouplis** : la règle « ne pas retoucher un test existant » protège un
+   test qui *était* juste, pas un test qui encode une invention. Distinction à garder en tête, elle
+   se représentera.
+
+2. **Étage neuf côté joueurs : tranché par le mainteneur le 19/08 — « la table ne voit que les
+   étages où elle est allée. »** Le comportement actuel est donc **le bon**. Le F5 du 18/08 n'était
+   pas un défaut. ⛔ **Ne pas publier de masque noir pour « réparer » ce symptôme** : ce serait
+   montrer l'existence d'un étage que la table n'a pas découvert.
+
+### Leçon de méthode de cette séance
+
+⭐ **Avant de demander un arbitrage au mainteneur, vérifier si le code ne l'a pas déjà rendu.** Le
+doute du sous-agent ressemblait à une question de règle ; c'était une incohérence interne, et la
+réponse était dans `cellsOccupied` depuis le début. Une question posée au mainteneur alors que la
+réponse existe lui coûte du temps et retarde un correctif.
 
 ### Suite de la file
 
