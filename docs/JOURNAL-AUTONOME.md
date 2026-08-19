@@ -73,3 +73,43 @@ même jour : **juger l'effet, jamais l'étiquette.**
 le port du serveur et le dossier `test-results/`. Symptôme : « 43 passed » et une longue liste de
 tests **non exécutés**, sans aucun échec nommé. Ce n'est pas une régression, c'est une collision —
 nettoyer `test-results/` et relancer **seul**.
+
+---
+
+## 19 août 2026 — les deux observations instruites, G-1 livrée
+
+### Fait
+
+**Les deux observations du 18/08 sont instruites, et aucune n'est une régression** — détail dans
+`PLAN-SUITE.md` §10. En résumé : les deux chemins d'import offrent deux boutons explicites (le
+produit n'interroge pas, il offre deux gestes), et le F5 sur la tablette vient de
+`estConnuDesJoueurs()`, qui rend **absent** du sélecteur joueurs tout étage sans masque de fog
+publié. `scene.load` apporte des étages **neufs**, donc sans masque ; `level.replace` — le chemin
+d'UX-13 — remplace la carte **à identifiant constant**, l'étage garde son masque et reste connu.
+⛔ Non corrigé : le correctif suppose une règle de jeu (une table doit-elle voir l'onglet d'un étage
+où elle n'a jamais mis les pieds ?), donc un arbitrage du mainteneur.
+
+**G-1 livrée** (`c51d15f`) : `cellCenter` et `cellBounds` sur les deux grilles, couche des pions
+migrée, aucun autre appelant touché. Porte `CODE=0`, 205 e2e, 3 gestes.
+
+**Brief du fog écrit** (`BRIEF-FOG-BASSE-RESOLUTION.md`), non implémenté.
+
+### Ce que la relecture a ajouté au travail du sous-agent
+
+Il avait fait ses trois mutations. J'en ai ajouté une quatrième qu'il n'avait pas faite : aplatir le
+facteur `2/√3` de la hauteur hexagonale → **3 tests sur 7 rougissent**. La hauteur est donc
+réellement assertée. C'est le point où un test paresseux serait passé — il aurait vérifié la largeur
+et ignoré la hauteur, qui était fausse elle aussi dans le défaut d'origine.
+
+### ⚠ Deux choses en attente d'un arbitrage du mainteneur
+
+1. **Pion hexagonal multi-cases** : boîte englobante mise à l'échelle, ou union réelle des cases
+   occupées ? Le code fait aujourd'hui le premier. Ça corrige la parité, ça ne prétend pas
+   reproduire la rosette.
+2. **Étage neuf côté joueurs** : faut-il publier un masque entièrement noir pour qu'il apparaisse
+   dans leur sélecteur, ou une table ne doit-elle voir que les étages où elle est allée ?
+
+### Suite de la file
+
+G-2 (avertissement `map_origin`), puis les bornes de ressources à l'import. Le fog a son brief et
+reste prioritaire au plan, mais sa validation exige les yeux du mainteneur.
