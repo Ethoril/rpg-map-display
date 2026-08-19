@@ -71,6 +71,35 @@ export class SquareGrid {
   }
 
   /**
+   * Cellule → CENTRE de la case, en pixels carte. Alias explicite de `pointFromCell`
+   * pour l'API sans ambiguïté de G-1 (`docs/QUESTIONS-EN-ATTENTE.md` C-5).
+   *
+   * @param {Cell} cell
+   * @returns {MapPoint}
+   */
+  cellCenter(cell) {
+    return this.pointFromCell(cell);
+  }
+
+  /**
+   * Boîte englobante d'un pion en pixels carte, à partir du COIN haut-gauche de son
+   * ancrage — même convention que `mapFromCellPoint` — et de sa taille en cases.
+   *
+   * @param {CellPoint} cp Coin haut-gauche de l'ancrage, en unité de case fractionnaire.
+   * @param {number} sizeCells
+   * @returns {{x: number, y: number, width: number, height: number}}
+   */
+  cellBounds(cp, sizeCells) {
+    const size = Math.max(1, sizeCells || 1);
+    return {
+      x: this.offsetX + cp.cellX * this.pxPerCell,
+      y: this.offsetY + cp.cellY * this.pxPerCell,
+      width: size * this.pxPerCell,
+      height: size * this.pxPerCell,
+    };
+  }
+
+  /**
    * Pixels carte → unité de case fractionnaire.
    *
    * @param {MapPoint} p

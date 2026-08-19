@@ -101,6 +101,44 @@ export class HexGrid {
   }
 
   /**
+   * Cellule → CENTRE de la case, en pixels carte (odd-r). Alias explicite de
+   * `pointFromCell` pour l'API sans ambiguïté de G-1 (`docs/QUESTIONS-EN-ATTENTE.md` C-5).
+   *
+   * @param {Cell} cell
+   * @returns {MapPoint}
+   */
+  cellCenter(cell) {
+    return this.pointFromCell(cell);
+  }
+
+  /**
+   * Boîte englobante d'un pion en pixels carte. L'ancre `cp` est la position (fractionnaire
+   * pour l'animation de déplacement) de son CENTRE — même formule que le centre rendu par
+   * `mapFromCellPoint` — et la boîte est centrée dessus, à la taille d'un hexagone pointe en
+   * haut mis à l'échelle de `sizeCells`. Jamais reconstruite par différence de deux centres :
+   * c'est cette différence, dépendante de la parité de rangée, qui rendait les pions faux
+   * (C-5). À 140 px/case et taille 1 : largeur 140 px, hauteur 161,66 px.
+   *
+   * @param {CellPoint} cp Position (fractionnaire) du centre de l'ancrage.
+   * @param {number} sizeCells
+   * @returns {{x: number, y: number, width: number, height: number}}
+   */
+  cellBounds(cp, sizeCells) {
+    const size = Math.max(1, sizeCells || 1);
+    const rowInt = Math.floor(cp.cellY);
+    const centerX = this.offsetX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1) + 0.5);
+    const centerY = this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2 + 0.5);
+    const width = size * this.pxPerCell;
+    const height = size * this.pxPerCell * (2 / SQRT3);
+    return {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width,
+      height,
+    };
+  }
+
+  /**
    * Pixels carte → unité de case fractionnaire (odd-r).
    *
    * @param {MapPoint} p

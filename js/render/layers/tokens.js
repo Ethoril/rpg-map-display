@@ -282,13 +282,13 @@ export class TokensLayer {
    */
   _drawToken(ctx, grid, token, position, selected, options) {
     const sizeCells = Math.max(1, token.sizeCells || 1);
-    const p0 = grid.mapFromCellPoint(position);
-    const p1 = grid.mapFromCellPoint({
-      cellX: position.cellX + sizeCells,
-      cellY: position.cellY + sizeCells,
-    });
-    const width = p1.x - p0.x;
-    const height = p1.y - p0.y;
+    // G-1 : boîte englobante via l'API sans ambiguïté (`cellBounds`), jamais par différence
+    // de deux `mapFromCellPoint` — c'est cette différence qui rendait les pions hexagonaux
+    // faux selon la parité de rangée (docs/QUESTIONS-EN-ATTENTE.md, C-5).
+    const bounds = grid.cellBounds(position, sizeCells);
+    const p0 = { x: bounds.x, y: bounds.y };
+    const width = bounds.width;
+    const height = bounds.height;
     const centerX = p0.x + width / 2;
     const centerY = p0.y + height / 2;
     const borderColor = token.borderColor || '#ffffff';
