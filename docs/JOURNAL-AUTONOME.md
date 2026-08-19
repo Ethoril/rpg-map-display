@@ -193,3 +193,34 @@ vigilance ».
 
 **Les bornes de ressources à l'import** (`PLAN-SUITE.md` §5) — dernière tranche autonome de la file.
 Puis le fog, dont le brief est prêt mais dont la validation exige les yeux du mainteneur.
+
+### 19/08 au soir — les bornes de ressources : ⭐ LA FILE AUTONOME EST VIDE
+
+**Bornes livrées** (`c871cf1`). Seuils mesurés sur les six exports réels du dépôt avant d'écrire une
+ligne — pire cas `testbig150` : 103,8 Mpx · 4 615 cases · 1 338 polylignes · 2 676 sommets ·
+141 portes · 185 lumières. Chaque plafond laisse passer ce pire cas avec au moins un facteur 2.
+
+⭐ **Le contrôle qui protège vraiment est celui de l'image**, et il tient à *ce qu'il mesure* : pas
+la taille du JSON — déjà allouée quand `parseUvtt` la reçoit — mais l'image **décodée**, estimée
+depuis `map_size × pixels_per_grid` **sans toucher au fichier image**.
+
+⚠ **Trou trouvé en chemin** : `typeof pt.x === 'number'` acceptait `NaN` et `Infinity`. Un `NaN`
+traverse tout sans rien casser — toute comparaison avec lui étant fausse, un segment devient
+invisible au sweep **sans la moindre erreur** — puis ressort en `null` à la sérialisation. Corrigé.
+
+⭐ **La leçon de la tranche, à garder** : un test qui vérifie qu'un plafond refuse l'absurde est
+facile à écrire et ne protège qu'à moitié. Ce qui casse une séance, c'est un plafond descendu **sous
+le réel** « par prudence ». D'où le test qui parcourt tout le corpus et exige que chaque carte passe.
+
+## ⛔ État de la file au 19/08 au soir
+
+**Les quatre tranches autonomes sont livrées** : M2, G-1, G-2, bornes d'import — plus trois
+correctifs non prévus nés de la vraie carte (déformation hexagonale, rosette, faux positif).
+
+**Il ne reste que le fog**, et il ne peut pas être terminé sans le mainteneur : son critère est
+« rendu visuellement identique ». Le brief est prêt (`BRIEF-FOG-BASSE-RESOLUTION.md`), le code peut
+s'écrire et l'arithmétique se prouver, mais ⛔ **aucun agent ne déclare cette tranche terminée**.
+
+⚠ **Donc : ne pas inventer de travail.** La charte (§3) est explicite — file vide, on s'arrête. S'il
+reste du temps de réveil, l'employer à écrire, mesurer ou vérifier, jamais à ouvrir un chantier non
+listé.
