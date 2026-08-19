@@ -132,3 +132,40 @@ réponse existe lui coûte du temps et retarde un correctif.
 
 G-2 (avertissement `map_origin`), puis les bornes de ressources à l'import. Le fog a son brief et
 reste prioritaire au plan, mais sa validation exige les yeux du mainteneur.
+
+---
+
+## 19 août 2026, après-midi — la première carte de campagne, et le défaut qu'elle a révélé
+
+**« Carte_Combat _Ferme_isolée » est en bibliothèque** (`4f3cbe2`) : 38 × 28 hexagones à 140 px/case,
+image 5320 × 3500 intacte, grille hexagonale posée à la demande du mainteneur. Première vraie carte
+de campagne du dépôt — les autres étaient des cartes de mesure ou d'essai.
+
+⚠ **Carte-décor** : ni murs, ni portes, ni lumières. Les lignes de vue du lot 2 y sont inertes, et
+sans pion PJ posé les joueurs ne verront rien. `maps:prepare` le signale de lui-même.
+
+### ⭐ Le défaut qu'elle a fait tomber
+
+L'outil **ne pouvait produire aucune carte hexagonale correcte à partir d'une image rectangulaire**.
+`_hex` fixait le type de grille, mais le rééchantillonnage calculait `hauteur = rangées × pxPerCell`,
+hypothèse carrée en dur. La ferme sortait **comprimée de 11 % en largeur**.
+
+Invisible depuis toujours, parce que la seule carte hexagonale du dépôt — `marais-hex_16x16` — est
+**carrée** : aucune déformation n'y est possible. Il a fallu une image rectangulaire pour le révéler.
+
+⚠ **Ma première correction était fausse elle aussi** : forcer la hauteur à l'étendue exacte des
+rangées écrasait encore de 1,9 %, aucun nombre entier de rangées ne couvrant pile la hauteur d'une
+image quelconque. La règle retenue : **une grille est une couche de jeu posée sur un dessin, ce n'est
+pas au dessin de s'y plier.** On conserve le ratio.
+
+### Deux avertissements de l'outil, tous deux justes mais l'un mal calibré
+
+1. « carte-décor sans géométrie » — **juste et utile**, à garder.
+2. « Dimensions du nom incohérentes : 38×28 donne 140 px/case en largeur mais 125 en hauteur » —
+   ⚠ **faux positif en hexagonal**, où les deux densités *doivent* diverger. `cellDimensionsFromName`
+   ignore le pavage. Non corrigé : à traiter quand la file y reviendra.
+
+### Suite de la file
+
+**G-2 n'a pas été commencée** — la carte a pris la séance, et elle le méritait : elle serait entrée
+déformée en bibliothèque. G-2 reste en tête de file.
