@@ -169,3 +169,27 @@ pas au dessin de s'y plier.** On conserve le ratio.
 
 **G-2 n'a pas été commencée** — la carte a pris la séance, et elle le méritait : elle serait entrée
 déformée en bibliothèque. G-2 reste en tête de file.
+
+### Fin de séance du 19/08 — G-2 livrée, et le faux positif hexagonal corrigé
+
+**G-2 livrée** (`c019a5c`). Un `map_origin` non nul **parle** désormais : il nomme les valeurs, le
+sens appliqué (le projet **ajoute** l'origine), la convention concurrente (Foundry la **soustrait**)
+et le symptôme à guetter — « décalés du double de l'origine ». ⛔ Le signe n'est **pas** basculé :
+aucun export réel n'a jamais porté d'origine non nulle, et on ne parie pas sur la foi d'un importeur
+tiers. Le premier fichier qui déclenchera l'avertissement fournira le cas qui manque.
+
+⭐ Le test n'exige pas « un avertissement existe » — ce critère passerait au vert sur un message
+vide. Il exige que le message **nomme** valeurs, sens, convention concurrente et symptôme. Et
+l'autre moitié : **le silence quand il n'y a rien à dire**, sans quoi l'avertissement se banalise.
+
+**Faux positif hexagonal corrigé** (`6bca612`). `cellDimensionsFromName` comparait la densité en
+hauteur à celle en largeur, alors qu'en pointe-en-haut elles doivent diverger. ⚠ Ma première passe
+comparait au **pas** entre rangées ; il fallait l'**étendue réelle**, la dernière rangée ajoutant sa
+hauteur pleine. Le test verrouille les deux sens — pas d'avertissement en hexagonal correct, mais
+l'incohérence reste détectée en carré, sans quoi « corriger » aurait pu vouloir dire « supprimer la
+vigilance ».
+
+### Reste dans la file
+
+**Les bornes de ressources à l'import** (`PLAN-SUITE.md` §5) — dernière tranche autonome de la file.
+Puis le fog, dont le brief est prêt mais dont la validation exige les yeux du mainteneur.
