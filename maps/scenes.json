@@ -23,6 +23,18 @@
           "order": 2
         }
       ]
+    },
+    {
+      "id": "ferme-isolee",
+      "name": "Carte_Combat _Ferme_isolée",
+      "levels": [
+        {
+          "id": "ferme-isolee",
+          "name": "Carte_Combat _Ferme_isolée",
+          "source": "ferme-isolee_38x28_hex.jpg",
+          "order": 0
+        }
+      ]
     }
   ]
 }

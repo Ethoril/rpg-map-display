@@ -1,18 +1,18 @@
 {
   "schemaVersion": 2,
-  "campaignId": "campaign-marais-hex_16x16",
-  "name": "Marais — HEX — 16x16",
+  "campaignId": "campaign-ferme-isolee",
+  "name": "Carte_Combat _Ferme_isolée",
   "levels": [
     {
-      "id": "marais-hex_16x16",
-      "name": "Marais — HEX — 16x16",
+      "id": "ferme-isolee",
+      "name": "Carte_Combat _Ferme_isolée",
       "order": 0,
-      "imageUrl": "maps/generated/marais-hex_16x16.webp",
+      "imageUrl": "maps/generated/ferme-isolee.webp",
       "videoUrl": null,
       "animatedOverlays": [],
       "pxPerCell": 140,
-      "widthCells": 16,
-      "heightCells": 16,
+      "widthCells": 38,
+      "heightCells": 28,
       "grid": {
         "type": "hex",
         "offsetX": 0,

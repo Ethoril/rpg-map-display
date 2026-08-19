@@ -1898,7 +1898,6 @@
       ],
       "lights": [],
       "ambient": {
-        "color": "#000000",
         "level": 0,
         "baked": false
       }
@@ -1906,6 +1905,7 @@
   ],
   "links": [],
   "tokens": [],
+  "reserve": [],
   "templates": [],
   "settings": {}
 }
