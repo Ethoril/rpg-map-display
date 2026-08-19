@@ -588,10 +588,15 @@ export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPx
   const levelId = lvlSpec?.id ?? baseName;
   const webpFileName = `${levelId}.webp`;
   const webpPath = path.join(generatedDir, webpFileName);
+  // ⚠ Le pavage doit être connu AVANT le rééchantillonnage, pas seulement au moment de composer
+  // le niveau : la hauteur cible en dépend. Sans lui, une carte hexagonale rectangulaire sort
+  // comprimée — voir le drapeau `hexRows` de `resample`.
+  const pavageHexNom = /(^|[_\-\s])hex([_\-\s]|$)/i.test(baseName);
   const resampleResult = await resample(imagePath, targetPxPerCell, {
     sourcePxPerCell: dims.pxPerCell,
     widthCells: dims.widthCells,
     heightCells: dims.heightCells,
+    hexRows: pavageHexNom,
     outputPath: webpPath,
     maxTexturePx: options.maxTexturePx,
     quality: options.quality,
@@ -616,7 +621,10 @@ export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPx
   // `pxPerCell × √3/2`. Une carte dessinée pour du carré n'aura donc pas ses hexagones alignés sur
   // son décor — c'est attendu, et c'est le cas d'usage : le pavage est une couche de jeu, pas une
   // propriété du dessin.
-  const pavageHex = /(^|[_\-\s])hex([_\-\s]|$)/i.test(baseName);
+  // ⚠ Même valeur que celle passée à `resample` plus haut, et volontairement PAS un second test :
+  // deux détections identiques finissent toujours par diverger, et le jour où l'une dit « hex »
+  // et l'autre « carré », la carte est rééchantillonnée pour un pavage et dessinée pour l'autre.
+  const pavageHex = pavageHexNom;
 
   const level = createLevel({
     id: levelId,

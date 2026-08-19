@@ -242,3 +242,38 @@ test('resample avertit quand le réseau peint est hexagonal, et se taît quand i
       `Reçu : ${JSON.stringify(carre.warnings)}`
   );
 });
+
+test('resample hexRows : le ratio du dessin est conservé, la grille ne le déforme jamais', async () => {
+  const { Jimp } = await import('jimp');
+  // 5320×3500 est le format réel de la première carte de campagne posée en hexagonal. Réduit ici
+  // d'un facteur 10 pour que le test reste rapide, le ratio étant seul en cause.
+  const SRC_W = 532;
+  const SRC_H = 350;
+  const img = new Jimp({ width: SRC_W, height: SRC_H, color: 0x336633ff });
+  const png = await img.getBuffer('image/png');
+
+  // 38 colonnes × 28 rangées : le découpage hexagonal qui couvre cette image. En carré, 28 rangées
+  // de 14 px feraient 392 px de haut — l'image n'en fait que 350.
+  const r = await resample(png, 14, { widthCells: 38, heightCells: 28, hexRows: true });
+
+  const ratioSource = SRC_W / SRC_H;
+  const ratioObtenu = r.width / r.height;
+
+  // ⛔ **Le critère est le ratio, pas une dimension.** Avant correction, la hauteur cible valait
+  // `heightCells × pxPerCell` : la sortie partait en 532×392, puis le plafond de texture la
+  // ramenait en comprimant la LARGEUR. Sur la carte réelle, 5320×3500 sortait en 4750×3500 —
+  // écrasée de 11 %, sans un mot. Une grille est une couche de jeu posée sur un dessin ; ce n'est
+  // pas au dessin de s'y plier.
+  assert.ok(
+    Math.abs(ratioObtenu - ratioSource) < 0.005,
+    `ratio déformé : source ${ratioSource.toFixed(4)}, obtenu ${ratioObtenu.toFixed(4)} ` +
+      `(${r.width}×${r.height})`
+  );
+
+  // Et la densité reste celle des colonnes : en pointe-en-haut, `pxPerCell` est la LARGEUR d'un
+  // hexagone. C'est ce que le rendu attend, et ce que `HexGrid` suppose.
+  assert.ok(
+    Math.abs(r.pxPerCell - r.width / 38) < 0.01,
+    `pxPerCell doit rester la largeur d'une colonne, obtenu ${r.pxPerCell}`
+  );
+});
