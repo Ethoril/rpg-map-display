@@ -224,3 +224,23 @@ s'écrire et l'arithmétique se prouver, mais ⛔ **aucun agent ne déclare cett
 ⚠ **Donc : ne pas inventer de travail.** La charte (§3) est explicite — file vide, on s'arrête. S'il
 reste du temps de réveil, l'employer à écrire, mesurer ou vérifier, jamais à ouvrir un chantier non
 listé.
+
+---
+
+## ⚠ 19/08 au soir — UN TRAVAIL NON RELU PEUT ATTENDRE DANS L'ARBRE
+
+Un sous-agent a été lancé sur **le fog basse résolution** (`BRIEF-FOG-BASSE-RESOLUTION.md`) avec les
+jetons du mainteneur presque épuisés. Il a consigne de **ne rien committer**.
+
+⛔ **Donc, avant TOUT autre travail : `git status`.**
+
+- **Arbre sale** → c'est cette implémentation, **jamais relue**. Elle ne vaut rien tant qu'elle n'a
+  pas été lue ligne à ligne et mutée. ⛔ Ne pas committer sur la foi de son rapport, ⛔ ne pas lancer
+  d'autre tranche par-dessus, ⛔ ne pas lancer de revue mutante dans cet arbre — elle révoquerait par
+  `git checkout` et emporterait le travail.
+- **Arbre propre** → l'agent n'a rien produit ou a échoué. Reprendre le brief à zéro.
+
+⚠ Et le rappel qui vaut pour cette tranche plus que pour aucune autre : **son critère est « rendu
+visuellement identique », donc aucun agent ne peut la déclarer terminée.** Porte verte et mutations
+prouvées = *implémentée*. Validée = quand le mainteneur a regardé les trois états, en vue MJ et en
+vue joueurs.
