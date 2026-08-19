@@ -73,7 +73,25 @@ export function cellDimensionsFromName(fileName, imageWidth, imageHeight) {
     const parHauteur = imageHeight / heightCells;
     if (parLargeur < MIN_PLAUSIBLE_PX_PER_CELL || parLargeur > MAX_PLAUSIBLE_PX_PER_CELL) continue;
 
-    const ecart = Math.abs(parLargeur - parHauteur) / parLargeur;
+    // ⚠ **En hexagonal, les deux densités DOIVENT diverger — les comparer à l'identique produit un
+    // faux positif systématique.** En pointe-en-haut, une colonne mesure `pxPerCell` mais le pas
+    // vertical d'une rangée vaut `pxPerCell × √3/2` : le rapport attendu est ~0,866, pas 1. Sans
+    // cette correction, la première carte de campagne posée en hexagonal — 5320×3500 en 38×28 —
+    // déclenchait « incohérentes : 140 px/case en largeur mais 125 en hauteur », alors que 125 est
+    // exactement ce qu'on attend. Un avertissement qui crie à tort est pire que pas d'avertissement :
+    // on apprend à l'ignorer, et le jour où il a raison personne ne le lit.
+    //
+    // Le pavage se lit dans le nom, là où il est déjà écrit pour le reste du pipeline.
+    // ⚠ C'est l'ÉTENDUE des rangées qu'il faut, pas leur pas : N rangées couvrent
+    // `(N-1)·pas + hauteur d'un hexagone`, la dernière ajoutant sa hauteur pleine au-delà du dernier
+    // pas. Comparer au seul pas laissait 3,1 % d'écart sur la ferme isolée — encore au-dessus de la
+    // tolérance, et l'avertissement continuait de crier à tort.
+    const pavageHex = /(^|[_\-\s])hex([_\-\s]|$)/i.test(base);
+    const attendueEnHauteur = pavageHex
+      ? ((heightCells - 1) * parLargeur * (Math.sqrt(3) / 2) + parLargeur * (2 / Math.sqrt(3))) /
+        heightCells
+      : parLargeur;
+    const ecart = Math.abs(attendueEnHauteur - parHauteur) / attendueEnHauteur;
     /** @type {string[]} */
     const warnings = [];
     if (ecart > CELL_DIMENSION_TOLERANCE) {
