@@ -244,3 +244,41 @@ jetons du mainteneur presque épuisés. Il a consigne de **ne rien committer**.
 visuellement identique », donc aucun agent ne peut la déclarer terminée.** Porte verte et mutations
 prouvées = *implémentée*. Validée = quand le mainteneur a regardé les trois états, en vue MJ et en
 vue joueurs.
+
+### Le fog est implémenté et attend sa relecture — état exact
+
+L'agent a rendu. **Arbre sale, rien commité**, comme demandé :
+`js/render/layers/fogLayer.js` (+160), `js/vision/fog.js` (+24), `tests/fogLayer.test.mjs` (+148).
+
+Il annonce `CODE=0` sur une porte lancée seule, 475 unitaires et 205 + 3 Playwright.
+⛔ **Non vérifié par moi.** Refaire la porte, et relire le code — pas le rapport.
+
+**Ce qu'il dit avoir fait** : composition dans un tampon `widthCells × 8` par `heightCells × 8`, plus
+jamais à la taille de la carte ; masques déposés 1:1 ; polygones convertis vers l'espace du masque
+par l'origine de l'étage et `FOG_MASK_PX_PER_CELL / gridScale` ; arithmétique du complément et ordre
+des compositions inchangés ; un seul agrandissement, à l'étape D.
+
+### ⚠ Quatre points qu'il signale lui-même — à instruire en priorité à la relecture
+
+1. ⭐ **La mutation n°4 n'est PAS attrapée par `fogLayer.test.mjs`.** Peindre l'opacité visée au lieu
+   de son complément n'y fait rougir aucun test ; seul `fogVeil.spec.mjs` le voit (0,625 au lieu de
+   0,5). **C'est un trou de couverture unitaire**, pas une réussite : le jour où l'e2e est écarté ou
+   ralenti, plus rien ne garde cette arithmétique. À combler.
+2. ⚠ **Il a modifié le mock partagé de `drawImage`** dans `tests/fogLayer.test.mjs` pour gérer le
+   redimensionnement. Un mock qui change est exactement l'endroit où un faux vert se loge — voir le
+   mock qui implémentait l'inverse du mécanisme testé, en mémoire `lot2_revue_protocole`. À lire de
+   près.
+3. ⚠ **Il a touché `js/vision/fog.js`**, hors du périmètre annoncé : ajout d'une estampille
+   `__fogRevision` posée par `_touch()`, parce que les masques sont mutés **en place** et que leur
+   référence ne change jamais. Le raisonnement se tient, mais c'est du code de production hors brief.
+4. ⚠ **Trou de cache signalé par lui-même** : un futur appelant qui réutiliserait un canvas muté en
+   place **sans** `__fogRevision` verrait son fog figé silencieusement. Aujourd'hui `decodeFogPng`
+   crée un objet neuf à chaque fois, donc le cas ne se produit pas — mais rien ne l'empêche.
+
+⛔ **Et le rappel qui prime sur tout le reste : cette tranche n'est pas terminée.** Porte verte et
+mutations prouvées = *implémentée*. **Validée** = quand le mainteneur a regardé les trois états, en
+vue MJ et en vue joueurs. L'écart visuel attendu — bords du chemin polygones adoucis — est annoncé
+dans le brief et n'a été vérifié par personne.
+
+⚠ La mesure terrain reste à faire : `player.html?probe=1` sur `testbig150`, colonne `fog`. Point de
+départ **1580–1700 ms**.
