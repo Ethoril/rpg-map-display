@@ -282,11 +282,34 @@ ici.
 Trois observations du mainteneur pendant le relevé M1. **Aucune n'est diagnostiquée** : elles sont
 consignées telles qu'observées, sans hypothèse.
 
-1. ⚠ **L'import d'une carte a remplacé l'étage sans demander.** Or UX-13, livrée le 18/08, ajoute
-   précisément le choix « remplacer l'étage courant ou ajouter ». Régression possible sur du travail
-   livré le jour même.
-2. ⚠ **La tablette a exigé un F5** pour voir le nouvel étage après ce remplacement. C'est le
-   symptôme qu'UX-13 devait supprimer.
+1. ✅ **« L'import a remplacé sans demander » — instruit le 19/08, ce n'est pas une régression.**
+   Les deux chemins d'import offrent **deux boutons explicites** : l'onglet Image propose « Ajouter
+   un étage » et « Remplacer l'étage courant » ; la bibliothèque de scènes propose « Charger » (qui
+   remplace la campagne entière, via `loadCampaign` + `scene.load`) et « Ajouter comme étage »
+   (additif, via `level.add`). Le produit ne **demande** rien parce qu'il **offre deux gestes**.
+
+   ⚠ **Mais la remarque reste juste, et c'est une question d'ergonomie, pas de mécanique.** Un
+   bouton qui remplace toute la campagne se présente comme son voisin additif, sans confirmation.
+   La règle du mainteneur — « rien ne se déplace dans le dos de personne » — plaide pour une
+   confirmation sur le geste destructeur. **Arbitrage à lui.**
+
+2. ✅ **« Le F5 sur la tablette » — cause identifiée le 19/08, et ce n'est pas une régression non
+   plus.** `js/app/player.js`, `estConnuDesJoueurs()` : un étage **sans masque de fog publié** n'est
+   pas « connu » des joueurs, donc **absent de leur sélecteur** (`js/ui/player/levelSelector.js` —
+   « un étage inconnu est ABSENT, pas grisé »).
+
+   Or `scene.load` apporte des étages **neufs, avec de nouveaux identifiants** : aucun masque, donc
+   inconnus. Là où `level.replace` — le chemin d'UX-13 — remplace la carte **à identifiant
+   constant**, l'étage garde son masque, reste connu, et la table le voit sans rien faire.
+
+   ⭐ **UX-13 fonctionne donc comme prévu, sur son chemin.** Le défaut vit sur le chemin de la
+   bibliothèque de scènes, que UX-13 ne couvrait pas — c'est la limitation structurelle qu'elle
+   avait été écrite pour contourner ailleurs.
+
+   ⛔ **Le correctif suppose une décision produit, donc il attend.** Publier un masque entièrement
+   noir rendrait l'étage « connu » — mais faut-il qu'une table voie l'onglet d'un étage où elle n'a
+   jamais mis les pieds ? C'est une règle de jeu, pas un détail technique. **Arbitrage au
+   mainteneur.**
 3. **Les lignes de vue de `testbig150` paraissent absurdes.** La carte est documentée comme « une
    carte de **mesure**, pas de campagne », avec 1338 murs générés : l'intuition du mainteneur — une
    carte mal faite — est plausible, mais elle se vérifie plutôt qu'elle ne se croit. Ne pas conclure
