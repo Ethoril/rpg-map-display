@@ -306,10 +306,14 @@ consignées telles qu'observées, sans hypothèse.
    bibliothèque de scènes, que UX-13 ne couvrait pas — c'est la limitation structurelle qu'elle
    avait été écrite pour contourner ailleurs.
 
-   ⛔ **Le correctif suppose une décision produit, donc il attend.** Publier un masque entièrement
-   noir rendrait l'étage « connu » — mais faut-il qu'une table voie l'onglet d'un étage où elle n'a
-   jamais mis les pieds ? C'est une règle de jeu, pas un détail technique. **Arbitrage au
-   mainteneur.**
+   ✅ **Tranché par le mainteneur le 19/08/2026 : « la table ne voit que les étages où elle est
+   allée. »** Le comportement actuel est donc **le bon**, et il n'y a rien à corriger. Un étage
+   fraîchement chargé reste invisible aux joueurs jusqu'à ce qu'un masque y soit publié — c'est-à-dire
+   jusqu'à ce que la table y soit réellement passée.
+
+   ⛔ **Ne pas publier de masque noir pour « réparer » ce symptôme.** Ce serait montrer à la table
+   l'existence d'un étage qu'elle n'a pas découvert, ce que cette décision refuse. Le F5 observé le
+   18/08 n'était pas un défaut : c'était la règle qui s'appliquait.
 3. **Les lignes de vue de `testbig150` paraissent absurdes.** La carte est documentée comme « une
    carte de **mesure**, pas de campagne », avec 1338 murs générés : l'intuition du mainteneur — une
    carte mal faite — est plausible, mais elle se vérifie plutôt qu'elle ne se croit. Ne pas conclure

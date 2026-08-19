@@ -128,8 +128,22 @@ export class HexGrid {
     const rowInt = Math.floor(cp.cellY);
     const centerX = this.offsetX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1) + 0.5);
     const centerY = this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2 + 0.5);
-    const width = size * this.pxPerCell;
-    const height = size * this.pxPerCell * (2 / SQRT3);
+    // ⛔ **La boîte doit couvrir exactement les cases de `cellsOccupied`, ni plus ni moins.**
+    // Un pion qui déborde semble bloquer un passage qu'il laisse libre ; un pion trop petit
+    // laisse croire l'inverse. Ce n'est pas une préférence de dessin, c'est la cohérence entre
+    // ce que la table voit et ce que la règle applique.
+    //
+    // `cellsOccupied` occupe le **disque hexagonal** de rayon `sizeCells - 1` : 1 case en
+    // taille 1, 7 en taille 2, 19 en taille 3. Une mise à l'échelle linéaire de la boîte —
+    // `size * pxPerCell` — rendait donc un pion de taille 2 **d'un tiers trop petit** (280 px
+    // au lieu de 420 à 140 px/case), et ne couvrait pas la couronne de voisins qu'il occupe.
+    //
+    // Étendue réelle d'une rosette de rayon R, en pointe-en-haut : les colonnes s'espacent de
+    // `pxPerCell`, d'où `(2R+1)` de large ; les rangées s'espacent de `pxPerCell·√3/2`, d'où
+    // `R·pxPerCell·√3` plus la hauteur d'un hexagone entier.
+    const radius = Math.max(0, size - 1);
+    const width = (2 * radius + 1) * this.pxPerCell;
+    const height = radius * this.pxPerCell * SQRT3 + this.pxPerCell * (2 / SQRT3);
     return {
       x: centerX - width / 2,
       y: centerY - height / 2,

@@ -68,6 +68,14 @@ test('TokensLayer._drawToken (hexagonal) : pion multi-cases (2×2) mis à l’é
   layer.render(rec.ctx, grid, [token], null, { activeLevelId: 'rdc' });
 
   assert.equal(rec.rects.length, 1);
-  assert.equal(rec.rects[0].w, 280);
-  assert.ok(Math.abs(rec.rects[0].h - 280 * (2 / SQRT3)) < 1e-6);
+  // ⛔ Un pion de taille 2 occupe la ROSETTE — le centre plus ses six voisins, sept hexagones —
+  // et non un bloc 2×2 qui n'existe pas en hexagonal. Il fait donc trois colonnes de large.
+  // Ce test verrouillait 280 px, l'échelle linéaire ; corrigé le 19/08/2026 pour suivre
+  // `cellsOccupied`, qui fait foi. Voir gridCellBounds.test.mjs pour la preuve d'accord entre
+  // la boîte dessinée et les cases réellement occupées.
+  assert.equal(rec.rects[0].w, 420, 'trois colonnes de large, pas deux');
+  assert.ok(
+    Math.abs(rec.rects[0].h - (140 * SQRT3 + 140 * (2 / SQRT3))) < 1e-6,
+    `hauteur de la rosette, obtenu ${rec.rects[0].h}`
+  );
 });
