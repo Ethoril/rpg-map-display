@@ -136,6 +136,32 @@ export function parseUvtt(jsonInput) {
   const offsetX = originX * pxPerCell;
   const offsetY = originY * pxPerCell;
 
+  // ⚠ **Le sens de `map_origin` n'est pas éprouvé, et il ne peut pas l'être sans un fichier réel.**
+  //
+  // Ce projet **ajoute** l'origine : la géométrie est conservée telle quelle et la grille est
+  // décalée de `+origine × pxPerCell`. L'importeur Foundry `FVTT-DD-Import` fait l'inverse — il
+  // applique `(point − map_origin) × pixels_per_grid`, uniformément sur murs, portails et lumières.
+  // C'est le seul point de comparaison extérieur dont on dispose, et il désigne l'autre convention.
+  //
+  // ⛔ On ne bascule pas le signe sur la foi d'un importeur tiers : les deux lectures sont
+  // défendables, et **aucun export réel du dépôt n'a jamais porté d'origine non nulle** — Dungeon
+  // Alchemist, la source principale, rebase sa géométrie et laisse l'origine à zéro. La seule
+  // fixture qui couvre le cas a une image de 1 × 1 pixel : elle ne peut rien aligner.
+  //
+  // ⭐ Alors plutôt que parier, on **parle**. Un désalignement silencieux devient un défaut visible
+  // et diagnosticable, et le premier fichier réel qui déclenchera cet avertissement fournira le cas
+  // qui manque pour trancher. C'est la doctrine que l'import applique déjà partout ailleurs : le
+  // silence est le pire mode de défaillance d'un import universel.
+  if (originX !== 0 || originY !== 0) {
+    warnings.push(
+      `resolution.map_origin non nul (${originX}, ${originY}) : la grille est décalée de ` +
+        `+${offsetX}, +${offsetY} px et la géométrie est conservée telle quelle — l'origine est ` +
+        `AJOUTÉE. L'importeur Foundry, lui, la SOUSTRAIT. Le sens n'a jamais pu être vérifié sur ` +
+        `un export réel : si murs, portes ou lumières apparaissent décalés du double de l'origine, ` +
+        `c'est cette convention qu'il faut inverser — voir docs/PLAN-SUITE.md §2.2.`
+    );
+  }
+
   // Extraction des murs (line_of_sight + objects_line_of_sight) en unités de case (CellPoint)
   /** @type {CellPoint[][]} */
   const walls = [];

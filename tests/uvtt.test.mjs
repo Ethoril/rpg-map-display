@@ -166,3 +166,34 @@ test('universalité : un fichier entièrement exploitable n’émet aucun averti
   const pertes = warnings.filter((w) => w.includes('ignoré') || w.includes('replié'));
   assert.deepEqual(pertes, [], `avertissements inattendus : ${warnings.join(' | ')}`);
 });
+
+test('G-2 — un map_origin non nul est signalé bruyamment, et dit quoi vérifier', () => {
+  // ⭐ Le critère n'est pas « un avertissement existe » mais « il dit quoi faire ». Un import qui
+  // constate sans orienter laisse le mainteneur devant une carte décalée sans piste.
+  const avecOrigine = parseUvtt({
+    resolution: { map_origin: { x: 3, y: 2 }, map_size: { x: 10, y: 8 }, pixels_per_grid: 100 },
+    line_of_sight: [[{ x: 1, y: 1 }, { x: 5, y: 5 }]],
+  });
+
+  const avert = avecOrigine.warnings.find((w) => /map_origin/.test(w));
+  assert.ok(avert, `un map_origin non nul doit avertir. Reçu : ${JSON.stringify(avecOrigine.warnings)}`);
+
+  // Il nomme les valeurs en cause, le sens appliqué, et le symptôme à guetter.
+  assert.match(avert, /3, 2/, 'les valeurs de l’origine doivent apparaître');
+  assert.match(avert, /AJOUTÉE/, 'le sens appliqué doit être nommé, pas sous-entendu');
+  assert.match(avert, /SOUSTRAIT/, 'la convention concurrente doit être nommée');
+  assert.match(avert, /décalés du double/, 'le symptôme observable doit être décrit');
+
+  // ⛔ Et le silence reste la règle quand il n'y a rien à dire : une origine nulle — le cas de
+  // TOUS les exports réels du dépôt — ne doit produire aucun bruit, sinon l'avertissement se
+  // banalise et personne ne le lit le jour où il compte.
+  const sansOrigine = parseUvtt({
+    resolution: { map_origin: { x: 0, y: 0 }, map_size: { x: 10, y: 8 }, pixels_per_grid: 100 },
+    line_of_sight: [[{ x: 1, y: 1 }, { x: 5, y: 5 }]],
+  });
+  assert.equal(
+    sansOrigine.warnings.find((w) => /map_origin/.test(w)),
+    undefined,
+    `une origine nulle ne doit produire aucun avertissement. Reçu : ${JSON.stringify(sansOrigine.warnings)}`
+  );
+});
