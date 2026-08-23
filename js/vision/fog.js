@@ -462,7 +462,25 @@ export class ExploredFog {
     }
 
     this.ctx = this.canvas?.getContext?.('2d') ?? this.canvas?._ctx ?? null;
+    /** @type {number} Révision du contenu, voir `_touch()`. */
+    this.revision = 0;
     this.clear();
+  }
+
+  /**
+   * Marque le masque comme modifié : incrémente une révision légère et la recopie sur
+   * `canvas.__fogRevision`, seule chose que `FogLayer` reçoit — il ne voit jamais l'instance
+   * `ExploredFog` elle-même, seulement `.canvas`.
+   *
+   * Ce masque est mutable **en place** : `reveal`/`paintDisc`/`eraseDisc` dessinent sur le
+   * même objet canvas d'un appel à l'autre. Son identité ne change donc jamais quand son
+   * contenu change, et un cache qui ne comparerait que la référence resterait bloqué sur le
+   * premier fog révélé. La révision est ce qui rend la mutation observable sans relire un
+   * seul pixel.
+   */
+  _touch() {
+    this.revision++;
+    if (this.canvas) this.canvas.__fogRevision = this.revision;
   }
 
   /**
@@ -472,6 +490,7 @@ export class ExploredFog {
     if (this.ctx) {
       this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
     }
+    this._touch();
   }
 
   /**
@@ -545,6 +564,7 @@ export class ExploredFog {
 
     this.ctx.fill();
     this.ctx.restore();
+    this._touch();
   }
 
   /**
@@ -567,6 +587,7 @@ export class ExploredFog {
       this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
       this.ctx.drawImage(decoded, 0, 0);
     }
+    this._touch();
   }
 
   /**
@@ -579,6 +600,7 @@ export class ExploredFog {
       this.ctx.fillRect(0, 0, this.maskWidth, this.maskHeight);
       this.ctx.restore();
     }
+    this._touch();
   }
 
   /**
@@ -602,6 +624,7 @@ export class ExploredFog {
     this.ctx.arc(mx, my, Math.max(0, r), 0, Math.PI * 2);
     this.ctx.fill();
     this.ctx.restore();
+    this._touch();
   }
 
   /**
@@ -627,5 +650,6 @@ export class ExploredFog {
     this.ctx.arc(mx, my, Math.max(0, r), 0, Math.PI * 2);
     this.ctx.fill();
     this.ctx.restore();
+    this._touch();
   }
 }

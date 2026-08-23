@@ -1,6 +1,7 @@
 // @ts-check
 
 import {
+  FOG_MASK_PX_PER_CELL,
   FOG_VEIL_GM_EXPLORED,
   FOG_VEIL_GM_UNEXPLORED,
   FOG_VEIL_PLAYER_EXPLORED,
@@ -195,6 +196,35 @@ function createOffscreenCanvas(width, height, mainCtx, factory) {
 }
 
 /**
+ * Opacité à peindre à l'étape A pour que le voile des zones **jamais explorées** vaille
+ * exactement `veilUnexplored` une fois l'étape B passée.
+ *
+ * ⚠ L'étape B pose le voile exploré **sous** ce qui reste de l'étape A (`destination-over`).
+ * Dans les zones jamais explorées, où l'étape A n'a rien effacé, les deux voiles
+ * s'additionnent au lieu de se remplacer : peindre directement l'opacité visée affiche
+ * `1−(1−U)(1−E)`. C'est ce qui rendait la vue MJ bien plus opaque que ses propres valeurs ne
+ * le disaient — 0,70 et 0,45 donnaient un voile réel de 0,835, et la zone non découverte était
+ * illisible. On ne peint donc que le **complément**.
+ *
+ * Sans masque exploré, l'étape B n'a pas lieu : la valeur visée se peint telle quelle. Et côté
+ * joueurs, `U` vaut 1, donc le complément vaut 1 aussi : rien ne change.
+ *
+ * ⭐ **Extraite de `render()` le 23/08/2026 pour être testable.** Elle y vivait en ligne, donc
+ * hors de portée d'un test unitaire : sa seule garde était `tests/fogVeil.spec.mjs`, un e2e. Or
+ * c'est un jugement purement arithmétique et reproductible — il a sa place dans la porte, pas
+ * dans un test navigateur qui mesure aussi la machine.
+ *
+ * @param {number} veilUnexplored Opacité visée pour « jamais exploré »
+ * @param {number} veilExplored Opacité du voile « exploré hors vision »
+ * @param {boolean} aMasqueExplore Un masque exploré est-il fourni ? (sinon l'étape B n'a pas lieu)
+ * @returns {number} L'opacité à peindre à l'étape A
+ */
+export function alphaNonExplore(veilUnexplored, veilExplored, aMasqueExplore) {
+  if (!aMasqueExplore || veilExplored >= 1) return veilUnexplored;
+  return Math.max(0, (veilUnexplored - veilExplored) / (1 - veilExplored));
+}
+
+/**
  * Couche de rendu du masque de fog / voile de vision à trois états (L-04).
  */
 export class FogLayer {
@@ -212,6 +242,15 @@ export class FogLayer {
     this._offscreenCtx = null;
     /** @type {((w: number, h: number) => any)|undefined} */
     this._offscreenFactory = options.createOffscreenCanvas;
+    /**
+     * Empreinte de la dernière composition faite dans `_offscreenCanvas`, pour ne
+     * recomposer que quand quelque chose que la porte ci-dessous liste a changé. Voir
+     * `render()`, étape « composition » — `null` tant que rien n'a encore été composé.
+     * @type {{exploredCanvas: any, exploredRev: any, visibleCanvas: any, visibleRev: any,
+     *   polygons: MapPoint[][], maskWidth: number, maskHeight: number,
+     *   veilUnexplored: number, veilExplored: number}|null}
+     */
+    this._composeCache = null;
   }
 
   /**
@@ -220,6 +259,7 @@ export class FogLayer {
   invalidate() {
     this._lastSignature = '';
     this._cachedPolygons = [];
+    this._composeCache = null;
   }
 
   /**
@@ -426,15 +466,27 @@ export class FogLayer {
 
     if (mapWidth <= 0 || mapHeight <= 0) return;
 
+    // Le tampon de composition travaille à la résolution du masque (8 px/case), pas à
+    // celle de la carte — c'est tout le sujet de cette tranche
+    // (BRIEF-FOG-BASSE-RESOLUTION.md) : les masques exploré et visible sont déjà à cette
+    // résolution, et le composer à la taille de la carte ne faisait qu'étirer deux fois
+    // un contenu de 520×568 vers un tampon 200 fois plus grand, balayé deux à trois fois
+    // par image. Un seul agrandissement reste nécessaire, à l'étape D, une fois par image.
+    const maskWidth = Math.max(1, Math.round(level.widthCells * FOG_MASK_PX_PER_CELL));
+    const maskHeight = Math.max(1, Math.round(level.heightCells * FOG_MASK_PX_PER_CELL));
+
     if (
       !this._offscreenCanvas ||
-      this._offscreenCanvas.width !== mapWidth ||
-      this._offscreenCanvas.height !== mapHeight
+      this._offscreenCanvas.width !== maskWidth ||
+      this._offscreenCanvas.height !== maskHeight
     ) {
-      this._offscreenCanvas = createOffscreenCanvas(mapWidth, mapHeight, ctx, this._offscreenFactory);
+      this._offscreenCanvas = createOffscreenCanvas(maskWidth, maskHeight, ctx, this._offscreenFactory);
       if (this._offscreenCanvas) {
         this._offscreenCtx = this._offscreenCanvas.getContext('2d');
       }
+      // Le tampon change de taille ⇒ tout ce qu'il portait est perdu, même si rien
+      // d'autre n'a bougé : le cache de composition ne peut plus être valide.
+      this._composeCache = null;
     }
 
     const offCtx = this._offscreenCtx;
@@ -456,54 +508,106 @@ export class FogLayer {
     //
     // Sans masque exploré, l'étape B n'a pas lieu : la valeur visée se peint telle
     // quelle. Et côté joueurs, U vaut 1 : le complément vaut 1 aussi, rien ne change.
-    const unexploredAlpha =
-      options.exploredCanvas && veilExplored < 1
-        ? Math.max(0, (veilUnexplored - veilExplored) / (1 - veilExplored))
-        : veilUnexplored;
+    const unexploredAlpha = alphaNonExplore(veilUnexplored, veilExplored, Boolean(options.exploredCanvas));
 
-    offCtx.save();
-    offCtx.clearRect(0, 0, mapWidth, mapHeight);
+    // Le masque exploré et le masque visible sont mutables **en place** : `reveal()`,
+    // `paintDisc()` etc. (`js/vision/fog.js`) dessinent sur le même objet canvas d'un
+    // appel à l'autre, sans jamais changer sa référence. Comparer les seules références
+    // laisserait donc le cache figé sur le premier fog révélé — exactement le défaut que
+    // le brief interdit. `__fogRevision` est l'estampille que `ExploredFog` pose sur son
+    // canvas à chaque mutation ; à défaut (masque construit autrement, p.ex. décodé d'un
+    // PNG reçu par la vue joueurs — un nouvel objet à chaque changement), la référence
+    // seule suffit puisqu'elle change alors avec le contenu.
+    const exploredRev = options.exploredCanvas
+      ? options.exploredCanvas.__fogRevision ?? options.exploredCanvas
+      : null;
+    const visibleRev = options.visibleCanvas
+      ? options.visibleCanvas.__fogRevision ?? options.visibleCanvas
+      : null;
 
-    // Étape A : Remplir tout le canvas avec le voile non exploré
-    offCtx.fillStyle = `rgba(0, 0, 0, ${unexploredAlpha})`;
-    offCtx.fillRect(0, 0, mapWidth, mapHeight);
+    const cache = this._composeCache;
+    const cacheValide =
+      cache !== null &&
+      cache.exploredCanvas === options.exploredCanvas &&
+      cache.exploredRev === exploredRev &&
+      cache.visibleCanvas === options.visibleCanvas &&
+      cache.visibleRev === visibleRev &&
+      cache.polygons === this._cachedPolygons &&
+      cache.maskWidth === maskWidth &&
+      cache.maskHeight === maskHeight &&
+      cache.veilUnexplored === veilUnexplored &&
+      cache.veilExplored === veilExplored;
 
-    // Étape B : Si le masque exploré existe, remplacer le voile non exploré par le voile exploré
-    if (options.exploredCanvas) {
-      // Effacer le voile non exploré dans les zones explorées avec destination-out
-      offCtx.globalCompositeOperation = 'destination-out';
-      offCtx.drawImage(options.exploredCanvas, 0, 0, mapWidth, mapHeight);
+    if (!cacheValide) {
+      offCtx.save();
+      offCtx.clearRect(0, 0, maskWidth, maskHeight);
 
-      // Appliquer le voile exploré dans ces zones libérées
-      offCtx.globalCompositeOperation = 'destination-over';
-      offCtx.fillStyle = `rgba(0, 0, 0, ${veilExplored})`;
-      offCtx.fillRect(0, 0, mapWidth, mapHeight);
-    }
+      // Étape A : Remplir tout le canvas avec le voile non exploré
+      offCtx.fillStyle = `rgba(0, 0, 0, ${unexploredAlpha})`;
+      offCtx.fillRect(0, 0, maskWidth, maskHeight);
 
-    // Étape C : Percer le masque de vision courante (visible) avec destination-out
-    if (options.visibleCanvas) {
-      offCtx.globalCompositeOperation = 'destination-out';
-      offCtx.drawImage(options.visibleCanvas, 0, 0, mapWidth, mapHeight);
-    } else if (this._cachedPolygons.length > 0) {
-      offCtx.globalCompositeOperation = 'destination-out';
-      offCtx.beginPath();
+      // Étape B : Si le masque exploré existe, remplacer le voile non exploré par le voile exploré
+      if (options.exploredCanvas) {
+        // Effacer le voile non exploré dans les zones explorées avec destination-out
+        offCtx.globalCompositeOperation = 'destination-out';
+        offCtx.drawImage(options.exploredCanvas, 0, 0, maskWidth, maskHeight);
 
-      for (const poly of this._cachedPolygons) {
-        if (!poly || poly.length === 0) continue;
-        offCtx.moveTo(poly[0].x, poly[0].y);
-        for (let i = 1; i < poly.length; i++) {
-          offCtx.lineTo(poly[i].x, poly[i].y);
-        }
-        offCtx.closePath();
+        // Appliquer le voile exploré dans ces zones libérées
+        offCtx.globalCompositeOperation = 'destination-over';
+        offCtx.fillStyle = `rgba(0, 0, 0, ${veilExplored})`;
+        offCtx.fillRect(0, 0, maskWidth, maskHeight);
       }
 
-      offCtx.fillStyle = '#000000';
-      offCtx.fill();
+      // Étape C : Percer le masque de vision courante (visible) avec destination-out
+      if (options.visibleCanvas) {
+        offCtx.globalCompositeOperation = 'destination-out';
+        offCtx.drawImage(options.visibleCanvas, 0, 0, maskWidth, maskHeight);
+      } else if (this._cachedPolygons.length > 0) {
+        offCtx.globalCompositeOperation = 'destination-out';
+        offCtx.beginPath();
+
+        // Piège n°1 (BRIEF-FOG-BASSE-RESOLUTION.md §3) : ces polygones sont en pixels
+        // carte (`MapPoint`), tracés ici tels quels ils seraient 17,5× trop grands à
+        // 140 px/case. Même conversion que `ExploredFog.reveal()` : l'origine de
+        // l'étage et l'échelle de la grille ramènent chaque point à l'espace du masque.
+        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+        const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+        const gridScale = Math.abs(origin1.x - origin0.x);
+        const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+
+        for (const poly of this._cachedPolygons) {
+          if (!poly || poly.length === 0) continue;
+          const first = poly[0];
+          offCtx.moveTo((first.x - origin0.x) * scale, (first.y - origin0.y) * scale);
+          for (let i = 1; i < poly.length; i++) {
+            const pt = poly[i];
+            offCtx.lineTo((pt.x - origin0.x) * scale, (pt.y - origin0.y) * scale);
+          }
+          offCtx.closePath();
+        }
+
+        offCtx.fillStyle = '#000000';
+        offCtx.fill();
+      }
+
+      offCtx.restore();
+
+      this._composeCache = {
+        exploredCanvas: options.exploredCanvas,
+        exploredRev,
+        visibleCanvas: options.visibleCanvas,
+        visibleRev,
+        polygons: this._cachedPolygons,
+        maskWidth,
+        maskHeight,
+        veilUnexplored,
+        veilExplored,
+      };
     }
 
-    offCtx.restore();
-
-    // Étape D : Déposer le voile final à trois états sur le contexte de scène en source-over
-    ctx.drawImage(this._offscreenCanvas, 0, 0);
+    // Étape D : Déposer le voile final à trois états sur le contexte de scène en
+    // source-over — le seul agrandissement de tout ce chemin, qu'il y ait eu
+    // recomposition ou non.
+    ctx.drawImage(this._offscreenCanvas, 0, 0, mapWidth, mapHeight);
   }
 }
