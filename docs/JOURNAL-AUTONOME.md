@@ -282,3 +282,47 @@ dans le brief et n'a été vérifié par personne.
 
 ⚠ La mesure terrain reste à faire : `player.html?probe=1` sur `testbig150`, colonne `fog`. Point de
 départ **1580–1700 ms**.
+
+---
+
+## 23 août 2026 — le fog relu et commité, et la boucle rendue durable
+
+### ⛔ Le `cron` de session a échoué — mécanisme abandonné
+
+La tâche armée le 19/08 pour dimanche 12h05 **n'a jamais tiré**. Constaté à 22h39 : `CronList`
+rendait « No scheduled jobs », dernier commit du 19/08. Elle a disparu avec une session remplacée
+entre-temps, **sans le moindre signal** — le seul symptôme était qu'il ne se passait rien.
+
+⚠ **Et l'erreur de méthode qui va avec, à ne pas refaire** : le 19/08 j'avais conclu « elle a
+survécu » en la voyant **listée**. La liste était l'étiquette, le déclenchement était l'effet ; je
+n'avais vérifié que la première. Exactement le travers qu'on traque partout ailleurs ici.
+
+✅ **Remplacé par une tâche planifiée durable** : `rpg-map-display-boucle-autonome`, toutes les
+5 heures, stockée dans `~/.claude/scheduled-tasks/`. Elle survit aux sessions, **se rattrape au
+lancement suivant** si l'application était fermée, et se voit dans la barre latérale.
+
+### ✅ Le fog est relu, complété et commité (`83d6110`)
+
+Vérifié pièce par pièce, pas sur rapport : les six chemins de mutation de `js/vision/fog.js`
+appellent bien `_touch()` (`revealPath` déléguant à `reveal`), la clé de cache couvre les deux
+masques **avec** leur révision, et la conversion des polygones reprend la formule de
+`ExploredFog.reveal()`. Porte repassée par moi : `CODE=0`, 205 e2e.
+
+⭐ **Trou de couverture fermé.** `alphaNonExplore` est extraite de `render()` et testée : elle y
+vivait en ligne, donc hors de portée d'un test unitaire, et sa seule garde était un e2e. Le test ne
+verrouille pas la formule mais **sa propriété** — les deux voiles superposés doivent totaliser
+exactement l'opacité visée. La mutation qui échappait aux unitaires les fait maintenant rougir.
+
+⚠ Le trou était **antérieur** au travail du sous-agent : il l'a trouvé et signalé dans son propre
+rapport. Un agent qui dénonce un angle mort de sa livraison vaut mieux qu'un agent au rapport net.
+
+### ⛔ Ce qui reste, et n'appartient qu'au mainteneur
+
+1. **Regarder le rendu.** L'écart annoncé par le brief — bords du chemin polygones **adoucis**,
+   tracés à 8 px/case puis agrandis — n'a été vu par personne. Trois états, vue MJ et vue joueurs.
+   Si l'adoucissement est refusé, le repli est un tampon borné au viewport : plus cher, mais net.
+2. **Mesurer sur tablette** : `player.html?session=<id>&probe=1` sur `testbig150`, colonne `fog`.
+   Point de départ **1580–1700 ms**. ⚠ Ne pas s'attendre à zéro : le **fond**, à 1131–1431 ms, est
+   un problème **distinct** que cette tranche ne traite pas.
+
+**La file est vide.** ⛔ Ne pas inventer de travail : la charte §3 est explicite.
