@@ -320,3 +320,38 @@ consignées telles qu'observées, sans hypothèse.
    à un défaut du sweep sans avoir regardé les données.
 
 ⛔ **Ne pas empiler ces trois-là sur le chantier en cours.** Une tranche à la fois.
+
+---
+
+## 11. ✅ Le fog est clos — validé le 23/08/2026
+
+Relevé du mainteneur sur Tab S9 FE, vue joueurs, `testbig150`, pendant un pincement :
+
+| | Avant | Après |
+|---|---|---|
+| **Fog** | 1580–1700 ms | **max 1 ms**, 0–0,2 le plus souvent |
+| **Fond** | 1131–1431 ms | **max 0,5 ms** |
+| Total | 1123–3512 ms | **1–3 ms**, budget de 33 ms tenu ×10 |
+
+Et validé **à l'œil**, ce qu'aucune porte ne peut faire : « un léger crénelage qui n'est pas gênant ».
+
+⭐ **Le §1 annonçait deux coûts distincts ; il n'y en avait probablement qu'un.** Le fond s'est réparé
+sans être touché — hypothèse : sa perte de *backing store* était causée par la pression mémoire du
+tampon de fog. ⛔ **Ne pas ouvrir de chantier « fond » sans avoir observé un pic à quatre chiffres
+sur une séance longue** : il n'a peut-être jamais existé en propre.
+
+### ⛔ Résolution du masque : question tranchée, ne pas la rouvrir
+
+Passer `FOG_MASK_PX_PER_CELL` de 8 à 16 affinerait les bords. **Écarté le 23/08 par le mainteneur**,
+après devis : « l'état actuel est satisfaisant ».
+
+Ce que la mesure a établi, et qui reste vrai si la question revient un jour :
+
+- ⭐ **Le plafond n'est PAS un obstacle.** Le poids du masque suit le **périmètre** des zones
+  explorées, pas leur surface : doubler la résolution coûte **×2,2**, pas ×4. Extrapolé du chiffre
+  réel de 13,4 Kio, 16 px/case donnerait ~29 Kio contre un plafond de 50 Kio.
+- ⚠ **Le vrai coût est ailleurs** : 8 tests épinglent la valeur en dur — délibérément, un test qui
+  dérive son attendu de la constante testée est tautologique — et le **cahier des charges**, normatif,
+  la cite en quatre endroits. C'est une tranche, pas un réglage.
+- Changer la constante **invalide tous les masques persistés** : chaque étage repart non exploré.
+  Sans conséquence sur des données de test, à ne pas faire en cours de campagne.
