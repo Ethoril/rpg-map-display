@@ -319,7 +319,8 @@ consignés, dont le 13/08 où tu jugeais le comportement « tout à fait adéqua
 |---|---|---|
 | ✅ Z-01 | Amendement du manifeste (§1 et §5) — **fait le 26/08** | Débloque tout le reste |
 | ✅ Z-02 | `js/vision/lightField.js` — composition occluse à 8 px/case, **faite le 26/08** | La composition, éprouvée sans DOM |
-| Z-03 | `LightLayer` : agrandissement et mélange, **et la mesure du mélange sur tablette** | Le terme non mesuré du §1 |
+| ✅ Z-03a | `js/render/layers/light.js` — collecte, signature, modulation et voile, **fait le 26/08** | Ce que la couche décide |
+| Z-03b | Brancher la couche au rang 3 dans `gm.js` et `player.js`, **et mesurer le mélange sur tablette** | Le terme non mesuré du §1 |
 | Z-04 | `intensity`, `color`, `shadows` réellement lus | Le modèle cesse de mentir |
 | Z-05 | Le volet tactique — **retenu (§4.1)**, et en DERNIER | La vision suit l'éclairage, et §12 q.9 |
 
