@@ -216,13 +216,18 @@ retrait**, pas par l'usage.
 ⭐ **Et le curseur n'est pas enterré, il est ajourné** : c'est un jugement d'œil, et il n'existe pas
 encore d'image à juger. La question se rouvre d'elle-même quand un demi-jour sera visible à l'écran.
 
-### 4.4a ✅ TRANCHÉE le 26/08 — TEINTE RÉELLE
+### 4.4a ✅ TRANCHÉE **ET VALIDÉE À L'ŒIL** le 26/08 — TEINTE RÉELLE
 
 `color` est lu et teinte le décor : torche orange, sort bleu, vitrail. Les cartes UVTT arrivent
 **avec** ces couleurs — le corpus en porte 7 distinctes sur `testbig150`, 5 sur le village.
 
-⚠ **Jugement d'œil obligatoire** sur une vraie carte avant de valider la tranche. Deux sources de
-couleurs opposées qui se recouvrent sont un cas à éprouver, pas à supposer.
+⭐ **Le jugement d'œil a eu lieu le 26/08 et il est favorable.** Le mainteneur a regardé le village
+étage 00 décuit à la volée — 93 sources réelles — dans trois états : témoin carte cuite, nuit en vue
+MJ, et une source bleue posée sur la place centrale au milieu des ambres. Verdict : « 0 et 1 nickel.
+La 4 aussi. » **§4.4a est donc close, pas seulement décidée.**
+
+⚠ Reste non éprouvé : **deux sources de couleurs opposées qui se recouvrent**. Le cas ne s'est pas
+présenté dans les captures.
 
 ### 4.4b ✅ TRANCHÉE le 26/08 — OCCLURE TOUJOURS, GARDER LE CHAMP, SIGNALER
 
@@ -321,7 +326,7 @@ consignés, dont le 13/08 où tu jugeais le comportement « tout à fait adéqua
 | ✅ Z-02 | `js/vision/lightField.js` — composition occluse à 8 px/case, **faite le 26/08** | La composition, éprouvée sans DOM |
 | ✅ Z-03a | `js/render/layers/light.js` — collecte, signature, modulation et voile, **fait le 26/08** | Ce que la couche décide |
 | Z-03b | Brancher la couche au rang 3 dans `gm.js` et `player.js`, **et mesurer le mélange sur tablette** | Le terme non mesuré du §1 |
-| Z-04 | `intensity`, `color`, `shadows` réellement lus | Le modèle cesse de mentir |
+| ✅ Z-04 | `shadows` signalé à l'import — **fait le 26/08**. `intensity` et `color` étaient déjà lus en Z-02/Z-03 | Le modèle cesse de mentir |
 | Z-05 | Le volet tactique — **retenu (§4.1)**, et en DERNIER | La vision suit l'éclairage, et §12 q.9 |
 
 ⚠ **Z-03 porte une mesure, et une mesure ne rentre pas dans la porte** — c'est son *calcul* qui y
