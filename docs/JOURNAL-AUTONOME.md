@@ -382,3 +382,157 @@ recommandé — interdit toute validation locale. `localhost` est à remettre **
 
 ⭐ **La leçon, la même que celle de la carte hexagonale quatre jours plus tôt : ce qui n'a jamais
 servi ne marche pas.**
+
+---
+
+## 26 août 2026 — M2 : l'instrument mentait ; réparé, mesuré, ✅ CLOSE
+
+**Demande du mainteneur : « lance M2 ».** La section 16 de `diag.html` existait déjà — livrée le
+18/08 (`999ff2a`), testée, relue. Elle n'avait **jamais été exécutée**. Elle ne pouvait pas rendre de
+verdict.
+
+### ⛔ Le faux vert, et il était structurel
+
+Deux exécutions sur le poste Windows, avant toute modification :
+
+| | Relecture seule | Composition brute | Agrandissement brut | **Net** | Verdict rendu |
+|---|---|---|---|---|---|
+| 1ʳᵉ | **51,1 ms** | 2,3 ms | 10,3 ms | **0 / 0** | « la composition tient » |
+| 2ᵉ | **13,1 ms** | 6,2 ms | 12,4 ms | **0 / 0** | « la composition tient » |
+
+Le vidage de pipeline coûtait **plus cher que l'opération mesurée**. `Math.max(0, brut − vidage)`
+rendait donc 0 quoi qu'il arrive, et « ça tient » ne pouvait **pas basculer**. Le treizième faux vert
+du projet, et le premier qu'aucune relecture n'aurait attrapé : il ne se voyait qu'à l'exécution.
+
+⭐ **La technique n'était pas fausse, elle était hors de son régime.** Le correctif G-01 du 12/08
+mesurait un décodage de ~490 ms avec un vidage de quelques millisecondes : y retrancher la relecture
+était juste. Ici l'opération coûte **moins** que la relecture. La même formule, appliquée deux ordres
+de grandeur plus bas, ne mesure plus rien. ⚠ **Une technique de mesure a un domaine de validité, et
+le brief qui la prescrit ne le transporte pas avec elle.**
+
+### ⭐ Le second mensonge : chronométrer les deux moitiés séparément
+
+Mesurés isolément, composition (0,15 ms) et agrandissement (0,043 ms) totalisaient **0,19 ms**. Leur
+**enchaînement** en coûtait **1,63**. Neuf fois plus.
+
+Séparés, rien ne force la résolution du masque : on chronomètre une file d'attente. C'est **le piège
+n°1 du brief lui-même**, que la séparation demandée par ce même brief réintroduisait par la porte de
+derrière. ⛔ **Le cycle complet est la seule fenêtre honnête.**
+
+### Le troisième : la destination était figée à 640×480
+
+Le brief disait « aux dimensions du viewport ». Le code posait un canvas de 640×480 en dur — sur la
+tablette visée, **cinq fois moins de pixels de destination que l'écran réel**, donc le terme qui
+gouverne la dépense, sous-mesuré d'autant. C'est le raisonnement déjà écrit pour le défaut jumeau des
+pions : *une composition coûte en proportion de sa surface de destination.*
+
+### Ce qui remplace
+
+1. **30 cycles chronométrés d'un seul tenant, un seul vidage à la fin.** Le vidage est amorti sur
+   30 images au lieu d'être payé — et retranché — à chacune.
+2. **Le cycle entier, jamais ses moitiés.** La part fixe et la part variable se lisent alors **par la
+   pente**, sur deux surfaces de destination : coût plat *vs* coût variable avec la surface.
+3. **La destination réelle de l'appareil** (`innerWidth × innerHeight × devicePixelRatio`), plus une
+   petite référence pour donner le second point.
+4. ⛔ **Un vidage plus cher que la fenêtre entière est REFUSÉ**, plus jamais ramené à zéro. C'est ce
+   plancher qui rendait le défaut muet : il transformait une mesure absurde en un joli 0 ms, et 0 ms
+   tient dans tous les budgets.
+
+**Quatre mutations, quatre rouges ciblés**, restauration verte : rétablir la soustraction par image,
+faire porter le verdict sur le premier relevé, calculer la pente sur les durées de fenêtre, remplacer
+le refus par le plancher. ⚠ Une cinquième tentative est passée **verte à tort** — `python` n'existe
+pas sur ce poste, la mutation n'avait pas été appliquée. Vérifier que le motif a bien été remplacé
+fait partie de la mutation.
+
+### ✅ Le relevé — poste Windows, 26/08/2026
+
+Village, étage `test_village_complet_00`, **93 sources réellement lues**, masque 336 × 336 px.
+
+| Destination | Surface | Coût par image |
+|---|---|---|
+| référence 640×480 | 0,31 Mpx | **0,78 ms** |
+| écran réel 1280×720 | 0,92 Mpx | **0,83 ms** |
+
+- **part fixe** — composer 93 disques à 336×336 : **0,755 ms**
+- **part variable** — agrandir : **0,081 ms par mégapixel de destination**
+
+⭐ **L'hypothèse du plan est confirmée, et plus largement qu'espéré.** Le coût est presque
+entièrement dans la composition ; l'agrandissement est quasi gratuit. Un écran 4K (8,3 Mpx)
+n'ajouterait que **0,67 ms**. Le gradient n'est pas seulement ce qu'un agrandissement bilinéaire ne
+dégrade pas — c'est aussi ce qu'il ne fait pas payer.
+
+### ⛔ Ce que ce relevé ne décide PAS
+
+**Il est pris sur le poste Windows, pas sur la Tab S9 FE.** Il établit que le calcul est sain et que
+l'instrument mesure enfin quelque chose ; il **ne ferme pas M2**. La tablette est plus lente d'un
+facteur qui n'est pas connu ici — et le budget de 300 ms laisse de la marge, mais c'est au relevé
+réel de le dire, pas à une extrapolation. *Voir la leçon du 05/08 : les extrapolations de huit
+sources vers 93 « ne valent rien ».*
+
+Et ce que la section ne mesure toujours pas, par construction :
+
+- **l'occlusion par les murs** — déjà mesurée section 10, 2,6 ms sous cast actif ;
+- ⚠ **l'application du champ sur le décor** — le mélange d'une `LightLayer` par-dessus la carte. La
+  section compose le champ et l'agrandit ; elle ne le mélange à rien. C'est un coût réel, non mesuré,
+  et il porte sur la surface de l'écran. À ajouter au devis de la phase 3.
+
+### Un défaut du chemin de validation, réparé en route
+
+La section restait figée sur « chauffe… » : le `requestAnimationFrame` qui laisse l'écran se
+rafraîchir **ne se déclenche jamais dans un onglet d'arrière-plan**. Remplacé par `setTimeout`.
+
+⭐ **Encore la même leçon, la troisième en quinze jours : ce qui n'a jamais servi ne marche pas.**
+Une section de diagnostic livrée, relue et testée, mais jamais exécutée, ne mesurait rien.
+
+### ✅ Le même jour, plus tard — M2 EST CLOSE, relevé sur la Tab S9 FE
+
+| Destination | Surface | Coût par image |
+|---|---|---|
+| référence 640×480 | 0,31 Mpx | 2,253 ms |
+| **écran réel 2303×1134** | **2,61 Mpx** | **5,62 ms** |
+
+**Part fixe** (composer 93 disques à 336×336) : **1,80 ms**. **Part variable** (agrandir) :
+**1,46 ms/Mpx**.
+
+⭐ **5,62 ms pour 300 ms de budget — moins de 2 %.** Et 17 % d'une image à 30 fps, quand la vue
+joueurs entière tourne à 1–3 ms depuis la fermeture du fog. **L'hypothèse du plan tient sur le
+matériel cible**, et elle tient largement.
+
+### ⭐ Les deux rapports ne disent pas la même chose, et c'est là qu'est le résultat
+
+| | poste Windows | Tab S9 FE | rapport |
+|---|---|---|---|
+| composition (93 disques, 336×336) | 0,755 ms | 1,804 ms | **×2,4** |
+| agrandissement | 0,081 ms/Mpx | 1,461 ms/Mpx | **×18** |
+
+- **×2,4 sur la composition** tombe exactement sur le facteur **2,3×** consigné entre les deux
+  machines depuis le 11/08, et retrouvé au relevé R2-03 du 13/08. ⭐ **C'est un contrôle de
+  cohérence, pas une découverte** : il dit que la mesure est saine, ce qui valait la peine d'être
+  vérifié le jour où l'on répare l'instrument.
+- **×18 sur l'agrandissement** est le débit de remplissage d'une dalle mobile. ⚠ **C'est le seul
+  terme qui croît avec l'écran**, donc le seul à surveiller. Il reste petit dans l'absolu.
+
+### Ce que ça décide
+
+⛔ **WebGL n'est pas justifié, et cette fois par la mesure.** Le sujet du moteur avait été rouvert le
+18/08 avec un déclencheur écrit : *« ça ne tient pas → on a enfin la mesure qui justifie WebGL. »*
+Ça tient, avec deux ordres de grandeur de marge. La question se referme donc **par le chiffre**, pas
+par l'absence de raison d'en changer. Voir [[canvas2d_migration_complete]].
+
+**Conséquence d'architecture, et elle recopie ce que le fog fait déjà** : si le champ est mis en
+cache comme le masque, la composition (1,80 ms) n'est payée qu'à la **mutation** — une lumière
+bascule, un pion porteur de torche bouge, une porte s'ouvre — et l'image ne paie que l'agrandissement,
+**4,85 ms en plein écran** (déduit de la pente mesurée, non mesuré).
+
+### ⚠ Les deux termes non mesurés, à ne pas oublier au devis
+
+1. **Le mélange du champ sur le décor** — la section compose et agrandit, elle ne mélange à rien. Une
+   `LightLayer` ajoutera **un second balayage plein écran**, du même ordre que l'agrandissement.
+   Devis réaliste par image : **5 à 10 ms**. Il ne se saura qu'en écrivant la couche.
+2. **Le cast** — le mainteneur n'a pas pu le faire ce jour-là. La section 10 avait, elle, été relevée
+   sous cast actif. ⚠ Non bloquant à 2 % du budget, mais **aucun critère de performance ne se coche
+   sans le dispositif réel**.
+
+⛔ **Ce que ce relevé ne décide PAS** : il dit que l'éclairage réel est *abordable*, pas qu'il est
+*voulu*. Le choix entre **tactique binaire** et **éclairage réel** reste entier, et il appartient au
+mainteneur — voir `PLAN-SUITE.md` §4 et `QUESTIONS-EN-ATTENTE.md` D-1.
