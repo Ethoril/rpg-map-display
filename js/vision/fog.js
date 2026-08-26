@@ -533,7 +533,11 @@ export function composeVisibleMask(cible, entrees) {
         if (tracer(tamponCtx, losPolygons)) {
           // Le mode destination-in ne garde de la ligne de vue que ce que le champ éclaire.
           tamponCtx.globalCompositeOperation = 'destination-in';
-          tamponCtx.drawImage(litCanvas, 0, 0, litCanvas.width, litCanvas.height, 0, 0, largeur, hauteur);
+          // ⭐ Forme a trois arguments, et ce n'est pas un raccourci : le champ lumineux et
+          // la cible sont TOUS DEUX a la resolution du masque, par construction. L'ecrire
+          // ainsi documente cet invariant — et la forme a neuf arguments laissait croire a un
+          // redimensionnement qui n'a jamais lieu.
+          tamponCtx.drawImage(litCanvas, 0, 0);
           tamponCtx.globalCompositeOperation = 'source-over';
           tamponCtx.restore();
           ctx.drawImage(tampon, 0, 0);
@@ -682,6 +686,41 @@ export class ExploredFog {
     this.ctx.fill();
     this.ctx.restore();
     this._touch();
+  }
+
+  /**
+   * Verse un masque déjà composé dans le masque exploré — union, jamais remplacement.
+   *
+   * ⭐ C'est le pendant de `reveal(polygones)` pour le mode tactique : la vision courante y
+   * arrive déjà rasterisée et déjà découpée par l'éclairage, il ne reste qu'à en faire l'union
+   * avec ce qui était exploré.
+   *
+   * @param {any} maskCanvas Masque à la même résolution que celui-ci
+   */
+  revealMask(maskCanvas) {
+    if (!this.ctx || !maskCanvas || typeof this.ctx.drawImage !== 'function') return;
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'source-over';
+    // Meme invariant : les deux masques sont a la meme resolution.
+    this.ctx.drawImage(maskCanvas, 0, 0);
+    this.ctx.restore();
+    this._touch();
+  }
+
+  /**
+   * Compose ICI la vision courante du mode tactique — le masque est VIDÉ puis réécrit.
+   *
+   * ⛔ À ne pas confondre avec `revealMask` : celle-ci REMPLACE, parce qu'un masque de vision
+   * courante n'a pas de mémoire. Confondre les deux ferait s'accumuler la vision d'une image à
+   * l'autre, et la table verrait encore ce qu'elle a quitté.
+   *
+   * @param {{ losPolygons: MapPoint[][], nearPolygons: MapPoint[][], litCanvas: any, mapOrigin: MapPoint, gridScale: number }} entrees Voir `composeVisibleMask`
+   * @returns {boolean}
+   */
+  composeVisible(entrees) {
+    const ok = composeVisibleMask(this.canvas, { ...entrees, createCanvas: this.createCanvas });
+    if (ok) this._touch();
+    return ok;
   }
 
   /**

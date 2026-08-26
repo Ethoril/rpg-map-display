@@ -18,25 +18,6 @@ import { sweep } from '../../vision/sweep.js';
 
 let computeCount = 0;
 
-/**
- * Deux segments se croisent-ils ?
- *
- * Copie locale et volontaire du test de `js/import/blockedEdges.js` : la couche de rendu
- * n'a pas à dépendre de la couche d'import pour trois lignes d'arithmétique, et
- * `ARCHITECTURE.md` §2 tient à ce que ces dépendances restent lisibles.
- *
- * @param {MapPoint} a @param {MapPoint} b @param {MapPoint} c @param {MapPoint} d
- * @returns {boolean}
- */
-function segmentsSeCroisent(a, b, c, d) {
-  const orientation = (/** @type {MapPoint} */ p, /** @type {MapPoint} */ q, /** @type {MapPoint} */ r) =>
-    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-  const d1 = orientation(c, d, a);
-  const d2 = orientation(c, d, b);
-  const d3 = orientation(a, b, c);
-  const d4 = orientation(a, b, d);
-  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
-}
 
 /**
  * Compteur du nombre de recalculs réels de vision effectués (pour les tests).
@@ -113,13 +94,16 @@ function buildVisionSignature(level, tokens, grid) {
     );
   }
 
-  const pcTokens = tokens.filter(
-    (t) =>
-      t &&
-      t.levelId === level.id &&
-      t.kind === 'pc' &&
-      (ambientLit || (typeof t.visionDim === 'number' && t.visionDim > 0))
-  );
+  // ⛔ **Tous les PJ de l'étage entrent dans la signature, sans condition** — corrigé avec la
+  // tranche Z-05 le 26/08/2026.
+  //
+  // Le filtre d'avant excluait un PJ à `visionDim` nul sur un étage non éclairé, au motif
+  // qu'il ne voyait rien et ne changeait donc rien au résultat. C'était vrai tant que la
+  // vision d'un PJ se réduisait à sa portée propre. Ce n'est plus vrai : chaque PJ porte
+  // désormais une **ligne de vue**, qui découpe le champ lumineux là où il passe. Un PJ sans
+  // vision nocturne voit donc parfaitement une pièce éclairée — et le déplacer doit
+  // invalider le cache. Le garder exclu aurait figé la vision de la table sur ses pas.
+  const pcTokens = tokens.filter((t) => t && t.levelId === level.id && t.kind === 'pc');
   pcTokens.sort((a, b) => a.id.localeCompare(b.id));
 
   for (const t of pcTokens) {
@@ -236,6 +220,10 @@ export class FogLayer {
     this._lastSignature = '';
     /** @type {MapPoint[][]} */
     this._cachedPolygons = [];
+    /** @type {MapPoint[][]} */
+    this._losPolygons = [];
+    /** @type {MapPoint[][]} */
+    this._nearPolygons = [];
     /** @type {any} */
     this._offscreenCanvas = null;
     /** @type {CanvasRenderingContext2D|null} */
@@ -259,11 +247,22 @@ export class FogLayer {
   invalidate() {
     this._lastSignature = '';
     this._cachedPolygons = [];
+    /** @type {MapPoint[][]} */
+    this._losPolygons = [];
+    /** @type {MapPoint[][]} */
+    this._nearPolygons = [];
     this._composeCache = null;
   }
 
   /**
    * Retourne les polygones de vision actuellement mis en cache.
+   * @returns {MapPoint[][]}
+   */
+  /**
+   * ⚠ **Ce n'est PAS « ce que la table voit » en mode tactique.** C'est le repli conservateur
+   * — la vision nocturne seule — pour un appelant sans champ lumineux. La vision réelle se
+   * compose avec `composeVisibleMask`, qui intersecte la ligne de vue avec l'éclairage.
+   *
    * @returns {MapPoint[][]}
    */
   getVisiblePolygons() {
@@ -281,6 +280,22 @@ export class FogLayer {
    *
    * @returns {string}
    */
+  /**
+   * Les sweeps de ligne de vue, au plafond technique. Premier terme de la règle tactique.
+   * @returns {MapPoint[][]}
+   */
+  getLosPolygons() {
+    return this._losPolygons ?? [];
+  }
+
+  /**
+   * Les sweeps de portée propre dans le noir. Second terme, qui s'AJOUTE sans condition.
+   * @returns {MapPoint[][]}
+   */
+  getNearPolygons() {
+    return this._nearPolygons ?? [];
+  }
+
   getVisionSignature() {
     return this._lastSignature;
   }
@@ -314,22 +329,24 @@ export class FogLayer {
     this._lastSignature = signature;
     computeCount++;
 
-    const ambientLit = isAmbientLit(level);
     const pcTokens = (tokens || []).filter((t) => t && t.levelId === level.id && t.kind === 'pc');
-    const levelLights = Array.isArray(level.lights) ? level.lights : [];
-    const emittingTokens = (tokens || []).filter(
-      (t) => t && t.levelId === level.id && cappedRange(t.emitsLight?.range) > 0
-    );
 
-    // Sans PJ sur l'étage, rien n'est visible — mais ⚠ **ce n'est pas cette ligne qui le
-    // garantit**, c'est `vuParUnPJ` dans `addSource` : sans observateur, aucune source ne
-    // trouve de ligne de vue et le résultat est vide de toute façon. Vérifié par mutation,
-    // supprimer ce bloc ne change aucun comportement.
+    // ⚠ **Ce bloc est redevenu une GARANTIE, alors qu'il n'était qu'une optimisation.**
     //
-    // Il reste parce qu'il évite de balayer 94 sources pour jeter le résultat. C'est une
-    // optimisation, et elle doit être lue comme telle.
+    // Tant que les lumières produisaient elles-mêmes des polygones de révélation, le vide
+    // était assuré par `vuParUnPJ` : sans observateur, aucune source ne trouvait de ligne de
+    // vue. `vuParUnPJ` a disparu avec la tranche Z-05 — plus rien d'autre ne dit « sans PJ,
+    // rien n'est vu ». Le retirer laisserait un masque vide, ce qui tombe juste par accident
+    // aujourd'hui, mais ne serait plus garanti par le code.
     if (pcTokens.length === 0) {
+      // ⛔ **Les TROIS jeux, pas seulement l'ancien.** Ne vider que `_cachedPolygons` laissait
+      // `_losPolygons` sur sa valeur précédente, et la vision composée à partir de lui
+      // continuait d'être publiée alors que plus aucun PJ n'était là pour voir. Attrapé par
+      // le scénario UX-13 : après « Remplacer l'étage courant », les pions partent en réserve
+      // et le masque visible devait retomber à zéro — il gardait la vision d'avant.
       this._cachedPolygons = [];
+      this._losPolygons = [];
+      this._nearPolygons = [];
       return true;
     }
 
@@ -340,91 +357,75 @@ export class FogLayer {
 
     const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
 
+    // ⭐ **DEUX jeux de polygones, et c'est tout le mode tactique** — tranche Z-05.
+    //
+    //     visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
+    //
+    // `losPolygons` porte le premier terme, `nearPolygons` le second. L'intersection avec
+    // l'éclairage se fait à la rasterisation, dans `composeVisibleMask` — ici on ne produit
+    // que de la géométrie, et elle ne dépend d'aucune lumière.
     /** @type {MapPoint[][]} */
-    const polygons = [];
-    // Une ambiante active laisse chaque PJ voir jusqu'au plafond technique. Dans le noir, sa
-    // portée propre (`visionDim`) est conservée : c'est la vision nocturne déclarée par le pion.
+    const losPolygons = [];
+    /** @type {MapPoint[][]} */
+    const nearPolygons = [];
+
+    // Le plafond technique vaut pour TOUS les PJ, éclairés ou non : c'est la distance
+    // au-delà de laquelle on cesse de balayer, pas une portée de jeu. Le prédicat
+    // `ambientLit`, lui, a disparu — il était **global à l'étage**, donc une seule lampe
+    // faisait basculer l'étage entier en « éclairé ». C'est le champ lumineux qui décide
+    // désormais, point par point.
+    const originMax = grid.mapFromCellPoint({ cellX: VISION_MAX_RANGE_CELLS, cellY: 0 });
+    const maxRangePx = Math.hypot(originMax.x - origin0.x, originMax.y - origin0.y);
+
     for (const t of pcTokens) {
-      const rangeCells = ambientLit ? VISION_MAX_RANGE_CELLS : cappedRange(t.visionDim ?? 0);
-      if (rangeCells <= 0) continue;
-
-      const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
-      const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
-
       const size = Math.max(1, t.sizeCells || 1);
       const centerPoint = grid.mapFromCellPoint({
         cellX: t.cell.a + size / 2,
         cellY: t.cell.b + size / 2,
       });
 
-      const poly = sweep(centerPoint, segments, rangePx);
-      if (Array.isArray(poly) && poly.length > 0) {
-        polygons.push(poly);
+      const los = sweep(centerPoint, segments, maxRangePx);
+      if (Array.isArray(los) && los.length > 0) losPolygons.push(los);
+
+      // La portée propre du PJ dans le noir. ⛔ Elle ne se fait JAMAIS rogner par
+      // l'obscurité : sans ce terme, un PJ dans un couloir noir ne verrait rien du tout.
+      const dimCells = cappedRange(t.visionDim ?? 0);
+      if (dimCells > 0) {
+        const originDim = grid.mapFromCellPoint({ cellX: dimCells, cellY: 0 });
+        const dimPx = Math.hypot(originDim.x - origin0.x, originDim.y - origin0.y);
+        const near = sweep(centerPoint, segments, dimPx);
+        if (Array.isArray(near) && near.length > 0) nearPolygons.push(near);
       }
     }
 
-    // Les sources fixes UVTT et les torches portées sont des disques de visibilité additionnels.
-    // Elles passent toutes par le même sweep que les PJ : murs et portes fermées restent donc des
-    // obstacles identiques, sans lecture de pixels ni travail dépendant de rAF.
+    // ⛔ **`vuParUnPJ` et l'ajout des sources comme polygones de RÉVÉLATION ont disparu ici**,
+    // et avec eux la question 9 du §12. Jusqu'au 26/08/2026, chaque lumière produisait un
+    // polygone de vision dès qu'un PJ avait une ligne de vue jusqu'à son **centre** : voir la
+    // lampe révélait tout son halo, y compris ce que le PJ ne pouvait pas voir lui-même.
     //
-    // ⭐ **Mais une lumière n'est pas un œil.** Jusqu'au 11/08/2026 elles étaient ajoutées sans
-    // condition : une carte Dungeon Alchemist — qui en place systématiquement — se dévoilait
-    // donc toute seule, **sans le moindre pion sur le plateau**. Constaté en séance sur
-    // `testvideo-3` : quatre lampes dans une tour, et des cônes de vision projetés à travers
-    // ses portes alors que personne n'était là pour regarder.
+    // Une lumière n'est pas un œil. Elle éclaire — c'est `js/vision/lightField.js` qui la
+    // compose, sans aucun observateur — et c'est la ligne de vue du PJ **vers chaque point**
+    // qui décide de ce qui est vu. Le halo derrière un angle cesse d'être révélé, sans qu'on
+    // ait eu à traiter l'approximation : elle n'a plus d'objet.
+    this._losPolygons = losPolygons;
+    this._nearPolygons = nearPolygons;
+    // ⛔ **Le repli est la vision NOCTURNE SEULE, jamais la ligne de vue.**
     //
-    // La règle correcte, et c'est celle du mainteneur : l'éclairage **aide les joueurs à voir
-    // plus loin**, il ne révèle rien par lui-même. Une source ne contribue donc que si un PJ
-    // a une ligne de vue dégagée jusqu'à elle. Sans PJ sur l'étage, rien n'est visible.
+    // `_cachedPolygons` sert à un appelant qui ne fournit pas de `visibleCanvas` : il n'a donc
+    // pas de champ lumineux à intersecter, et le premier terme de la règle tactique n'est pas
+    // calculable. Deux replis étaient possibles, et ils ne se valent pas :
     //
-    // ⚠ **Approximation assumée, et décision ouverte — CdC §12 question 9.** Le test porte sur
-    // le **centre** de la source : voir la lampe révèle tout son halo, y compris ce que le PJ
-    // ne verrait pas lui-même. La version stricte croiserait les polygones ; son coût est
-    // chiffré dans le CdC, ainsi que le déclencheur pour y revenir.
-    const centresPJ = pcTokens.map((t) => {
-      const size = Math.max(1, t.sizeCells || 1);
-      return grid.mapFromCellPoint({ cellX: t.cell.a + size / 2, cellY: t.cell.b + size / 2 });
-    });
-
-    /**
-     * Un PJ voit-il ce point ? Test de segment dégagé, pas de sweep : c'est une question
-     * binaire, et la poser 6 × 94 fois coûte moins qu'un seul balayage.
-     *
-     * @param {MapPoint} point
-     */
-    const vuParUnPJ = (point) => {
-      for (const centre of centresPJ) {
-        let bloque = false;
-        for (const s of segments) {
-          if (segmentsSeCroisent(centre, point, s.p1, s.p2)) { bloque = true; break; }
-        }
-        if (!bloque) return true;
-      }
-      return false;
-    };
-
-    /**
-     * @param {import('../../core/types.js').CellPoint|undefined} at
-     * @param {number|undefined} range
-     */
-    const addSource = (at, range) => {
-      const rangeCells = cappedRange(range);
-      if (!at || !Number.isFinite(at.cellX) || !Number.isFinite(at.cellY) || rangeCells <= 0) return;
-      const centerPoint = grid.mapFromCellPoint(at);
-      // Personne pour la voir : la source éclaire peut-être, mais elle ne révèle rien.
-      if (!vuParUnPJ(centerPoint)) return;
-      const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
-      const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
-      const poly = sweep(centerPoint, segments, rangePx);
-      if (Array.isArray(poly) && poly.length > 0) polygons.push(poly);
-    };
-
-    for (const light of levelLights) addSource(light?.at, light?.range);
-    for (const t of emittingTokens) {
-      const size = Math.max(1, t.sizeCells || 1);
-      addSource({ cellX: t.cell.a + size / 2, cellY: t.cell.b + size / 2 }, t.emitsLight?.range);
-    }
-    this._cachedPolygons = polygons;
+    // - la ligne de vue entière → on révèle une pièce noire à 20 cases. **Une fuite.**
+    // - la portée propre seule   → on révèle moins que la règle ne l'autorise. Un désagrément.
+    //
+    // Dans le chemin qui décide de ce que la table voit, le sens conservateur n'est pas un
+    // avis : révéler moins se corrige à l'œil, révéler plus ne se rattrape pas. C'est aussi
+    // exactement l'ancien comportement sur un étage non éclairé, donc aucune surprise.
+    //
+    // ⚠ Ce repli a été trouvé par un test qui asserte un PIXEL — « ambiante nulle, PJ sans
+    // vision nocturne, la carte reste voilée ». Avec l'union des deux termes il rougissait, et
+    // il avait raison.
+    this._cachedPolygons = nearPolygons;
     return true;
   }
 

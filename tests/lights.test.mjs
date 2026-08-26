@@ -171,9 +171,34 @@ test('MESURE R3 — testbig150, six PJ et huit sources restent un profil exécut
   const started = performance.now();
   fogLayer.updateVision(gridFor(level), level, tokens, { extractSegments: extractBlockedSegments });
   const elapsed = performance.now() - started;
-  console.log(`[R3] testbig150 — 6 PJ + 8 sources (+3 torches) : ${elapsed.toFixed(2)} ms, ${fogLayer.getVisiblePolygons().length} polygones`);
+  console.log(
+    `[R3] testbig150 — 6 PJ + 8 sources (+3 torches) : ${elapsed.toFixed(2)} ms, `
+    + `${fogLayer.getLosPolygons().length} lignes de vue + ${fogLayer.getNearPolygons().length} portées nocturnes`
+  );
   assert.ok(Number.isFinite(elapsed));
-  assert.equal(fogLayer.getVisiblePolygons().length, 17);
+
+  // ⭐ **Le décompte est passé de 17 à 6 + 6, et c'est le résultat, pas une régression.**
+  //
+  // Les 17 d'avant étaient 6 PJ + 8 sources fixes + 3 torches : chaque LUMIÈRE produisait son
+  // propre polygone de révélation, parce qu'une lumière était traitée comme un ŒIL. C'est
+  // précisément ce que la tranche Z-05 supprime — et avec, la question 9 du §12.
+  //
+  // Il reste donc exactement deux polygones par PJ, et **rien** pour les onze sources : elles
+  // éclairent, elles ne révèlent plus. Le champ lumineux qu'elles composent est intersecté
+  // avec ces lignes de vue à la rasterisation, dans `composeVisibleMask`.
+  assert.equal(fogLayer.getLosPolygons().length, 6, 'une ligne de vue par PJ, éclairé ou non');
+  assert.equal(fogLayer.getNearPolygons().length, 6, 'et une portée nocturne, les six ayant visionDim 6');
+
+  // ⛔ La mutation qui compte : si une seule source redevenait un œil, ce compte bondirait de
+  // 11. Les huit sources fixes et les trois torches sont bien là — le test ne serait pas
+  // probant si la scène n'en portait aucune.
+  assert.equal(level.lights.length, 8);
+  assert.equal(tokens.filter((t) => t.emitsLight).length, 3);
+  assert.equal(
+    fogLayer.getLosPolygons().length + fogLayer.getNearPolygons().length,
+    12,
+    '⛔ 12, jamais 17 : aucune lumière ne révèle plus par elle-même'
+  );
 });
 
 test('⭐ Chantier Z — `visionBright` est retiré du modèle, mais une campagne qui en porte un est ACCEPTÉE', () => {

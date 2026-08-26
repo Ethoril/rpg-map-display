@@ -207,6 +207,20 @@ export class LightLayer {
     this.lastSourceCount = 0;
   }
 
+  /**
+   * Le canvas du champ lumineux, à la résolution du masque — ou `null` s'il n'existe pas
+   * encore. C'est ce que le calcul de vision intersecte en mode tactique.
+   *
+   * ⚠ `null` n'est pas une erreur : au tout premier passage, le champ n'est pas encore
+   * composé. Le consommateur doit alors se replier sur la ligne de vue entière, jamais sur
+   * le noir — voir `composeVisibleMask`.
+   *
+   * @returns {any}
+   */
+  getFieldCanvas() {
+    return this._field?.canvas ?? null;
+  }
+
   /** Force le recalcul au prochain passage. */
   invalidate() {
     this._signature = '';
@@ -252,19 +266,26 @@ export class LightLayer {
       this._modulationRevision = -1;
     }
 
-    const sources = collectLightSources(level, tokens || [], adaptateur);
+    // ⭐ **Une carte à l'éclairage cuit ne balaie AUCUNE source.** L'ambiante y vaut 1, donc le
+    // champ est uniformément blanc et l'additif plafonné rend les sources invisibles : les
+    // composer reviendrait à payer un sweep par source — 185 sur `testbig150` — pour un
+    // résultat que la première ligne a déjà écrit. Et le champ reste « tout éclairé », ce qui
+    // est exactement ce que le calcul de vision doit lire sur une telle carte.
+    const cuite = Boolean(level.ambient?.baked);
+    const sources = cuite ? [] : collectLightSources(level, tokens || [], adaptateur);
     this.lastSourceCount = sources.length;
 
     const origine = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 0 });
     const uneCase = adaptateur.mapFromCellPoint({ cellX: 1, cellY: 0 });
     const echelle = Math.hypot(uneCase.x - origine.x, uneCase.y - origine.y);
 
-    // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé.
-    const segments = options.segments
+    // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé. ⛔ Et pas du tout
+    // sur une carte cuite, qui n'a aucune source à occlure.
+    const segments = cuite ? [] : options.segments
       || (typeof options.extractSegments === 'function' ? options.extractSegments(level, adaptateur) : []);
 
     this._field.compose(sources, {
-      ambientLevel: Number(level.ambient?.baked ? 1 : level.ambient?.level) || 0,
+      ambientLevel: cuite ? 1 : Number(level.ambient?.level) || 0,
       segments,
       mapOrigin: origine,
       gridScale: echelle,

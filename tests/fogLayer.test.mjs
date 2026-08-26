@@ -5,7 +5,7 @@ import { createLevel, createToken } from '../js/core/schema.js';
 import { gridFor } from '../js/grid/index.js';
 import { FOG_MASK_PX_PER_CELL, VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
-import { ExploredFog } from '../js/vision/fog.js';
+import { ExploredFog, composeVisibleMask } from '../js/vision/fog.js';
 import {
   FogLayer,
   alphaNonExplore,
@@ -108,10 +108,18 @@ function createMockCanvas(width = 200, height = 200) {
     // dépôt final (BRIEF-FOG-BASSE-RESOLUTION.md) : source et destination n'ont plus
     // forcément la même taille. La version d'origine, qui recopiait pixel à pixel en
     // supposant des dimensions identiques, ne peut plus émuler cette étape — d'où
-    // l'échantillonnage au plus proche voisin sur `dw`/`dh`, dans le seul mode que ce
-    // fichier exerce réellement via `drawImage` (`source-over`, l'étape D). Les étapes
-    // B et C, en `destination-out`, ne passent par ce mock dans aucun test de ce
-    // fichier : elles sont couvertes en navigateur réel par `tests/fogVeil.spec.mjs`.
+    // l'échantillonnage au plus proche voisin sur `dw`/`dh`.
+    //
+    // ⭐ **Le mode de fusion est honoré depuis la tranche Z-05 (26/08/2026).** Il ne l'était
+    // pas, et le commentaire d'alors l'assumait : « les étapes B et C, en `destination-out`,
+    // ne passent par ce mock dans aucun test de ce fichier ». C'est devenu faux le jour où un
+    // test a fourni un `visibleCanvas` — le chemin de production depuis Z-05 — qui passe
+    // précisément par l'étape C. Le mock repeignait alors du noir là où le vrai contexte
+    // perce, et le test rougissait pour une raison qui n'était pas la sienne.
+    //
+    // ⚠ Un mock qui ignore le mode de fusion ne se contente pas d'être incomplet : il
+    // implémente **l'inverse** de l'opération testée. C'est le douzième faux vert de ce
+    // projet, et le second de cette seule journée.
     /** @param {any} image @param {number} [dx] @param {number} [dy] @param {number} [dw] @param {number} [dh] */
     drawImage(image, dx = 0, dy = 0, dw, dh) {
       if (!image || !image._ctx) return;
@@ -134,6 +142,19 @@ function createMockCanvas(width = 200, height = 200) {
           const dstIdx = (py * width + px) * 4;
 
           const srcAlpha = srcPixels[srcIdx + 3] / 255;
+          const mode = ctx.globalCompositeOperation;
+
+          if (mode === 'destination-out') {
+            // Perce la destination à proportion de l'opacité de la source. C'est l'étape C.
+            pixels[dstIdx + 3] = Math.round(pixels[dstIdx + 3] * (1 - srcAlpha));
+            continue;
+          }
+          if (mode === 'destination-in') {
+            // Ne garde de la destination que là où la source est opaque.
+            pixels[dstIdx + 3] = Math.round(pixels[dstIdx + 3] * srcAlpha);
+            continue;
+          }
+
           if (srcAlpha > 0) {
             const dstAlpha = pixels[dstIdx + 3] / 255;
             const outAlpha = srcAlpha + dstAlpha * (1 - srcAlpha);
@@ -611,17 +632,86 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
 
   // Et le pendant : un PJ du même côté que la lumière, avec une ligne de vue dégagée,
   // bénéficie bien de son éclairage — sinon la règle aurait tué la fonctionnalité.
+  //
+  // ⭐ **Réécrit avec la tranche Z-05 (26/08/2026), et il éprouve désormais la VRAIE chaîne.**
+  //
+  // Jusque-là, ce pendant passait par le repli de `render`, qui unissait les polygones de
+  // vision des PJ ET ceux des lumières. Ce repli est devenu **conservateur** — la vision
+  // nocturne seule — parce que sans champ lumineux la ligne de vue entière révélerait une
+  // pièce noire à 20 cases, ce qui est une fuite.
+  //
+  // Le chemin de production compose donc la vision et la passe en `visibleCanvas` :
+  //
+  //     visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
+  //
+  // ⚠ Le champ lumineux est fabriqué **à la main** ici, et c'est délibéré : la composition
+  // des dégradés est déjà éprouvée dans `lightField.test.mjs`, avec un mock qui rasterise.
+  // Ce test-ci éprouve l'INTÉGRATION — que les polygones du sweep et le champ se rencontrent
+  // dans le bon espace de coordonnées et dans le bon ordre.
   const pcEclaire = createToken({
     id: 'pc-eclaire', levelId: 'rdc', kind: 'pc', cell: { a: 1, b: 5 }, visionDim: 0,
   });
+
+  const coucheVision = createTestFogLayer();
+  coucheVision.updateVision(grid, level, [pcEclaire], { extractSegments: extractBlockedSegments });
+
+  // La lampe est en (2,5 ; 5,5) cases et porte à 3 cases. On éclaire ce disque, en pixels de
+  // masque — 8 par case.
+  const masque = level.widthCells * FOG_MASK_PX_PER_CELL;
+  const champ = createMockCanvas(masque, level.heightCells * FOG_MASK_PX_PER_CELL);
+  champ.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+  champ.ctx.fillRect(
+    (2.5 - 3) * FOG_MASK_PX_PER_CELL, (5.5 - 3) * FOG_MASK_PX_PER_CELL,
+    6 * FOG_MASK_PX_PER_CELL, 6 * FOG_MASK_PX_PER_CELL
+  );
+
+  const vision = createMockCanvas(masque, level.heightCells * FOG_MASK_PX_PER_CELL);
+  const coin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+  const coin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  const compose = composeVisibleMask(vision.canvas, {
+    losPolygons: coucheVision.getLosPolygons(),
+    nearPolygons: coucheVision.getNearPolygons(),
+    litCanvas: champ.canvas,
+    mapOrigin: coin0,
+    gridScale: Math.abs(coin1.x - coin0.x),
+    createCanvas: (/** @type {number} */ w, /** @type {number} */ h) => createMockCanvas(w, h).canvas,
+  });
+  assert.equal(compose, true, 'la vision doit se composer');
+
   const { ctx: ctx2 } = createMockCanvas(120, 100);
   ctx2.fillStyle = 'rgb(100, 100, 100)';
   ctx2.fillRect(0, 0, 120, 100);
-  createTestFogLayer().render(/** @type {any} */ (ctx2), grid, level, [pcEclaire], defaultOptions());
+  createTestFogLayer().render(
+    /** @type {any} */ (ctx2), grid, level, [pcEclaire],
+    defaultOptions({ visibleCanvas: vision.canvas })
+  );
   assert.equal(
     ctx2.getImageData(25, 55).data[0],
     100,
     'un PJ qui voit la lumière profite de son éclairage'
+  );
+
+  // ⭐ Et le contre-épreuve, qui n'existait pas : SANS champ lumineux, ce même PJ aveugle ne
+  // voit RIEN. C'est ce qui distingue « la lumière sert » de « la ligne de vue suffit ».
+  const visionSansLumiere = createMockCanvas(masque, level.heightCells * FOG_MASK_PX_PER_CELL);
+  composeVisibleMask(visionSansLumiere.canvas, {
+    losPolygons: coucheVision.getLosPolygons(),
+    nearPolygons: coucheVision.getNearPolygons(),
+    litCanvas: createMockCanvas(masque, level.heightCells * FOG_MASK_PX_PER_CELL).canvas,
+    mapOrigin: coin0,
+    gridScale: Math.abs(coin1.x - coin0.x),
+    createCanvas: (/** @type {number} */ w, /** @type {number} */ h) => createMockCanvas(w, h).canvas,
+  });
+  const { ctx: ctxEteint } = createMockCanvas(120, 100);
+  ctxEteint.fillStyle = 'rgb(100, 100, 100)';
+  ctxEteint.fillRect(0, 0, 120, 100);
+  createTestFogLayer().render(
+    /** @type {any} */ (ctxEteint), grid, level, [pcEclaire],
+    defaultOptions({ visibleCanvas: visionSansLumiere.canvas })
+  );
+  assert.ok(
+    ctxEteint.getImageData(25, 55).data[0] < 100,
+    '⛔ champ éteint : le PJ aveugle ne voit rien, même en ligne de vue'
   );
 
   // Et sans aucun pion, une carte à lumières reste intégralement couverte.
@@ -650,7 +740,31 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
     true,
     'une ambiante positive rend le PJ sans vision nocturne contributeur'
   );
-  assert.ok(fogLayer.getVisiblePolygons().length > 0);
+
+  // ⭐ **Ce que « contribuer » veut dire a changé avec la tranche Z-05 (26/08/2026).**
+  //
+  // Avant, l'ambiante gouvernait la GÉOMÉTRIE : un PJ à `visionDim: 0` ne produisait un
+  // polygone que si l'étage était éclairé. C'était le prédicat `ambientLit`, global à
+  // l'étage — une seule lampe et tout l'étage basculait.
+  //
+  // Désormais un PJ porte **toujours** une ligne de vue, et c'est la rasterisation qui
+  // l'intersecte avec le champ lumineux, point par point. La contribution se lit donc sur
+  // `getLosPolygons()`, et `getVisiblePolygons()` n'est plus que le repli conservateur —
+  // la vision nocturne seule, nulle pour ce PJ aveugle, et c'est correct.
+  assert.ok(
+    fogLayer.getLosPolygons().length > 0,
+    'un PJ porte toujours une ligne de vue, éclairé ou non'
+  );
+  assert.equal(
+    fogLayer.getNearPolygons().length,
+    0,
+    'mais aucune portée nocturne : ce PJ est aveugle dans le noir'
+  );
+  assert.equal(
+    fogLayer.getVisiblePolygons().length,
+    0,
+    '⛔ et le repli sans champ lumineux ne révèle RIEN — révéler moins, jamais plus'
+  );
   assert.equal(
     fogLayer.updateVision(
       grid,
@@ -789,4 +903,33 @@ test('⭐ alphaNonExplore — le complément, seule garde de la lisibilité de l
 
   // Jamais de négatif : un voile exploré plus opaque que le visé n'inverse pas le calcul.
   assert.equal(alphaNonExplore(0.3, 0.8, true), 0);
+});
+
+test('⭐ Z-05 — plus aucun PJ : les TROIS jeux de polygones retombent à vide', () => {
+  // ⛔ **Vision fantôme.** Le retour anticipé « aucun PJ sur l'étage » ne vidait que
+  // `_cachedPolygons`. `_losPolygons` gardait sa valeur précédente, et la vision composée à
+  // partir de lui continuait d'être publiée alors que plus personne n'était là pour voir.
+  //
+  // Attrapé par le scénario e2e UX-13 — « Remplacer l'étage courant » range les pions en
+  // réserve, et le masque visible devait retomber à zéro. Il gardait la vision d'avant.
+  //
+  // ⚠ Ce test existe parce que la mutation correspondante restait VERTE à l'unité : seul un
+  // e2e la voyait. Une propriété aussi bon marché n'a pas à coûter un navigateur.
+  const level = createLevel({
+    id: 'rdc', widthCells: 10, heightCells: 10, pxPerCell: 10,
+    ambient: { level: 1, baked: false },
+  });
+  const grid = gridFor(level);
+  const pc = createToken({ id: 'pc', levelId: 'rdc', kind: 'pc', cell: { a: 5, b: 5 }, visionDim: 6 });
+
+  const couche = createTestFogLayer();
+  couche.updateVision(grid, level, [pc], { extractSegments: extractBlockedSegments });
+  assert.ok(couche.getLosPolygons().length > 0, 'un PJ présent produit bien une ligne de vue');
+  assert.ok(couche.getNearPolygons().length > 0);
+
+  // Le PJ s'en va — rangé en réserve, monté d'un étage, retiré du plateau.
+  couche.updateVision(grid, level, [], { extractSegments: extractBlockedSegments });
+  assert.deepEqual(couche.getLosPolygons(), [], '⛔ la ligne de vue ne doit RIEN garder');
+  assert.deepEqual(couche.getNearPolygons(), [], '⛔ ni la portée nocturne');
+  assert.deepEqual(couche.getVisiblePolygons(), [], '⛔ ni le repli');
 });
