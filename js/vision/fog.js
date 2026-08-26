@@ -438,6 +438,123 @@ export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells) {
 /**
  * Gestionnaire du masque de fog exploré pour un étage.
  */
+/**
+ * Compose le masque de **vision courante** en mode tactique — tranche Z-05 du chantier Z.
+ *
+ * ⭐ **La règle, et c'est tout le chantier en une ligne :**
+ *
+ * ```
+ * visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
+ * ```
+ *
+ * Chacun des trois termes répare quelque chose :
+ *
+ * - **ligne de vue** — le sweep de chaque PJ jusqu'au plafond technique. Sans lui, un PJ verrait
+ *   à travers les murs toute zone éclairée de l'étage.
+ * - **∩ éclairé** — le champ lumineux, qui ne dépend d'**aucun observateur**. C'est ce terme qui
+ *   remplace le prédicat `ambientLit` d'avant, lequel était **global à l'étage** : une carte de
+ *   nuit avec une seule lampe basculait l'étage entier en « éclairé ».
+ * - **∪ dans le noir** — la portée propre du PJ, `visionDim`, qui vaut même sans lumière. Sans
+ *   ce terme, un PJ dans un couloir noir ne verrait **rien du tout**, pas même ses pieds.
+ *
+ * ⛔ **Et ce que la règle fait disparaître : `vuParUnPJ`, donc la question 9 du §12.** Les
+ * lumières ne sont plus des **yeux** qui révèlent leur halo dès qu'un PJ en aperçoit le centre :
+ * elles éclairent, et c'est la ligne de vue du PJ **vers chaque point** qui décide. Le halo
+ * derrière un angle cesse d'être révélé, sans qu'on ait eu à traiter l'approximation.
+ *
+ * ⚠ **L'ordre des opérations n'est pas interchangeable.** L'intersection avec l'éclairage doit
+ * s'appliquer à la ligne de vue **seule**, avant l'union avec la vision nocturne — sinon la
+ * portée propre du PJ se ferait rogner par l'obscurité, ce qui est exactement son contraire.
+ *
+ * @param {any} cible Canvas de destination, à la résolution du masque. Il est VIDÉ d'abord.
+ * @param {Object} entrees
+ * @param {MapPoint[][]} entrees.losPolygons Sweeps des PJ au plafond technique, en pixels carte
+ * @param {MapPoint[][]} entrees.nearPolygons Sweeps des PJ à leur `visionDim`, en pixels carte
+ * @param {any} entrees.litCanvas Champ lumineux à la résolution du masque, ou `null`
+ * @param {MapPoint} entrees.mapOrigin Origine de la carte, en pixels carte
+ * @param {number} entrees.gridScale Pixels carte par case
+ * @param {((w: number, h: number) => any)} [entrees.createCanvas] Fabrique, pour les tests
+ * @returns {boolean} `true` si le masque a été composé
+ */
+export function composeVisibleMask(cible, entrees) {
+  const ctx = cible?.getContext?.('2d') ?? cible?._ctx ?? null;
+  if (!ctx) return false;
+
+  const { losPolygons, nearPolygons, litCanvas, mapOrigin, gridScale, createCanvas } = entrees;
+  if (!mapOrigin || !Number.isFinite(gridScale)) return false;
+
+  const largeur = cible.width;
+  const hauteur = cible.height;
+  const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+
+  /**
+   * Trace une liste de polygones dans un contexte, en espace masque.
+   * @param {any} destination @param {MapPoint[][]} polygones
+   */
+  function tracer(destination, polygones) {
+    if (!Array.isArray(polygones) || polygones.length === 0) return false;
+    let trace = false;
+    destination.beginPath();
+    for (const poly of polygones) {
+      if (!Array.isArray(poly) || poly.length === 0) continue;
+      const premier = poly[0];
+      destination.moveTo((premier.x - mapOrigin.x) * scale, (premier.y - mapOrigin.y) * scale);
+      for (let i = 1; i < poly.length; i++) {
+        const point = poly[i];
+        destination.lineTo((point.x - mapOrigin.x) * scale, (point.y - mapOrigin.y) * scale);
+      }
+      destination.closePath();
+      trace = true;
+    }
+    if (trace) destination.fill();
+    return trace;
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.clearRect(0, 0, largeur, hauteur);
+  ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+
+  // ── Terme 1 : la ligne de vue, découpée par l'éclairage ────────────────────
+  //
+  // ⚠ Sans champ lumineux fourni, ce terme vaut la ligne de vue ENTIÈRE. C'est le repli
+  // délibéré : mieux vaut le comportement d'avant le chantier qu'un écran noir en séance.
+  if (Array.isArray(losPolygons) && losPolygons.length > 0) {
+    if (litCanvas) {
+      const tampon = typeof createCanvas === 'function'
+        ? createCanvas(largeur, hauteur)
+        : (typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: largeur, height: hauteur }) : null);
+      const tamponCtx = tampon?.getContext?.('2d') ?? tampon?._ctx ?? null;
+      if (tamponCtx) {
+        tamponCtx.save();
+        tamponCtx.globalCompositeOperation = 'source-over';
+        tamponCtx.clearRect(0, 0, largeur, hauteur);
+        tamponCtx.fillStyle = 'rgba(0, 0, 0, 1)';
+        if (tracer(tamponCtx, losPolygons)) {
+          // Le mode destination-in ne garde de la ligne de vue que ce que le champ éclaire.
+          tamponCtx.globalCompositeOperation = 'destination-in';
+          tamponCtx.drawImage(litCanvas, 0, 0, litCanvas.width, litCanvas.height, 0, 0, largeur, hauteur);
+          tamponCtx.globalCompositeOperation = 'source-over';
+          tamponCtx.restore();
+          ctx.drawImage(tampon, 0, 0);
+        } else {
+          tamponCtx.restore();
+        }
+      }
+    } else {
+      tracer(ctx, losPolygons);
+    }
+  }
+
+  // ── Terme 2 : la vision propre dans le noir, qui s'AJOUTE sans condition ───
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+  tracer(ctx, nearPolygons);
+
+  ctx.restore();
+  return true;
+}
+
 export class ExploredFog {
   /**
    * @param {number} widthCells
