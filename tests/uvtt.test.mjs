@@ -200,16 +200,30 @@ test('G-2 — un map_origin non nul est signalé bruyamment, et dit quoi vérifi
 
 // ── Bornes de ressources ────────────────────────────────────────────────────────────────────────
 
-test('bornes — ⭐ le corpus RÉEL passe entier, y compris son pire cas', () => {
+test('bornes — ⭐ toute carte réelle PRÉSENTE passe les plafonds', (t) => {
   // ⭐ **C'est le test qui compte le plus de cette tranche, et il protège dans le sens qu'on
   // oublie.** Vérifier qu'un plafond refuse l'absurde est facile ; ce qui casse une séance, c'est
   // un plafond descendu sous le réel « pour être prudent ». `testbig150` — 103,8 Mpx, 4 615 cases,
   // 1 338 polylignes, 2 676 sommets, 141 portes, 185 lumières — doit passer, aujourd'hui et après
   // n'importe quel resserrage futur.
+  //
+  // ⚠ **Le corpus dépend de la machine, et ce test a cassé la CI pour l'avoir oublié.**
+  // `maps/*.dd2vtt` est gitignoré — les exports pèsent des dizaines de mégaoctets — donc le runner
+  // ne voit que `manoir-rdc.uvtt`, la seule carte versionnée. Exiger un compte minimum revenait à
+  // asserter la présence de fichiers absents par construction. Même piège, et même remède, que
+  // `realUvtt.test.mjs` qui s'ignore quand `fixtures/real/` est vide.
+  //
+  // ⛔ **Mais on ne se contente pas d'ignorer** : ce qui est là est vérifié, toujours. Sur le
+  // runner c'est une carte, sur le poste du mainteneur c'est le corpus entier — et c'est là que le
+  // resserrage d'un plafond se ferait attraper.
   const cartes = fs
     .readdirSync('maps')
     .filter((n) => /\.(dd2vtt|uvtt|df2vtt)$/i.test(n));
-  assert.ok(cartes.length >= 5, `le corpus a fondu : ${cartes.length} carte(s) trouvée(s)`);
+
+  if (cartes.length === 0) {
+    t.skip('aucune carte réelle sur cette machine : les plafonds ne peuvent pas être éprouvés ici');
+    return;
+  }
 
   for (const nom of cartes) {
     assert.doesNotThrow(
