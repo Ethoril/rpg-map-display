@@ -1,6 +1,20 @@
 // @ts-check
 
 /**
+ * Empilement du cartouche de la sonde.
+ *
+ * ⛔ **Au-dessus du plateau, mais SOUS tout ce que le produit a à dire.** Il valait 99 999,
+ * donc il passait devant l'état réseau (900), l'overlay de connexion (1 000) et l'overlay
+ * bloquant (1 100) — un outil de mesure masquait les messages d'erreur du produit. Constaté le
+ * 23/08/2026 sur la tablette : une erreur réseau illisible, cachée derrière le cartouche, au
+ * moment précis où elle importait.
+ *
+ * Une sonde qui cache la réponse est pire qu'une sonde absente : on croit observer alors qu'on
+ * masque. Voir `js/app/session.js` pour les trois valeurs au-dessus de celle-ci.
+ */
+export const PROBE_Z_INDEX = 800;
+
+/**
  * Sonde passive de mesure de la première frame post-inactivité (Chantier N).
  * Enregistre les métriques de rendu sans provoquer de frame ni allouer de mémoire.
  */
@@ -150,7 +164,7 @@ export class FrameProbe {
         position: fixed;
         bottom: 12px;
         left: 12px;
-        z-index: 99999;
+        z-index: ${PROBE_Z_INDEX};
         background: rgba(15, 23, 42, 0.94);
         color: #e2e8f0;
         font-family: monospace;

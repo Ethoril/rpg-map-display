@@ -8,6 +8,30 @@ import { createLevel } from '../core/schema.js';
  * @typedef {import('../core/types.js').Light} Light
  */
 
+// ── Plafonds de ressources ─────────────────────────────────────────────────────────────────────
+//
+// ⛔ **Chiffres issus du corpus réel, pas d'un choix de confort.** Mesures du 19/08/2026 sur les
+// six exports du dépôt, pire cas `testbig150` : 103,8 Mpx · 4 615 cases · 1 338 polylignes ·
+// 2 676 sommets · 141 portes · 185 lumières. Chaque plafond laisse passer ce pire cas avec au moins
+// un facteur 2, et n'arrête que l'absurde.
+//
+// ⚠ **Les relever demande de refaire la mesure**, pas d'ajouter un zéro : un plafond gonflé au
+// jugé ne protège plus de rien, et le premier fichier corrompu fait tomber l'onglet en pleine
+// séance. Un refus se répare ; une séance perdue, non.
+
+/** Image estimée, en mégapixels. 200 Mpx ≈ 763 Mio décodés — près du double du pire cas réel. */
+export const MAX_IMAGE_MPX = 200;
+/** Cases d'un étage. 250 000 = 500×500, soit cinquante fois le pire cas réel. */
+export const MAX_CELLS = 250000;
+/** Polylignes de murs, toutes sources confondues. */
+export const MAX_WALL_POLYLINES = 50000;
+/** Sommets de murs cumulés — c'est le vrai coût mémoire de la géométrie. */
+export const MAX_WALL_VERTICES = 200000;
+/** Portes d'un étage. */
+export const MAX_PORTALS = 10000;
+/** Sources de lumière d'un étage. */
+export const MAX_LIGHTS = 10000;
+
 /**
  * Convertit et normalise une couleur UVTT au format CSS `#RRGGBB`.
  *
@@ -131,10 +155,69 @@ export function parseUvtt(jsonInput) {
     );
   }
 
+  // ── Bornes de ressources, AVANT toute allocation ────────────────────────────────────────────
+  //
+  // ⛔ **Ces plafonds ne se choisissent pas au jugé : ils sortent du corpus réel, avec marge.**
+  // Mesures du 19/08/2026 sur les six exports du dépôt — pire cas `testbig150` :
+  //
+  //   103,8 Mpx d'image estimée (396 Mio décodés) · 4 615 cases · 1 338 polylignes
+  //   2 676 sommets · 141 portes · 185 lumières
+  //
+  // Un plafond qui refuserait la plus grosse carte du dépôt serait une régression, pas une
+  // protection. Chacun laisse donc passer le réel avec au moins un facteur 2, et n'arrête que
+  // l'absurde — un fichier corrompu, tronqué, ou fabriqué pour faire tomber l'onglet.
+  //
+  // ⚠ La vraie ressource n'est pas la taille du JSON — elle est déjà allouée quand on arrive ici —
+  // mais **l'image décodée**, qui vaut `largeur × hauteur × 4` octets. Elle s'estime sans toucher
+  // au fichier image, à partir de `map_size × pixels_per_grid`, et c'est le seul contrôle qui
+  // protège vraiment de l'étouffement mémoire.
+  const estimationMpx = (widthCells * pxPerCell * (heightCells * pxPerCell)) / 1e6;
+  if (estimationMpx > MAX_IMAGE_MPX) {
+    throw new Error(
+      `Image trop grande : ${widthCells}×${heightCells} cases à ${pxPerCell} px/case font ` +
+        `${estimationMpx.toFixed(0)} Mpx, soit environ ${((estimationMpx * 4) / 1.048576).toFixed(0)} Mio ` +
+        `une fois décodés — au-delà du plafond de ${MAX_IMAGE_MPX} Mpx. La plus grande carte réelle ` +
+        `du dépôt en fait 104. Ce refus est délibéré : décoder l'image ferait tomber l'onglet, et ` +
+        `perdre la séance en cours est pire que refuser le fichier.`
+    );
+  }
+  if (widthCells * heightCells > MAX_CELLS) {
+    throw new Error(
+      `Carte trop vaste : ${widthCells}×${heightCells} = ${widthCells * heightCells} cases, ` +
+        `au-delà du plafond de ${MAX_CELLS}. La plus grande carte réelle du dépôt en compte 4 615.`
+    );
+  }
+
   const originX = resolution.map_origin?.x ?? 0;
   const originY = resolution.map_origin?.y ?? 0;
   const offsetX = originX * pxPerCell;
   const offsetY = originY * pxPerCell;
+
+  // ⚠ **Le sens de `map_origin` n'est pas éprouvé, et il ne peut pas l'être sans un fichier réel.**
+  //
+  // Ce projet **ajoute** l'origine : la géométrie est conservée telle quelle et la grille est
+  // décalée de `+origine × pxPerCell`. L'importeur Foundry `FVTT-DD-Import` fait l'inverse — il
+  // applique `(point − map_origin) × pixels_per_grid`, uniformément sur murs, portails et lumières.
+  // C'est le seul point de comparaison extérieur dont on dispose, et il désigne l'autre convention.
+  //
+  // ⛔ On ne bascule pas le signe sur la foi d'un importeur tiers : les deux lectures sont
+  // défendables, et **aucun export réel du dépôt n'a jamais porté d'origine non nulle** — Dungeon
+  // Alchemist, la source principale, rebase sa géométrie et laisse l'origine à zéro. La seule
+  // fixture qui couvre le cas a une image de 1 × 1 pixel : elle ne peut rien aligner.
+  //
+  // ⭐ Alors plutôt que parier, on **parle**. Un désalignement silencieux devient un défaut visible
+  // et diagnosticable, et le premier fichier réel qui déclenchera cet avertissement fournira le cas
+  // qui manque pour trancher. C'est la doctrine que l'import applique déjà partout ailleurs : le
+  // silence est le pire mode de défaillance d'un import universel.
+  if (originX !== 0 || originY !== 0) {
+    warnings.push(
+      `resolution.map_origin non nul (${originX}, ${originY}) : la grille est décalée de ` +
+        `+${offsetX}, +${offsetY} px et la géométrie est conservée telle quelle — l'origine est ` +
+        `AJOUTÉE. L'importeur Foundry, lui, la SOUSTRAIT. Le sens n'a jamais pu être vérifié sur ` +
+        `un export réel : si murs, portes ou lumières apparaissent décalés du double de l'origine, ` +
+        `c'est cette convention qu'il faut inverser — voir docs/PLAN-SUITE.md §2.2.`
+    );
+  }
 
   // Extraction des murs (line_of_sight + objects_line_of_sight) en unités de case (CellPoint)
   /** @type {CellPoint[][]} */
@@ -151,6 +234,14 @@ export function parseUvtt(jsonInput) {
   let polysRejetees = 0;
   let pointsRejetes = 0;
 
+  if (losList.length > MAX_WALL_POLYLINES) {
+    throw new Error(
+      `Trop de polylignes de mur : ${losList.length}, au-delà du plafond de ${MAX_WALL_POLYLINES}. ` +
+        `La carte réelle la plus chargée du dépôt en compte 1 338.`
+    );
+  }
+
+  let sommetsLus = 0;
   for (const poly of losList) {
     if (!Array.isArray(poly)) {
       polysRejetees++;
@@ -158,12 +249,26 @@ export function parseUvtt(jsonInput) {
     }
     /** @type {CellPoint[]} */
     const points = [];
+    // ⚠ `Number.isFinite`, et surtout PAS `typeof === 'number'` : `typeof NaN` vaut `'number'`,
+    // et `Infinity` aussi. Un `NaN` accepté ici se propage dans la géométrie, contamine le sweep
+    // — toute comparaison avec `NaN` est fausse, donc un segment devient invisible sans erreur —
+    // et ressort en `null` à la sérialisation. C'est la forme la plus coûteuse de l'entrée sale :
+    // elle traverse tout, ne casse rien, et fausse le résultat.
     for (const pt of poly) {
-      if (pt && typeof pt.x === 'number' && typeof pt.y === 'number') {
+      if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y)) {
         points.push({ cellX: pt.x, cellY: pt.y });
       } else {
         pointsRejetes++;
       }
+    }
+
+    sommetsLus += points.length;
+    if (sommetsLus > MAX_WALL_VERTICES) {
+      throw new Error(
+        `Trop de sommets de mur : plus de ${MAX_WALL_VERTICES} cumulés. La carte réelle la plus ` +
+          `chargée du dépôt en compte 2 676. Le compte est arrêté en cours de lecture, ` +
+          `délibérément : attendre la fin reviendrait à allouer ce qu'on refuse.`
+      );
     }
     if (points.length >= 2) {
       walls.push(points);
@@ -187,6 +292,12 @@ export function parseUvtt(jsonInput) {
   // Extraction des portails
   /** @type {Portal[]} */
   const portals = [];
+  if (Array.isArray(data.portals) && data.portals.length > MAX_PORTALS) {
+    throw new Error(
+      `Trop de portes : ${data.portals.length}, au-delà du plafond de ${MAX_PORTALS}. ` +
+        `La carte réelle la plus chargée du dépôt en compte 141.`
+    );
+  }
   if (Array.isArray(data.portals)) {
     let portalIdx = 1;
     let portesRejetees = 0;
@@ -228,6 +339,12 @@ export function parseUvtt(jsonInput) {
   // Extraction des lumières
   /** @type {Light[]} */
   const lights = [];
+  if (Array.isArray(data.lights) && data.lights.length > MAX_LIGHTS) {
+    throw new Error(
+      `Trop de lumières : ${data.lights.length}, au-delà du plafond de ${MAX_LIGHTS}. ` +
+        `La carte réelle la plus chargée du dépôt en compte 185.`
+    );
+  }
   if (Array.isArray(data.lights)) {
     let lightIdx = 1;
     let lumieresRejetees = 0;

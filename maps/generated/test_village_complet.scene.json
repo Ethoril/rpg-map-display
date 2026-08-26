@@ -4774,7 +4774,6 @@
         }
       ],
       "ambient": {
-        "color": "#ffffff",
         "level": 1,
         "baked": true
       }
@@ -5600,7 +5599,6 @@
         }
       ],
       "ambient": {
-        "color": "#ffffff",
         "level": 1,
         "baked": true
       }
@@ -5933,7 +5931,6 @@
         }
       ],
       "ambient": {
-        "color": "#ffffff",
         "level": 1,
         "baked": true
       }
@@ -5984,6 +5981,7 @@
     }
   ],
   "tokens": [],
+  "reserve": [],
   "templates": [],
   "settings": {}
 }

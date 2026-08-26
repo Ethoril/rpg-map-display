@@ -70,6 +70,13 @@ if (originalFetch) {
  * @param {number} [options.sourcePxPerCell] Résolution source en pixels par case (si connue)
  * @param {number} [options.widthCells] Largeur de la carte en cases
  * @param {number} [options.heightCells] Hauteur de la carte en cases
+ * @param {boolean} [options.hexRows] Les rangées sont-elles hexagonales (pointe en haut) ?
+ *   ⛔ **Sans ce drapeau, une carte hexagonale rectangulaire est DÉFORMÉE.** La hauteur cible se
+ *   calculait `heightCells × targetPxPerCell`, ce qui suppose des cases carrées ; en pointe-en-haut
+ *   le pas vertical vaut `pxPerCell × √3/2` et un hexagone entier fait `pxPerCell × 2/√3`. Sur la
+ *   ferme isolée — 5320×3500, 38×28 hexagones — l'ancien calcul rendait 4750×3500 : la carte
+ *   **comprimée de 11 % en largeur**. Le défaut est resté invisible parce que la seule carte
+ *   hexagonale du dépôt, `marais-hex_16x16`, est carrée : aucune déformation n'y est possible.
  * @param {string} [options.outputPath] Chemin optionnel pour enregistrer le fichier WebP
  * @param {number} [options.maxTexturePx] Plafond de dimension. **Réservé à la comparaison**
  *   de l'outil local : la publication utilise toujours `MAX_PREPARED_TEXTURE_PX`. Un réglage
@@ -167,7 +174,20 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
 
   if (widthCells && heightCells) {
     targetWidth = Math.round(widthCells * targetPxPerCell);
-    targetHeight = Math.round(heightCells * targetPxPerCell);
+    // ⛔ En hexagonal, la hauteur cible se déduit du RATIO SOURCE, jamais du nombre de rangées.
+    //
+    // Une rangée pointe-en-haut ne mesure pas `targetPxPerCell` : les rangées se chevauchent, leur
+    // pas vaut `pxPerCell × √3/2`. Appliquer la formule carrée déformait la carte — 5320×3500
+    // sortait en 4750×3500, comprimée de 11 % en largeur. Mais calculer l'étendue exacte des
+    // rangées ne vaut guère mieux : aucun nombre entier de rangées ne couvre pile la hauteur d'une
+    // image quelconque, et forcer l'un ou l'autre revient encore à étirer le dessin.
+    //
+    // ⭐ **Une grille est une couche de jeu posée sur un dessin ; ce n'est pas au dessin de s'y
+    // plier.** On conserve donc le ratio, et la dernière rangée déborde ou s'arrête un peu avant
+    // le bord — ce qui est sans conséquence, et invisible à côté d'une carte écrasée.
+    targetHeight = options.hexRows
+      ? Math.round((srcHeight * targetWidth) / srcWidth)
+      : Math.round(heightCells * targetPxPerCell);
   } else if (sourcePxPerCell && sourcePxPerCell > 0) {
     const scale = targetPxPerCell / sourcePxPerCell;
     targetWidth = Math.round(srcWidth * scale);

@@ -356,3 +356,31 @@ test('normalizeCampaign convertit les anciens gabarits origin {a, b} en centre d
   assert.equal(errors.length, 0, 'La campagne normalisée doit passer la validation');
 });
 
+
+test('identifiantAleatoire — tient hors contexte sécurisé, là où randomUUID n’existe pas', async () => {
+  const { identifiantAleatoire } = await import('../js/core/schema.js');
+  const v4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  assert.match(identifiantAleatoire(), v4, 'cas nominal');
+
+  // ⭐ **Le cas qui a réellement cassé.** `crypto.randomUUID` n'est exposé qu'en contexte
+  // sécurisé — HTTPS ou localhost. Servi sur une IP de réseau local en clair, il est absent, et
+  // l'appel jetait `crypto.randomUUID is not a function` : la vue joueurs ne démarrait pas. On
+  // masque donc la méthode pour éprouver le repli, et non la présence d'un `if`.
+  const vrai = globalThis.crypto.randomUUID;
+  try {
+    // @ts-expect-error — on simule un contexte non sécurisé
+    globalThis.crypto.randomUUID = undefined;
+    const vus = new Set();
+    for (let i = 0; i < 200; i++) {
+      const id = identifiantAleatoire();
+      assert.match(id, v4, 'le repli doit rendre un UUID v4 valide');
+      vus.add(id);
+    }
+    // ⛔ Un repli qui rendrait deux fois le même identifiant casserait l'idempotence des
+    // événements réseau, qui s'en sert de clé — un défaut bien pire que l'absence de repli.
+    assert.equal(vus.size, 200, 'aucune collision sur 200 tirages');
+  } finally {
+    globalThis.crypto.randomUUID = vrai;
+  }
+});

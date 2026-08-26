@@ -26,6 +26,22 @@
       }
     },
     {
+      "id": "ferme-isolee",
+      "name": "Carte_Combat _Ferme_isolée",
+      "sourceUrl": "maps/ferme-isolee_38x28_hex.jpg",
+      "sceneUrl": "maps/generated/ferme-isolee.scene.json",
+      "imageUrl": "maps/generated/ferme-isolee.webp",
+      "sourceHash": "sha256-1378518b7d1c629164725f3b5f49b6cabd7228e941274526fa686d821f268421",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 0,
+        "lights": 0,
+        "bakedLighting": false,
+        "animated": false
+      }
+    },
+    {
       "id": "manoir-rdc",
       "name": "Manoir — RDC",
       "sourceUrl": "maps/manoir-rdc.uvtt",

@@ -3,10 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLevel, createToken } from '../js/core/schema.js';
 import { gridFor } from '../js/grid/index.js';
-import { VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
+import { FOG_MASK_PX_PER_CELL, VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
+import { ExploredFog } from '../js/vision/fog.js';
 import {
   FogLayer,
+  alphaNonExplore,
   getVisionComputeCount,
   resetVisionComputeCount,
 } from '../js/render/layers/fogLayer.js';
@@ -102,21 +104,46 @@ function createMockCanvas(width = 200, height = 200) {
         }
       }
     },
-    /** @param {any} image */
-    drawImage(image) {
+    // Le fog compose désormais à la résolution du masque puis étire une seule fois au
+    // dépôt final (BRIEF-FOG-BASSE-RESOLUTION.md) : source et destination n'ont plus
+    // forcément la même taille. La version d'origine, qui recopiait pixel à pixel en
+    // supposant des dimensions identiques, ne peut plus émuler cette étape — d'où
+    // l'échantillonnage au plus proche voisin sur `dw`/`dh`, dans le seul mode que ce
+    // fichier exerce réellement via `drawImage` (`source-over`, l'étape D). Les étapes
+    // B et C, en `destination-out`, ne passent par ce mock dans aucun test de ce
+    // fichier : elles sont couvertes en navigateur réel par `tests/fogVeil.spec.mjs`.
+    /** @param {any} image @param {number} [dx] @param {number} [dy] @param {number} [dw] @param {number} [dh] */
+    drawImage(image, dx = 0, dy = 0, dw, dh) {
       if (!image || !image._ctx) return;
-      const srcPixels = image._ctx.pixels;
-      for (let i = 0; i < pixels.length; i += 4) {
-        const srcAlpha = srcPixels[i + 3] / 255;
-        if (srcAlpha > 0) {
-          const dstAlpha = pixels[i + 3] / 255;
-          const outAlpha = srcAlpha + dstAlpha * (1 - srcAlpha);
+      const srcCtx = image._ctx;
+      const srcPixels = srcCtx.pixels;
+      const srcW = srcCtx.width;
+      const srcH = srcCtx.height;
+      const destW = dw ?? srcW;
+      const destH = dh ?? srcH;
 
-          if (outAlpha > 0) {
-            pixels[i] = Math.round((srcPixels[i] * srcAlpha + pixels[i] * dstAlpha * (1 - srcAlpha)) / outAlpha);
-            pixels[i + 1] = Math.round((srcPixels[i + 1] * srcAlpha + pixels[i + 1] * dstAlpha * (1 - srcAlpha)) / outAlpha);
-            pixels[i + 2] = Math.round((srcPixels[i + 2] * srcAlpha + pixels[i + 2] * dstAlpha * (1 - srcAlpha)) / outAlpha);
-            pixels[i + 3] = Math.round(outAlpha * 255);
+      for (let r = 0; r < destH; r++) {
+        const py = Math.floor(dy) + r;
+        if (py < 0 || py >= height) continue;
+        const sy = Math.min(srcH - 1, Math.floor((r / destH) * srcH));
+        for (let c = 0; c < destW; c++) {
+          const px = Math.floor(dx) + c;
+          if (px < 0 || px >= width) continue;
+          const sx = Math.min(srcW - 1, Math.floor((c / destW) * srcW));
+          const srcIdx = (sy * srcW + sx) * 4;
+          const dstIdx = (py * width + px) * 4;
+
+          const srcAlpha = srcPixels[srcIdx + 3] / 255;
+          if (srcAlpha > 0) {
+            const dstAlpha = pixels[dstIdx + 3] / 255;
+            const outAlpha = srcAlpha + dstAlpha * (1 - srcAlpha);
+
+            if (outAlpha > 0) {
+              pixels[dstIdx] = Math.round((srcPixels[srcIdx] * srcAlpha + pixels[dstIdx] * dstAlpha * (1 - srcAlpha)) / outAlpha);
+              pixels[dstIdx + 1] = Math.round((srcPixels[srcIdx + 1] * srcAlpha + pixels[dstIdx + 1] * dstAlpha * (1 - srcAlpha)) / outAlpha);
+              pixels[dstIdx + 2] = Math.round((srcPixels[srcIdx + 2] * srcAlpha + pixels[dstIdx + 2] * dstAlpha * (1 - srcAlpha)) / outAlpha);
+              pixels[dstIdx + 3] = Math.round(outAlpha * 255);
+            }
           }
         }
       }
@@ -641,4 +668,125 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
     true,
     'baked force la même ambiante éclairée sans modifier le niveau importé'
   );
+});
+
+// ── BRIEF-FOG-BASSE-RESOLUTION.md : composer à la résolution du masque ─────────────────
+
+test('Le tampon hors écran travaille à la résolution du masque, jamais à celle de la carte', () => {
+  // pxPerCell largement supérieur à FOG_MASK_PX_PER_CELL (8) : sur une vraie carte
+  // Stained Karbon (140 px/case), un tampon à la taille de la carte ferait 17,5× la
+  // largeur du masque. Si `render()` régresse vers `mapWidth`/`mapHeight`, ce test le
+  // voit directement sur les dimensions du canvas hors écran.
+  const level = createLevel({ id: 'rdc', widthCells: 10, heightCells: 6, pxPerCell: 140 });
+  const grid = gridFor(level);
+  const { ctx } = createMockCanvas(1400, 840); // 10×140 par 6×140, taille carte
+
+  const fogLayer = createTestFogLayer();
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [], defaultOptions());
+
+  assert.equal(fogLayer._offscreenCanvas.width, 10 * FOG_MASK_PX_PER_CELL, 'largeur du tampon = widthCells × 8');
+  assert.equal(fogLayer._offscreenCanvas.height, 6 * FOG_MASK_PX_PER_CELL, 'hauteur du tampon = heightCells × 8');
+  assert.notEqual(fogLayer._offscreenCanvas.width, 1400, 'jamais la largeur de la carte');
+  assert.notEqual(fogLayer._offscreenCanvas.height, 840, 'jamais la hauteur de la carte');
+});
+
+test('La conversion des polygones vers l’espace du masque tient à 140 px/case', () => {
+  // Les polygones de vision sont en pixels carte (`MapPoint`). Sans la conversion par
+  // `FOG_MASK_PX_PER_CELL` et l'origine de l'étage, ils seraient tracés 17,5× trop grands
+  // dans le petit canvas de masque (piège n°1 du brief) : le trou de vision manquerait
+  // entièrement sa cible, et le point proche du PJ resterait voilé au lieu d'être révélé.
+  const level = createLevel({
+    id: 'rdc', widthCells: 10, heightCells: 6, pxPerCell: 140,
+    ambient: { level: 0, baked: false },
+  });
+  const grid = gridFor(level);
+  const pc = createToken({ id: 'pj', levelId: 'rdc', kind: 'pc', cell: { a: 2, b: 3 }, visionDim: 4 });
+
+  const { ctx } = createMockCanvas(1400, 840);
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 1400, 840);
+
+  createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+
+  // Le PJ est au centre de la case (2,3), soit (350, 490) en pixels carte : un point tout
+  // proche doit rester visible malgré le passage par un masque à 8 px/case.
+  const pixelProche = ctx.getImageData(360, 490).data;
+  assert.equal(pixelProche[0], 100, 'le point proche du PJ reste visible après le passage par le masque');
+
+  // Hors de la portée de vision (4 cases = 560 px), le voile doit subsister.
+  const pixelLoin = ctx.getImageData(1350, 800).data;
+  assert.ok(pixelLoin[0] < 100, 'un point hors de portée reste voilé');
+});
+
+test('Le cache de composition s’invalide quand le masque exploré change, même sans changer d’objet', () => {
+  // `ExploredFog` mute son canvas en place (`reveal`/`paintDisc`...) : son identité ne
+  // change jamais. C'est exactement le cas que le cache de `FogLayer` doit détecter via
+  // `canvas.__fogRevision`, sans quoi le premier fog composé resterait figé à l'écran —
+  // le défaut « plus coûteux que le coût supprimé » nommé par le brief.
+  const level = createLevel({
+    id: 'rdc', widthCells: 10, heightCells: 10, pxPerCell: 10,
+    ambient: { level: 0, baked: false },
+  });
+  const grid = gridFor(level);
+  const exploredFog = new ExploredFog(level.widthCells, level.heightCells, (w, h) => createMockCanvas(w, h).canvas);
+
+  const { ctx } = createMockCanvas(100, 100);
+  const fogLayer = createTestFogLayer();
+
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 100, 100);
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [], defaultOptions({ exploredCanvas: exploredFog.canvas }));
+  const avant = ctx.getImageData(15, 15).data;
+  assert.ok(avant[0] < 100, 'avant révélation, la zone reste voilée');
+
+  // Révéler cette zone SANS remplacer le canvas — même référence, contenu changé.
+  // `reveal()` plutôt que `paintDisc()` : le mock de canvas ne connaît que
+  // moveTo/lineTo/closePath/fill, pas `arc()`.
+  const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+  exploredFog.reveal(
+    [[
+      { x: origin0.x, y: origin0.y },
+      { x: origin0.x + 30, y: origin0.y },
+      { x: origin0.x + 30, y: origin0.y + 30 },
+      { x: origin0.x, y: origin0.y + 30 },
+    ]],
+    origin0,
+    10
+  );
+
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 100, 100);
+  fogLayer.render(/** @type {any} */ (ctx), grid, level, [], defaultOptions({ exploredCanvas: exploredFog.canvas }));
+  const apres = ctx.getImageData(15, 15).data;
+
+  assert.notEqual(apres[0], avant[0], 'après révélation, le rendu doit changer : le cache ne fige pas le premier fog composé');
+});
+
+test('⭐ alphaNonExplore — le complément, seule garde de la lisibilité de la vue MJ', () => {
+  // Ce calcul vivait EN LIGNE dans `render()` jusqu'au 23/08/2026, donc hors de portée de tout
+  // test unitaire : sa seule garde était `fogVeil.spec.mjs`, un e2e. Un e2e mesure aussi la
+  // machine — il finit désactivé un jour, et l'arithmétique se retrouve sans surveillance.
+
+  // ⛔ Le cas qui compte, et celui qui a réellement cassé : vue MJ, 0,70 visé sur 0,45 de voile
+  // exploré. Peindre 0,70 directement donnait 1−(1−0,70)(1−0,45) = 0,835 — la zone non
+  // découverte devenait illisible. Le complément vaut (0,70−0,45)/(1−0,45).
+  const complement = alphaNonExplore(0.7, 0.45, true);
+  assert.ok(Math.abs(complement - 0.25 / 0.55) < 1e-12, `complément attendu 0,4545…, obtenu ${complement}`);
+
+  // ⭐ Et la propriété qui donne son SENS au complément : une fois les deux voiles superposés,
+  // la somme doit rendre exactement l'opacité visée. C'est ça qu'on protège, pas une formule.
+  const somme = 1 - (1 - complement) * (1 - 0.45);
+  assert.ok(Math.abs(somme - 0.7) < 1e-12, `les deux voiles doivent totaliser 0,70, obtenu ${somme}`);
+
+  // Sans masque exploré, l'étape B n'a pas lieu : la valeur visée se peint telle quelle.
+  assert.equal(alphaNonExplore(0.7, 0.45, false), 0.7);
+
+  // Côté joueurs, U vaut 1 : le complément vaut 1 aussi, les pions restent masqués.
+  assert.equal(alphaNonExplore(1, 0.6, true), 1);
+
+  // ⛔ Un voile exploré déjà opaque rendrait la division infinie : on retombe sur la valeur visée.
+  assert.equal(alphaNonExplore(0.7, 1, true), 0.7);
+
+  // Jamais de négatif : un voile exploré plus opaque que le visé n'inverse pas le calcul.
+  assert.equal(alphaNonExplore(0.3, 0.8, true), 0);
 });

@@ -29,6 +29,16 @@ function arg(name, fallback) {
 const port = Number(arg('port', '4173'));
 const root = path.resolve(repoRoot, arg('root', '.'));
 
+// ⭐ **`--host 0.0.0.0` pour éprouver une branche sur la tablette, sans passer par Pages.**
+//
+// Le défaut reste `127.0.0.1` : servir sur toutes les interfaces expose le dépôt — cartes et
+// portraits compris — à tout le réseau local, et ça ne doit jamais arriver sans l'avoir demandé.
+//
+// ⚠ Ce chemin existe parce que valider une tranche de rendu **exige** l'écran réel : la porte ne
+// juge pas « le rendu est visuellement identique ». Fusionner sur `main` pour regarder reviendrait
+// à publier avant d'avoir vu, donc à inverser l'ordre.
+const host = arg('host', '127.0.0.1');
+
 /** Types MIME utiles au projet. Un type inconnu est servi en octet-stream, jamais devine. */
 const MIME = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -76,6 +86,11 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`Serveur statique : http://127.0.0.1:${port}/  (racine ${root})`);
+server.listen(port, host, () => {
+  console.log(`Serveur statique : http://${host === '0.0.0.0' ? '<ip-du-poste>' : host}:${port}/  (racine ${root})`);
+  if (host !== '127.0.0.1') {
+    // Le dire, et pas seulement le faire : quelqu'un qui a tapé `--host` pour une manipulation
+    // de cinq minutes ne doit pas laisser le dépôt ouvert au réseau tout l'après-midi sans y penser.
+    console.log(`⚠ Écoute sur ${host} : le dépôt est accessible depuis tout le réseau local.`);
+  }
 });

@@ -269,7 +269,6 @@
         }
       ],
       "ambient": {
-        "color": "#ffffff",
         "level": 1,
         "baked": true
       }
@@ -277,6 +276,7 @@
   ],
   "links": [],
   "tokens": [],
+  "reserve": [],
   "templates": [],
   "settings": {}
 }

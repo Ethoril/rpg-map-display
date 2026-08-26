@@ -11,7 +11,7 @@ import { initStage } from '../render/stage.js';
 import { FrameLoop } from '../render/frame.js';
 import { Camera } from '../render/camera.js';
 import { VERSION } from '../core/version.js';
-import { MAX_TEXTURE_FALLBACK, RENDER_RESOLUTION_CAP } from '../core/constants.js';
+import { MAX_TEXTURE_FALLBACK, RENDER_RESOLUTION_CAP, FOG_MASK_PX_PER_CELL } from '../core/constants.js';
 import { createCampaign, createLevel, createToken } from '../core/schema.js';
 import { loadCampaign, getState, getActiveLevel, resetStore } from '../state/store.js';
 import { saveFirebaseConfig } from './runtimeConfig.js';
@@ -25,8 +25,16 @@ import {
   STALL_CHECK_MS,
 } from '../render/videoBackdrop.js';
 
-const sortie = /** @type {HTMLPreElement} */ (document.getElementById('sortie'));
-const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
+// Gardé nullable : les fonctions pures exportées plus bas (section 16) doivent rester
+// importables par `tests/*.test.mjs` sous node:test, sans DOM — comme `resumeDecodageFroid`
+// l'est déjà depuis `endurance.js`. Le reste de la page n'appelle `ecrire`/`ajouter` que sur
+// des gestes utilisateur, jamais à l'import du module.
+const sortie = typeof document !== 'undefined'
+  ? /** @type {HTMLPreElement} */ (document.getElementById('sortie'))
+  : /** @type {any} */ (null);
+const canvas = typeof document !== 'undefined'
+  ? /** @type {HTMLCanvasElement} */ (document.getElementById('board'))
+  : /** @type {any} */ (null);
 const coldDecodeTrial = new ColdDecodeTrial();
 if (typeof window !== 'undefined') /** @type {any} */ (window).__coldDecodeTrial = coldDecodeTrial;
 const enduranceJournal = new EnduranceJournal();
@@ -809,6 +817,274 @@ function compterOnglet(nom) {
   ecrire(lignes.join('\n'));
 }
 
+// --- 16. Champ lumineux à la résolution du masque de fog (M2) --------------
+//
+// Question de BRIEF-PHASE-0-MESURES.md — M2 : 93 sources composées À LA RÉSOLUTION DU
+// MASQUE (8 px/case) puis agrandies une seule fois, est-ce que ça tient dans le budget de
+// la tablette ? Cette section mesure UNIQUEMENT le coût par pixel nouveau : composition
+// additive des disques et agrandissement. Elle ne mesure PAS l'occlusion par les murs — le
+// coût des sweeps est déjà mesuré section 10 (2,6 ms sous cast actif, budget 300 ms) — et
+// le verdict des deux ne s'additionne jamais à la main : ils se lisent côte à côte.
+
+/**
+ * Position et rayon d'une source lumineuse **dans l'espace du masque de fog** (8 px/case).
+ *
+ * ⚠ Piège n°5 (`CONVENTIONS.md` §3) : le facteur d'échelle est TOUJOURS
+ * `FOG_MASK_PX_PER_CELL`, jamais l'échelle de la carte (140 px/case sur les cartes de test).
+ * Confondre les deux donne un disque 17,5 fois trop grand à cette échelle — l'erreur
+ * « grandeur dans le mauvais espace » qui a déjà coûté un facteur 3 sur ce projet. La
+ * position d'une source est déjà en `CellPoint` (`{cellX, cellY}`, relative à l'origine de
+ * l'étage) : aucune conversion par `GridAdapter` n'est nécessaire ici, contrairement à un
+ * point en pixels de carte.
+ *
+ * @param {{ at: { cellX: number, cellY: number }, range: number }} source
+ * @returns {{ mx: number, my: number, rayon: number }}
+ */
+export function discSourceEnEspaceMasque(source) {
+  return {
+    mx: source.at.cellX * FOG_MASK_PX_PER_CELL,
+    my: source.at.cellY * FOG_MASK_PX_PER_CELL,
+    rayon: Math.max(0, source.range * FOG_MASK_PX_PER_CELL),
+  };
+}
+
+/**
+ * Géométrie complète du champ lumineux d'un étage, dans l'espace du masque : dimensions du
+ * masque, disque de chaque source **réellement déclarée** (jamais un compte extrapolé), et
+ * surface totale peinte — la somme des aires, en px² de masque.
+ *
+ * @param {{ widthCells: number, heightCells: number, lights?: Array<{ at: { cellX: number, cellY: number }, range: number }> }} level
+ * @returns {{
+ *   maskWidth: number, maskHeight: number, sourceCount: number,
+ *   disques: Array<{ mx: number, my: number, rayon: number, aire: number }>,
+ *   surfaceTotale: number,
+ * }}
+ */
+export function champLumineuxEnEspaceMasque(level) {
+  const sources = Array.isArray(level.lights) ? level.lights : [];
+  const disques = sources.map((source) => {
+    const { mx, my, rayon } = discSourceEnEspaceMasque(source);
+    return { mx, my, rayon, aire: Math.PI * rayon * rayon };
+  });
+  return {
+    maskWidth: level.widthCells * FOG_MASK_PX_PER_CELL,
+    maskHeight: level.heightCells * FOG_MASK_PX_PER_CELL,
+    sourceCount: sources.length,
+    disques,
+    surfaceTotale: disques.reduce((somme, d) => somme + d.aire, 0),
+  };
+}
+
+// Même budget que R3-05 (section 10) : c'est la question posée par le brief — « tient dans
+// le budget de la tablette ? ». Cette section ne mesure pas le sweep : le verdict qu'elle
+// rend porte donc sur la composition et l'agrandissement SEULS, jamais sur leur somme avec
+// le coût des sweeps affiché par ailleurs.
+export const LIGHT_FIELD_COMPOSE_BUDGET_MS = 300;
+
+/**
+ * Coûts nets (relecture de vidage retranchée) de la composition et de l'agrandissement du
+ * champ lumineux, et verdict associé.
+ *
+ * ⛔ La soustraction n'est pas cosmétique : comme au correctif G-01 du 12/08 (voir
+ * `resumeDecodageFroid`), le chronomètre encadre l'opération PLUS un `getImageData(0,0,1,1)`
+ * qui vide le pipeline — sans ce vidage on mesure une mise en file, pas une peinture. Cette
+ * relecture coûte elle-même plusieurs millisecondes ; la garder dans le total suffit à faire
+ * basculer le verdict à elle seule.
+ *
+ * @param {{ compositionBrutMs: number, agrandissementBrutMs: number, relectureMs: number, sourceCount: number }} mesure
+ * @returns {{
+ *   compositionNetMs: number, agrandissementNetMs: number, totalNetMs: number,
+ *   tenu: boolean, budgetMs: number, verdict: string,
+ * }}
+ */
+export function resumeCompositionChampLumineux({ compositionBrutMs, agrandissementBrutMs, relectureMs, sourceCount }) {
+  for (const [nom, valeur] of /** @type {Array<[string, number]>} */ ([
+    ['compositionBrutMs', compositionBrutMs],
+    ['agrandissementBrutMs', agrandissementBrutMs],
+    ['relectureMs', relectureMs],
+  ])) {
+    if (!Number.isFinite(valeur)) throw new TypeError(`${nom} doit être une durée finie.`);
+    if (valeur < 0) throw new RangeError(`${nom} négatif n'est pas une mesure.`);
+  }
+  if (!Number.isInteger(sourceCount) || sourceCount < 0) {
+    throw new RangeError('sourceCount doit être un entier positif ou nul.');
+  }
+
+  const compositionNetMs = Math.max(0, compositionBrutMs - relectureMs);
+  const agrandissementNetMs = Math.max(0, agrandissementBrutMs - relectureMs);
+  const totalNetMs = compositionNetMs + agrandissementNetMs;
+
+  if (sourceCount === 0) {
+    return {
+      compositionNetMs,
+      agrandissementNetMs,
+      totalNetMs,
+      tenu: false,
+      budgetMs: LIGHT_FIELD_COMPOSE_BUDGET_MS,
+      verdict: 'Aucune source lue : la carte visée est absente ou vide, la mesure n\'a pas eu lieu.',
+    };
+  }
+
+  const tenu = totalNetMs < LIGHT_FIELD_COMPOSE_BUDGET_MS;
+  return {
+    compositionNetMs,
+    agrandissementNetMs,
+    totalNetMs,
+    tenu,
+    budgetMs: LIGHT_FIELD_COMPOSE_BUDGET_MS,
+    verdict: tenu
+      ? `${sourceCount} sources, ${totalNetMs.toFixed(1)} ms net < ${LIGHT_FIELD_COMPOSE_BUDGET_MS} ms : la composition tient.`
+      : `${sourceCount} sources, ${totalNetMs.toFixed(1)} ms net ≥ ${LIGHT_FIELD_COMPOSE_BUDGET_MS} ms : la composition NE tient PAS.`,
+  };
+}
+
+/**
+ * Lit une carte réellement publiée (même principe que la section 6bis, sans extrapolation),
+ * compose ses sources lumineuses à la résolution du masque, l'agrandit une fois, et
+ * chronomètre les deux séparément.
+ *
+ * ⚠ À lancer sur le poste MJ ou la tablette selon ce qu'on veut juger — cette sonde ne
+ * touche pas au chemin de rendu du produit et n'écrit aucun `LightLayer` : elle décide
+ * seulement s'il faut l'écrire.
+ */
+async function diagnosticChampLumineuxMasque() {
+  ecrire('Champ lumineux à la résolution du masque — chargement du catalogue…');
+
+  const reponseCatalogue = await fetch('maps/catalog.json');
+  if (!reponseCatalogue.ok) {
+    ecrire(`catalog.json illisible (${reponseCatalogue.status}) : la mesure n'a pas eu lieu.`);
+    return;
+  }
+  const catalogue = await reponseCatalogue.json();
+  const entree = (catalogue.maps ?? []).find(
+    (/** @type {any} */ m) => m.name === 'Village' || m.id === 'test_village_complet'
+  );
+  if (!entree) {
+    ecrire('Carte « Village » absente du catalogue publié : la mesure n\'a pas eu lieu, aucun chiffre inventé à la place.');
+    return;
+  }
+
+  const reponseScene = await fetch(entree.sceneUrl);
+  if (!reponseScene.ok) {
+    ecrire(`Scène du village illisible (${reponseScene.status}) : la mesure n'a pas eu lieu.`);
+    return;
+  }
+  const scene = await reponseScene.json();
+  const level = (scene.levels ?? []).find((/** @type {any} */ l) => String(l.id).endsWith('_00')) ?? scene.levels?.[0];
+  if (!level) {
+    ecrire('Aucun étage dans la scène du village : la mesure n\'a pas eu lieu.');
+    return;
+  }
+
+  const champ = champLumineuxEnEspaceMasque(level);
+  if (champ.sourceCount === 0) {
+    ecrire(`Étage « ${level.id} » : 0 source déclarée. La mesure n'a pas eu lieu — rien à composer.`);
+    return;
+  }
+
+  ecrire(
+    `${champ.sourceCount} sources trouvées sur « ${level.id} », masque ${champ.maskWidth}×${champ.maskHeight} px — chauffe…`
+  );
+
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = champ.maskWidth;
+  maskCanvas.height = champ.maskHeight;
+  const maskCtx = /** @type {CanvasRenderingContext2D} */ (maskCanvas.getContext('2d'));
+
+  const cible = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
+  cible.width = 640;
+  cible.height = 480;
+  const cibleCtx = /** @type {CanvasRenderingContext2D} */ (cible.getContext('2d'));
+
+  // Une composition : un dégradé radial additif par source, dans l'espace du masque.
+  function composer() {
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    maskCtx.globalCompositeOperation = 'lighter';
+    for (const d of champ.disques) {
+      const degrade = maskCtx.createRadialGradient(d.mx, d.my, 0, d.mx, d.my, Math.max(1, d.rayon));
+      degrade.addColorStop(0, 'rgba(255, 220, 168, 0.9)');
+      degrade.addColorStop(1, 'rgba(255, 220, 168, 0)');
+      maskCtx.fillStyle = degrade;
+      maskCtx.beginPath();
+      maskCtx.arc(d.mx, d.my, Math.max(1, d.rayon), 0, Math.PI * 2);
+      maskCtx.fill();
+    }
+    maskCtx.globalCompositeOperation = 'source-over';
+  }
+  // Un agrandissement : une seule fois, aux dimensions du viewport de mesure.
+  function agrandir() {
+    cibleCtx.clearRect(0, 0, cible.width, cible.height);
+    cibleCtx.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, 0, 0, cible.width, cible.height);
+  }
+
+  // Chauffe explicite, hors chronomètre : le premier tracé d'un canvas coûte plus cher que
+  // les suivants (piège n°3). Trois passes, comme au banc du sweep réel (section 6bis).
+  for (let i = 0; i < 3; i++) { composer(); agrandir(); }
+
+  // Coût de la relecture seule, sur un bitmap déjà chaud (technique du correctif G-01,
+  // reprise de `mesurerDecodageFroid`) : `performance.now()` autour d'une opération canvas
+  // seule mesure une mise en file, pas une peinture (piège n°1). On chronomètre donc
+  // l'opération SUIVIE d'un `getImageData(0,0,1,1)` qui vide le pipeline, et on isole ici le
+  // coût de cette relecture pour le retrancher plus bas.
+  const dummy = document.createElement('canvas');
+  dummy.width = 1;
+  dummy.height = 1;
+  const tr0 = performance.now();
+  cibleCtx.drawImage(dummy, 0, 0, cible.width, cible.height);
+  cibleCtx.getImageData(0, 0, 1, 1);
+  const relecture = performance.now() - tr0;
+
+  const tc0 = performance.now();
+  composer();
+  maskCtx.getImageData(0, 0, 1, 1);
+  const compositionBrut = performance.now() - tc0;
+
+  const ta0 = performance.now();
+  agrandir();
+  cibleCtx.getImageData(0, 0, 1, 1);
+  const agrandissementBrut = performance.now() - ta0;
+
+  // L'arithmétique du verdict vit dans `resumeCompositionChampLumineux`, pure et éprouvée
+  // sans navigateur : la soustraction de la relecture ne doit pas être un calcul en ligne
+  // dans une page que seul un test de navigateur pourrait regarder.
+  const resume = resumeCompositionChampLumineux({
+    compositionBrutMs: compositionBrut,
+    agrandissementBrutMs: agrandissementBrut,
+    relectureMs: relecture,
+    sourceCount: champ.sourceCount,
+  });
+
+  ecrire(
+    [
+      'Champ lumineux à la résolution du masque — M2',
+      '',
+      `Carte : ${entree.name} / étage « ${level.id} »`,
+      `Sources RÉELLEMENT lues : ${champ.sourceCount}   (aucune extrapolation)`,
+      `Masque : ${champ.maskWidth} × ${champ.maskHeight} px  (${level.widthCells} × ${level.heightCells} cases à ${FOG_MASK_PX_PER_CELL} px/case)`,
+      `Surface peinte (somme des disques, px² de masque) : ${Math.round(champ.surfaceTotale).toLocaleString('fr-FR')}`,
+      '',
+      'Chauffe : 3 passes de composition + agrandissement, hors chronomètre (piège n°3).',
+      '',
+      `Relecture seule (1×1, vidage de pipeline)     : ${arrondi(relecture, 2)} ms`,
+      `Composition à la résolution du masque — brut  : ${arrondi(compositionBrut, 2)} ms   net : ${arrondi(resume.compositionNetMs, 2)} ms`,
+      `Agrandissement au viewport (640×480)  — brut  : ${arrondi(agrandissementBrut, 2)} ms   net : ${arrondi(resume.agrandissementNetMs, 2)} ms`,
+      `Total net                                     : ${arrondi(resume.totalNetMs, 2)} ms   (budget ${resume.budgetMs} ms, R3-05)`,
+      '',
+      resume.verdict,
+      '',
+      '⚠ Fenêtre de mesure (piège n°4) : une SEULE composition et un SEUL agrandissement sont',
+      'chronométrés ici — cela établit le coût par image de cette opération précise, pas une',
+      'dérive sur la durée d\'une séance (voir section 4 pour la tenue thermique dans le temps).',
+      '',
+      '⚠ Ce que cette section NE mesure PAS :',
+      '  — l\'occlusion par les murs (les sweeps) : DÉJÀ mesurée section 10, 2,6 ms sous cast',
+      '    actif pour un budget de 300 ms. Le coût total d\'un éclairage réel serait',
+      '    sweep + composition, mais ce calcul ne se fait pas ici : lire les deux séparément.',
+      '  — le comportement de la tablette elle-même si cette page tourne ailleurs (mauvais monde).',
+    ].join('\n')
+  );
+}
+
 // --- 2ter. Journal cast et endurance : uniquement sur action explicite -----
 
 /** @param {string} id */
@@ -1465,39 +1741,46 @@ function brancher(id, action) {
   });
 }
 
-brancher('btn-env', diagnosticEnvironnement);
-brancher('btn-store', diagnosticStore);
-brancher('btn-cold-arm', armerDecodageFroid);
-brancher('btn-cold-measure', mesurerDecodageFroid);
-brancher('btn-endurance-start', demarrerJournalEndurance);
-brancher('btn-endurance-note', ajouterReleveEndurance);
-brancher('btn-fps', () => diagnosticImages(20000, 5000, 'Images par seconde (20 s)'));
-brancher('btn-thermique', () => diagnosticImages(300000, 30000, 'Tenue thermique (5 min)'));
-brancher('btn-firebase', diagnosticFirebase);
-brancher('btn-sweep', diagnosticSweep);
-brancher('btn-sweep-reel', diagnosticSweepReel);
-brancher('btn-video-capacite', diagnosticVideoCapacite);
-brancher('btn-video-lecture', diagnosticVideoLecture);
-brancher('btn-journal-lock', prendreVerrouEtPleinEcran);
-brancher('btn-journal-copier', copierJournal);
-brancher('btn-lumieres', diagnosticLumieres);
-brancher('btn-motifs', afficherMotifs);
-brancher('btn-motif-lisible', () => noterVerdictMotif('lisible'));
-brancher('btn-motif-illisible', () => noterVerdictMotif('ILLISIBLE'));
-brancher('btn-visee', bancDeVisee);
-brancher('btn-horloge', diagnosticHorlogeEtCanal);
+// Câblage effectif : gardé derrière `typeof document`, pour la même raison que `sortie` et
+// `canvas` plus haut — importer ce module depuis `tests/*.test.mjs` (sans DOM) pour éprouver
+// les fonctions pures de la section 16 ne doit pas faire planter le module à l'import. En
+// page réelle, `document` existe toujours : ce garde-fou ne change rien au comportement.
+if (typeof document !== 'undefined') {
+  brancher('btn-env', diagnosticEnvironnement);
+  brancher('btn-store', diagnosticStore);
+  brancher('btn-cold-arm', armerDecodageFroid);
+  brancher('btn-cold-measure', mesurerDecodageFroid);
+  brancher('btn-endurance-start', demarrerJournalEndurance);
+  brancher('btn-endurance-note', ajouterReleveEndurance);
+  brancher('btn-fps', () => diagnosticImages(20000, 5000, 'Images par seconde (20 s)'));
+  brancher('btn-thermique', () => diagnosticImages(300000, 30000, 'Tenue thermique (5 min)'));
+  brancher('btn-firebase', diagnosticFirebase);
+  brancher('btn-sweep', diagnosticSweep);
+  brancher('btn-sweep-reel', diagnosticSweepReel);
+  brancher('btn-video-capacite', diagnosticVideoCapacite);
+  brancher('btn-video-lecture', diagnosticVideoLecture);
+  brancher('btn-journal-lock', prendreVerrouEtPleinEcran);
+  brancher('btn-journal-copier', copierJournal);
+  brancher('btn-lumieres', diagnosticLumieres);
+  brancher('btn-motifs', afficherMotifs);
+  brancher('btn-motif-lisible', () => noterVerdictMotif('lisible'));
+  brancher('btn-motif-illisible', () => noterVerdictMotif('ILLISIBLE'));
+  brancher('btn-visee', bancDeVisee);
+  brancher('btn-horloge', diagnosticHorlogeEtCanal);
+  brancher('btn-lumieres-masque', diagnosticChampLumineuxMasque);
 
-for (const nom of ['Cartes', 'UVTT', 'Image', 'Pions', 'Handouts', 'Fog', 'Murs', 'Liaisons', 'Gabarits', 'Grille']) {
-  const bouton = document.getElementById(`btn-onglet-${nom.toLowerCase()}`);
-  bouton?.addEventListener('click', () => compterOnglet(nom));
+  for (const nom of ['Cartes', 'UVTT', 'Image', 'Pions', 'Handouts', 'Fog', 'Murs', 'Liaisons', 'Gabarits', 'Grille']) {
+    const bouton = document.getElementById(`btn-onglet-${nom.toLowerCase()}`);
+    bouton?.addEventListener('click', () => compterOnglet(nom));
+  }
+
+  brancherTemoinsCycleDeVie();
+
+  // Un journal interrompu par un rechargement d'onglet est repris, pas perdu.
+  if (enduranceJournal.restore()) {
+    ecrire(`Journal endurance repris après rechargement.\n\n${enduranceJournal.toText()}`);
+  }
+
+  const champConfig = /** @type {HTMLInputElement} */ (document.getElementById('config'));
+  if (localStorage.getItem(CLE_CONFIG)) champConfig.placeholder = 'Configuration déjà enregistrée sur cet appareil';
 }
-
-brancherTemoinsCycleDeVie();
-
-// Un journal interrompu par un rechargement d'onglet est repris, pas perdu.
-if (enduranceJournal.restore()) {
-  ecrire(`Journal endurance repris après rechargement.\n\n${enduranceJournal.toText()}`);
-}
-
-const champConfig = /** @type {HTMLInputElement} */ (document.getElementById('config'));
-if (localStorage.getItem(CLE_CONFIG)) champConfig.placeholder = 'Configuration déjà enregistrée sur cet appareil';

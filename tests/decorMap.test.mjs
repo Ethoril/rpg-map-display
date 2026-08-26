@@ -307,3 +307,24 @@ test('une image introuvable échoue clairement', async () => {
     /Image introuvable/
   );
 });
+
+test('cellDimensionsFromName : en hexagonal, une hauteur plus dense n’est PAS une incohérence', () => {
+  // La première carte de campagne du dépôt : 5320×3500 découpée en 38 colonnes × 28 rangées.
+  // ⭐ 3500/28 = 125 px/rangée contre 140 px/colonne — et c'est EXACTEMENT ce qu'on attend, le pas
+  // vertical d'une rangée pointe-en-haut valant `pxPerCell × √3/2` ≈ 121,2.
+  const hex = cellDimensionsFromName('ferme-isolee_38x28_hex.jpg', 5320, 3500);
+  assert.equal(hex?.widthCells, 38);
+  assert.equal(hex?.heightCells, 28);
+  assert.equal(hex?.pxPerCell, 140);
+  assert.deepEqual(
+    hex?.warnings,
+    [],
+    `un découpage hexagonal correct ne doit produire AUCUN avertissement. Reçu : ${JSON.stringify(hex?.warnings)}`
+  );
+
+  // ⛔ Et la vigilance ne doit pas disparaître pour autant : les MÊMES dimensions sans marqueur
+  // `_hex` restent une vraie incohérence, puisqu'en carré les deux densités doivent coïncider.
+  const carre = cellDimensionsFromName('ferme-isolee_38x28.jpg', 5320, 3500);
+  assert.equal(carre?.warnings.length, 1, 'en carré, 140 contre 125 reste une incohérence');
+  assert.match(carre?.warnings[0] ?? '', /incohérentes/);
+});

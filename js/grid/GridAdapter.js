@@ -21,9 +21,26 @@
  * @property {(cp: CellPoint) => MapPoint} mapFromCellPoint
  *   Unité de case fractionnaire → pixels carte. Applique `pxPerCell` ET l'offset issu de
  *   `map_origin`. Sert au rendu des murs, portails et lumières importés.
+ *   ⚠ Contrat ambigu, conservé pour ces seuls appelants (G-1) : `SquareGrid` y rend le
+ *   **coin** haut-gauche de la case, `HexGrid` en rend le **centre**. Ne jamais en déduire
+ *   une boîte englobante par différence de deux appels — voir `cellBounds`.
  *
  * @property {(p: MapPoint) => CellPoint} cellPointFromMap
  *   Réciproque. Sert à l'éditeur de murs du lot 2.
+ *
+ * @property {(cell: Cell) => MapPoint} cellCenter
+ *   Cellule → CENTRE de la case, en pixels carte. Sans ambiguïté par construction (G-1) :
+ *   contrairement à `mapFromCellPoint`, cette méthode rend toujours un centre, dans les
+ *   deux pavages.
+ *
+ * @property {(cp: CellPoint, sizeCells: number) => {x: number, y: number, width: number, height: number}} cellBounds
+ *   Boîte englobante d'un pion (ou de tout élément de `sizeCells` cases de côté) ancré à
+ *   `cp`, en pixels carte. `cp` est en unité de case fractionnaire, au même sens que
+ *   l'argument de `mapFromCellPoint` — coin haut-gauche en grille carrée, position du
+ *   centre en grille hexagonale. Calculée directement à partir de la géométrie de la case
+ *   et de sa taille, **jamais** par différence de deux appels à `mapFromCellPoint` : c'est
+ *   précisément cette différence qui rendait les pions hexagonaux faux selon la parité de
+ *   rangée (C-5, `docs/QUESTIONS-EN-ATTENTE.md`).
  *
  * @property {(cell: Cell) => Cell[]} neighbors
  *   Voisines adjacentes. 8 en carré (diagonales incluses), 6 en hexagone.

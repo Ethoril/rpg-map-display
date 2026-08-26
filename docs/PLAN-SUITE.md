@@ -32,7 +32,36 @@
 Aucune ne modifie le produit ; chacune conditionne une décision. C'est la doctrine du projet, et
 elle a déjà évité une migration de moteur pour 3 % de gain.
 
-### M1 — le coût réel du compositing du fog
+### ✅ M1 — RELEVÉE LE 18/08/2026, ET LE VERDICT EST BRUTAL
+
+Relevé du mainteneur sur la Tab S9 FE, vue joueurs, `testbig150`, `?probe=1`, pendant un pincement :
+
+| Image | Total | Fond | **Fog** |
+|---|---|---|---|
+| 11 | 3103 ms | 1131 ms | **1700,7 ms** |
+| 10 | 1963 ms | 0,0 ms | **1651,6 ms** |
+| 9 | 1624 ms | 0,2 ms | **1586,1 ms** |
+| 6 | 1875 ms | 0,3 ms | **1593,2 ms** |
+| 5 | 1865 ms | 0,3 ms | **1579,9 ms** |
+
+⭐ **Le fog est plat entre 1580 et 1700 ms, quel que soit le zoom.** C'est exactement la signature
+annoncée : une composition coûte en proportion de sa surface de **destination**, et cette surface est
+la carte entière. Pour un budget de 33 ms par image, c'est **~50 fois le budget**. Le défaut jumeau
+des pions avait été mesuré à 848 ms sur un poste de bureau ; la tablette paie le double.
+
+Le mainteneur confirme par ailleurs que **le village passe bien mieux** — cohérent, le coût suit la
+surface de la carte et non la complexité de la scène.
+
+⚠ **Un second coût, non anticipé** : le **fond** à 1131–1431 ms sur les images où il se redessine, 0
+sur les autres. C'est un problème **distinct** du fog, à instruire séparément — voir le chantier P,
+qui avait traité le décodage initial mais pas ce redessin.
+
+**Conséquence sur ce plan : la phase 2 n'est plus « souhaitable pour la mémoire », c'est la première
+chose à faire.** Il ne s'agit plus de 245 Mio retenus mais d'une carte injouable. Et le « petit lag
+résiduel au zoom », clos le 16/08 comme sans conséquence, avait cette cause — invisible sur les
+petites cartes, écrasante sur les grandes.
+
+### M1 — le protocole, conservé pour mémoire
 
 ⭐ **L'instrumentation existe déjà.** `FrameProbe` enregistre la durée **par couche**, et son tableau
 porte une colonne `background` et une colonne `fog` côte à côte, image par image
@@ -245,3 +274,84 @@ commit.
 ⚠ **Un test vert ne prouve rien tant qu'on n'a pas cassé le mécanisme qu'il prétend couvrir et vu le
 rouge.** Voir `.claude/skills/muter/SKILL.md` et ses sept familles de faux verts déjà rencontrées
 ici.
+
+---
+
+## 10. Signalé en séance réelle le 18/08/2026 — à instruire, non diagnostiqué
+
+Trois observations du mainteneur pendant le relevé M1. **Aucune n'est diagnostiquée** : elles sont
+consignées telles qu'observées, sans hypothèse.
+
+1. ✅ **« L'import a remplacé sans demander » — instruit le 19/08, ce n'est pas une régression.**
+   Les deux chemins d'import offrent **deux boutons explicites** : l'onglet Image propose « Ajouter
+   un étage » et « Remplacer l'étage courant » ; la bibliothèque de scènes propose « Charger » (qui
+   remplace la campagne entière, via `loadCampaign` + `scene.load`) et « Ajouter comme étage »
+   (additif, via `level.add`). Le produit ne **demande** rien parce qu'il **offre deux gestes**.
+
+   ⚠ **Mais la remarque reste juste, et c'est une question d'ergonomie, pas de mécanique.** Un
+   bouton qui remplace toute la campagne se présente comme son voisin additif, sans confirmation.
+   La règle du mainteneur — « rien ne se déplace dans le dos de personne » — plaide pour une
+   confirmation sur le geste destructeur. **Arbitrage à lui.**
+
+2. ✅ **« Le F5 sur la tablette » — cause identifiée le 19/08, et ce n'est pas une régression non
+   plus.** `js/app/player.js`, `estConnuDesJoueurs()` : un étage **sans masque de fog publié** n'est
+   pas « connu » des joueurs, donc **absent de leur sélecteur** (`js/ui/player/levelSelector.js` —
+   « un étage inconnu est ABSENT, pas grisé »).
+
+   Or `scene.load` apporte des étages **neufs, avec de nouveaux identifiants** : aucun masque, donc
+   inconnus. Là où `level.replace` — le chemin d'UX-13 — remplace la carte **à identifiant
+   constant**, l'étage garde son masque, reste connu, et la table le voit sans rien faire.
+
+   ⭐ **UX-13 fonctionne donc comme prévu, sur son chemin.** Le défaut vit sur le chemin de la
+   bibliothèque de scènes, que UX-13 ne couvrait pas — c'est la limitation structurelle qu'elle
+   avait été écrite pour contourner ailleurs.
+
+   ✅ **Tranché par le mainteneur le 19/08/2026 : « la table ne voit que les étages où elle est
+   allée. »** Le comportement actuel est donc **le bon**, et il n'y a rien à corriger. Un étage
+   fraîchement chargé reste invisible aux joueurs jusqu'à ce qu'un masque y soit publié — c'est-à-dire
+   jusqu'à ce que la table y soit réellement passée.
+
+   ⛔ **Ne pas publier de masque noir pour « réparer » ce symptôme.** Ce serait montrer à la table
+   l'existence d'un étage qu'elle n'a pas découvert, ce que cette décision refuse. Le F5 observé le
+   18/08 n'était pas un défaut : c'était la règle qui s'appliquait.
+3. **Les lignes de vue de `testbig150` paraissent absurdes.** La carte est documentée comme « une
+   carte de **mesure**, pas de campagne », avec 1338 murs générés : l'intuition du mainteneur — une
+   carte mal faite — est plausible, mais elle se vérifie plutôt qu'elle ne se croit. Ne pas conclure
+   à un défaut du sweep sans avoir regardé les données.
+
+⛔ **Ne pas empiler ces trois-là sur le chantier en cours.** Une tranche à la fois.
+
+---
+
+## 11. ✅ Le fog est clos — validé le 23/08/2026
+
+Relevé du mainteneur sur Tab S9 FE, vue joueurs, `testbig150`, pendant un pincement :
+
+| | Avant | Après |
+|---|---|---|
+| **Fog** | 1580–1700 ms | **max 1 ms**, 0–0,2 le plus souvent |
+| **Fond** | 1131–1431 ms | **max 0,5 ms** |
+| Total | 1123–3512 ms | **1–3 ms**, budget de 33 ms tenu ×10 |
+
+Et validé **à l'œil**, ce qu'aucune porte ne peut faire : « un léger crénelage qui n'est pas gênant ».
+
+⭐ **Le §1 annonçait deux coûts distincts ; il n'y en avait probablement qu'un.** Le fond s'est réparé
+sans être touché — hypothèse : sa perte de *backing store* était causée par la pression mémoire du
+tampon de fog. ⛔ **Ne pas ouvrir de chantier « fond » sans avoir observé un pic à quatre chiffres
+sur une séance longue** : il n'a peut-être jamais existé en propre.
+
+### ⛔ Résolution du masque : question tranchée, ne pas la rouvrir
+
+Passer `FOG_MASK_PX_PER_CELL` de 8 à 16 affinerait les bords. **Écarté le 23/08 par le mainteneur**,
+après devis : « l'état actuel est satisfaisant ».
+
+Ce que la mesure a établi, et qui reste vrai si la question revient un jour :
+
+- ⭐ **Le plafond n'est PAS un obstacle.** Le poids du masque suit le **périmètre** des zones
+  explorées, pas leur surface : doubler la résolution coûte **×2,2**, pas ×4. Extrapolé du chiffre
+  réel de 13,4 Kio, 16 px/case donnerait ~29 Kio contre un plafond de 50 Kio.
+- ⚠ **Le vrai coût est ailleurs** : 8 tests épinglent la valeur en dur — délibérément, un test qui
+  dérive son attendu de la constante testée est tautologique — et le **cahier des charges**, normatif,
+  la cite en quatre endroits. C'est une tranche, pas un réglage.
+- Changer la constante **invalide tous les masques persistés** : chaque étage repart non exploré.
+  Sans conséquence sur des données de test, à ne pas faire en cours de campagne.

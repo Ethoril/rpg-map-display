@@ -1,6 +1,40 @@
 // @ts-check
 
 /**
+ * Identifiant aléatoire au format UUID v4.
+ *
+ * ⛔ **`crypto.randomUUID` n'existe que dans un « contexte sécurisé »** — HTTPS ou `localhost`.
+ * Servi sur une IP de réseau local en clair, il est absent, et l'appel jetait
+ * `crypto.randomUUID is not a function` : la vue joueurs ne démarrait pas du tout. Constaté le
+ * 23/08/2026 en éprouvant une branche sur la tablette, le seul moyen de valider une tranche de
+ * rendu avant publication.
+ *
+ * ⭐ Ce n'est pas une dégradation : `crypto.getRandomValues`, lui, **est** exposé hors contexte
+ * sécurisé, et il porte la même qualité d'aléa. Le dernier repli sur `Math.random` ne sert que
+ * les environnements sans Web Crypto du tout — aucun navigateur cible aujourd'hui.
+ *
+ * ⚠ À n'employer que pour des identités et des clés d'idempotence, **jamais pour un secret** :
+ * un identifiant de pion, de client ou d'événement, comme les quatre appels d'origine.
+ *
+ * @returns {string}
+ */
+export function identifiantAleatoire() {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+
+  if (c && typeof c.getRandomValues === 'function') {
+    const o = c.getRandomValues(new Uint8Array(16));
+    o[6] = (o[6] & 0x0f) | 0x40; // version 4
+    o[8] = (o[8] & 0x3f) | 0x80; // variante RFC 4122
+    const h = Array.from(o, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+
+  const r = () => Math.floor(Math.random() * 0x10000).toString(16).padStart(4, '0');
+  return `${r()}${r()}-${r()}-4${r().slice(1)}-a${r().slice(1)}-${r()}${r()}${r()}`;
+}
+
+/**
  * @typedef {import('./types.js').Campaign} Campaign
  * @typedef {import('./types.js').Level} Level
  * @typedef {import('./types.js').Token} Token

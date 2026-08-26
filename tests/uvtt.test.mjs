@@ -166,3 +166,127 @@ test('universalité : un fichier entièrement exploitable n’émet aucun averti
   const pertes = warnings.filter((w) => w.includes('ignoré') || w.includes('replié'));
   assert.deepEqual(pertes, [], `avertissements inattendus : ${warnings.join(' | ')}`);
 });
+
+test('G-2 — un map_origin non nul est signalé bruyamment, et dit quoi vérifier', () => {
+  // ⭐ Le critère n'est pas « un avertissement existe » mais « il dit quoi faire ». Un import qui
+  // constate sans orienter laisse le mainteneur devant une carte décalée sans piste.
+  const avecOrigine = parseUvtt({
+    resolution: { map_origin: { x: 3, y: 2 }, map_size: { x: 10, y: 8 }, pixels_per_grid: 100 },
+    line_of_sight: [[{ x: 1, y: 1 }, { x: 5, y: 5 }]],
+  });
+
+  const avert = avecOrigine.warnings.find((w) => /map_origin/.test(w));
+  assert.ok(avert, `un map_origin non nul doit avertir. Reçu : ${JSON.stringify(avecOrigine.warnings)}`);
+
+  // Il nomme les valeurs en cause, le sens appliqué, et le symptôme à guetter.
+  assert.match(avert, /3, 2/, 'les valeurs de l’origine doivent apparaître');
+  assert.match(avert, /AJOUTÉE/, 'le sens appliqué doit être nommé, pas sous-entendu');
+  assert.match(avert, /SOUSTRAIT/, 'la convention concurrente doit être nommée');
+  assert.match(avert, /décalés du double/, 'le symptôme observable doit être décrit');
+
+  // ⛔ Et le silence reste la règle quand il n'y a rien à dire : une origine nulle — le cas de
+  // TOUS les exports réels du dépôt — ne doit produire aucun bruit, sinon l'avertissement se
+  // banalise et personne ne le lit le jour où il compte.
+  const sansOrigine = parseUvtt({
+    resolution: { map_origin: { x: 0, y: 0 }, map_size: { x: 10, y: 8 }, pixels_per_grid: 100 },
+    line_of_sight: [[{ x: 1, y: 1 }, { x: 5, y: 5 }]],
+  });
+  assert.equal(
+    sansOrigine.warnings.find((w) => /map_origin/.test(w)),
+    undefined,
+    `une origine nulle ne doit produire aucun avertissement. Reçu : ${JSON.stringify(sansOrigine.warnings)}`
+  );
+});
+
+// ── Bornes de ressources ────────────────────────────────────────────────────────────────────────
+
+test('bornes — ⭐ le corpus RÉEL passe entier, y compris son pire cas', () => {
+  // ⭐ **C'est le test qui compte le plus de cette tranche, et il protège dans le sens qu'on
+  // oublie.** Vérifier qu'un plafond refuse l'absurde est facile ; ce qui casse une séance, c'est
+  // un plafond descendu sous le réel « pour être prudent ». `testbig150` — 103,8 Mpx, 4 615 cases,
+  // 1 338 polylignes, 2 676 sommets, 141 portes, 185 lumières — doit passer, aujourd'hui et après
+  // n'importe quel resserrage futur.
+  const cartes = fs
+    .readdirSync('maps')
+    .filter((n) => /\.(dd2vtt|uvtt|df2vtt)$/i.test(n));
+  assert.ok(cartes.length >= 5, `le corpus a fondu : ${cartes.length} carte(s) trouvée(s)`);
+
+  for (const nom of cartes) {
+    assert.doesNotThrow(
+      () => parseUvtt(fs.readFileSync(path.join('maps', nom), 'utf-8')),
+      `« ${nom} » est une carte réelle du dépôt : un plafond qui la refuse est un plafond faux`
+    );
+  }
+});
+
+test('bornes — chaque plafond refuse ce qui le dépasse, et dit lequel', () => {
+  const base = { map_size: { x: 10, y: 10 }, pixels_per_grid: 100 };
+
+  // Image estimée : 3000×3000 cases à 100 px/case = 90 000 Mpx.
+  assert.throws(
+    () => parseUvtt({ resolution: { ...base, map_size: { x: 3000, y: 3000 } } }),
+    /Image trop grande/,
+    'une image démesurée doit être refusée AVANT tout décodage'
+  );
+
+  // Cases : 600×600 = 360 000, au-delà de 250 000 — mais à 1 px/case pour ne pas déclencher
+  // d'abord le plafond d'image. ⭐ Deux plafonds distincts doivent rester distinguables : un seul
+  // message pour deux causes rendrait le diagnostic impossible.
+  assert.throws(
+    () => parseUvtt({ resolution: { map_size: { x: 600, y: 600 }, pixels_per_grid: 1 } }),
+    /Carte trop vaste/,
+    'un nombre de cases démesuré doit être refusé, et nommé comme tel'
+  );
+
+  const poly = () => [{ x: 0, y: 0 }, { x: 1, y: 1 }];
+  assert.throws(
+    () => parseUvtt({ resolution: base, line_of_sight: Array.from({ length: 50001 }, poly) }),
+    /Trop de polylignes/
+  );
+  assert.throws(
+    () =>
+      parseUvtt({
+        resolution: base,
+        line_of_sight: [Array.from({ length: 200001 }, (_, i) => ({ x: i, y: i }))],
+      }),
+    /Trop de sommets/
+  );
+  assert.throws(
+    () =>
+      parseUvtt({
+        resolution: base,
+        portals: Array.from({ length: 10001 }, () => ({ bounds: poly() })),
+      }),
+    /Trop de portes/
+  );
+  assert.throws(
+    () =>
+      parseUvtt({
+        resolution: base,
+        lights: Array.from({ length: 10001 }, () => ({ position: { x: 1, y: 1 }, range: 1 })),
+      }),
+    /Trop de lumières/
+  );
+});
+
+test('bornes — NaN et Infinity sont rejetés, là où `typeof` les laissait passer', () => {
+  // ⛔ `typeof NaN === 'number'` : l'ancien contrôle acceptait NaN et Infinity. Un NaN traverse
+  // tout sans rien casser — toute comparaison avec lui est fausse, donc un segment devient
+  // invisible au sweep sans la moindre erreur — puis ressort en `null` à la sérialisation.
+  const res = parseUvtt({
+    resolution: { map_size: { x: 10, y: 10 }, pixels_per_grid: 100 },
+    line_of_sight: [
+      [{ x: 0, y: 0 }, { x: NaN, y: 2 }, { x: 3, y: Infinity }, { x: 4, y: 4 }],
+    ],
+  });
+
+  const sommets = res.walls.flat();
+  assert.equal(sommets.length, 2, 'seuls les deux sommets finis doivent survivre');
+  for (const s of sommets) {
+    assert.ok(Number.isFinite(s.cellX) && Number.isFinite(s.cellY), `sommet non fini : ${JSON.stringify(s)}`);
+  }
+  assert.ok(
+    res.warnings.some((w) => /point\(s\) de mur ignoré/.test(w)),
+    'le rejet doit être compté et dit, jamais silencieux'
+  );
+});
