@@ -570,8 +570,8 @@ Du fond vers la surface. Ordre figé : il détermine la lisibilité à table.
 | 8 | `templates` gabarits de zone d'effet | `templates` |
 | 9 | `tokens` pions + badges | `tokens` |
 | 10 | `fog` masque de fog ← **au-dessus des pions** | `fog` |
-| 11 | `measure` mesure de distance — MJ local | — |
-| 12 | — | `feedback` ⚠ **au-dessus du fog**, voir ci-dessous |
+| 11 | — | `feedback` ⚠ **au-dessus du fog**, voir ci-dessous |
+| 12 | `measure` mesure de distance — MJ local | — |
 | 13 | `pings` marqueur « regarde ici », transitoire | `pings` |
 | 14 | (DOM) overlays : révélation d'image, sélecteur d'étage | (DOM) |
 
@@ -586,6 +586,12 @@ explorée.
 > premiers sont au manifeste §1 depuis les lots 2 à 4. L'ordre relatif de ce qui y figurait était
 > juste — c'était une **omission**, pas une erreur d'ordre. Rétabli en lisant les deux piles
 > réellement montées, `gm.js` et `player.js`.
+
+⛔ **La source de vérité de cet ordre est `CANVAS_LAYER_ORDER` dans `js/render/stage.js`**, pas le
+point d'appel : `renderLayerStack` parcourt cette liste et **jamais** les clés qu'on lui passe. Une
+couche branchée dans `gm.js` mais absente de la liste n'est jamais appelée, **en silence** — payé le
+26/08/2026 avec `light`, que ni le typage ni la porte n'ont vu. Le test d'architecture n°9 le garde
+désormais.
 
 `fogLayer` **au-dessus** de `tokens` : c'est ce qui garantit mécaniquement l'interdiction
 n°3 des conventions — un pion en zone non visible est masqué par le fog, pas par une

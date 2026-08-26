@@ -5,7 +5,14 @@ import assert from 'node:assert/strict';
 
 import { LightLayer, collectLightSources, buildLightSignature } from '../js/render/layers/light.js';
 import { createLevel, createToken } from '../js/core/schema.js';
-import { FOG_MASK_PX_PER_CELL } from '../js/core/constants.js';
+import {
+  FOG_MASK_PX_PER_CELL,
+  LIGHT_GM_DARKNESS_RATIO,
+  FOG_VEIL_GM_UNEXPLORED,
+  FOG_VEIL_GM_EXPLORED,
+  FOG_VEIL_PLAYER_UNEXPLORED,
+  FOG_VEIL_PLAYER_EXPLORED,
+} from '../js/core/constants.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock de Canvas 2D — volontairement plus mince que celui de `lightField.test.mjs`.
@@ -86,12 +93,19 @@ function createMockCanvas(width, height) {
     /** @type {any} */
     fillStyle: '#000000',
     globalCompositeOperation: 'source-over',
-    /** @type {string[]} */
+    // ⚠ `globalAlpha` n'est pas décoratif ici : c'est LUI qui porte l'atténuation de la vue MJ.
+    // Un mock qui l'ignorerait rendrait le test n°12 vert quoi qu'il arrive.
+    globalAlpha: 1,
+    /** @type {any[]} */
     _pile: [],
     canvas: /** @type {any} */ (null),
 
-    save() { this._pile.push(this.globalCompositeOperation); },
-    restore() { this.globalCompositeOperation = this._pile.pop() ?? 'source-over'; },
+    save() { this._pile.push({ op: this.globalCompositeOperation, alpha: this.globalAlpha }); },
+    restore() {
+      const etat = this._pile.pop() ?? { op: 'source-over', alpha: 1 };
+      this.globalCompositeOperation = etat.op;
+      this.globalAlpha = etat.alpha;
+    },
 
     /** @param {number} x @param {number} y @param {number} w @param {number} h */
     clearRect(x, y, w, h) {
@@ -138,7 +152,7 @@ function createMockCanvas(width, height) {
           const srcCol = Math.min(src.width - 1, (sx + ((col - dx) / dw) * sw) | 0);
           const srcLigne = Math.min(src.height - 1, (sy + ((ligne - dy) / dh) * sh) | 0);
           const srcIndex = (srcLigne * src.width + srcCol) * 4;
-          const alpha = src.pixels[srcIndex + 3] / 255;
+          const alpha = (src.pixels[srcIndex + 3] / 255) * this.globalAlpha;
           if (alpha <= 0 && mode !== 'multiply') continue;
           fusionner(
             (ligne * width + col) * 4,
@@ -445,4 +459,74 @@ test('11. Changer d’étage refabrique le champ à la bonne taille', () => {
   assert.equal(champDe(couche).maskHeight, 20 * FOG_MASK_PX_PER_CELL);
   // Le tampon dérivé de l'ancien champ ne doit pas survivre à ce changement.
   assert.equal(couche._modulationRevision, -1);
+});
+
+test('12. ⭐ La vue MJ est assombrie DEUX FOIS MOINS que la table — décision du 26/08', () => {
+  // Mesuré le 26/08 sur `manoir-rdc` — ambiante nulle, zéro source déclarée — la modulation
+  // est entièrement noire et la carte disparaît. La couche étant SOUS le fog, le mainteneur
+  // perdrait le décor que le voile partiel lui laisse voir pour mener la partie.
+  //
+  // ⭐ Le rapport n'est pas choisi au goût : c'est celui que le fog applique déjà dans ses
+  // DEUX états depuis L-04 — 0,5 contre 1 pour le non-exploré, 0,25 contre 0,5 pour
+  // l'exploré. La lumière le reprend au lieu d'en inventer un second.
+  assert.equal(LIGHT_GM_DARKNESS_RATIO, FOG_VEIL_GM_UNEXPLORED / FOG_VEIL_PLAYER_UNEXPLORED);
+  assert.equal(LIGHT_GM_DARKNESS_RATIO, FOG_VEIL_GM_EXPLORED / FOG_VEIL_PLAYER_EXPLORED);
+
+  const nuit = etage({ ambient: { level: 0, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, nuit, []);
+
+  /** @param {'gm'|'players'} role */
+  const peindreSurGris = (role) => {
+    const ctx = createMockCanvas(1000, 1000)._ctx;
+    ctx.fillStyle = 'rgba(200, 200, 200, 1)';
+    ctx.fillRect(0, 0, 1000, 1000);
+    couche.render(ctx, ADAPTATEUR, nuit, { role, mode: 'play' });
+    return pixelAu(ctx, 500, 500).red;
+  };
+
+  const table = peindreSurGris('players');
+  const mj = peindreSurGris('gm');
+
+  assert.equal(table, 0, 'la table voit le noir : c’est ce qu’elle DOIT voir');
+  // 200 × 0,5 = 100 : le MJ garde la moitié de son décor.
+  assert.ok(Math.abs(mj - 100) < 1, `le MJ doit garder la moitié du décor, obtenu ${mj}`);
+  assert.ok(mj > table, '⛔ le MJ ne doit jamais être aussi aveugle que la table');
+
+  // Le même rapport s'applique au chemin du fond animé — sinon le MJ serait aveugle sur une
+  // carte animée alors qu'il voit sur une carte fixe.
+  const voileMj = createMockCanvas(1000, 1000)._ctx;
+  couche.render(voileMj, ADAPTATEUR, nuit, { role: 'gm', mode: 'play', suppressed: true });
+  const voileTable = createMockCanvas(1000, 1000)._ctx;
+  couche.render(voileTable, ADAPTATEUR, nuit, { role: 'players', suppressed: true });
+  assert.ok(
+    pixelAu(voileMj, 500, 500).alpha < pixelAu(voileTable, 500, 500).alpha - 100,
+    'le voile MJ doit être nettement moins couvrant que celui de la table'
+  );
+});
+
+test('13. ⛔ Une carte à l’éclairage CUIT ignore la lumière — 5 exports réels sur 6', () => {
+  // `baked_lighting` est vrai sur 5 des 6 exports UVTT du dépôt : Dungeon Alchemist cuit la
+  // lumière dans l'image. La remoduler l'assombrirait deux fois. Décision du 26/08.
+  const cuite = etage({ ambient: { level: 0, baked: true }, lights: [] });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, cuite, []);
+
+  for (const role of /** @type {const} */ (['gm', 'players'])) {
+    const ctx = createMockCanvas(1000, 1000)._ctx;
+    ctx.fillStyle = 'rgba(200, 200, 200, 1)';
+    ctx.fillRect(0, 0, 1000, 1000);
+    ctx.journal.length = 0;
+
+    assert.equal(couche.render(ctx, ADAPTATEUR, cuite, { role, mode: 'play' }), false);
+    assert.equal(ctx.journal.length, 0, `⛔ rien ne doit être peint (${role})`);
+    assert.equal(pixelAu(ctx, 500, 500).red, 200, 'le décor cuit sort intact');
+  }
+
+  // ⭐ La mutation qui compte : sans cette garde, `baked` forçait l'ambiante à 1, le champ
+  // devenait uniformément blanc et le `multiply` rendait le décor inchangé — donc le test
+  // ci-dessus passait quand même, mais en payant la composition et un balayage plein écran
+  // à chaque image pour rien. Le journal vide est ce qui distingue les deux.
+  assert.equal(couche.render(createMockCanvas(10, 10)._ctx, ADAPTATEUR, cuite, { role: 'players', suppressed: true }), false,
+    'même le chemin du fond animé se tait sur une carte cuite');
 });

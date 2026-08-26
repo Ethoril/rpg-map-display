@@ -1,5 +1,6 @@
 // @ts-check
 
+import { LIGHT_GM_DARKNESS_RATIO } from '../../core/constants.js';
 import { LightField, cappedLightRange } from '../../vision/lightField.js';
 
 /** @typedef {import('../../core/types.js').Level} Level */
@@ -354,6 +355,16 @@ export class LightLayer {
   render(ctx, adaptateur, level, options = {}) {
     if (!ctx || !adaptateur || !level) return false;
 
+    // ⛔ **Une carte à l'éclairage cuit ignore la lumière et s'en remet au fog.** Décision du
+    // mainteneur du 26/08/2026, et ce n'est pas un pis-aller : l'image porte déjà sa lumière
+    // peinte, la remoduler l'assombrirait deux fois.
+    //
+    // ⚠ **Conséquence à connaître** : `baked_lighting` est vrai sur 5 des 6 exports UVTT réels
+    // du dépôt — Dungeon Alchemist cuit par défaut. Sur ces cartes, TOUT le chantier Z est
+    // inerte, volet tactique compris. Il ne s'anime que sur des cartes exportées sans cuisson,
+    // comme `manoir-rdc` (format 0.3). Voir §7 du chantier.
+    if (level.ambient?.baked) return false;
+
     // ⭐ Décision §4.5 : à plat en « Préparer », éclairé en « Jouer ». Poser des murs dans une
     // cave non éclairée ne doit pas se faire à l'aveugle. La vue joueurs, elle, est TOUJOURS
     // éclairée — elle n'a pas de mode.
@@ -371,12 +382,18 @@ export class LightLayer {
     const hauteurCarte = Math.ceil(coinBas.y);
     if (largeurCarte <= 0 || hauteurCarte <= 0) return false;
 
+    // ⭐ Le MJ est assombri DEUX FOIS MOINS que la table — le rapport que le fog applique déjà
+    // dans ses deux états depuis L-04. Sans cela, un donjon sans source rendrait sa vue
+    // entièrement noire et il ne pourrait plus mener la partie. La table, elle, voit le noir.
+    const attenuation = role === 'gm' ? LIGHT_GM_DARKNESS_RATIO : 1;
+
     if (options.suppressed) {
       // Voile : noir, d'opacité complémentaire à l'éclairement. `destination-out` retire du
       // noir opaque exactement ce que le champ apporte de lumière.
       const voile = this._construireVoile(ctx);
       if (!voile) return false;
       ctx.save();
+      ctx.globalAlpha = attenuation;
       ctx.globalCompositeOperation = 'source-over';
       ctx.drawImage(voile, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
       ctx.restore();
@@ -387,6 +404,7 @@ export class LightLayer {
     if (!modulation) return false;
 
     ctx.save();
+    ctx.globalAlpha = attenuation;
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(modulation, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
     ctx.restore();
