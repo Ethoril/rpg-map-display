@@ -382,3 +382,37 @@ recommandé — interdit toute validation locale. `localhost` est à remettre **
 
 ⭐ **La leçon, la même que celle de la carte hexagonale quatre jours plus tôt : ce qui n'a jamais
 servi ne marche pas.**
+
+---
+
+## ⛔ 26 août 2026 — reprise planifiée : FILE VIDE, rien à faire, arrêt immédiat
+
+Reprise sans contexte frais, `rpg-map-display-boucle-autonome`. `git status` propre en entrée —
+aucun travail non relu en attente.
+
+**Constat.** Le chantier du 18–23/08 (fog, G-1, G-2, bornes d'import, plus les trois correctifs
+hexagonaux) est **entièrement fusionné sur `main`** (`7d3948a`), avec un correctif CI derrière
+(`fde5423` — le test des bornes assertait la présence de cartes gitignorées, corrigé le jour même
+par le mainteneur avant son départ). `git merge-base --is-ancestor autonome/2026-08 main` confirme
+qu'aucun commit de la branche n'est orphelin. **CI verte sur `main`** (`gh run list` :
+`32974673865`, succès, 2026-08-26T13:31Z). `autonome/2026-08` a été rattrapée sur `main` par
+fast-forward (`fde5423`) pour repartir d'un état identique.
+
+**Le fog est validé** (entrée du 23/08 ci-dessus) — le mainteneur l'a regardé, mesuré, accepté.
+
+**`CHANTIER-AUTONOME.md` porte l'en-tête « 25 août au 8 septembre 2026 » mais date du 18/08** :
+son §2 liste les quatre tranches déjà livrées et fusionnées. Aucun nouvel élément n'a été ajouté à
+la file pour cette fenêtre d'absence. `docs/ETAT.md` (table « Suite produit », 12/08) et
+`docs/QUESTIONS-EN-ATTENTE.md` (16/08) n'ont pas bougé non plus ; tout ce qu'ils listent encore
+(C-1 à C-8, D-1 à D-4) est explicitement une **décision produit**, hors file par construction
+(charte §2 : « toute décision produit … appartient au mainteneur »).
+
+⛔ **Donc : file vide. Conformément à la charte §3, arrêt immédiat — aucun travail inventé.**
+
+### Ce qui attend, intact
+
+Rien de nouveau par rapport au 23/08 : le modèle de lumière, le sens de `map_origin`, le fog
+(déjà validé), les seuils de tuilage, et tout `C-1`…`C-8` / `D-1`…`D-4` de
+`QUESTIONS-EN-ATTENTE.md`. Si le mainteneur souhaite que la file autonome reprenne pendant son
+absence, il faut y déposer une tranche vérifiable sans œil humain (charte §2) — rien de tel
+n'existe aujourd'hui dans les documents normatifs.
