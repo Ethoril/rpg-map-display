@@ -89,9 +89,10 @@ export function validateTokenCatalog(obj) {
       errors.push(`${prefix} : speedCells doit être un nombre >= 1`);
     }
 
-    if (typeof entry.visionBright !== 'number' || entry.visionBright < 0) {
-      errors.push(`${prefix} : visionBright doit être un nombre >= 0`);
-    }
+    // ⛔ `visionBright` n'est plus validé, et son absence comme sa présence sont toutes deux
+    // acceptées — chantier Z, 26/08/2026. Les catalogues déjà sur disque en portent un ; le
+    // refuser casserait la bibliothèque de pions du mainteneur pour un champ que le moteur
+    // n'a jamais lu.
 
     if (typeof entry.visionDim !== 'number' || entry.visionDim < 0) {
       errors.push(`${prefix} : visionDim doit être un nombre >= 0`);
@@ -220,7 +221,6 @@ export function createTokenFromLibraryEntry(entry, options) {
     borderColor: entry.borderColor,
     label: entry.name,
     hidden: options.hidden ?? false,
-    visionBright: entry.visionBright,
     visionDim: entry.visionDim,
     emitsLight: entry.emitsLight ? { ...entry.emitsLight } : null,
     speedCells: entry.speedCells,

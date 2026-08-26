@@ -256,7 +256,7 @@ function afficherTokens(tokens) {
     metadata.style.cssText = 'opacity:.7;font-size:.85em';
     metadata.textContent =
       `${t.id} · ${t.kind === 'pc' ? 'PJ' : 'PNJ'} · taille ${t.sizeCells} · ` +
-      `vitesse ${t.speedCells} · vision ${t.visionBright}/${t.visionDim} · ${maxHpStr}`;
+      `vitesse ${t.speedCells} · vision ${t.visionDim} · ${maxHpStr}`;
     tdInfo.append(name, document.createElement('br'), metadata);
 
     const tdActions = document.createElement('td');
@@ -614,7 +614,6 @@ if (tokenMakerMount) {
           kind: token.kind,
           sizeCells: token.sizeCells,
           speedCells: token.speedCells,
-          visionBright: token.visionBright,
           visionDim: token.visionDim,
           emitsLight: token.emitsLight,
           borderColor: token.borderColor,

@@ -8,6 +8,7 @@ import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import { FogLayer, isAmbientLit } from '../js/render/layers/fogLayer.js';
 import { gridFor } from '../js/grid/index.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
+import { validateTokenCatalog, createTokenFromLibraryEntry } from '../js/import/tokenCatalog.js';
 import * as store from '../js/state/store.js';
 
 test('Lumière R3 : ambiante et torche passent par les mutations store/réseau validées', () => {
@@ -173,4 +174,59 @@ test('MESURE R3 — testbig150, six PJ et huit sources restent un profil exécut
   console.log(`[R3] testbig150 — 6 PJ + 8 sources (+3 torches) : ${elapsed.toFixed(2)} ms, ${fogLayer.getVisiblePolygons().length} polygones`);
   assert.ok(Number.isFinite(elapsed));
   assert.equal(fogLayer.getVisiblePolygons().length, 17);
+});
+
+test('⭐ Chantier Z — `visionBright` est retiré du modèle, mais une campagne qui en porte un est ACCEPTÉE', () => {
+  // ⛔ Le moteur n'a jamais lu qu'un seul rayon de vision. Décision du mainteneur du
+  // 26/08/2026 : il n'y en aura qu'un. Dans une zone non éclairée un pion voit jusqu'à
+  // `visionDim` ; dans une zone éclairée, jusqu'à sa ligne de vue. `visionBright` sort donc
+  // du modèle exécutable — même profil que `settings.ambientLevel` (§12 q.4) et
+  // `ambient.color` (UX-07).
+  //
+  // ⚠ **Mais refuser une campagne enregistrée serait une régression bien plus chère que le
+  // défaut corrigé.** C'est ce que ce test protège.
+
+  // 1. La fabrique ne le pose plus.
+  const neuf = createToken({ id: 'pj', levelId: 'rdc' });
+  assert.equal('visionBright' in neuf, false, 'un pion neuf ne porte plus le champ');
+  assert.equal(neuf.visionDim, 12, 'le rayon unique garde sa valeur par défaut');
+
+  // 2. Une campagne ANCIENNE, qui en porte un, est acceptée telle quelle.
+  const ancienne = createCampaign({
+    levels: [createLevel({ id: 'rdc' })],
+    tokens: [/** @type {any} */ ({ ...createToken({ id: 'vieux', levelId: 'rdc' }), visionBright: 6 })],
+  });
+  const erreurs = validateCampaign(ancienne);
+  assert.deepEqual(erreurs, [], `⛔ une campagne enregistrée ne doit JAMAIS être refusée : ${erreurs.join(' | ')}`);
+
+  // 3. Et elle traverse sans être touchée ni relue — c'est exactement ce que fait déjà
+  //    `ambient.color` depuis UX-07, et on ne veut pas de deux comportements différents.
+  assert.equal(/** @type {any} */ (ancienne.tokens[0]).visionBright, 6);
+
+  // 4. ⭐ La mutation qui compte : remettre `!Number.isFinite(token.visionBright)` dans la
+  //    validation ferait rougir le point 2 — un pion neuf n'a plus le champ, donc toute
+  //    campagne fraîche serait refusée. C'est le sens de la garde.
+  const fraiche = createCampaign({
+    levels: [createLevel({ id: 'rdc' })],
+    tokens: [createToken({ id: 'neuf', levelId: 'rdc' })],
+  });
+  assert.deepEqual(validateCampaign(fraiche), [], 'une campagne SANS le champ doit passer');
+});
+
+test('⭐ Chantier Z — le catalogue de pions accepte un `visionBright` résiduel sur disque', () => {
+  // Les catalogues déjà écrits en portent un ; le refuser casserait la bibliothèque de pions
+  // du mainteneur pour un champ que le moteur n'a jamais lu.
+  const entree = {
+    id: 'gobelin', name: 'Gobelin', imageUrl: 'maps/tokens/gob.webp',
+    kind: 'npc', sizeCells: 1, speedCells: 3, visionDim: 10,
+    emitsLight: null, borderColor: '#e74c3c', maxHp: 7,
+    visionBright: 5,
+  };
+  const errors = validateTokenCatalog({ version: 1, tokens: [entree] });
+  assert.deepEqual(errors, [], '⛔ un champ résiduel ne doit produire AUCUNE erreur');
+
+  // Et la projection vers un pion ne le fait pas revivre.
+  const pion = createTokenFromLibraryEntry(/** @type {any} */ (entree), { levelId: 'rdc', cell: { a: 0, b: 0 } });
+  assert.equal('visionBright' in pion, false, 'la projection ne ressuscite pas le champ');
+  assert.equal(pion.visionDim, 10);
 });

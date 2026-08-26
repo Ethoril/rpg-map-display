@@ -75,10 +75,10 @@ export function createTokenMaker(container, options = {}) {
         <label for="token-speed-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vitesse (cases) :</label>
         <input type="number" id="token-speed-cells" min="1" max="30" value="3" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-vision-bright" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision claire :</label>
-        <input type="number" id="token-vision-bright" min="0" max="60" value="5" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
-
-        <label for="token-vision-dim" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision faible :</label>
+        <!-- ⛔ « Vision claire » retirée le 26/08/2026 (chantier Z) : le moteur n'a jamais lu
+             qu'un seul rayon, et il n'y en aura qu'un. Le champ restant dit donc ce qu'il est —
+             la portée DANS LE NOIR. Dans une zone éclairée, un pion voit jusqu'à sa ligne de vue. -->
+        <label for="token-vision-dim" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision dans le noir :</label>
         <input type="number" id="token-vision-dim" min="0" max="60" value="10" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-max-hp" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">PV max :</label>
@@ -115,7 +115,6 @@ export function createTokenMaker(container, options = {}) {
   const colorInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-border-color'));
   const sizeCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-size-cells'));
   const speedCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-speed-cells'));
-  const visionBrightInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-vision-bright'));
   const visionDimInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-vision-dim'));
   const maxHpInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-max-hp'));
   const labelInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-label'));
@@ -475,7 +474,6 @@ export function createTokenMaker(container, options = {}) {
     const explicitId = idInput?.value.trim();
     const label = labelInput.value.trim() || 'Pion';
     const tokenId = explicitId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || identifiantAleatoire();
-    const visionBright = Math.max(0, parseInt(visionBrightInput?.value, 10) || 5);
     const visionDim = Math.max(0, parseInt(visionDimInput?.value, 10) || 10);
     const rawMaxHp = maxHpInput?.value.trim();
     const maxHp = rawMaxHp && rawMaxHp !== '' ? Math.max(1, parseInt(rawMaxHp, 10) || 1) : null;
@@ -511,7 +509,6 @@ export function createTokenMaker(container, options = {}) {
       borderColor,
       label,
       hidden: false,
-      visionBright,
       visionDim,
       hp,
       emitsLight: null,
@@ -557,7 +554,6 @@ export function createTokenMaker(container, options = {}) {
     colorInput.value = t.borderColor || '#e74c3c';
     sizeCellsInput.value = String(t.sizeCells ?? 1);
     speedCellsInput.value = String(t.speedCells ?? 3);
-    if (visionBrightInput) visionBrightInput.value = String(t.visionBright ?? 5);
     if (visionDimInput) visionDimInput.value = String(t.visionDim ?? 10);
     if (maxHpInput) maxHpInput.value = typeof t.maxHp === 'number' && t.maxHp >= 1 ? String(t.maxHp) : '';
     if (canonicalUrlInput) {
@@ -592,7 +588,6 @@ export function createTokenMaker(container, options = {}) {
     colorInput.value = '#e74c3c';
     sizeCellsInput.value = '1';
     speedCellsInput.value = '3';
-    if (visionBrightInput) visionBrightInput.value = '5';
     if (visionDimInput) visionDimInput.value = '10';
     if (maxHpInput) maxHpInput.value = '';
     if (canonicalUrlInput) canonicalUrlInput.value = '';

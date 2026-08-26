@@ -16,7 +16,6 @@ const validEntry = {
   kind: 'npc',
   sizeCells: 1,
   speedCells: 3,
-  visionBright: 5,
   visionDim: 10,
   emitsLight: { range: 3, intensity: 0.5, color: '#ffaa00' },
   borderColor: '#e74c3c',
@@ -73,7 +72,6 @@ test('5. Projection TokenLibraryEntry -> Token : les 9 champs sont reportés et 
   assert.equal(token.kind, validEntry.kind);
   assert.equal(token.sizeCells, validEntry.sizeCells);
   assert.equal(token.speedCells, validEntry.speedCells);
-  assert.equal(token.visionBright, validEntry.visionBright);
   assert.equal(token.visionDim, validEntry.visionDim);
   assert.deepEqual(token.emitsLight, validEntry.emitsLight);
   assert.equal(token.borderColor, validEntry.borderColor);

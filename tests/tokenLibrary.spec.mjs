@@ -92,7 +92,6 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     expect(addedToken?.kind).toBe('npc');
     expect(addedToken?.sizeCells).toBe(1);
     expect(addedToken?.speedCells).toBe(3);
-    expect(addedToken?.visionBright).toBe(5);
     expect(addedToken?.visionDim).toBe(10);
     expect(addedToken?.emitsLight).toEqual({ range: 3, intensity: 0.5, color: '#ffaa00' });
     expect(addedToken?.borderColor).toBe('#e74c3c');
@@ -229,7 +228,6 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
             ? {
                 sizeCells: token.sizeCells,
                 speedCells: token.speedCells,
-                visionBright: token.visionBright,
                 visionDim: token.visionDim,
                 borderColor: token.borderColor,
                 imageUrl: token.imageUrl,
@@ -241,7 +239,10 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
       .toEqual({
         sizeCells: 1,
         speedCells: 3,
-        visionBright: 5,
+        // ⛔ Plus de `visionBright` ici : retiré du modèle le 26/08/2026 (chantier Z).
+        // ⭐ Le catalogue simulé en haut de fichier en porte toujours un : c'est voulu, et
+        // c'est ce qui fait de ce scénario la preuve que le résidu sur disque est TOLÉRÉ
+        // sans jamais ressusciter dans le pion projeté.
         visionDim: 10,
         borderColor: '#e74c3c',
         imageUrl: 'maps/tokens/goblin.webp',
