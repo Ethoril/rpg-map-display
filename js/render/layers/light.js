@@ -219,11 +219,18 @@ export class LightLayer {
    * ⚠ Coût mesuré par M2 sur Tab S9 FE : **1,80 ms** pour les 93 sources du village. C'est le
    * prix d'une mutation, pas d'une image — et c'est toute la raison d'être de la signature.
    *
+   * ⛔ **`extractSegments` est une fonction, pas un tableau, et ce n'est pas un détail.**
+   * L'extraction des obstacles coûte cher — 1338 murs sur `testbig150` — et la passer déjà
+   * évaluée la ferait payer à **chaque image**, y compris les 99 % où rien n'a bougé. Elle
+   * n'est appelée qu'**après** le test de signature. C'est exactement ce que fait déjà
+   * `FogLayer.updateVision`, et pour la même raison.
+   *
    * @param {any} adaptateur
    * @param {Level|null} level
    * @param {Token[]} tokens
    * @param {Object} [options]
-   * @param {Segment[]} [options.segments]
+   * @param {Segment[]} [options.segments] Obstacles déjà extraits, s'ils le sont par ailleurs
+   * @param {(lvl: Level, a: any) => Segment[]} [options.extractSegments] Extracteur paresseux
    * @returns {boolean} `true` si le champ a été recomposé
    */
   update(adaptateur, level, tokens, options = {}) {
@@ -251,9 +258,13 @@ export class LightLayer {
     const uneCase = adaptateur.mapFromCellPoint({ cellX: 1, cellY: 0 });
     const echelle = Math.hypot(uneCase.x - origine.x, uneCase.y - origine.y);
 
+    // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé.
+    const segments = options.segments
+      || (typeof options.extractSegments === 'function' ? options.extractSegments(level, adaptateur) : []);
+
     this._field.compose(sources, {
       ambientLevel: Number(level.ambient?.baked ? 1 : level.ambient?.level) || 0,
-      segments: options.segments || [],
+      segments,
       mapOrigin: origine,
       gridScale: echelle,
     });
@@ -335,7 +346,8 @@ export class LightLayer {
    * @param {Level|null} level
    * @param {Object} [options]
    * @param {'gm'|'players'} [options.role]
-   * @param {'play'|'prepare'} [options.mode] Mode du panneau MJ (UX-03)
+   * @param {'play'|'prep'} [options.mode] Mode du panneau MJ (UX-03). ⚠ 'prep', pas
+   *        'prepare' : c'est la valeur que `createGMPanel().getMode()` rend réellement.
    * @param {boolean} [options.suppressed] Le fond animé peint sous le canvas
    * @returns {boolean} `true` si quelque chose a été peint
    */
@@ -346,7 +358,7 @@ export class LightLayer {
     // cave non éclairée ne doit pas se faire à l'aveugle. La vue joueurs, elle, est TOUJOURS
     // éclairée — elle n'a pas de mode.
     const role = options.role || 'gm';
-    if (role === 'gm' && options.mode === 'prepare') return false;
+    if (role === 'gm' && options.mode === 'prep') return false;
 
     const champ = this._field;
     if (!champ || !champ.canvas) return false;

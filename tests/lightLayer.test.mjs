@@ -307,7 +307,7 @@ test('6. ⭐ « Préparer » ne peint RIEN, « Jouer » peint — décision §4.
   const ctx = cible._ctx;
 
   assert.equal(
-    couche.render(ctx, ADAPTATEUR, level, { role: 'gm', mode: 'prepare' }),
+    couche.render(ctx, ADAPTATEUR, level, { role: 'gm', mode: 'prep' }),
     false,
     'en préparation, poser des murs dans une cave ne doit pas se faire à l’aveugle'
   );
@@ -320,7 +320,7 @@ test('6. ⭐ « Préparer » ne peint RIEN, « Jouer » peint — décision §4.
   // MJ éteindrait la lumière chez la table pendant que le MJ prépare.
   const ctxJoueurs = createMockCanvas(1000, 1000)._ctx;
   assert.equal(
-    couche.render(ctxJoueurs, ADAPTATEUR, level, { role: 'players', mode: 'prepare' }),
+    couche.render(ctxJoueurs, ADAPTATEUR, level, { role: 'players', mode: 'prep' }),
     true,
     '⛔ le mode du panneau MJ ne doit pas éteindre la vue joueurs'
   );

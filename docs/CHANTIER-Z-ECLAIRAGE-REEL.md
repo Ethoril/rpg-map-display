@@ -339,3 +339,66 @@ opération isolée encadrée d'un vidage.
   `tokens`.
 - ⛔ **Rien qui déplace quoi que ce soit dans le dos de personne.** Allumer la lumière ne bouge aucun
   pion, ne change aucun étage affiché, ne recadre aucune vue.
+
+---
+
+## 7. ⛔ Z-03b — LA COUCHE EST BRANCHÉE, ET ELLE NE SERT À RIEN SUR LE CORPUS ACTUEL
+
+Relevé le 26/08/2026 en exécutant la couche sur **les huit étages publiés**, pas en le déduisant :
+
+| Étage | `baked` | `level` | Lumières | Effet de la couche |
+|---|---|---|---|---|
+| ferme-isolee | non | 1 | 0 | **invisible** |
+| **manoir-rdc** | non | **0** | **0** | ⛔ **NOIR TOTAL** |
+| marais-hex_16x16 | non | 1 | 0 | **invisible** |
+| testbig150 | **oui** | 1 | 185 | **invisible** |
+| testvideo-3 | **oui** | 1 | 4 | **invisible** |
+| test_village_complet_00 | **oui** | 1 | 93 | **invisible** |
+| test_village_complet_01 | **oui** | 1 | 17 | **invisible** |
+| test_village_complet_02 | **oui** | 1 | 4 | **invisible** |
+
+**Sept étages sur huit ne changent pas d'un pixel. Le huitième devient entièrement noir.**
+
+### Pourquoi, et ce n'est pas un défaut de la couche
+
+⭐ **`baked_lighting` est vrai sur 5 des 6 exports UVTT réels** — Dungeon Alchemist cuit la lumière
+dans l'image par défaut. `baked` force l'ambiante à 1, donc le champ est uniformément blanc, donc
+`multiply` rend le décor inchangé. **C'est le comportement voulu** : rassombrir une image dont la
+lumière est déjà peinte la dégraderait deux fois.
+
+Et le sixième export, `manoir-rdc`, est le **seul non cuit** — avec `ambient_light: "00000000"` et
+**zéro source déclarée**. Un donjon censé être noir, éclairé par les seules torches des joueurs… qui
+n'existent pas dans le fichier. Le champ est donc vide, la modulation est noire, la carte disparaît.
+
+### ⛔ Ce que ça veut dire pour le chantier
+
+1. **Le chantier n'a aucun effet visible sur les cartes du mainteneur.** Il ne se verra que sur des
+   cartes importées **sans** `baked_lighting`, ou si le MJ peut passer outre. ⚠ Or le panneau MJ
+   *refuse* aujourd'hui de toucher à l'ambiante d'un étage cuit
+   (`js/ui/gm/panel.js` : `if (!level || level.ambient?.baked) return;`) et affiche
+   « ⚠ Éclairage déjà cuit : ambiante forcée ».
+2. **Sur `manoir-rdc`, la vue MJ en mode « Jouer » deviendrait aveugle.** La couche est au rang 3,
+   *sous* le fog : le MJ perdrait le décor que le voile partiel (0,70 / 0,45) lui laisse voir
+   aujourd'hui pour mener la partie.
+
+### ⚠ Une décision qui n'avait pas été posée au §4.5
+
+Le §4.5 a tranché « éclairé en Jouer, à plat en Préparer ». Il n'a pas posé **jusqu'où** assombrir
+côté MJ. Le fog, lui, a résolu exactement ce problème : sa vue MJ est **partiellement** voilée pour
+que le mainteneur voie la carte tout en sachant ce que la table ne voit pas.
+
+**Trois lectures possibles, et c'est au mainteneur de choisir :**
+
+- **(a) Le MJ voit ce que voit la table**, noir compris. Cohérent, et aveuglant sur un donjon non
+  éclairé.
+- **(b) Assombrissement atténué côté MJ**, comme le voile de fog l'est déjà. Il faut alors un
+  plafond, et il vit dans `core/constants.js` à côté des voiles de fog.
+- **(c) Le MJ n'est jamais assombri** — la couche ne sert que la vue joueurs. Le mode « Jouer »
+  perdrait alors son intérêt pour la lumière.
+
+### ⛔ Et le jugement d'œil du §4.4a est BLOQUÉ, pour une raison déjà consignée
+
+`gm.html` en local demande une connexion Google et n'affiche rien : `localhost` n'est pas dans les
+domaines autorisés Firebase. C'est le point déjà relevé le 23/08 — « le nettoyage des domaines du
+08/08 interdit toute validation locale ; `localhost` est à remettre définitivement ». **Tant qu'il
+n'est pas remis, la teinte décidée au §4.4a ne peut être jugée par personne.**

@@ -6,6 +6,7 @@ import { FrameLoop } from '../render/frame.js';
 import { BackgroundLayer } from '../render/layers/background.js';
 import { VideoBackdrop } from '../render/videoBackdrop.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
+import { LightLayer } from '../render/layers/light.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
@@ -113,6 +114,7 @@ export async function bootstrapGMApp(options = {}) {
   });
   videoBackdrop.attach(canvas.parentElement, canvas);
   const gridLayer = new GridLayer();
+  const lightLayer = new LightLayer();
   const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
   const linksLayer = new LinksLayer();
@@ -466,6 +468,7 @@ export async function bootstrapGMApp(options = {}) {
     snapshot: 0,
     background: 0,
     grid: 0,
+    light: 0,
     walls: 0,
     portals: 0,
     links: 0,
@@ -558,6 +561,23 @@ export async function bootstrapGMApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         gridLayer.render(stage.context, grid);
         layerDurations.grid = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      // ⭐ Rang 3 : la lumière module le DÉCOR — le fond et le quadrillage — et rien d'autre.
+      // Tout ce qui suit (murs, portes, liaisons, gabarits, pions) reste à ses couleurs propres,
+      // parce que sa lisibilité à trois écrans a été validée en séance. Décision du 26/08/2026.
+      light: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        // `update` est gardé par sa propre signature : il ne recompose que si une lumière, un
+        // mur, une porte ou l'ambiante a bougé. Un PJ qui se déplace ne le réveille pas.
+        lightLayer.update(grid, activeLevel, state.campaign?.tokens ?? [], {
+          extractSegments: extractBlockedSegments,
+        });
+        lightLayer.render(stage.context, grid, activeLevel, {
+          role: 'gm',
+          mode: gmPanel?.getMode(),
+          suppressed: videoBackdrop.active,
+        });
+        layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       walls: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
