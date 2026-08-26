@@ -326,3 +326,59 @@ rapport. Un agent qui dénonce un angle mort de sa livraison vaut mieux qu'un ag
    un problème **distinct** que cette tranche ne traite pas.
 
 **La file est vide.** ⛔ Ne pas inventer de travail : la charte §3 est explicite.
+
+---
+
+## ✅ 23 août 2026, nuit — LE FOG EST VALIDÉ, mesuré et regardé
+
+Relevé du mainteneur sur Tab S9 FE, vue joueurs, **`testbig150`**, `?probe=1`, pendant un pincement :
+
+| | Avant (18/08) | Après | |
+|---|---|---|---|
+| **Fog** | 1580–1700 ms | **max 1 ms**, 0–0,2 le plus souvent | ~×2000 |
+| **Fond** | 1131–1431 ms | **max 0,5 ms**, 0,0 le plus souvent | ~×2500 |
+| **Total** | 1123–3512 ms | **1–3 ms** | budget de 33 ms tenu ×10 |
+
+Premier chargement à 1350 ms : c'est le décodage à froid du WebP, mesuré à 1118 ms le 11/08. Attendu,
+et c'est précisément ce que la doublure 1024 px du chantier P empêche de tomber dans la 1ʳᵉ image.
+
+⭐ **Validé par l'œil aussi**, ce qu'aucune porte ne peut faire : « un léger crénelage qui n'est pas
+gênant, je n'éprouve pas le besoin d'aller chercher mieux ». La tranche est donc **validée**, pas
+seulement implémentée — la première fois qu'on peut l'écrire.
+
+### ⭐ Le fond s'est réparé seul — un seul défaut, pas deux
+
+Non prévu : cette tranche n'a pas touché la couche de fond, classée « problème distinct ».
+
+**Hypothèse, et elle n'est pas prouvée** : le second coût était **en aval** du premier. Le tampon
+retenait 245 Mio et balayait 61 Mpx deux à trois fois par image ; sous cette pression le navigateur
+lâchait le *backing store* du fond, qui devait être redécodé — d'où ces 1131–1431 ms **intermittents**,
+seulement sur les images où la perte avait eu lieu. C'est le mécanisme dont `CHANTIER-N` prévenait,
+écrit pour les icônes d'état et applicable au fond.
+
+⚠ **Ce qui la confirmerait** : que le fond ne remonte jamais à quatre chiffres sur une séance longue.
+⛔ **Ne pas ouvrir de chantier « fond » sans cette observation** — il n'a peut-être jamais existé.
+
+### Le levier, si le crénelage dérange un jour
+
+⛔ **Pas** le repli « tampon borné au viewport » du brief : il coûterait bien plus cher pour rien.
+`imageSmoothingEnabled` vaut déjà `true` (jamais désactivé dans `js/`), donc l'agrandissement est
+lissé. Ce qu'on voit est **la résolution du masque** : à 8 px/case, un bord de polygone a des marches
+que le lissage adoucit sans les effacer. Le levier est donc `FOG_MASK_PX_PER_CELL` — 12 ou 16 px/case
+affineraient, à coût proportionnel, et la marge existe (1 ms sur 33).
+
+### Trois défauts du chemin de validation, réparés en route
+
+Aucun ne se voyait en séance : ils étaient tous sur le trajet qui permet de **regarder avant de
+publier**, jamais emprunté donc jamais éprouvé.
+
+1. `serve.mjs` n'écoutait que sur `127.0.0.1` → `--host` optionnel (`c685fd8`).
+2. `crypto.randomUUID` absent hors contexte sécurisé → `identifiantAleatoire()` (`8a83b35`).
+3. Le cartouche de la sonde à z-index 99 999 masquait l'état réseau, l'overlay de connexion et
+   l'overlay bloquant → redescendu à 800 (`8a83b35`).
+
+⚠ Et un quatrième, non technique : le nettoyage des domaines Firebase du 08/08 — que j'avais
+recommandé — interdit toute validation locale. `localhost` est à remettre **définitivement**.
+
+⭐ **La leçon, la même que celle de la carte hexagonale quatre jours plus tôt : ce qui n'a jamais
+servi ne marche pas.**
