@@ -34,7 +34,7 @@ import {
   deleteField,
   runTransaction as runFirestoreTransaction,
 } from 'firebase/firestore';
-import { isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
+import { identifiantAleatoire, isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
 /** @typedef {import('./Transport.js').Transport} Transport */
@@ -1019,7 +1019,7 @@ export class FirebaseTransport {
     const epoch = this._sessionEpoch;
     this._sessionId = sessionId;
     this._role = role;
-    this._clientId = `c_${crypto.randomUUID()}`;
+    this._clientId = `c_${identifiantAleatoire()}`;
     this._db = getDatabase(/** @type {import('firebase/app').FirebaseApp} */ (this._app));
     this._firestore = getFirestore(
       /** @type {import('firebase/app').FirebaseApp} */ (this._app)
@@ -1390,7 +1390,7 @@ export class FirebaseTransport {
       payload: event.payload || {},
       at: typeof event.at === 'number' ? event.at : Date.now(),
       by: event.by || this._role,
-      eventId: `${this._clientId}:${Date.now()}:${crypto.randomUUID()}`,
+      eventId: `${this._clientId}:${Date.now()}:${identifiantAleatoire()}`,
       clientId: this._clientId,
     };
 

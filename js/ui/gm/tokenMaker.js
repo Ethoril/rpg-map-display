@@ -4,6 +4,7 @@ import {
   isPersistableAssetUrl,
   isBoundedImageDataUrl,
   TOKEN_IMAGE_MAX_BYTES,
+  identifiantAleatoire,
 } from '../../core/schema.js';
 
 /**
@@ -473,7 +474,7 @@ export function createTokenMaker(container, options = {}) {
 
     const explicitId = idInput?.value.trim();
     const label = labelInput.value.trim() || 'Pion';
-    const tokenId = explicitId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || crypto.randomUUID();
+    const tokenId = explicitId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || identifiantAleatoire();
     const visionBright = Math.max(0, parseInt(visionBrightInput?.value, 10) || 5);
     const visionDim = Math.max(0, parseInt(visionDimInput?.value, 10) || 10);
     const rawMaxHp = maxHpInput?.value.trim();

@@ -1,5 +1,5 @@
 // @ts-check
-import { createToken, isPersistableAssetUrl, isValidHexColor, isStatusMarker } from '../core/schema.js';
+import { createToken, identifiantAleatoire, isPersistableAssetUrl, isValidHexColor, isStatusMarker } from '../core/schema.js';
 
 /**
  * @typedef {import('../core/types.js').TokenLibraryEntry} TokenLibraryEntry
@@ -207,7 +207,7 @@ export function createTokenFromLibraryEntry(entry, options) {
   }
 
   const kind = entry.kind === 'pc' ? 'pc' : 'npc';
-  const id = options.id ?? crypto.randomUUID();
+  const id = options.id ?? identifiantAleatoire();
   const maxHp = typeof entry.maxHp === 'number' && Number.isInteger(entry.maxHp) && entry.maxHp >= 1 ? entry.maxHp : null;
 
   return createToken({
