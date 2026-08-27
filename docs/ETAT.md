@@ -1424,7 +1424,7 @@ mieux que ce soit écrit ici qu'oublié puis cité.
 | 6bis — sweep sur les cartes publiées | positif, résultats « exceptionnels » sur la carte vidéo |
 | 7 — fond animé, matériel ou logiciel | **décodage matériel annoncé** (`powerEfficient` vrai) |
 | 7bis — lecture réelle du fond animé | 29,9 i/s ; verdict « rampe » ⚠ **faux par construction**, voir plus bas |
-| 10 — coût de la vision avec lumières | ⛔ **2,6 ms — CHIFFRE À JETER** : la section balayait des cartes **sans murs** jusqu'au 27/08/2026. À remesurer |
+| 10 — coût de la vision avec lumières | ✅ **45,6 ms sur Tab S9 FE**, relevé le 27/08/2026 avec l'instrument réparé — **15 % du budget de 300 ms**. ⛔ Le 2,6 ms du 11/08 est à jeter : la section balayait des cartes **sans murs** |
 | 11 — motifs à juger (chantier Q) | aucun souci de visibilité |
 | 15 — onglets MJ réellement ouverts | image 5 · handout 5 · gabarits 4 · pions 3 · cartes 2 · fog 2 · murs 1 |
 | R2 — décodage froid | `Image.decode()` **1 118 ms** sur `testbig150.webp` |

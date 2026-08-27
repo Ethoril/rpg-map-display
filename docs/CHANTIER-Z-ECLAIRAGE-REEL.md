@@ -56,6 +56,35 @@ Village étage 00, **93 sources réellement lues**, masque 336 × 336 px, Tab S9
 3. **Le cast.** Non relevé le 26/08. La section 10 l'avait été. Non bloquant à 2 % du budget, mais
    ⛔ aucun critère de performance ne se coche sans le dispositif réel.
 
+### ✅ R3-05 remesuré le 27/08/2026 — 45,6 ms, et le verdict tient
+
+Relevé du mainteneur sur Tab S9 FE, section 10 réparée (les murs entrent enfin dans la mesure) :
+
+| | poste Windows | Tab S9 FE | rapport |
+|---|---|---|---|
+| `main` — avant le chantier Z | 45,5 ms | **~127 ms** (déduit) | ×2,8 |
+| branche `chantier-z` | 16,3 ms | **45,6 ms** (mesuré) | ×2,8 |
+
+⭐ **Le rapport 2,81× est la validation de l'instrument.** Il tombe dans la famille du facteur
+2,3–2,4× consigné entre les deux machines depuis le 11/08, et retrouvé sur la composition du champ
+en M2. L'ancien relevé de 2,6 ms ne tombait, lui, dans aucun rapport connu — c'est le signe qu'on
+aurait dû lire à l'époque.
+
+**Le verdict tient : 45,6 ms pour 300 ms de budget, soit 15 %.** Mais il faut dire ce que la
+correction change vraiment :
+
+⛔ **Avant le chantier, ce même coût était de ~127 ms sur la tablette, pas de 2,6.** La porte
+matérielle du lot 3 s'est donc fermée sur une marge annoncée de **115×** quand elle valait **2,4×**.
+Le lot reste fermé — le critère est tenu — mais il l'était de justesse là où on le croyait acquis.
+
+⚠ **Et c'est un coût de MUTATION, pas d'image.** 45,6 ms, c'est ce que paie un déplacement de pion
+sur `testbig150` : environ une image et demie sautée à 30 fps. Perceptible sur la plus grande carte
+du dépôt, invisible ailleurs — le village est à 1,8 ms sur le poste. ⛔ Ne pas confondre ce budget
+avec celui du rendu par image, qui est de 33 ms et que le fog tient à 1 ms.
+
+⚠ **Le volet cast reste ouvert** : ce relevé n'a pas été fait sous cast, celui du 11/08 le
+prétendait. À 15 % du budget, le cast ne peut raisonnablement pas renverser le verdict.
+
 ### Ce que le modèle porte déjà, et que personne ne lit
 
 `Light` (`js/core/types.js:78`) : `id`, `at`, `range`, `intensity`, `color`, `shadows`.
