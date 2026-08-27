@@ -375,6 +375,25 @@ Et le sixième export, `manoir-rdc`, est le **seul non cuit** — avec `ambient_
 **zéro source déclarée**. Un donjon censé être noir, éclairé par les seules torches des joueurs… qui
 n'existent pas dans le fichier. Le champ est donc vide, la modulation est noire, la carte disparaît.
 
+### ✅ Exigence tranchée le 26/08 — L'OUTIL GÈRE LES DEUX, ET C'EST LE DESSIN
+
+« L'outil doit être capable de gérer à la fois les cartes cuites et les cartes non cuites. »
+
+⭐ **C'est déjà le cas, et sans code de repli.** Une carte cuite a son ambiante à 1, donc son champ
+lumineux est uniformément blanc : la couche se tait au rendu, et le calcul de vision — qui intersecte
+la ligne de vue avec le champ — retrouve exactement la ligne de vue entière. Le comportement d'avant
+le chantier est **préservé par construction**, pas par un cas particulier.
+
+⛔ **Le risque n'est aucun des deux cas pris seul : c'est le passage de l'un à l'autre.** La couche
+est réutilisée d'un étage au suivant et son champ est un canvas muté EN PLACE — un champ resté sur
+l'étage précédent éclairerait un donjon avec l'ambiante d'un village, ou l'inverse. Épinglé par le
+test 14 de , dans les deux sens.
+
+⚠ **Ce que j'avais surpondéré**, et il faut le corriger ici : j'ai présenté trois fois la question
+« Dungeon Alchemist peut-il exporter sans cuisson ? » comme un blocage du chantier. Ce n'en est pas
+un. Ce qui compte est la **capacité** de l'outil, pas que le corpus actuel l'exerce. La question
+reste intéressante — elle décide de ce que le mainteneur **verra** — mais elle ne conditionne rien.
+
 ### ⛔ Ce que ça veut dire pour le chantier
 
 1. **Le chantier n'a aucun effet visible sur les cartes du mainteneur.** Il ne se verra que sur des

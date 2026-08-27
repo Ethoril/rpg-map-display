@@ -530,3 +530,96 @@ test('13. ⛔ Une carte à l’éclairage CUIT ignore la lumière — 5 exports 
   assert.equal(couche.render(createMockCanvas(10, 10)._ctx, ADAPTATEUR, cuite, { role: 'players', suppressed: true }), false,
     'même le chemin du fond animé se tait sur une carte cuite');
 });
+
+test('14. ⭐ EXIGENCE : l’outil gère les DEUX, cuite et non cuite, sans bavure entre elles', () => {
+  // Exigence du mainteneur, 26/08/2026 : « l'outil doit être capable de gérer à la fois les
+  // cartes cuites et les cartes non cuites ». Ce n'est pas un cas de repli, c'est un cas
+  // nominal — une campagne peut mêler un village Dungeon Alchemist (cuit) et un donjon tracé
+  // à la main (non cuit).
+  //
+  // ⛔ Le risque réel n'est aucun des deux cas pris seul : c'est le **passage de l'un à
+  // l'autre**. La couche est réutilisée d'un étage au suivant, et son champ est un canvas
+  // muté EN PLACE. Un champ resté sur son étage précédent éclairerait le donjon avec
+  // l'ambiante du village — ou l'inverse, et là c'est une fuite.
+  const couche = new LightLayer({ createCanvas: fabrique });
+
+  // ⚠ **La carte cuite PORTE des sources, et c'est indispensable.** Une première version de
+  // ce test lui en donnait zéro : « aucune source balayée » était alors vrai par construction,
+  // et la mutation « balayer quand même les sources d'une carte cuite » restait verte. Un test
+  // qui ne peut pas rougir ne prouve rien — la leçon du projet, payée une fois de plus ici.
+  const lampes = [
+    { id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true },
+    { id: 'l2', at: { cellX: 7, cellY: 7 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true },
+  ];
+  const cuite = etage({ id: 'village', ambient: { level: 1, baked: true }, lights: lampes });
+  const nonCuite = etage({ id: 'donjon', ambient: { level: 0, baked: false }, lights: [] });
+
+  /** Le champ est-il éclairé au point donné ? @param {number} x @param {number} y */
+  const champEclaireA = (x, y) => pixelAu(champDe(couche).canvas._ctx, x, y).alpha > 0;
+
+  // ── La cuite : champ TOUT éclairé, et la couche se tait au rendu ──
+  couche.update(ADAPTATEUR, cuite, []);
+  assert.equal(champEclaireA(5, 5), true, 'cuite : le champ est entièrement éclairé');
+  assert.equal(champEclaireA(70, 70), true);
+  assert.equal(lampes.length, 2, 'le cas n’est probant que si la carte cuite porte des sources');
+  assert.equal(
+    couche.lastSourceCount, 0,
+    '⛔ cuite : ses DEUX lampes ne sont pas balayées — 185 sweeps évités sur testbig150'
+  );
+
+  const ctxCuite = createMockCanvas(1000, 1000)._ctx;
+  ctxCuite.fillStyle = 'rgba(200, 200, 200, 1)';
+  ctxCuite.fillRect(0, 0, 1000, 1000);
+  ctxCuite.journal.length = 0;
+  assert.equal(couche.render(ctxCuite, ADAPTATEUR, cuite, { role: 'players' }), false);
+  assert.equal(pixelAu(ctxCuite, 500, 500).red, 200, 'cuite : le décor sort intact');
+
+  // ⭐ Et c'est ce champ tout-éclairé que le calcul de vision intersecte : sur une carte
+  // cuite, « ligne de vue ∩ éclairé » vaut donc la ligne de vue entière. Le comportement
+  // d'avant le chantier est préservé exactement, sans code de repli.
+
+  // ── Passage à la NON cuite, sur la MÊME couche ──
+  couche.update(ADAPTATEUR, nonCuite, []);
+  assert.equal(champEclaireA(5, 5), false, '⛔ non cuite et sans source : le champ est NOIR');
+  assert.equal(champEclaireA(70, 70), false, '⛔ aucune bavure de l’étage cuit précédent');
+
+  const ctxNoir = createMockCanvas(1000, 1000)._ctx;
+  ctxNoir.fillStyle = 'rgba(200, 200, 200, 1)';
+  ctxNoir.fillRect(0, 0, 1000, 1000);
+  assert.equal(couche.render(ctxNoir, ADAPTATEUR, nonCuite, { role: 'players' }), true);
+  assert.equal(pixelAu(ctxNoir, 500, 500).red, 0, 'non cuite : le décor s’assombrit');
+
+  // ── Et le retour, qui est l’autre sens de la bavure ──
+  couche.update(ADAPTATEUR, cuite, []);
+  assert.equal(champEclaireA(5, 5), true, '⛔ retour à la cuite : le noir du donjon ne survit pas');
+
+  const ctxRetour = createMockCanvas(1000, 1000)._ctx;
+  ctxRetour.fillStyle = 'rgba(200, 200, 200, 1)';
+  ctxRetour.fillRect(0, 0, 1000, 1000);
+  couche.render(ctxRetour, ADAPTATEUR, cuite, { role: 'players' });
+  assert.equal(pixelAu(ctxRetour, 500, 500).red, 200, 'et le décor cuit ressort intact');
+
+  // ⭐ **Ce qui garantit l'absence de bavure, c'est que la signature distingue les deux.**
+  //
+  // ⚠ Une première version invoquait ici `level.id`. C'était faux : deux étages qui ne
+  // diffèrent QUE par leur identifiant produisent le même champ, donc ne pas le recomposer
+  // serait correct. Ce qui doit les séparer, c'est `baked` — et lui seul suffit, même à
+  // identifiant, dimensions et sources identiques.
+  const memeEtageMaisCuit = etage({ id: 'X', ambient: { level: 0, baked: true }, lights: lampes });
+  const memeEtageNonCuit = etage({ id: 'X', ambient: { level: 0, baked: false }, lights: lampes });
+  assert.notEqual(
+    buildLightSignature(memeEtageMaisCuit, [], ADAPTATEUR),
+    buildLightSignature(memeEtageNonCuit, [], ADAPTATEUR),
+    '⛔ cuit et non cuit doivent produire des champs différents, à tout le reste égal'
+  );
+
+  // Et la preuve par le champ lui-même, pas seulement par la chaîne de signature.
+  const couche2 = new LightLayer({ createCanvas: fabrique });
+  couche2.update(ADAPTATEUR, memeEtageMaisCuit, []);
+  assert.equal(pixelAu(champDe(couche2).canvas._ctx, 70, 70).alpha > 0, true, 'cuit : tout éclairé');
+  couche2.update(ADAPTATEUR, memeEtageNonCuit, []);
+  assert.equal(
+    pixelAu(champDe(couche2).canvas._ctx, 70, 70).alpha, 0,
+    '⛔ non cuit, loin des deux lampes : noir — et pas un reste du champ cuit'
+  );
+});
