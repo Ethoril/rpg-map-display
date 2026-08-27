@@ -90,6 +90,38 @@
       }
     },
     {
+      "id": "testnoncuite",
+      "name": "Testnoncuite",
+      "sourceUrl": "maps/testnoncuite.dd2vtt",
+      "sceneUrl": "maps/generated/testnoncuite.scene.json",
+      "imageUrl": "maps/generated/testnoncuite.webp",
+      "sourceHash": "sha256-385b5aebc5e7a5689b35c6045b3354dd9fa9ca5ee17742bedd0400a52869d483",
+      "levelCount": 1,
+      "features": {
+        "walls": 48,
+        "portals": 31,
+        "lights": 29,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
+      "id": "testnoncuitenuit",
+      "name": "Testnoncuitenuit",
+      "sourceUrl": "maps/testnoncuitenuit.dd2vtt",
+      "sceneUrl": "maps/generated/testnoncuitenuit.scene.json",
+      "imageUrl": "maps/generated/testnoncuitenuit.webp",
+      "sourceHash": "sha256-3bd4dc445cb4a8075622e6459e570ad6f8110292529fb6741debb33ce761f0e4",
+      "levelCount": 1,
+      "features": {
+        "walls": 26,
+        "portals": 16,
+        "lights": 16,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
       "id": "testvideo-3",
       "name": "Testvideo — 3",
       "sourceUrl": "maps/testvideo-3.dd2vtt",

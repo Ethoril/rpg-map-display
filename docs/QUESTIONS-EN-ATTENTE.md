@@ -56,6 +56,19 @@ coût uniforme respectant les murs, mesure de distance sans quitter le Zero-UI.
 
 ⛔ Le décompte fait foi dans le §11 du CdC, pas dans `ETAT.md`.
 
+### A-4 ✅ M2 relevée le 26/08 — reste le volet **cast**, non bloquant
+
+**La mesure est prise sur la Tab S9 FE : 5,62 ms par image sur l'écran réel (2303×1134), contre un
+budget de 300 ms.** Le champ lumineux tient, et **WebGL n'est pas justifié**. Détail, décomposition
+et conséquences : `PLAN-SUITE.md` §1, M2. La lumière n'attend donc plus une mesure, elle attend une
+**décision** — voir D-1 et la phase 3 du plan.
+
+⚠ **Ce qui reste, et c'est mineur** : le relevé **sous cast** n'a pas pu être fait. Le précédent
+existe — la section 10 avait été mesurée sous cast actif. Avec 2 % du budget consommé, le cast ne
+peut raisonnablement pas renverser le verdict ; mais **aucun critère de performance ne se coche sans
+le dispositif réel** (interdiction n°14). À refaire quand le cast sera disponible : même protocole,
+`pnpm run serve -- --host 0.0.0.0`, `diag.html` sur la tablette, bouton **16**.
+
 ---
 
 ## B. Décisions d'interface

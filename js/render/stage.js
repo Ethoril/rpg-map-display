@@ -4,6 +4,15 @@ import { RENDER_RESOLUTION_CAP } from '../core/constants.js';
 export const CANVAS_LAYER_ORDER = Object.freeze([
   'background',
   'grid',
+  // ⭐ Rang 3 — chantier Z, 26/08/2026. La lumière module le DÉCOR (fond et quadrillage) et
+  // s'arrête là : tout ce qui suit garde ses couleurs propres, parce que sa lisibilité à trois
+  // écrans a été validée en séance.
+  //
+  // ⛔ **C'est ICI que l'ordre vit, pas au point d'appel.** `renderLayerStack` parcourt cette
+  // liste, jamais les clés qu'on lui passe : une couche branchée dans `gm.js` mais absente
+  // d'ici n'est jamais appelée, **en silence**. C'est ce qui est arrivé à `light` le 26/08, et
+  // ni le typage ni la porte ne l'ont vu — seule l'image l'a montré.
+  'light',
   'walls',
   'portals',
   'links',

@@ -218,7 +218,6 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
         label: 'PJ Vision',
         levelId: 'level-vision-1',
         cell: { a: 4, b: 4 },
-        visionBright: 4,
         visionDim: 6,
         speedCells: 5,
       });

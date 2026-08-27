@@ -438,6 +438,127 @@ export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells) {
 /**
  * Gestionnaire du masque de fog exploré pour un étage.
  */
+/**
+ * Compose le masque de **vision courante** en mode tactique — tranche Z-05 du chantier Z.
+ *
+ * ⭐ **La règle, et c'est tout le chantier en une ligne :**
+ *
+ * ```
+ * visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
+ * ```
+ *
+ * Chacun des trois termes répare quelque chose :
+ *
+ * - **ligne de vue** — le sweep de chaque PJ jusqu'au plafond technique. Sans lui, un PJ verrait
+ *   à travers les murs toute zone éclairée de l'étage.
+ * - **∩ éclairé** — le champ lumineux, qui ne dépend d'**aucun observateur**. C'est ce terme qui
+ *   remplace le prédicat `ambientLit` d'avant, lequel était **global à l'étage** : une carte de
+ *   nuit avec une seule lampe basculait l'étage entier en « éclairé ».
+ * - **∪ dans le noir** — la portée propre du PJ, `visionDim`, qui vaut même sans lumière. Sans
+ *   ce terme, un PJ dans un couloir noir ne verrait **rien du tout**, pas même ses pieds.
+ *
+ * ⛔ **Et ce que la règle fait disparaître : `vuParUnPJ`, donc la question 9 du §12.** Les
+ * lumières ne sont plus des **yeux** qui révèlent leur halo dès qu'un PJ en aperçoit le centre :
+ * elles éclairent, et c'est la ligne de vue du PJ **vers chaque point** qui décide. Le halo
+ * derrière un angle cesse d'être révélé, sans qu'on ait eu à traiter l'approximation.
+ *
+ * ⚠ **L'ordre des opérations n'est pas interchangeable.** L'intersection avec l'éclairage doit
+ * s'appliquer à la ligne de vue **seule**, avant l'union avec la vision nocturne — sinon la
+ * portée propre du PJ se ferait rogner par l'obscurité, ce qui est exactement son contraire.
+ *
+ * @param {any} cible Canvas de destination, à la résolution du masque. Il est VIDÉ d'abord.
+ * @param {Object} entrees
+ * @param {MapPoint[][]} entrees.losPolygons Sweeps des PJ au plafond technique, en pixels carte
+ * @param {MapPoint[][]} entrees.nearPolygons Sweeps des PJ à leur `visionDim`, en pixels carte
+ * @param {any} entrees.litCanvas Champ lumineux à la résolution du masque, ou `null`
+ * @param {MapPoint} entrees.mapOrigin Origine de la carte, en pixels carte
+ * @param {number} entrees.gridScale Pixels carte par case
+ * @param {((w: number, h: number) => any)} [entrees.createCanvas] Fabrique, pour les tests
+ * @returns {boolean} `true` si le masque a été composé
+ */
+export function composeVisibleMask(cible, entrees) {
+  const ctx = cible?.getContext?.('2d') ?? cible?._ctx ?? null;
+  if (!ctx) return false;
+
+  const { losPolygons, nearPolygons, litCanvas, mapOrigin, gridScale, createCanvas } = entrees;
+  if (!mapOrigin || !Number.isFinite(gridScale)) return false;
+
+  const largeur = cible.width;
+  const hauteur = cible.height;
+  const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+
+  /**
+   * Trace une liste de polygones dans un contexte, en espace masque.
+   * @param {any} destination @param {MapPoint[][]} polygones
+   */
+  function tracer(destination, polygones) {
+    if (!Array.isArray(polygones) || polygones.length === 0) return false;
+    let trace = false;
+    destination.beginPath();
+    for (const poly of polygones) {
+      if (!Array.isArray(poly) || poly.length === 0) continue;
+      const premier = poly[0];
+      destination.moveTo((premier.x - mapOrigin.x) * scale, (premier.y - mapOrigin.y) * scale);
+      for (let i = 1; i < poly.length; i++) {
+        const point = poly[i];
+        destination.lineTo((point.x - mapOrigin.x) * scale, (point.y - mapOrigin.y) * scale);
+      }
+      destination.closePath();
+      trace = true;
+    }
+    if (trace) destination.fill();
+    return trace;
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.clearRect(0, 0, largeur, hauteur);
+  ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+
+  // ── Terme 1 : la ligne de vue, découpée par l'éclairage ────────────────────
+  //
+  // ⚠ Sans champ lumineux fourni, ce terme vaut la ligne de vue ENTIÈRE. C'est le repli
+  // délibéré : mieux vaut le comportement d'avant le chantier qu'un écran noir en séance.
+  if (Array.isArray(losPolygons) && losPolygons.length > 0) {
+    if (litCanvas) {
+      const tampon = typeof createCanvas === 'function'
+        ? createCanvas(largeur, hauteur)
+        : (typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: largeur, height: hauteur }) : null);
+      const tamponCtx = tampon?.getContext?.('2d') ?? tampon?._ctx ?? null;
+      if (tamponCtx) {
+        tamponCtx.save();
+        tamponCtx.globalCompositeOperation = 'source-over';
+        tamponCtx.clearRect(0, 0, largeur, hauteur);
+        tamponCtx.fillStyle = 'rgba(0, 0, 0, 1)';
+        if (tracer(tamponCtx, losPolygons)) {
+          // Le mode destination-in ne garde de la ligne de vue que ce que le champ éclaire.
+          tamponCtx.globalCompositeOperation = 'destination-in';
+          // ⭐ Forme a trois arguments, et ce n'est pas un raccourci : le champ lumineux et
+          // la cible sont TOUS DEUX a la resolution du masque, par construction. L'ecrire
+          // ainsi documente cet invariant — et la forme a neuf arguments laissait croire a un
+          // redimensionnement qui n'a jamais lieu.
+          tamponCtx.drawImage(litCanvas, 0, 0);
+          tamponCtx.globalCompositeOperation = 'source-over';
+          tamponCtx.restore();
+          ctx.drawImage(tampon, 0, 0);
+        } else {
+          tamponCtx.restore();
+        }
+      }
+    } else {
+      tracer(ctx, losPolygons);
+    }
+  }
+
+  // ── Terme 2 : la vision propre dans le noir, qui s'AJOUTE sans condition ───
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+  tracer(ctx, nearPolygons);
+
+  ctx.restore();
+  return true;
+}
+
 export class ExploredFog {
   /**
    * @param {number} widthCells
@@ -565,6 +686,41 @@ export class ExploredFog {
     this.ctx.fill();
     this.ctx.restore();
     this._touch();
+  }
+
+  /**
+   * Verse un masque déjà composé dans le masque exploré — union, jamais remplacement.
+   *
+   * ⭐ C'est le pendant de `reveal(polygones)` pour le mode tactique : la vision courante y
+   * arrive déjà rasterisée et déjà découpée par l'éclairage, il ne reste qu'à en faire l'union
+   * avec ce qui était exploré.
+   *
+   * @param {any} maskCanvas Masque à la même résolution que celui-ci
+   */
+  revealMask(maskCanvas) {
+    if (!this.ctx || !maskCanvas || typeof this.ctx.drawImage !== 'function') return;
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'source-over';
+    // Meme invariant : les deux masques sont a la meme resolution.
+    this.ctx.drawImage(maskCanvas, 0, 0);
+    this.ctx.restore();
+    this._touch();
+  }
+
+  /**
+   * Compose ICI la vision courante du mode tactique — le masque est VIDÉ puis réécrit.
+   *
+   * ⛔ À ne pas confondre avec `revealMask` : celle-ci REMPLACE, parce qu'un masque de vision
+   * courante n'a pas de mémoire. Confondre les deux ferait s'accumuler la vision d'une image à
+   * l'autre, et la table verrait encore ce qu'elle a quitté.
+   *
+   * @param {{ losPolygons: MapPoint[][], nearPolygons: MapPoint[][], litCanvas: any, mapOrigin: MapPoint, gridScale: number }} entrees Voir `composeVisibleMask`
+   * @returns {boolean}
+   */
+  composeVisible(entrees) {
+    const ok = composeVisibleMask(this.canvas, { ...entrees, createCanvas: this.createCanvas });
+    if (ok) this._touch();
+    return ok;
   }
 
   /**

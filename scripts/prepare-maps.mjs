@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, createLevel, validateCampaign } from '../js/core/schema.js';
 import { resample, imageDimensions, MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
+import { ambianceProposee } from '../js/import/ambianceImage.js';
 import { videoWarnings } from './videoProbe.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -464,6 +465,26 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
 
   level.name = displayName;
   level.pxPerCell = resampleResult.pxPerCell;
+
+  // ⭐ **L'ambiante est PROPOSÉE d'après l'image, parce que le fichier ne la porte pas.**
+  //
+  // Relevé du 27/08/2026 sur les cinq exports réels : Dungeon Alchemist écrit
+  // `baked_lighting: true` et `ambient_light: "ffffffff"` de jour COMME DE NUIT, et quel que
+  // soit le mode d'export choisi. Une carte de nuit s'importait donc en plein jour, et le
+  // `baked` verrouillait par-dessus la bascule Jour/Nuit du panneau MJ.
+  //
+  // L'image, elle, sait : 12,6 de luminance moyenne pour la carte de nuit du mainteneur,
+  // contre 64 et 71 pour ses cartes de jour.
+  //
+  // ⛔ On PROPOSE, on ne décide pas — décision du mainteneur du 27/08. La bascule du panneau
+  // MJ prime toujours, et le rapport d'import dit ce qui a été mesuré.
+  const ambiance = ambianceProposee(resampleResult.profilLuminance, {
+    niveauDeclare: level.ambient?.level,
+  });
+  // ⚠ Seul le NIVEAU est proposé. `baked` est conservé tel que le fichier le déclare : il ne
+  // commande plus rien depuis le 27/08, mais il reste affiché au MJ comme avertissement —
+  // l'image peut porter sa lumière peinte, et l'assombrir la doublerait.
+  level.ambient = { ...level.ambient, level: ambiance.level };
   // N'UTILISER PAS data: ou blob: en persistance
   level.imageUrl = `maps/generated/${webpFileName}`;
   // Le fond animé est **en plus** de l'image, jamais à la place : `imageUrl` reste
@@ -498,8 +519,11 @@ export async function prepareMap(uvttPath, outputDir, targetPxPerCell = 140, opt
   const allWarnings = [
     ...parseWarnings,
     ...resampleResult.warnings,
+    // La proposition d'ambiante se DIT, toujours — y compris quand elle propose le jour.
+    // Une suggestion silencieuse est un ordre déguisé, et celle-ci est une heuristique.
+    [`Ambiance : ${ambiance.raison}`],
     ...(videoPrepare?.warnings ?? []),
-  ];
+  ].flat();
 
   // Les compteurs viennent du parseUvtt déjà fait
   const walls = level.walls;
@@ -1270,6 +1294,18 @@ export async function prepareMaps(options = {}) {
         const originY = uvttData.resolution?.map_origin?.y ?? 0;
 
         level.pxPerCell = resampleResult.pxPerCell;
+
+        // ⛔ **Ce fichier a DEUX chemins de préparation d'étage**, et ils dupliquent le même
+        // réglage : celui-ci pour les scènes multi-cartes, l'autre pour la carte isolée. La
+        // proposition d'ambiante n'avait été posée que dans le second le 27/08 — la porte
+        // était verte, le code compilait, et les cartes du mainteneur passaient par ICI :
+        // effet nul, en silence. Vérifié dans la scène générée, pas dans le rapport.
+        const ambianceScene = ambianceProposee(resampleResult.profilLuminance, {
+          niveauDeclare: level.ambient?.level,
+        });
+        level.ambient = { ...level.ambient, level: ambianceScene.level };
+        parseWarningsAcc.push(`Ambiance : ${ambianceScene.raison}`);
+
         level.imageUrl = `maps/generated/${webpFileName}`;
         const videoPrepare = videoPath ? prepareVideo(videoPath, generatedDir, lvlSpec.id) : null;
         level.videoUrl = videoPrepare?.url ?? null;

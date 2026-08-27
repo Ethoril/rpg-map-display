@@ -219,3 +219,40 @@ test('8. js/core/types.js sans code exécutable (pas de class, pas de function, 
     assert.fail(`Du code exécutable non autorisé a été trouvé dans js/core/types.js : "${cleanCode}"`);
   }
 });
+
+test("9. Toute couche branchée dans gm.js / player.js figure dans CANVAS_LAYER_ORDER", async () => {
+  // ⛔ **Le défaut que ce test existe pour empêcher, payé le 26/08/2026.** `renderLayerStack`
+  // parcourt `CANVAS_LAYER_ORDER` et JAMAIS les clés qu'on lui passe : une couche branchée
+  // dans `gm.js` mais absente de cette liste n'est jamais appelée — **sans erreur, sans
+  // avertissement, sans rouge**. La couche d'éclairage a vécu ainsi une porte verte entière
+  // et deux jeux de captures d'écran avant que la comparaison témoin/nuit ne la démasque :
+  // les deux images étaient identiques au pixel près.
+  //
+  // Le typage ne l'attrape pas non plus : `Partial<Record<…>>` accepte l'objet littéral sans
+  // signaler la clé surnuméraire.
+  const { CANVAS_LAYER_ORDER } = await import('../js/render/stage.js');
+  const connues = new Set(CANVAS_LAYER_ORDER);
+
+  for (const fichier of ['js/app/gm.js', 'js/app/player.js']) {
+    const contenu = fs.readFileSync(path.join(rootDir, fichier), 'utf8');
+    const appel = contenu.slice(contenu.indexOf('renderLayerStack({'));
+    assert.ok(appel.length > 0, `${fichier} doit appeler renderLayerStack`);
+
+    // Les clés de premier niveau de l'objet littéral, à leur indentation propre.
+    const cles = [...appel.matchAll(/^ {6}([a-zA-Z]+): \(\) => \{/gm)].map((m) => m[1]);
+    assert.ok(cles.length >= 8, `${fichier} : ${cles.length} couches lues, c'est trop peu — le motif a dérivé`);
+
+    for (const cle of cles) {
+      assert.ok(
+        connues.has(cle),
+        `${fichier} branche la couche « ${cle} », absente de CANVAS_LAYER_ORDER : elle ne sera JAMAIS appelée`
+      );
+    }
+  }
+
+  // Et le rang de la lumière est celui qu'a tranché le mainteneur : au-dessus du décor,
+  // sous tout ce qui doit rester lisible.
+  assert.equal(CANVAS_LAYER_ORDER.indexOf('light'), CANVAS_LAYER_ORDER.indexOf('grid') + 1);
+  assert.ok(CANVAS_LAYER_ORDER.indexOf('light') < CANVAS_LAYER_ORDER.indexOf('tokens'));
+  assert.ok(CANVAS_LAYER_ORDER.indexOf('light') < CANVAS_LAYER_ORDER.indexOf('fog'));
+});

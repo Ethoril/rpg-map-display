@@ -95,6 +95,72 @@ rendu.
 > qui y entre, c'est leur **calcul**, éprouvé sur horloge et données synthétiques. La leçon de la
 > sonde 7bis, appliquée d'avance. Voir `ETAT.md`, campagne du 11/08.
 
+#### 🟡 26/08/2026 — instrument réparé, premier relevé pris, **la tablette reste due**
+
+La section 16 existait depuis le 18/08 mais **n'avait jamais été exécutée**, et elle ne pouvait
+rendre aucun verdict : le vidage de pipeline coûtait plus cher que l'opération mesurée, donc
+`max(0, brut − vidage)` rendait 0 quoi qu'il arrive. Trois défauts corrigés — vidage amorti sur
+30 cycles au lieu d'être retranché à chaque image, cycle chronométré **entier** au lieu de ses deux
+moitiés (séparées, elles totalisaient 0,19 ms quand leur enchaînement en coûtait 1,63), et
+destination prise sur **l'écran réel** au lieu d'un 640×480 figé. Détail et preuves par mutation :
+`JOURNAL-AUTONOME.md`, 26/08.
+
+**Relevé sur le poste Windows** — Village étage 00, 93 sources réellement lues, masque 336×336 :
+
+| Destination | Surface | Coût par image |
+|---|---|---|
+| 640×480 | 0,31 Mpx | 0,78 ms |
+| 1280×720 | 0,92 Mpx | 0,83 ms |
+
+**Part fixe** (composer 93 disques) : 0,755 ms. **Part variable** (agrandir) : 0,081 ms/Mpx — un
+écran 4K n'ajouterait que 0,67 ms. ⭐ **L'hypothèse tient, et plus largement qu'espéré** : la dépense
+est dans la composition, l'agrandissement est quasi gratuit.
+
+#### ✅ 26/08/2026 — M2 EST CLOSE : relevé sur la Tab S9 FE, **l'hypothèse tient**
+
+Relevé du mainteneur, tablette, Village étage 00, 93 sources, masque 336×336 :
+
+| Destination | Surface | Coût par image |
+|---|---|---|
+| référence 640×480 | 0,31 Mpx | 2,253 ms |
+| **écran réel 2303×1134** | **2,61 Mpx** | **5,62 ms** |
+
+**Part fixe** (composer 93 disques) : **1,80 ms**. **Part variable** (agrandir) : **1,46 ms/Mpx**.
+
+⭐ **5,62 ms contre un budget de 300 ms — moins de 2 %.** Et **17 % d'une image à 30 fps**, quand la
+vue joueurs entière tourne à 1–3 ms depuis la fermeture du fog. **Le champ lumineux à la résolution
+du masque tient sur le matériel cible.**
+
+⭐ **Les deux rapports tablette / poste Windows disent des choses différentes, et c'est le résultat
+intéressant :**
+
+- **composition ×2,4** — exactement le facteur 2,3× déjà consigné entre les deux machines depuis le
+  11/08. La mesure est donc cohérente avec tout l'historique : c'est un contrôle, pas une surprise.
+- **agrandissement ×18** — le débit de remplissage d'une dalle mobile. ⚠ **C'est le seul terme qui
+  croît avec l'écran**, donc le seul à surveiller si la destination grandit.
+
+**Ce que M2 décide, et c'était son objet :**
+
+⛔ **WebGL n'est pas justifié.** La mesure qui manquait depuis le 29/07 existe enfin, et elle dit que
+Canvas 2D suffit — avec deux ordres de grandeur de marge. La question du moteur est close **par la
+mesure**, plus seulement par l'absence de raison d'en changer. Voir `ETAT.md` et la note « toute
+optimisation GPU future devra passer par un nouveau contrat de renderer ».
+
+**Conséquence d'architecture** : si le champ est mis en cache **comme l'est déjà le masque de fog**,
+la composition (1,80 ms) n'est payée qu'à la **mutation** — une lumière bascule, un pion porteur de
+torche bouge, une porte s'ouvre — et l'image ne paie que l'agrandissement, **4,85 ms en plein écran**
+(déduit de la pente mesurée, non mesuré directement).
+
+#### ⚠ Les deux termes que M2 n'a PAS mesurés, et qui restent au devis de la phase 3
+
+1. **Le mélange du champ sur le décor.** La section compose et agrandit ; elle ne mélange à rien. Une
+   `LightLayer` devra composer par-dessus la carte, ce qui est **un second balayage plein écran** —
+   probablement du même ordre que l'agrandissement, soit ~5 ms, davantage si le mode de fusion est
+   coûteux. Devis réaliste par image : **5 à 10 ms**, à confirmer en écrivant la couche.
+2. **Le cast.** Non mesuré — le mainteneur n'a pas pu le 26/08. ⚠ Le précédent existe : la section 10
+   avait été relevée **sous cast actif**. Non bloquant vu la marge, mais à confirmer avant de cocher
+   un critère de performance. Voir `QUESTIONS-EN-ATTENTE.md` A-4.
+
 ---
 
 ## 2. Phase 1 — Exactitude géométrique

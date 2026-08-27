@@ -7,6 +7,7 @@ import { FrameProbe } from '../render/probe.js';
 import { BackgroundLayer } from '../render/layers/background.js';
 import { VideoBackdrop } from '../render/videoBackdrop.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
+import { LightLayer } from '../render/layers/light.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
@@ -17,6 +18,7 @@ import { PingsLayer } from '../render/layers/pings.js';
 import { decodeFogPng, getOrExtractMaskAlpha, isCellVisibleInMask } from '../vision/fog.js';
 import { createPlayerLevelSelector } from '../ui/player/levelSelector.js';
 import { gridFor } from '../grid/index.js';
+import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { isPlayerManipulableToken } from '../input/tokenHit.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
@@ -291,6 +293,7 @@ export async function bootstrapPlayerApp(options = {}) {
   });
   videoBackdrop.attach(canvas.parentElement, canvas);
   const gridLayer = new GridLayer();
+  const lightLayer = new LightLayer();
   const portalsLayer = new PortalsLayer();
   const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
@@ -312,6 +315,7 @@ export async function bootstrapPlayerApp(options = {}) {
     snapshot: 0,
     background: 0,
     grid: 0,
+    light: 0,
     portals: 0,
     links: 0,
     moveZone: 0,
@@ -520,6 +524,26 @@ export async function bootstrapPlayerApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         gridLayer.render(stage.context, grid);
         layerDurations.grid = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      // ⭐ Le champ lumineux se calcule **localement**, et ce n'est pas une entorse à
+      // l'autorité du MJ. Un champ lumineux ne dépend d'aucun observateur : il se déduit des
+      // murs, des portes et des sources, que la tablette a déjà toutes. Deux entrées
+      // identiques donnent deux champs identiques — rien à publier, rien à désynchroniser.
+      //
+      // ⛔ La VISION, elle, reste publiée par le MJ : c'est elle qui décide de ce que la
+      // table a le droit de voir, et elle ne se recalcule pas ici.
+      //
+      // La vue joueurs n'a pas de mode : elle est toujours éclairée.
+      light: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        lightLayer.update(grid, activeLevel, state.campaign?.tokens ?? [], {
+          extractSegments: extractBlockedSegments,
+        });
+        lightLayer.render(stage.context, grid, activeLevel, {
+          role: 'players',
+          suppressed: videoBackdrop.active,
+        });
+        layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       // Pas de battement côté joueurs : verrouiller est réservé au MJ (CdC §12 Q3), donc un
       // tap joueurs sur une porte verrouillée n'a rien à signaler qu'il puisse changer.

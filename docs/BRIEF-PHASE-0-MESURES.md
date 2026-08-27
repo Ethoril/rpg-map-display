@@ -76,7 +76,7 @@ Elle mesure **uniquement le coût par pixel nouveau** : la composition du champ 
 agrandissement.
 
 Elle ne mesure **pas** l'occlusion par les murs. Le coût des sweeps est **déjà mesuré** — section 10,
-**2,6 ms sous cast actif pour 300 ms de budget**. Le coût total d'un éclairage réel sera
+⛔ **2,6 ms — chiffre à jeter, la section balayait des cartes sans murs (corrigé le 27/08/2026)**. Le coût total d'un éclairage réel sera
 `sweep déjà mesuré + composition mesurée ici`. Ne pas les additionner à la main dans le verdict de la
 page : afficher les deux séparément et laisser la lecture se faire.
 

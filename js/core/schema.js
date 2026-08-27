@@ -561,7 +561,6 @@ export function createToken(overrides = {}) {
     borderColor: overrides.borderColor ?? '#00ff00',
     label: overrides.label ?? 'Héro',
     hidden: overrides.hidden ?? false,
-    visionBright: overrides.visionBright ?? 6,
     visionDim: overrides.visionDim ?? 12,
     emitsLight: overrides.emitsLight ?? null,
     speedCells: overrides.speedCells ?? 6,
@@ -1067,7 +1066,6 @@ export function validateCampaign(campaign) {
         typeof token.borderColor !== 'string' ||
         typeof token.label !== 'string' ||
         typeof token.hidden !== 'boolean' ||
-        !Number.isFinite(token.visionBright) ||
         !Number.isFinite(token.visionDim) ||
         !Number.isFinite(token.speedCells) ||
         typeof token.playerMovable !== 'boolean' ||

@@ -130,6 +130,24 @@ export const FOG_VEIL_PLAYER_UNEXPLORED = 1;
 export const FOG_VEIL_PLAYER_EXPLORED = 0.5;
 
 /**
+ * Atténuation de l'assombrissement lumineux dans la **vue MJ** — chantier Z, 26/08/2026.
+ *
+ * ⭐ **Ce n'est pas un nombre choisi au goût : c'est le rapport que le fog applique déjà.**
+ * `FOG_VEIL_GM_UNEXPLORED` vaut la moitié de `FOG_VEIL_PLAYER_UNEXPLORED` (0,5 contre 1), et
+ * `FOG_VEIL_GM_EXPLORED` la moitié de `FOG_VEIL_PLAYER_EXPLORED` (0,25 contre 0,5). Le MJ est
+ * assombri **deux fois moins** que la table, dans les deux états, depuis L-04. La lumière
+ * reprend ce rapport plutôt que d'en inventer un second.
+ *
+ * **Pourquoi il en faut un.** Mesuré le 26/08 : sur `manoir-rdc` — ambiante nulle, zéro source
+ * déclarée — le champ est vide, donc la modulation est noire, donc la carte disparaît. La vue
+ * MJ étant sous le fog, le mainteneur perdrait le décor que le voile partiel lui laisse voir
+ * **pour mener la partie**. Décision du mainteneur : « atténué comme le voile de fog ».
+ *
+ * ⚠ La vue joueurs, elle, n'est pas atténuée : c'est ce que la table doit voir.
+ */
+export const LIGHT_GM_DARKNESS_RATIO = 0.5;
+
+/**
  * Les quatorze marqueurs d'état — **liste close**, CdC §12 Q7 tranchée le 04/08/2026.
  *
  * L'assertion de constance posée sur le littéral ci-dessous n'est pas décorative : elle fait
