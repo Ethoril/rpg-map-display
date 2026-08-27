@@ -549,3 +549,45 @@ bascule, un pion porteur de torche bouge, une porte s'ouvre — et l'image ne pa
 ⛔ **Ce que ce relevé ne décide PAS** : il dit que l'éclairage réel est *abordable*, pas qu'il est
 *voulu*. Le choix entre **tactique binaire** et **éclairage réel** reste entier, et il appartient au
 mainteneur — voir `PLAN-SUITE.md` §4 et `QUESTIONS-EN-ATTENTE.md` D-1.
+
+---
+
+## ⛔ 27 août 2026 — reprise planifiée : branche autonome rattrapée, FILE TOUJOURS VIDE, arrêt
+
+Reprise sans contexte frais, `rpg-map-display-boucle-autonome`. `git status` propre en entrée sur
+`main` — aucun travail non relu en attente.
+
+### Ce qui a changé depuis la dernière reprise (26/08 matin)
+
+Le mainteneur est revenu **le jour même** et a fait tout le chantier Z directement — quinze commits
+du 26 et 27/08, fusionnés sur `main` (`fb38538`) : M2 réparée, la lumière réelle (Z-01 à Z-05), et
+trois instruments qui mentaient (section 16, section 10, le bloc `environment` de Dungeon Alchemist).
+Détail complet dans `CHANTIER-Z-ECLAIRAGE-REEL.md` et la mémoire `point_de_reprise`. **Ce travail
+n'est pas passé par la file autonome** — huit décisions du mainteneur y sont consignées, hors de sa
+portée par construction (charte §2 : « aucune décision produit »).
+
+⚠ **La branche `autonome/2026-08` n'avait rien de ce travail.** Son seul commit propre depuis
+`fde5423` était l'entrée de journal du 26/08 matin (`edf7caa`, docs seul) ; `main` avait
+16 commits qu'elle n'avait pas. Rattrapée par **fusion** (`62ba205`, pas de fast-forward possible,
+un seul conflit — ce fichier, sur la même section de date, résolu en gardant la version de `main`
+et en notant que l'entrée du matin était devenue caduque dans l'après-midi). Porte repassée **après
+fusion**, seule, code capturé hors tube : **CODE=0, 527 unitaires, 205 e2e, 3 gestes.** Poussée sur
+`origin/autonome/2026-08`.
+
+### État de la file
+
+`CHANTIER-AUTONOME.md` §2 est inchangé depuis le 18/08 : les quatre tranches qu'il listait sont
+livrées et fusionnées depuis longtemps, et **rien de neuf n'y a été déposé** pour cette fenêtre.
+Le chantier Z ne compte pas comme un dépôt dans cette file — il a été mené avec le mainteneur
+présent, pas en son absence.
+
+⛔ **Donc : file vide. Conformément à la charte §3, arrêt immédiat — aucun travail inventé.**
+
+### Ce qui reste, et n'appartient qu'au mainteneur
+
+- **Voir le mode tactique en séance** — une porte qu'on ouvre, un PJ qui entre dans une pièce noire.
+- **Le volet cast de R3-05** — remesuré le 27/08 à 45,6 ms (au lieu des 2,6 ms d'un instrument qui ne
+  mesurait aucun mur), mais toujours pas sous cast actif. Non bloquant à 15 % du budget.
+- Tout `C-1`…`C-8` / `D-2`…`D-4` de `QUESTIONS-EN-ATTENTE.md` — décisions produit, aucune n'a bougé.
+  ⚠ `D-1` (§12 q.9) n'a plus d'objet depuis Z-05 : à faire refléter dans ce document, ce n'est pas
+  fait à cette date.
