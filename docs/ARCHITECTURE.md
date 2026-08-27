@@ -90,6 +90,14 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  d'universalité. Pur, sans DOM ni I/O — il reçoit des
 │   │                                  pixels, il rend un verdict. ⚠ Il AVERTIT et ne corrige
 │   │                                  rien : l'adaptateur hexagonal est le lot 4.
+│   │   ├─ ambianceImage.js       [Z]  ambiance PROPOSÉE d'après la luminance de l'image.
+│   │   │                              ⛔ Existe parce que le bloc `environment` de Dungeon
+│   │   │                              Alchemist est CONSTANT — `baked_lighting: true`,
+│   │   │                              `ambient_light: ffffffff` — de jour comme de nuit et
+│   │   │                              quel que soit le mode d'export. L'image, elle, sait :
+│   │   │                              12,6 de luminance moyenne la nuit contre 64 le jour.
+│   │   │                              ⚠ Il PROPOSE, le MJ tranche. Pur, sans DOM ni I/O —
+│   │   │                              il reçoit des pixels, comme gridPitch.js
 │   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>, par croisement
 │                                      centre-à-centre. Porte une MÉMOÏSATION par étage,
 │                                      indexée sur levelId + empreinte géométrique : c'est

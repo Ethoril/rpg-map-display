@@ -229,7 +229,10 @@ test('1. ⭐ LA propriété du modèle : déplacer un PJ ne recompose RIEN', () 
 });
 
 test('2. Une torche PORTÉE, elle, recompose quand son porteur bouge', () => {
-  const level = etage();
+  // ⚠ Ambiante NULLE, et c'est indispensable : à ambiante pleine le champ est déjà blanc et
+  // aucune source n'est balayée — la torche n'aurait rien à composer. Le défaut du 27/08 :
+  // ce test utilisait l'étage par défaut, à ambiante 1.
+  const level = etage({ ambient: { level: 0, baked: false } });
   const porteur = createToken({
     id: 'torche', levelId: 'lvl-1', kind: 'npc', cell: { a: 2, b: 2 },
     emitsLight: { range: 6, intensity: 1, color: '#ffdca8' },
@@ -278,13 +281,17 @@ test('4. ⭐ L’ambiante entre par sa VALEUR — 0,35 se distingue de 1', () =>
     '⛔ 0,35 et 1 doivent produire des champs différents'
   );
 
-  // `baked` force la pleine ambiance : l'image porte déjà sa lumière peinte, on ne la
-  // rassombrit pas.
+  // ⛔ **`baked` ne force plus la pleine ambiance — corrigé le 27/08/2026.** Le drapeau de
+  // Dungeon Alchemist vaut `true` en toutes circonstances ; le forcer rendait sans effet tout
+  // réglage « Nuit » du mainteneur. Seul le NIVEAU décide désormais.
   const couche = new LightLayer({ createCanvas: fabrique });
   couche.update(ADAPTATEUR, etage({ ambient: { level: 0, baked: true } }), []);
-  const champ = couche._field;
+  const champ = champDe(couche);
   assert.ok(champ, 'un champ existe');
-  assert.equal(pixelAu(champ.canvas._ctx, 5, 5).red, 255, 'baked ⇒ pleine lumière partout');
+  assert.equal(
+    pixelAu(champ.canvas._ctx, 5, 5).alpha, 0,
+    '⛔ un étage cuit réglé sur Nuit est SOMBRE : le drapeau n’impose plus rien'
+  );
 });
 
 test('5. Une torche éclaire depuis le MILIEU de son pion, pas depuis un coin', () => {
@@ -505,121 +512,93 @@ test('12. ⭐ La vue MJ est assombrie DEUX FOIS MOINS que la table — décision
   );
 });
 
-test('13. ⛔ Une carte à l’éclairage CUIT ignore la lumière — 5 exports réels sur 6', () => {
-  // `baked_lighting` est vrai sur 5 des 6 exports UVTT du dépôt : Dungeon Alchemist cuit la
-  // lumière dans l'image. La remoduler l'assombrirait deux fois. Décision du 26/08.
-  const cuite = etage({ ambient: { level: 0, baked: true }, lights: [] });
+test('13. ⭐ EN PLEIN JOUR, le décor sort INTACT — et sans cas particulier', () => {
+  // Exigence du mainteneur, 26/08/2026 : « l'outil doit être capable de gérer à la fois les
+  // cartes cuites et les cartes non cuites. »
+  //
+  // ⛔ **Le 26/08, cette exigence était portée par le drapeau `baked`. Le 27/08 a montré que ce
+  // drapeau ne distingue rien** : Dungeon Alchemist écrit `baked_lighting: true` de jour comme
+  // de nuit, et quel que soit le mode d'export. S'y fier rendait l'éclairage inerte partout.
+  //
+  // ⭐ **Ce qui le remplace ne coûte rien et ne décide de rien.** À ambiante pleine, le champ
+  // est uniformément blanc, et `multiply` par du blanc laisse la destination EXACTEMENT
+  // inchangée. Une carte de jour est donc rendue à l'identique par la seule arithmétique de
+  // composition — aucune garde, aucun drapeau, aucun chemin de repli.
+  const jour = etage({
+    ambient: { level: 1, baked: true },   // ⚠ cuit ET plein jour : le cas de toutes ses cartes
+    lights: [
+      { id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true },
+      { id: 'l2', at: { cellX: 7, cellY: 7 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true },
+    ],
+  });
+
   const couche = new LightLayer({ createCanvas: fabrique });
-  couche.update(ADAPTATEUR, cuite, []);
+  couche.update(ADAPTATEUR, jour, []);
+
+  // ⭐ Et l'économie : à ambiante pleine, AUCUNE source n'est balayée. Ce n'est pas une
+  // optimisation opportuniste, c'est l'invariant — elles seraient invisibles de toute façon.
+  // Sur `testbig150` cela évite 185 sweeps par recomposition.
+  assert.equal(jour.lights.length, 2, 'le cas n’est probant que si la carte porte des sources');
+  assert.equal(couche.lastSourceCount, 0, '⛔ ambiante pleine : aucune source balayée');
 
   for (const role of /** @type {const} */ (['gm', 'players'])) {
     const ctx = createMockCanvas(1000, 1000)._ctx;
     ctx.fillStyle = 'rgba(200, 200, 200, 1)';
     ctx.fillRect(0, 0, 1000, 1000);
-    ctx.journal.length = 0;
-
-    assert.equal(couche.render(ctx, ADAPTATEUR, cuite, { role, mode: 'play' }), false);
-    assert.equal(ctx.journal.length, 0, `⛔ rien ne doit être peint (${role})`);
-    assert.equal(pixelAu(ctx, 500, 500).red, 200, 'le décor cuit sort intact');
+    couche.render(ctx, ADAPTATEUR, jour, { role, mode: 'play' });
+    assert.equal(
+      pixelAu(ctx, 500, 500).red, 200,
+      `⛔ plein jour : le décor sort INTACT (${role})`
+    );
   }
-
-  // ⭐ La mutation qui compte : sans cette garde, `baked` forçait l'ambiante à 1, le champ
-  // devenait uniformément blanc et le `multiply` rendait le décor inchangé — donc le test
-  // ci-dessus passait quand même, mais en payant la composition et un balayage plein écran
-  // à chaque image pour rien. Le journal vide est ce qui distingue les deux.
-  assert.equal(couche.render(createMockCanvas(10, 10)._ctx, ADAPTATEUR, cuite, { role: 'players', suppressed: true }), false,
-    'même le chemin du fond animé se tait sur une carte cuite');
 });
 
-test('14. ⭐ EXIGENCE : l’outil gère les DEUX, cuite et non cuite, sans bavure entre elles', () => {
-  // Exigence du mainteneur, 26/08/2026 : « l'outil doit être capable de gérer à la fois les
-  // cartes cuites et les cartes non cuites ». Ce n'est pas un cas de repli, c'est un cas
-  // nominal — une campagne peut mêler un village Dungeon Alchemist (cuit) et un donjon tracé
-  // à la main (non cuit).
-  //
-  // ⛔ Le risque réel n'est aucun des deux cas pris seul : c'est le **passage de l'un à
-  // l'autre**. La couche est réutilisée d'un étage au suivant, et son champ est un canvas
-  // muté EN PLACE. Un champ resté sur son étage précédent éclairerait le donjon avec
-  // l'ambiante du village — ou l'inverse, et là c'est une fuite.
+test('14. ⭐ EXIGENCE : jour et nuit sur la même couche, sans bavure entre eux', () => {
+  // Le risque n'est aucun des deux cas pris seul : c'est le **passage de l'un à l'autre**. La
+  // couche est réutilisée d'un étage au suivant et son champ est un canvas muté EN PLACE — un
+  // champ resté sur l'étage précédent éclairerait un donjon avec l'ambiante d'un village.
   const couche = new LightLayer({ createCanvas: fabrique });
 
-  // ⚠ **La carte cuite PORTE des sources, et c'est indispensable.** Une première version de
-  // ce test lui en donnait zéro : « aucune source balayée » était alors vrai par construction,
-  // et la mutation « balayer quand même les sources d'une carte cuite » restait verte. Un test
-  // qui ne peut pas rougir ne prouve rien — la leçon du projet, payée une fois de plus ici.
   const lampes = [
     { id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true },
-    { id: 'l2', at: { cellX: 7, cellY: 7 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true },
   ];
-  const cuite = etage({ id: 'village', ambient: { level: 1, baked: true }, lights: lampes });
-  const nonCuite = etage({ id: 'donjon', ambient: { level: 0, baked: false }, lights: [] });
+  // ⚠ Les deux étages sont annoncés CUITS, comme le sont les cinq exports réels du mainteneur.
+  // Seul leur niveau d'ambiante les sépare — et c'est lui, désormais, qui décide.
+  const jour = etage({ id: 'village', ambient: { level: 1, baked: true }, lights: lampes });
+  const nuit = etage({ id: 'donjon', ambient: { level: 0, baked: true }, lights: [] });
 
-  /** Le champ est-il éclairé au point donné ? @param {number} x @param {number} y */
+  /** @param {number} x @param {number} y */
   const champEclaireA = (x, y) => pixelAu(champDe(couche).canvas._ctx, x, y).alpha > 0;
 
-  // ── La cuite : champ TOUT éclairé, et la couche se tait au rendu ──
-  couche.update(ADAPTATEUR, cuite, []);
-  assert.equal(champEclaireA(5, 5), true, 'cuite : le champ est entièrement éclairé');
-  assert.equal(champEclaireA(70, 70), true);
-  assert.equal(lampes.length, 2, 'le cas n’est probant que si la carte cuite porte des sources');
-  assert.equal(
-    couche.lastSourceCount, 0,
-    '⛔ cuite : ses DEUX lampes ne sont pas balayées — 185 sweeps évités sur testbig150'
-  );
+  couche.update(ADAPTATEUR, jour, []);
+  assert.equal(champEclaireA(70, 70), true, 'jour : le champ est entièrement éclairé');
 
-  const ctxCuite = createMockCanvas(1000, 1000)._ctx;
-  ctxCuite.fillStyle = 'rgba(200, 200, 200, 1)';
-  ctxCuite.fillRect(0, 0, 1000, 1000);
-  ctxCuite.journal.length = 0;
-  assert.equal(couche.render(ctxCuite, ADAPTATEUR, cuite, { role: 'players' }), false);
-  assert.equal(pixelAu(ctxCuite, 500, 500).red, 200, 'cuite : le décor sort intact');
+  couche.update(ADAPTATEUR, nuit, []);
+  assert.equal(champEclaireA(70, 70), false, '⛔ nuit sans source : NOIR, aucune bavure du jour');
 
-  // ⭐ Et c'est ce champ tout-éclairé que le calcul de vision intersecte : sur une carte
-  // cuite, « ligne de vue ∩ éclairé » vaut donc la ligne de vue entière. Le comportement
-  // d'avant le chantier est préservé exactement, sans code de repli.
+  couche.update(ADAPTATEUR, jour, []);
+  assert.equal(champEclaireA(70, 70), true, '⛔ retour au jour : le noir du donjon ne survit pas');
 
-  // ── Passage à la NON cuite, sur la MÊME couche ──
-  couche.update(ADAPTATEUR, nonCuite, []);
-  assert.equal(champEclaireA(5, 5), false, '⛔ non cuite et sans source : le champ est NOIR');
-  assert.equal(champEclaireA(70, 70), false, '⛔ aucune bavure de l’étage cuit précédent');
-
-  const ctxNoir = createMockCanvas(1000, 1000)._ctx;
-  ctxNoir.fillStyle = 'rgba(200, 200, 200, 1)';
-  ctxNoir.fillRect(0, 0, 1000, 1000);
-  assert.equal(couche.render(ctxNoir, ADAPTATEUR, nonCuite, { role: 'players' }), true);
-  assert.equal(pixelAu(ctxNoir, 500, 500).red, 0, 'non cuite : le décor s’assombrit');
-
-  // ── Et le retour, qui est l’autre sens de la bavure ──
-  couche.update(ADAPTATEUR, cuite, []);
-  assert.equal(champEclaireA(5, 5), true, '⛔ retour à la cuite : le noir du donjon ne survit pas');
-
-  const ctxRetour = createMockCanvas(1000, 1000)._ctx;
-  ctxRetour.fillStyle = 'rgba(200, 200, 200, 1)';
-  ctxRetour.fillRect(0, 0, 1000, 1000);
-  couche.render(ctxRetour, ADAPTATEUR, cuite, { role: 'players' });
-  assert.equal(pixelAu(ctxRetour, 500, 500).red, 200, 'et le décor cuit ressort intact');
-
-  // ⭐ **Ce qui garantit l'absence de bavure, c'est que la signature distingue les deux.**
-  //
-  // ⚠ Une première version invoquait ici `level.id`. C'était faux : deux étages qui ne
-  // diffèrent QUE par leur identifiant produisent le même champ, donc ne pas le recomposer
-  // serait correct. Ce qui doit les séparer, c'est `baked` — et lui seul suffit, même à
-  // identifiant, dimensions et sources identiques.
-  const memeEtageMaisCuit = etage({ id: 'X', ambient: { level: 0, baked: true }, lights: lampes });
-  const memeEtageNonCuit = etage({ id: 'X', ambient: { level: 0, baked: false }, lights: lampes });
+  // ⭐ Et la garantie qui l'assure : la signature sépare les deux étages par leur NIVEAU, à
+  // `baked` identique — puisque le drapeau, lui, vaut `true` des deux côtés.
+  const memeEtageJour = etage({ id: 'X', ambient: { level: 1, baked: true }, lights: lampes });
+  const memeEtageNuit = etage({ id: 'X', ambient: { level: 0, baked: true }, lights: lampes });
   assert.notEqual(
-    buildLightSignature(memeEtageMaisCuit, [], ADAPTATEUR),
-    buildLightSignature(memeEtageNonCuit, [], ADAPTATEUR),
-    '⛔ cuit et non cuit doivent produire des champs différents, à tout le reste égal'
+    buildLightSignature(memeEtageJour, [], ADAPTATEUR),
+    buildLightSignature(memeEtageNuit, [], ADAPTATEUR),
+    '⛔ jour et nuit doivent produire des champs différents, à tout le reste égal'
   );
 
-  // Et la preuve par le champ lui-même, pas seulement par la chaîne de signature.
-  const couche2 = new LightLayer({ createCanvas: fabrique });
-  couche2.update(ADAPTATEUR, memeEtageMaisCuit, []);
-  assert.equal(pixelAu(champDe(couche2).canvas._ctx, 70, 70).alpha > 0, true, 'cuit : tout éclairé');
-  couche2.update(ADAPTATEUR, memeEtageNonCuit, []);
-  assert.equal(
-    pixelAu(champDe(couche2).canvas._ctx, 70, 70).alpha, 0,
-    '⛔ non cuit, loin des deux lampes : noir — et pas un reste du champ cuit'
-  );
+  // Et le rendu suit : intact de jour, assombri de nuit, sur le même décor gris.
+  /** @param {any} niveau */
+  const rendu = (niveau) => {
+    couche.update(ADAPTATEUR, niveau, []);
+    const ctx = createMockCanvas(1000, 1000)._ctx;
+    ctx.fillStyle = 'rgba(200, 200, 200, 1)';
+    ctx.fillRect(0, 0, 1000, 1000);
+    couche.render(ctx, ADAPTATEUR, niveau, { role: 'players' });
+    return pixelAu(ctx, 500, 500).red;
+  };
+  assert.equal(rendu(memeEtageJour), 200, 'jour : décor intact');
+  assert.equal(rendu(memeEtageNuit), 0, 'nuit sans source à cet endroit : décor noir');
 });

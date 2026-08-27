@@ -1,0 +1,1275 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-testnoncuite",
+  "name": "Testnoncuite",
+  "levels": [
+    {
+      "id": "testnoncuite",
+      "name": "Testnoncuite",
+      "order": 0,
+      "imageUrl": "maps/generated/testnoncuite.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "pxPerCell": 140,
+      "widthCells": 42,
+      "heightCells": 42,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "terrainCost": null,
+      "walls": [
+        [
+          {
+            "cellX": 12.9700012,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 15.9800014,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 16.9800014,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 26.01327
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 30.0232716
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 27.01327
+          }
+        ],
+        [
+          {
+            "cellX": 16.9800014,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 24.00327
+          }
+        ],
+        [
+          {
+            "cellX": 11.9700012,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 15.9800014,
+            "cellY": 24.00327
+          }
+        ],
+        [
+          {
+            "cellX": 21.0000019,
+            "cellY": 34.04327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 34.04327
+          }
+        ],
+        [
+          {
+            "cellX": 22.0000019,
+            "cellY": 34.04327
+          },
+          {
+            "cellX": 23.0100021,
+            "cellY": 34.04327
+          }
+        ],
+        [
+          {
+            "cellX": 28.0300026,
+            "cellY": 34.04327
+          },
+          {
+            "cellX": 24.0100021,
+            "cellY": 34.04327
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 32.03327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 30.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 22.0000019,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 22.0000019,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 25.0200024,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 27.0200024,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 25.0200024,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 36.0532722
+          },
+          {
+            "cellX": 14.9800014,
+            "cellY": 36.0532722
+          }
+        ],
+        [
+          {
+            "cellX": 12.9700012,
+            "cellY": 33.04327
+          },
+          {
+            "cellX": 15.9800014,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 35.04327
+          },
+          {
+            "cellX": 13.9700012,
+            "cellY": 36.0532722
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 33.04327
+          },
+          {
+            "cellX": 13.9700012,
+            "cellY": 34.04327
+          }
+        ],
+        [
+          {
+            "cellX": 17.9900017,
+            "cellY": 36.0532722
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 36.0532722
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 34.04327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 16.9800014,
+            "cellY": 33.04327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 36.0532722
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 35.04327
+          }
+        ],
+        [
+          {
+            "cellX": 26.0200024,
+            "cellY": 32.03327
+          },
+          {
+            "cellX": 26.0200024,
+            "cellY": 34.04327
+          }
+        ],
+        [
+          {
+            "cellX": 29.0300026,
+            "cellY": 34.04327
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 34.04327
+          }
+        ],
+        [
+          {
+            "cellX": 30.0300026,
+            "cellY": 30.0232716
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 32.03327
+          }
+        ],
+        [
+          {
+            "cellX": 30.0300026,
+            "cellY": 34.04327
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 30.0300026,
+            "cellY": 27.01327
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 29.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 26.0200024,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 26.0200024,
+            "cellY": 30.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 11.9700012,
+            "cellY": 33.04327
+          },
+          {
+            "cellX": 9.960001,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 11.9700012,
+            "cellY": 33.04327
+          },
+          {
+            "cellX": 12.9700012,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 9.960001,
+            "cellY": 32.03327
+          },
+          {
+            "cellX": 9.960001,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 13.9700012,
+            "cellY": 30.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 31.0332718
+          },
+          {
+            "cellX": 13.9700012,
+            "cellY": 33.04327
+          }
+        ],
+        [
+          {
+            "cellX": 9.960001,
+            "cellY": 30.0232716
+          },
+          {
+            "cellX": 9.960001,
+            "cellY": 31.0332718
+          }
+        ],
+        [
+          {
+            "cellX": 9.960001,
+            "cellY": 27.01327
+          },
+          {
+            "cellX": 9.960001,
+            "cellY": 29.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 9.960001,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 10.960001,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 27.01327
+          },
+          {
+            "cellX": 13.9700012,
+            "cellY": 24.00327
+          }
+        ],
+        [
+          {
+            "cellX": 13.9700012,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 13.9700012,
+            "cellY": 27.01327
+          }
+        ],
+        [
+          {
+            "cellX": 9.960001,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 11.9700012,
+            "cellY": 24.00327
+          }
+        ],
+        [
+          {
+            "cellX": 9.960001,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 9.960001,
+            "cellY": 25.01327
+          }
+        ],
+        [
+          {
+            "cellX": 26.0200024,
+            "cellY": 27.01327
+          },
+          {
+            "cellX": 26.0200024,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 29.0300026,
+            "cellY": 28.0232716
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 28.0232716
+          }
+        ],
+        [
+          {
+            "cellX": 30.0300026,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 26.01327
+          }
+        ],
+        [
+          {
+            "cellX": 26.0200024,
+            "cellY": 24.00327
+          },
+          {
+            "cellX": 26.0200024,
+            "cellY": 26.01327
+          }
+        ],
+        [
+          {
+            "cellX": 30.0300026,
+            "cellY": 23.00327
+          },
+          {
+            "cellX": 30.0300026,
+            "cellY": 21.993269
+          }
+        ],
+        [
+          {
+            "cellX": 26.0200024,
+            "cellY": 21.993269
+          },
+          {
+            "cellX": 29.0300026,
+            "cellY": 21.993269
+          }
+        ],
+        [
+          {
+            "cellX": 30.0300026,
+            "cellY": 21.993269
+          },
+          {
+            "cellX": 29.0300026,
+            "cellY": 21.993269
+          }
+        ],
+        [
+          {
+            "cellX": 26.0200024,
+            "cellY": 21.993269
+          },
+          {
+            "cellX": 26.0200024,
+            "cellY": 23.00327
+          }
+        ],
+        [
+          {
+            "cellX": 18.9900017,
+            "cellY": 36.04327
+          },
+          {
+            "cellX": 18.9900017,
+            "cellY": 36.0532722
+          }
+        ]
+      ],
+      "portals": [
+        {
+          "id": "portal-1",
+          "a": {
+            "cellX": 15.9800014,
+            "cellY": 28.0232716
+          },
+          "b": {
+            "cellX": 16.9800014,
+            "cellY": 28.0232716
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-2",
+          "a": {
+            "cellX": 18.9900017,
+            "cellY": 27.01327
+          },
+          "b": {
+            "cellX": 18.9900017,
+            "cellY": 26.01327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-3",
+          "a": {
+            "cellX": 16.9800014,
+            "cellY": 24.00327
+          },
+          "b": {
+            "cellX": 15.9800014,
+            "cellY": 24.00327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-4",
+          "a": {
+            "cellX": 21.0000019,
+            "cellY": 34.04327
+          },
+          "b": {
+            "cellX": 22.0000019,
+            "cellY": 34.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-5",
+          "a": {
+            "cellX": 18.9900017,
+            "cellY": 32.03327
+          },
+          "b": {
+            "cellX": 18.9900017,
+            "cellY": 33.04327
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-6",
+          "a": {
+            "cellX": 23.0100021,
+            "cellY": 34.04327
+          },
+          "b": {
+            "cellX": 24.0100021,
+            "cellY": 34.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-7",
+          "a": {
+            "cellX": 17.9900017,
+            "cellY": 36.0532722
+          },
+          "b": {
+            "cellX": 14.9800014,
+            "cellY": 36.0532722
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-8",
+          "a": {
+            "cellX": 13.9700012,
+            "cellY": 34.04327
+          },
+          "b": {
+            "cellX": 13.9700012,
+            "cellY": 35.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-9",
+          "a": {
+            "cellX": 16.9800014,
+            "cellY": 33.04327
+          },
+          "b": {
+            "cellX": 15.9800014,
+            "cellY": 33.04327
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-10",
+          "a": {
+            "cellX": 18.9900017,
+            "cellY": 35.04327
+          },
+          "b": {
+            "cellX": 18.9900017,
+            "cellY": 34.04327
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-11",
+          "a": {
+            "cellX": 21.0000019,
+            "cellY": 36.04327
+          },
+          "b": {
+            "cellX": 18.9900017,
+            "cellY": 36.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-12",
+          "a": {
+            "cellX": 27.0200024,
+            "cellY": 36.04327
+          },
+          "b": {
+            "cellX": 21.0000019,
+            "cellY": 36.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-13",
+          "a": {
+            "cellX": 27.0200024,
+            "cellY": 34.03327
+          },
+          "b": {
+            "cellX": 27.0200024,
+            "cellY": 36.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-14",
+          "a": {
+            "cellX": 28.0300026,
+            "cellY": 34.04327
+          },
+          "b": {
+            "cellX": 29.0300026,
+            "cellY": 34.04327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-15",
+          "a": {
+            "cellX": 30.0300026,
+            "cellY": 33.04327
+          },
+          "b": {
+            "cellX": 30.0300026,
+            "cellY": 32.03327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-16",
+          "a": {
+            "cellX": 26.0200024,
+            "cellY": 31.0332718
+          },
+          "b": {
+            "cellX": 26.0200024,
+            "cellY": 32.03327
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-17",
+          "a": {
+            "cellX": 30.0300026,
+            "cellY": 30.0232716
+          },
+          "b": {
+            "cellX": 30.0300026,
+            "cellY": 29.0232716
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-18",
+          "a": {
+            "cellX": 26.0200024,
+            "cellY": 30.0232716
+          },
+          "b": {
+            "cellX": 26.0200024,
+            "cellY": 31.0332718
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-19",
+          "a": {
+            "cellX": 9.960001,
+            "cellY": 31.0332718
+          },
+          "b": {
+            "cellX": 9.960001,
+            "cellY": 32.03327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-20",
+          "a": {
+            "cellX": 13.9700012,
+            "cellY": 31.0332718
+          },
+          "b": {
+            "cellX": 13.9700012,
+            "cellY": 30.0232716
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-21",
+          "a": {
+            "cellX": 9.960001,
+            "cellY": 29.0232716
+          },
+          "b": {
+            "cellX": 9.960001,
+            "cellY": 30.0232716
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-22",
+          "a": {
+            "cellX": 11.9700012,
+            "cellY": 28.0232716
+          },
+          "b": {
+            "cellX": 12.9700012,
+            "cellY": 28.0232716
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-23",
+          "a": {
+            "cellX": 9.960001,
+            "cellY": 26.01327
+          },
+          "b": {
+            "cellX": 9.960001,
+            "cellY": 27.01327
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-24",
+          "a": {
+            "cellX": 10.960001,
+            "cellY": 28.0232716
+          },
+          "b": {
+            "cellX": 11.9700012,
+            "cellY": 28.0232716
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-25",
+          "a": {
+            "cellX": 9.960001,
+            "cellY": 25.01327
+          },
+          "b": {
+            "cellX": 9.960001,
+            "cellY": 26.01327
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-26",
+          "a": {
+            "cellX": 28.0300026,
+            "cellY": 28.0232716
+          },
+          "b": {
+            "cellX": 29.0300026,
+            "cellY": 28.0232716
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-27",
+          "a": {
+            "cellX": 26.0200024,
+            "cellY": 26.01327
+          },
+          "b": {
+            "cellX": 26.0200024,
+            "cellY": 27.01327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-28",
+          "a": {
+            "cellX": 27.0200024,
+            "cellY": 28.0232716
+          },
+          "b": {
+            "cellX": 28.0300026,
+            "cellY": 28.0232716
+          },
+          "state": "closed",
+          "closed": true,
+          "freestanding": false
+        },
+        {
+          "id": "portal-29",
+          "a": {
+            "cellX": 30.0300026,
+            "cellY": 27.01327
+          },
+          "b": {
+            "cellX": 30.0300026,
+            "cellY": 26.01327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-30",
+          "a": {
+            "cellX": 30.0300026,
+            "cellY": 24.00327
+          },
+          "b": {
+            "cellX": 30.0300026,
+            "cellY": 23.00327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-31",
+          "a": {
+            "cellX": 26.0200024,
+            "cellY": 23.00327
+          },
+          "b": {
+            "cellX": 26.0200024,
+            "cellY": 24.00327
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        }
+      ],
+      "lights": [
+        {
+          "id": "light-1",
+          "at": {
+            "cellX": 18.7905064,
+            "cellY": 31.5391464
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-2",
+          "at": {
+            "cellX": 18.7905064,
+            "cellY": 29.5315552
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-3",
+          "at": {
+            "cellX": 14.1753626,
+            "cellY": 31.5271263
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-4",
+          "at": {
+            "cellX": 14.1753626,
+            "cellY": 29.5195274
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-5",
+          "at": {
+            "cellX": 14.2411518,
+            "cellY": 27.5160389
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-6",
+          "at": {
+            "cellX": 14.2411518,
+            "cellY": 24.5061569
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-7",
+          "at": {
+            "cellX": 18.7292576,
+            "cellY": 27.5133076
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-8",
+          "at": {
+            "cellX": 18.72925,
+            "cellY": 24.5034332
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-9",
+          "at": {
+            "cellX": 15.4774628,
+            "cellY": 24.5869026
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-10",
+          "at": {
+            "cellX": 17.48529,
+            "cellY": 24.5869026
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-11",
+          "at": {
+            "cellX": 23.1547089,
+            "cellY": 30.7242222
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-12",
+          "at": {
+            "cellX": 21.9374523,
+            "cellY": 30.53606
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-13",
+          "at": {
+            "cellX": 22.1849213,
+            "cellY": 31.5907135
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-14",
+          "at": {
+            "cellX": 22.0588,
+            "cellY": 31.4302082
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-15",
+          "at": {
+            "cellX": 22.89196,
+            "cellY": 30.39734
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-16",
+          "at": {
+            "cellX": 21.5039043,
+            "cellY": 28.3305035
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-17",
+          "at": {
+            "cellX": 23.51292,
+            "cellY": 28.3305035
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-18",
+          "at": {
+            "cellX": 19.29668,
+            "cellY": 29.5299568
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-19",
+          "at": {
+            "cellX": 18.6775017,
+            "cellY": 35.5372124
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-20",
+          "at": {
+            "cellX": 18.6775017,
+            "cellY": 33.53115
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-21",
+          "at": {
+            "cellX": 14.295228,
+            "cellY": 35.5373077
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-22",
+          "at": {
+            "cellX": 14.295228,
+            "cellY": 33.53124
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-23",
+          "at": {
+            "cellX": 15.483283,
+            "cellY": 33.3461227
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-24",
+          "at": {
+            "cellX": 17.4893532,
+            "cellY": 33.3461227
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-25",
+          "at": {
+            "cellX": 29.6042862,
+            "cellY": 30.3407784
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-26",
+          "at": {
+            "cellX": 27.84552,
+            "cellY": 31.5707321
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFC140",
+          "shadows": true
+        },
+        {
+          "id": "light-27",
+          "at": {
+            "cellX": 28.2382278,
+            "cellY": 30.5031929
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFC140",
+          "shadows": true
+        },
+        {
+          "id": "light-28",
+          "at": {
+            "cellX": 13.6067572,
+            "cellY": 31.5372887
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        },
+        {
+          "id": "light-29",
+          "at": {
+            "cellX": 13.6067581,
+            "cellY": 29.5289116
+          },
+          "range": 4,
+          "intensity": 1,
+          "color": "#FFAD00",
+          "shadows": true
+        }
+      ],
+      "ambient": {
+        "level": 1,
+        "baked": true
+      }
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "reserve": [],
+  "templates": [],
+  "settings": {}
+}

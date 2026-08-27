@@ -463,3 +463,66 @@ que le mainteneur voie la carte tout en sachant ce que la table ne voit pas.
 domaines autorisés Firebase. C'est le point déjà relevé le 23/08 — « le nettoyage des domaines du
 08/08 interdit toute validation locale ; `localhost` est à remettre définitivement ». **Tant qu'il
 n'est pas remis, la teinte décidée au §4.4a ne peut être jugée par personne.**
+
+---
+
+## 8. ⛔ LE BLOC `environment` DE DUNGEON ALCHEMIST NE PORTE AUCUNE INFORMATION
+
+Relevé le 27/08/2026 sur les six exports réels du dépôt, après que le mainteneur a exporté la même
+scène de trois façons — « lumière partout », « uniquement dans l'image », « uniquement dans le VTT » —
+puis une carte de nuit :
+
+| export | ce qu'il voulait | `baked_lighting` | `ambient_light` |
+|---|---|---|---|
+| `test_village_complet_00` | lumière partout | `true` | `ffffffff` |
+| `testnoncuite` | uniquement dans le VTT | `true` | `ffffffff` |
+| **`testnoncuitenuit`** | **une carte de NUIT** | **`true`** | **`ffffffff`** |
+| `testbig150`, `testvideo-3` | — | `true` | `ffffffff` |
+| `manoir-rdc` (format 0.3, autre producteur) | — | `false` | `00000000` |
+
+**Identique en toutes circonstances.** Le drapeau ne distingue ni le jour de la nuit, ni les trois
+modes d'export. Trois conséquences, toutes vérifiées :
+
+1. La carte de nuit s'importait en **plein jour** (`ffffffff` → `ambient.level: 1`).
+2. `baked_lighting: true` **verrouillait la bascule Jour/Nuit** du panneau MJ
+   (`if (level.ambient?.baked) return;`) : le mainteneur n'avait jamais pu régler « Nuit » sur
+   **aucune** de ses cartes, et le message « ⚠ Éclairage déjà cuit » s'affichait sur les cinq.
+3. Avec Z-03, la couche d'éclairage se taisait sur `baked` : le chantier entier était inerte partout.
+
+### ⭐ Ce qui remplace, et qui ne devine que là où le fichier se tait
+
+- **`baked` n'impose plus rien.** Ni dans `isAmbientLit`, ni dans la couche, ni dans le panneau. Il
+  reste importé, persisté et **affiché** au MJ : l'image peut porter sa lumière peinte, et
+  l'assombrir la doublerait. C'est un avertissement, plus un veto.
+- ⛔ **Ceci annule la décision du 26/08** — « les cartes cuites ignorent la lumière et se contentent
+  du fog ». Elle a été prise quand nous croyions tous deux que le drapeau portait une information.
+- **La bascule Jour/Nuit est déverrouillée** et c'est elle qui tranche, en dernier ressort.
+- **L'import PROPOSE** une ambiante d'après la luminance de l'image, décision du mainteneur du
+  27/08 : « l'import propose, tu confirmes ». Relevé — nuit **12,6**, jour **64,1** et **71,5**,
+  sans recouvrement. Seuil à **25**, volontairement bas : proposer « nuit » à tort se voit et se
+  corrige d'un clic, proposer « jour » à tort ne fait rien et ne se voit pas.
+- ⚠ **La déclaration du fichier prime sur la devinette.** Ne deviner que quand le niveau déclaré
+  vaut 1 — le silence de Dungeon Alchemist. `manoir-rdc` déclare `00000000`, un donjon annoncé
+  noir : une première version l'a repassé en plein jour, remplaçant un fait par une mesure.
+
+### ⭐ Et à ambiante pleine, le décor sort intact **par construction**
+
+Aucune garde, aucun drapeau : le champ est blanc, et `multiply` par du blanc laisse la destination
+inchangée. L'exigence « l'outil gère les cartes cuites ET les non cuites » est donc tenue par
+l'arithmétique de composition, pas par un cas particulier. Économie au passage : à ambiante pleine
+aucune source n'est balayée — 185 sweeps évités par recomposition sur `testbig150`.
+
+### ✅ Vérifié en bout de chaîne, pas sur rapport
+
+`pnpm run maps:prepare` sur le corpus réel :
+
+```
+manoir-rdc          {"level":0,"baked":false}   <== nuit DÉCLARÉE, respectée
+testnoncuitenuit    {"level":0,"baked":true}    <== nuit DEVINÉE, sur une image à 12,2
+les six autres      {"level":1, ...}            <== jour, décor intact
+```
+
+⚠ **Et un défaut attrapé là, pas avant** : `prepare-maps.mjs` a **deux chemins** de préparation
+d'étage — carte isolée et scène multi-cartes — qui dupliquent le même réglage. La proposition
+n'avait été posée que dans le premier. La porte était verte, le code compilait, et les cartes du
+mainteneur passaient par l'autre : effet nul, en silence.

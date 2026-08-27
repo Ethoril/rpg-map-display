@@ -34,10 +34,30 @@ test('Lumière R3 : baked est visible et une torche republie la vision sans fram
   await waitForApp(gm);
   await waitForApp(player);
 
+  // L'avertissement reste : l'étage se déclare cuit, et l'assombrir pourrait doubler sa
+  // lumière. C'est un conseil.
   await expect(gm.locator('#gm-baked-warning')).toBeVisible();
-  // UX-07 : le curseur est devenu une bascule à deux états ; l'étage cuit la neutralise toujours.
-  await expect(gm.locator('#gm-ambient-day')).toBeDisabled();
-  await expect(gm.locator('#gm-ambient-night')).toBeDisabled();
+
+  // ⭐ **Mais la bascule N'EST PLUS VERROUILLÉE — corrigé le 27/08/2026.**
+  //
+  // Ce test exigeait `toBeDisabled()`. Relevé sur les cinq exports réels du dépôt : Dungeon
+  // Alchemist écrit `baked_lighting: true` **de jour comme de nuit**, et quel que soit le mode
+  // d'export choisi — « lumière partout », « dans l'image », « dans le VTT ». Le drapeau ne
+  // distingue rien, et il verrouillait cette bascule sur la TOTALITÉ des cartes du mainteneur :
+  // il n'a jamais pu régler « Nuit » nulle part.
+  //
+  // ⛔ Un veto fondé sur un drapeau qui vaut toujours `true` n'est pas une garantie, c'est une
+  // panne silencieuse. L'avertissement informe ; c'est le MJ qui tranche.
+  await expect(gm.locator('#gm-ambient-day')).toBeEnabled();
+  await expect(gm.locator('#gm-ambient-night')).toBeEnabled();
+
+  // Et la bascule agit vraiment : régler « Nuit » sur un étage cuit écrit bien l'ambiante.
+  await gm.click('#gm-ambient-night');
+  await expect.poll(() => gm.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getRenderSnapshot().activeLevel?.ambient?.level;
+  })).toBe(0);
+  await expect(gm.locator('#gm-ambient-night')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => gm.evaluate(() =>
     /** @type {any} */ (window).__RPG_TEST_WIRE__.published.some((/** @type {any} */ e) => e.type === 'vision.update')
   )).toBe(true);

@@ -266,13 +266,17 @@ export class LightLayer {
       this._modulationRevision = -1;
     }
 
-    // ⭐ **Une carte à l'éclairage cuit ne balaie AUCUNE source.** L'ambiante y vaut 1, donc le
-    // champ est uniformément blanc et l'additif plafonné rend les sources invisibles : les
-    // composer reviendrait à payer un sweep par source — 185 sur `testbig150` — pour un
-    // résultat que la première ligne a déjà écrit. Et le champ reste « tout éclairé », ce qui
-    // est exactement ce que le calcul de vision doit lire sur une telle carte.
-    const cuite = Boolean(level.ambient?.baked);
-    const sources = cuite ? [] : collectLightSources(level, tokens || [], adaptateur);
+    // ⭐ **Une ambiante PLEINE ne balaie aucune source**, et c'est un invariant, pas un drapeau.
+    //
+    // À `ambientLevel >= 1` le champ est déjà uniformément blanc, et l'additif plafonné rend
+    // toute source invisible : les composer reviendrait à payer un sweep par source — 185 sur
+    // `testbig150` — pour un résultat que le remplissage a déjà écrit.
+    //
+    // ⛔ Cette condition portait sur `level.ambient.baked` jusqu'au 27/08/2026. Le drapeau de
+    // Dungeon Alchemist vaut `true` en toutes circonstances : la garde ne s'appuie donc plus
+    // sur lui mais sur la seule chose qui décide vraiment — le niveau d'ambiante.
+    const pleineLumiere = (Number(level.ambient?.level) || 0) >= 1;
+    const sources = pleineLumiere ? [] : collectLightSources(level, tokens || [], adaptateur);
     this.lastSourceCount = sources.length;
 
     const origine = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 0 });
@@ -281,11 +285,11 @@ export class LightLayer {
 
     // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé. ⛔ Et pas du tout
     // sur une carte cuite, qui n'a aucune source à occlure.
-    const segments = cuite ? [] : options.segments
+    const segments = pleineLumiere ? [] : options.segments
       || (typeof options.extractSegments === 'function' ? options.extractSegments(level, adaptateur) : []);
 
     this._field.compose(sources, {
-      ambientLevel: cuite ? 1 : Number(level.ambient?.level) || 0,
+      ambientLevel: Number(level.ambient?.level) || 0,
       segments,
       mapOrigin: origine,
       gridScale: echelle,
@@ -376,15 +380,18 @@ export class LightLayer {
   render(ctx, adaptateur, level, options = {}) {
     if (!ctx || !adaptateur || !level) return false;
 
-    // ⛔ **Une carte à l'éclairage cuit ignore la lumière et s'en remet au fog.** Décision du
-    // mainteneur du 26/08/2026, et ce n'est pas un pis-aller : l'image porte déjà sa lumière
-    // peinte, la remoduler l'assombrirait deux fois.
+    // ⛔ **La garde sur `baked` est retirée le 27/08/2026.**
     //
-    // ⚠ **Conséquence à connaître** : `baked_lighting` est vrai sur 5 des 6 exports UVTT réels
-    // du dépôt — Dungeon Alchemist cuit par défaut. Sur ces cartes, TOUT le chantier Z est
-    // inerte, volet tactique compris. Il ne s'anime que sur des cartes exportées sans cuisson,
-    // comme `manoir-rdc` (format 0.3). Voir §7 du chantier.
-    if (level.ambient?.baked) return false;
+    // Elle disait : « une carte à l'éclairage cuit ignore la lumière et s'en remet au fog » —
+    // décision du mainteneur du 26/08, prise quand nous croyions tous deux que le drapeau
+    // portait une information. Relevé le lendemain sur les cinq exports réels : Dungeon
+    // Alchemist écrit `baked_lighting: true` de jour comme de nuit et quel que soit le mode
+    // d'export. L'honorer rendait donc l'éclairage inerte **partout et pour toujours**.
+    //
+    // ⭐ Ce qui la remplace ne coûte rien : à ambiante pleine, le champ est blanc, et un
+    // `multiply` par du blanc laisse le décor **exactement intact**. Une carte de jour est donc
+    // rendue à l'identique sans qu'aucun cas particulier ne le décide — et une carte réglée sur
+    // Nuit s'assombrit, ce que le drapeau interdisait.
 
     // ⭐ Décision §4.5 : à plat en « Préparer », éclairé en « Jouer ». Poser des murs dans une
     // cave non éclairée ne doit pas se faire à l'aveugle. La vue joueurs, elle, est TOUJOURS

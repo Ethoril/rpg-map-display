@@ -61,7 +61,7 @@ function buildVisionSignature(level, tokens, grid) {
   );
   // Modèle binaire : une ambiante non nulle éclaire l'étage ; baked force ce même état pour
   // éviter d'assombrir une image dont la lumière est déjà peinte.
-  const ambientLit = Boolean(level.ambient?.baked) || Number(level.ambient?.level) > 0;
+  const ambientLit = Number(level.ambient?.level) > 0;
   parts.push(`ambient:${ambientLit ? 'lit' : 'dark'}:level=${level.ambient?.level}:baked=${level.ambient?.baked}`);
 
   if (Array.isArray(level.walls)) {
@@ -143,7 +143,7 @@ function buildVisionSignature(level, tokens, grid) {
  * @param {Level} level
  */
 export function isAmbientLit(level) {
-  return Boolean(level?.ambient?.baked) || Number(level?.ambient?.level) > 0;
+  return Number(level?.ambient?.level) > 0;
 }
 
 /** @param {number|undefined} range */

@@ -125,8 +125,21 @@ test('UX-07 : le moteur ne distingue que deux ambiances, et une campagne fractio
     );
   }
 
-  // Un étage cuit est éclairé quel que soit le niveau : la lumière est déjà dans l'image.
-  assert.equal(eclaire({ level: 0, baked: true }), true, 'baked');
+  // ⛔ **Un étage cuit n'est PLUS éclairé par son seul drapeau — corrigé le 27/08/2026.**
+  //
+  // Cette ligne disait « la lumière est déjà dans l'image ». Relevé sur les cinq exports réels
+  // du dépôt : Dungeon Alchemist écrit `baked_lighting: true` de jour COMME DE NUIT, et quel
+  // que soit le mode d'export. Le drapeau ne distingue rien, et l'honorer forçait le plein jour
+  // sur la totalité des cartes du mainteneur — y compris celles qu'il venait de régler sur
+  // « Nuit », dont le réglage restait sans effet.
+  //
+  // ⚠ Le champ reste importé, persisté et AFFICHÉ au MJ : l'image peut porter sa lumière
+  // peinte, et l'assombrir la doublerait. Mais c'est un avertissement, plus un veto.
+  assert.equal(
+    eclaire({ level: 0, baked: true }), false,
+    '⛔ un étage réglé sur Nuit reste sombre, même annoncé cuit'
+  );
+  assert.equal(eclaire({ level: 1, baked: true }), true, 'et clair s’il est réglé sur Jour');
 });
 
 test('UX-07 critère 4 : aucun rendu ne lit ambient.color, vérifié par recherche', () => {

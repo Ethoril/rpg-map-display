@@ -99,7 +99,7 @@ export function createGMPanel(container, options = {}) {
         <button id="gm-ambient-day" type="button" aria-pressed="true" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #e0ad32; color: #241b06; border: none; cursor: pointer;">☀ Jour</button>
         <button id="gm-ambient-night" type="button" aria-pressed="false" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #1a1a1a; color: #888; border: none; border-left: 1px solid #6a5620; cursor: pointer;">🌙 Nuit</button>
       </div>
-      <span id="gm-baked-warning" role="status" style="display: none; font-size: 0.75rem; color: #ffd166;">⚠ Éclairage déjà cuit : ambiante forcée</span>
+      <span id="gm-baked-warning" role="status" style="display: none; font-size: 0.75rem; color: #ffd166;">⚠ Éclairage annoncé cuit — assombrir pourrait doubler</span>
     </div>
 
     <!--
@@ -1652,8 +1652,24 @@ export function createGMPanel(container, options = {}) {
     // `baked || level > 0`. Une campagne enregistrée avec `ambient.level: 0.35` vaut donc
     // « jour », et c'est ce qu'il faut afficher — la lecture continue d'accepter les valeurs
     // fractionnaires, seule l'écriture devient binaire.
-    const isDay = baked || Number(level?.ambient?.level) > 0;
-    const disabled = !level || baked;
+    // ⛔ Plus de `baked` dans ce prédicat : il vaut `true` en toutes circonstances chez
+    // Dungeon Alchemist, et il faisait afficher « Jour » sur un étage que le MJ venait de
+    // régler sur « Nuit ». Le store disait 0, la barre disait Jour, et rien ne s'assombrissait.
+    const isDay = Number(level?.ambient?.level) > 0;
+    // ⛔ **Le verrou sur `baked` est retiré le 27/08/2026, et c'est une correction, pas un
+    // assouplissement.**
+    //
+    // Relevé sur les cinq exports réels du dépôt : Dungeon Alchemist écrit
+    // `baked_lighting: true` **de jour comme de nuit**, et quel que soit le mode d'export —
+    // « lumière partout », « dans l'image », « dans le VTT ». Le drapeau ne porte donc AUCUNE
+    // information, et il verrouillait cette bascule sur la totalité des cartes du mainteneur :
+    // il n'a jamais pu régler « Nuit » nulle part.
+    //
+    // ⚠ L'avertissement, lui, RESTE — mais comme un conseil, plus comme un veto. Régler
+    // « Nuit » sur une carte dont l'image porte déjà sa lumière peinte l'assombrirait deux
+    // fois ; c'est au MJ de le savoir, pas au code de le lui interdire sur la foi d'un
+    // drapeau qui vaut `true` en toutes circonstances.
+    const disabled = !level;
 
     for (const [btn, actif] of /** @type {[HTMLButtonElement, boolean][]} */ ([
       [ambientDayBtn, isDay],
@@ -1672,8 +1688,9 @@ export function createGMPanel(container, options = {}) {
   /** @param {boolean} day */
   function setAmbientDay(day) {
     const level = store.getRenderSnapshot().activeLevel;
-    // Un étage à l'éclairage cuit n'a pas d'ambiance à régler : elle est déjà dans l'image.
-    if (!level || level.ambient?.baked) return;
+    // ⛔ Plus de veto sur `baked` : voir `updateLightBarFromStore`. Le drapeau de Dungeon
+    // Alchemist vaut `true` en toutes circonstances et ne distingue rien.
+    if (!level) return;
     const ambient = { ...level.ambient, level: day ? 1 : 0 };
     try {
       store.updateLevel(level.id, { ambient });
