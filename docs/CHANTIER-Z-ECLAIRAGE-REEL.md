@@ -387,7 +387,7 @@ le chantier est **préservé par construction**, pas par un cas particulier.
 ⛔ **Le risque n'est aucun des deux cas pris seul : c'est le passage de l'un à l'autre.** La couche
 est réutilisée d'un étage au suivant et son champ est un canvas muté EN PLACE — un champ resté sur
 l'étage précédent éclairerait un donjon avec l'ambiante d'un village, ou l'inverse. Épinglé par le
-test 14 de , dans les deux sens.
+test 14 de `tests/lightLayer.test.mjs`, dans les deux sens.
 
 ⚠ **Ce que j'avais surpondéré**, et il faut le corriger ici : j'ai présenté trois fois la question
 « Dungeon Alchemist peut-il exporter sans cuisson ? » comme un blocage du chantier. Ce n'en est pas
