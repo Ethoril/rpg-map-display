@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Jimp } from 'jimp';
 import webpFormat from '@jimp/wasm-webp';
 import { rowInkProfile, detectPaintedRowPitch, hexGridWarning } from '../js/import/gridPitch.js';
+import { profilLuminance } from '../js/import/ambianceImage.js';
 
 /**
  * Plafond de dimension des images préparées, en pixels.
@@ -83,7 +84,7 @@ if (originalFetch) {
  *   qu'on peut publier au coup par coup est un réglage qu'un `maps:prepare` ultérieur
  *   écraserait en silence — cf. `docs/CHANTIER-L-OUTIL-CARTES.md` §3.3.
  * @param {number} [options.quality] Qualité WebP, même réserve que `maxTexturePx`.
- * @returns {Promise<{ buffer: Buffer, width: number, height: number, pxPerCell: number, warnings: string[] }>}
+ * @returns {Promise<{ buffer: Buffer, width: number, height: number, pxPerCell: number, warnings: string[], profilLuminance: { moyenne: number, mediane: number, points: number } }>}
  */
 export async function resample(input, targetPxPerCell = 140, options = {}) {
   /** @type {Buffer} */
@@ -132,6 +133,22 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
 
   const srcWidth = img.width;
   const srcHeight = img.height;
+
+  // ⭐ **La luminance se mesure ICI, sur le bitmap SOURCE, et pas ailleurs.**
+  //
+  // C'est le seul endroit du projet où l'image est déjà décodée en pixels : la mesurer
+  // ailleurs voudrait dire la redécoder, et le décodage d'une carte de 6300 × 6300 coûte
+  // plusieurs centaines de millisecondes (chantier P). On la prend au passage.
+  //
+  // ⚠ **Sur la source, pas sur le rééchantillonné** : le rééchantillonnage peut être un
+  // agrandissement ou une réduction selon la carte, et une réduction moyenne déjà les
+  // pixels — deux cartes identiques rendraient alors des luminances différentes selon
+  // leur taille d'origine.
+  const profilLum = profilLuminance({
+    data: img.bitmap.data,
+    width: srcWidth,
+    height: srcHeight,
+  });
 
   const { sourcePxPerCell, widthCells, heightCells } = options;
 
@@ -274,6 +291,10 @@ export async function resample(input, targetPxPerCell = 140, options = {}) {
     height: finalHeight,
     pxPerCell: effectivePxPerCell,
     warnings,
+    // Profil de luminance de l'image SOURCE, pour la proposition d'ambiante. Voir
+    // `js/import/ambianceImage.js` : le bloc `environment` de Dungeon Alchemist ne porte
+    // aucune information sur le jour et la nuit, l'image si.
+    profilLuminance: profilLum,
   };
 }
 

@@ -163,8 +163,17 @@
  * @property {string} borderColor
  * @property {string} label
  * @property {boolean} hidden
- * @property {number} visionBright
- * @property {number} visionDim
+ * @property {number} visionDim Portée de vision DANS LE NOIR, en cases.
+ *
+ * ⛔ **Portait aussi `visionBright`, retiré le 26/08/2026 (chantier Z, §4.1).** Le moteur n'a
+ * jamais lu qu'un seul rayon, et la décision du mainteneur est qu'il n'y en aura qu'un : dans une
+ * zone non éclairée un PJ voit jusqu'à `visionDim`, dans une zone éclairée jusqu'à sa ligne de
+ * vue. Même profil que `settings.ambientLevel` (§12 q.4) et `ambient.color` (UX-07) — un champ que
+ * personne ne lit ment à chaque relecture.
+ *
+ * ⚠ **Les campagnes et catalogues enregistrés en portent un.** La lecture doit continuer de
+ * l'accepter : un `visionBright` présent est **ignoré**, jamais refusé. Refuser une campagne
+ * existante serait une régression bien plus chère que le défaut corrigé.
  * @property {{ range: number, intensity: number, color: string }|null} emitsLight
  * @property {number} speedCells
  * @property {boolean} playerMovable
@@ -242,7 +251,6 @@
  * @property {'pc'|'npc'} kind
  * @property {number} sizeCells
  * @property {number} speedCells
- * @property {number} visionBright
  * @property {number} visionDim
  * @property {{ range: number, intensity: number, color: string }|null} emitsLight
  * @property {string} borderColor

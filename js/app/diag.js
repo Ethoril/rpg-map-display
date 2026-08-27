@@ -506,7 +506,16 @@ async function diagnosticHorlogeEtCanal() {
 async function diagnosticLumieres() {
   const { FogLayer } = await import('../render/layers/fogLayer.js');
   const catalogue = await (await fetch('maps/catalog.json')).json();
-  const lignes = ['Coût d’une mutation lumineuse — R3-05', '', 'À lancer sur le poste MJ.', ''];
+  const lignes = [
+    'Coût d’une mutation lumineuse — R3-05',
+    '',
+    'À lancer sur le poste MJ.',
+    '',
+    '⚠ Les murs sont pris en compte depuis le 27/08/2026. Avant cette date, cette section',
+    'balayait des cartes SANS obstacle : le relevé de 2,6 ms du 11/08 ne mesurait donc pas',
+    'l’occlusion, qui est pourtant le terme dominant. Tout relevé antérieur est à jeter.',
+    '',
+  ];
 
   /** @type {Array<{ nom: string, sources: number, pire: number }>} */
   const releves = [];
@@ -549,7 +558,21 @@ async function diagnosticLumieres() {
         tokens[0].cell = { a: 2 + essai, b: 2 + essai };
         couche.invalidate?.();
         const t0 = performance.now();
-        couche.updateVision(grid, level, tokens, {});
+        // ⛔ **`extractSegments` était ABSENT jusqu'au 27/08/2026, et cette section ne mesurait
+        // donc AUCUN mur.** `updateVision` se rabat sur `[]` quand ni `segments` ni
+        // `extractSegments` ne lui sont fournis : elle balayait des cartes vides.
+        //
+        // Le sweep coûte en proportion du nombre de segments à sa portée — c'est le terme qui
+        // domine, et c'est celui que l'occlusion introduit. Mesuré sur ce dépôt le 27/08,
+        // `testbig150` et ses 1338 murs passent de **2,65 ms sans murs à 45,5 ms avec**,
+        // sur la même machine et le même code. Un facteur 17.
+        //
+        // ⚠ Le relevé tablette de 2,6 ms du 11/08 mesurait donc des cartes sans murs, et le
+        // §11 de `ETAT.md` en a tiré « l'occlusion par les murs, déjà mesurée section 10 ».
+        // C'est faux, et c'est corrigé là-bas aussi. Le verdict — « ça tient dans 300 ms » —
+        // survit très probablement, mais la marge annoncée était surestimée d'un ordre de
+        // grandeur, et **elle doit être remesurée**.
+        couche.updateVision(grid, level, tokens, { extractSegments: extractBlockedSegments });
         pire = Math.max(pire, performance.now() - t0);
       }
       releves.push({ nom: `${entree.id} / ${level.id}`, sources, pire: arrondi(pire, 1) });
@@ -882,66 +905,141 @@ export function champLumineuxEnEspaceMasque(level) {
 export const LIGHT_FIELD_COMPOSE_BUDGET_MS = 300;
 
 /**
- * Coûts nets (relecture de vidage retranchée) de la composition et de l'agrandissement du
- * champ lumineux, et verdict associé.
+ * Nombre de cycles chronométrés d'un seul tenant. Il n'est pas cosmétique : c'est lui qui
+ * ramène le coût du vidage de pipeline **sous** le signal. Voir `resumeCompositionChampLumineux`.
+ */
+export const LIGHT_FIELD_ITERATIONS = 30;
+
+/**
+ * @typedef {Object} ReleveCycle
+ * @property {number} surfaceMpx Surface de DESTINATION de l'agrandissement, en mégapixels.
+ * @property {number} dureeTotaleMs Durée des `iterations` cycles complets, vidage compris.
+ * @property {number} iterations Nombre de cycles dans cette fenêtre. Entier strictement positif.
+ */
+
+/**
+ * Coût par image d'un cycle complet « composer le champ à la résolution du masque, puis
+ * l'agrandir une fois », et verdict associé.
  *
- * ⛔ La soustraction n'est pas cosmétique : comme au correctif G-01 du 12/08 (voir
- * `resumeDecodageFroid`), le chronomètre encadre l'opération PLUS un `getImageData(0,0,1,1)`
- * qui vide le pipeline — sans ce vidage on mesure une mise en file, pas une peinture. Cette
- * relecture coûte elle-même plusieurs millisecondes ; la garder dans le total suffit à faire
- * basculer le verdict à elle seule.
+ * ⛔ **Pourquoi on ne chronomètre plus une opération seule, et pourquoi on ne soustrait plus
+ * un vidage à chaque mesure.** La version du 18/08 reprenait la technique du correctif G-01 :
+ * encadrer UNE opération d'un `getImageData(0,0,1,1)` puis retrancher le coût de cette
+ * relecture. Mesuré le 26/08 sur le poste Windows, cette technique **ne peut rien rendre
+ * d'autre que zéro** dans ce régime :
  *
- * @param {{ compositionBrutMs: number, agrandissementBrutMs: number, relectureMs: number, sourceCount: number }} mesure
+ * | | relecture seule | composition brute | agrandissement brut | net |
+ * |---|---|---|---|---|
+ * | 1ʳᵉ exécution | 51,1 ms | 2,3 ms | 10,3 ms | **0 / 0** |
+ * | 2ᵉ exécution | 13,1 ms | 6,2 ms | 12,4 ms | **0 / 0** |
+ *
+ * G-01 mesurait un décodage de ~490 ms avec un vidage de quelques ms : la soustraction y était
+ * juste. Ici l'opération coûte moins que le vidage, donc `max(0, brut − vidage)` rend 0 quoi
+ * qu'il arrive, et le verdict « ça tient » **ne peut pas basculer**. C'était un faux vert
+ * structurel, du genre que ce projet a déjà payé douze fois.
+ *
+ * ⭐ **Deux corrections, et chacune répare un mensonge distinct :**
+ *
+ * 1. **Chronométrer `iterations` cycles d'un seul tenant, vider une seule fois à la fin.** Le
+ *    vidage est alors amorti sur N images au lieu d'être payé — et retranché — à chaque image.
+ * 2. **Chronométrer le cycle ENTIER, jamais la composition et l'agrandissement séparément.**
+ *    Mesurées isolément le 26/08, les deux totalisaient 0,19 ms quand leur enchaînement en
+ *    coûtait 1,63 : séparées, rien ne force la résolution du masque, et on chronomètre une file
+ *    d'attente — exactement le piège n°1 du brief, que la séparation réintroduisait.
+ *
+ * La part fixe (composition) et la part variable (agrandissement) se lisent alors **par la
+ * pente**, sur deux surfaces de destination au moins : le raisonnement « coût plat / coût
+ * variable avec la surface de destination » déjà écrit pour le défaut jumeau des pions.
+ *
+ * @param {{ releves: ReleveCycle[], vidageMs: number, sourceCount: number }} mesure
  * @returns {{
- *   compositionNetMs: number, agrandissementNetMs: number, totalNetMs: number,
+ *   parImage: Array<{ surfaceMpx: number, msParImage: number }>,
+ *   pireMsParImage: number,
+ *   coutFixeMs: number|null, coutParMpxMs: number|null,
  *   tenu: boolean, budgetMs: number, verdict: string,
  * }}
  */
-export function resumeCompositionChampLumineux({ compositionBrutMs, agrandissementBrutMs, relectureMs, sourceCount }) {
-  for (const [nom, valeur] of /** @type {Array<[string, number]>} */ ([
-    ['compositionBrutMs', compositionBrutMs],
-    ['agrandissementBrutMs', agrandissementBrutMs],
-    ['relectureMs', relectureMs],
-  ])) {
-    if (!Number.isFinite(valeur)) throw new TypeError(`${nom} doit être une durée finie.`);
-    if (valeur < 0) throw new RangeError(`${nom} négatif n'est pas une mesure.`);
-  }
+export function resumeCompositionChampLumineux({ releves, vidageMs, sourceCount }) {
+  if (!Number.isFinite(vidageMs)) throw new TypeError('vidageMs doit être une durée finie.');
+  if (vidageMs < 0) throw new RangeError("vidageMs négatif n'est pas une mesure.");
   if (!Number.isInteger(sourceCount) || sourceCount < 0) {
     throw new RangeError('sourceCount doit être un entier positif ou nul.');
   }
+  if (!Array.isArray(releves) || releves.length === 0) {
+    throw new RangeError("Aucun relevé : il n'y a rien à résumer.");
+  }
 
-  const compositionNetMs = Math.max(0, compositionBrutMs - relectureMs);
-  const agrandissementNetMs = Math.max(0, agrandissementBrutMs - relectureMs);
-  const totalNetMs = compositionNetMs + agrandissementNetMs;
+  const parImage = releves.map((releve, i) => {
+    const { surfaceMpx, dureeTotaleMs, iterations } = releve;
+    if (!Number.isFinite(surfaceMpx) || surfaceMpx <= 0) {
+      throw new RangeError(`Relevé ${i} : surfaceMpx doit être une surface strictement positive.`);
+    }
+    if (!Number.isFinite(dureeTotaleMs)) throw new TypeError(`Relevé ${i} : dureeTotaleMs doit être une durée finie.`);
+    if (dureeTotaleMs < 0) throw new RangeError(`Relevé ${i} : dureeTotaleMs négatif n'est pas une mesure.`);
+    if (!Number.isInteger(iterations) || iterations <= 0) {
+      throw new RangeError(`Relevé ${i} : iterations doit être un entier strictement positif.`);
+    }
+    // ⛔ Pas de `Math.max(0, …)` ici, et c'est délibéré : c'est ce plancher qui rendait
+    // silencieux le défaut du 18/08. Un vidage plus cher que la fenêtre entière n'est pas une
+    // mesure à rectifier, c'est une mesure à refuser.
+    if (vidageMs > dureeTotaleMs) {
+      throw new RangeError(
+        `Relevé ${i} : le vidage (${vidageMs} ms) dépasse la fenêtre mesurée (${dureeTotaleMs} ms) — `
+        + 'la mesure ne veut rien dire, augmenter `iterations` plutôt que la corriger.'
+      );
+    }
+    return { surfaceMpx, msParImage: (dureeTotaleMs - vidageMs) / iterations };
+  });
+
+  const pireMsParImage = parImage.reduce((pire, p) => Math.max(pire, p.msParImage), 0);
+
+  // Part fixe et part variable, par moindres carrés sur (surface de destination, ms/image).
+  // Avec deux points exactement, cela vaut la pente de la droite qui les joint.
+  let coutFixeMs = /** @type {number|null} */ (null);
+  let coutParMpxMs = /** @type {number|null} */ (null);
+  if (parImage.length >= 2) {
+    const n = parImage.length;
+    const mx = parImage.reduce((s, p) => s + p.surfaceMpx, 0) / n;
+    const my = parImage.reduce((s, p) => s + p.msParImage, 0) / n;
+    const varianceX = parImage.reduce((s, p) => s + (p.surfaceMpx - mx) ** 2, 0);
+    if (varianceX > 0) {
+      const covariance = parImage.reduce((s, p) => s + (p.surfaceMpx - mx) * (p.msParImage - my), 0);
+      coutParMpxMs = covariance / varianceX;
+      coutFixeMs = my - coutParMpxMs * mx;
+    }
+  }
 
   if (sourceCount === 0) {
     return {
-      compositionNetMs,
-      agrandissementNetMs,
-      totalNetMs,
+      parImage,
+      pireMsParImage,
+      coutFixeMs,
+      coutParMpxMs,
       tenu: false,
       budgetMs: LIGHT_FIELD_COMPOSE_BUDGET_MS,
-      verdict: 'Aucune source lue : la carte visée est absente ou vide, la mesure n\'a pas eu lieu.',
+      verdict: "Aucune source lue : la carte visée est absente ou vide, la mesure n'a pas eu lieu.",
     };
   }
 
-  const tenu = totalNetMs < LIGHT_FIELD_COMPOSE_BUDGET_MS;
+  const tenu = pireMsParImage < LIGHT_FIELD_COMPOSE_BUDGET_MS;
   return {
-    compositionNetMs,
-    agrandissementNetMs,
-    totalNetMs,
+    parImage,
+    pireMsParImage,
+    coutFixeMs,
+    coutParMpxMs,
     tenu,
     budgetMs: LIGHT_FIELD_COMPOSE_BUDGET_MS,
     verdict: tenu
-      ? `${sourceCount} sources, ${totalNetMs.toFixed(1)} ms net < ${LIGHT_FIELD_COMPOSE_BUDGET_MS} ms : la composition tient.`
-      : `${sourceCount} sources, ${totalNetMs.toFixed(1)} ms net ≥ ${LIGHT_FIELD_COMPOSE_BUDGET_MS} ms : la composition NE tient PAS.`,
+      ? `${sourceCount} sources, ${pireMsParImage.toFixed(2)} ms par image sur la plus grande destination `
+        + `< ${LIGHT_FIELD_COMPOSE_BUDGET_MS} ms : la composition tient.`
+      : `${sourceCount} sources, ${pireMsParImage.toFixed(2)} ms par image sur la plus grande destination `
+        + `≥ ${LIGHT_FIELD_COMPOSE_BUDGET_MS} ms : la composition NE tient PAS.`,
   };
 }
 
 /**
  * Lit une carte réellement publiée (même principe que la section 6bis, sans extrapolation),
  * compose ses sources lumineuses à la résolution du masque, l'agrandit une fois, et
- * chronomètre les deux séparément.
+ * chronomètre le cycle complet sur deux surfaces de destination.
  *
  * ⚠ À lancer sur le poste MJ ou la tablette selon ce qu'on veut juger — cette sonde ne
  * touche pas au chemin de rendu du produit et n'écrit aucun `LightLayer` : elle décide
@@ -960,7 +1058,7 @@ async function diagnosticChampLumineuxMasque() {
     (/** @type {any} */ m) => m.name === 'Village' || m.id === 'test_village_complet'
   );
   if (!entree) {
-    ecrire('Carte « Village » absente du catalogue publié : la mesure n\'a pas eu lieu, aucun chiffre inventé à la place.');
+    ecrire("Carte « Village » absente du catalogue publié : la mesure n'a pas eu lieu, aucun chiffre inventé à la place.");
     return;
   }
 
@@ -972,7 +1070,7 @@ async function diagnosticChampLumineuxMasque() {
   const scene = await reponseScene.json();
   const level = (scene.levels ?? []).find((/** @type {any} */ l) => String(l.id).endsWith('_00')) ?? scene.levels?.[0];
   if (!level) {
-    ecrire('Aucun étage dans la scène du village : la mesure n\'a pas eu lieu.');
+    ecrire("Aucun étage dans la scène du village : la mesure n'a pas eu lieu.");
     return;
   }
 
@@ -985,74 +1083,121 @@ async function diagnosticChampLumineuxMasque() {
   ecrire(
     `${champ.sourceCount} sources trouvées sur « ${level.id} », masque ${champ.maskWidth}×${champ.maskHeight} px — chauffe…`
   );
+  // Laisse la ligne ci-dessus s'afficher : la mesure qui suit bloque le fil principal.
+  // ⚠ `setTimeout` et non `requestAnimationFrame` : dans un onglet d'arrière-plan, rAF ne se
+  // déclenche jamais et la section reste figée sur « chauffe… ». Constaté le 26/08.
+  await new Promise((r) => setTimeout(r, 0));
 
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = champ.maskWidth;
   maskCanvas.height = champ.maskHeight;
   const maskCtx = /** @type {CanvasRenderingContext2D} */ (maskCanvas.getContext('2d'));
 
-  const cible = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
-  cible.width = 640;
-  cible.height = 480;
-  const cibleCtx = /** @type {CanvasRenderingContext2D} */ (cible.getContext('2d'));
-
   // Une composition : un dégradé radial additif par source, dans l'espace du masque.
   function composer() {
     maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
     maskCtx.globalCompositeOperation = 'lighter';
     for (const d of champ.disques) {
-      const degrade = maskCtx.createRadialGradient(d.mx, d.my, 0, d.mx, d.my, Math.max(1, d.rayon));
+      const rayon = Math.max(1, d.rayon);
+      const degrade = maskCtx.createRadialGradient(d.mx, d.my, 0, d.mx, d.my, rayon);
       degrade.addColorStop(0, 'rgba(255, 220, 168, 0.9)');
       degrade.addColorStop(1, 'rgba(255, 220, 168, 0)');
       maskCtx.fillStyle = degrade;
       maskCtx.beginPath();
-      maskCtx.arc(d.mx, d.my, Math.max(1, d.rayon), 0, Math.PI * 2);
+      maskCtx.arc(d.mx, d.my, rayon, 0, Math.PI * 2);
       maskCtx.fill();
     }
     maskCtx.globalCompositeOperation = 'source-over';
   }
-  // Un agrandissement : une seule fois, aux dimensions du viewport de mesure.
-  function agrandir() {
-    cibleCtx.clearRect(0, 0, cible.width, cible.height);
-    cibleCtx.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, 0, 0, cible.width, cible.height);
+
+  const dpr = window.devicePixelRatio || 1;
+  // La destination réelle de l'appareil qui exécute la page : c'est elle qui décide, une
+  // composition coûtant en proportion de sa surface de destination. La petite destination
+  // n'est là que pour donner le second point de la pente.
+  // ⚠ Le 18/08 la destination était figée à 640×480 : sur la tablette visée, cela mesurait
+  // une surface cinq fois plus petite que l'écran réel, donc le mauvais terme.
+  const destinations = [
+    { w: 640, h: 480, nom: 'référence' },
+    {
+      w: Math.max(640, Math.round(window.innerWidth * dpr)),
+      h: Math.max(480, Math.round(window.innerHeight * dpr)),
+      nom: 'écran réel',
+    },
+  ];
+
+  /**
+   * Chronomètre `LIGHT_FIELD_ITERATIONS` cycles complets d'un seul tenant, et ne vide le
+   * pipeline qu'une fois, à la fin. Rend la MÉDIANE de cinq fenêtres.
+   * @param {{ w: number, h: number }} dest
+   * @returns {{ dureeTotaleMs: number, iterations: number, surfaceMpx: number, vidageMs: number }}
+   */
+  function mesurerCycle(dest) {
+    const cible = document.createElement('canvas');
+    cible.width = dest.w;
+    cible.height = dest.h;
+    const cibleCtx = /** @type {CanvasRenderingContext2D} */ (cible.getContext('2d'));
+    const cycle = () => {
+      composer();
+      cibleCtx.clearRect(0, 0, dest.w, dest.h);
+      cibleCtx.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, 0, 0, dest.w, dest.h);
+    };
+
+    // Chauffe explicite, hors chronomètre (piège n°3) — et elle inclut le `getImageData`.
+    // ⚠ C'est ce qui manquait au 18/08 : la chauffe couvrait le dessin mais pas le chemin de
+    // relecture, mesuré à froid à 51 ms puis à 13 ms une fois chaud.
+    for (let i = 0; i < 5; i++) { cycle(); cibleCtx.getImageData(0, 0, 1, 1); }
+
+    // Coût du vidage seul, chaud : médiane de sept relectures consécutives.
+    const vidages = [];
+    for (let k = 0; k < 7; k++) {
+      const t = performance.now();
+      cibleCtx.getImageData(0, 0, 1, 1);
+      vidages.push(performance.now() - t);
+    }
+    vidages.sort((a, b) => a - b);
+
+    const fenetres = [];
+    for (let k = 0; k < 5; k++) {
+      const t = performance.now();
+      for (let i = 0; i < LIGHT_FIELD_ITERATIONS; i++) cycle();
+      cibleCtx.getImageData(0, 0, 1, 1);
+      fenetres.push(performance.now() - t);
+    }
+    fenetres.sort((a, b) => a - b);
+
+    return {
+      dureeTotaleMs: fenetres[2],
+      iterations: LIGHT_FIELD_ITERATIONS,
+      surfaceMpx: (dest.w * dest.h) / 1e6,
+      vidageMs: vidages[3],
+    };
   }
 
-  // Chauffe explicite, hors chronomètre : le premier tracé d'un canvas coûte plus cher que
-  // les suivants (piège n°3). Trois passes, comme au banc du sweep réel (section 6bis).
-  for (let i = 0; i < 3; i++) { composer(); agrandir(); }
+  const brut = destinations.map((d) => ({ dest: d, ...mesurerCycle(d) }));
+  // Le vidage retenu est le plus cher des deux : le retrancher ne doit jamais flatter.
+  const vidageMs = brut.reduce((pire, b) => Math.max(pire, b.vidageMs), 0);
 
-  // Coût de la relecture seule, sur un bitmap déjà chaud (technique du correctif G-01,
-  // reprise de `mesurerDecodageFroid`) : `performance.now()` autour d'une opération canvas
-  // seule mesure une mise en file, pas une peinture (piège n°1). On chronomètre donc
-  // l'opération SUIVIE d'un `getImageData(0,0,1,1)` qui vide le pipeline, et on isole ici le
-  // coût de cette relecture pour le retrancher plus bas.
-  const dummy = document.createElement('canvas');
-  dummy.width = 1;
-  dummy.height = 1;
-  const tr0 = performance.now();
-  cibleCtx.drawImage(dummy, 0, 0, cible.width, cible.height);
-  cibleCtx.getImageData(0, 0, 1, 1);
-  const relecture = performance.now() - tr0;
-
-  const tc0 = performance.now();
-  composer();
-  maskCtx.getImageData(0, 0, 1, 1);
-  const compositionBrut = performance.now() - tc0;
-
-  const ta0 = performance.now();
-  agrandir();
-  cibleCtx.getImageData(0, 0, 1, 1);
-  const agrandissementBrut = performance.now() - ta0;
-
-  // L'arithmétique du verdict vit dans `resumeCompositionChampLumineux`, pure et éprouvée
-  // sans navigateur : la soustraction de la relecture ne doit pas être un calcul en ligne
-  // dans une page que seul un test de navigateur pourrait regarder.
   const resume = resumeCompositionChampLumineux({
-    compositionBrutMs: compositionBrut,
-    agrandissementBrutMs: agrandissementBrut,
-    relectureMs: relecture,
+    releves: brut.map(({ surfaceMpx, dureeTotaleMs, iterations }) => ({ surfaceMpx, dureeTotaleMs, iterations })),
+    vidageMs,
     sourceCount: champ.sourceCount,
   });
+
+  const lignesDestinations = brut.map((b, i) => {
+    const p = resume.parImage[i];
+    return `  ${b.dest.nom.padEnd(12)} ${b.dest.w}×${b.dest.h} (${arrondi(p.surfaceMpx, 2)} Mpx)`
+      + `  →  ${arrondi(p.msParImage, 3)} ms par image`;
+  });
+
+  const lignesPente = resume.coutParMpxMs === null || resume.coutFixeMs === null
+    ? ['  (pente indisponible : les deux destinations ont la même surface)']
+    : [
+      `  part fixe — composer ${champ.sourceCount} disques à ${champ.maskWidth}×${champ.maskHeight} : ${arrondi(Math.max(0, resume.coutFixeMs), 3)} ms`,
+      `  part variable — agrandir, par mégapixel de destination : ${arrondi(resume.coutParMpxMs, 3)} ms/Mpx`,
+      resume.coutParMpxMs <= 0
+        ? "  ⚠ pente nulle ou négative : le coût de l'agrandissement est noyé dans le bruit de mesure,\n    ce qui est en soi le résultat — il ne gouverne pas la dépense."
+        : '  (lecture : un écran deux fois plus grand ajoute deux fois cette valeur, pas davantage)',
+    ];
 
   ecrire(
     [
@@ -1062,25 +1207,31 @@ async function diagnosticChampLumineuxMasque() {
       `Sources RÉELLEMENT lues : ${champ.sourceCount}   (aucune extrapolation)`,
       `Masque : ${champ.maskWidth} × ${champ.maskHeight} px  (${level.widthCells} × ${level.heightCells} cases à ${FOG_MASK_PX_PER_CELL} px/case)`,
       `Surface peinte (somme des disques, px² de masque) : ${Math.round(champ.surfaceTotale).toLocaleString('fr-FR')}`,
+      `Appareil : ${window.innerWidth}×${window.innerHeight} CSS, devicePixelRatio ${arrondi(dpr, 2)}`,
       '',
-      'Chauffe : 3 passes de composition + agrandissement, hors chronomètre (piège n°3).',
+      `Protocole : ${LIGHT_FIELD_ITERATIONS} cycles « composer + agrandir » chronométrés d'un seul tenant,`,
+      'médiane de 5 fenêtres, vidage de pipeline mesuré à chaud et retranché UNE fois par fenêtre.',
+      'Chauffe hors chronomètre, `getImageData` compris.',
+      `Vidage retenu (le plus cher des deux destinations) : ${arrondi(vidageMs, 3)} ms par fenêtre,`,
+      `soit ${arrondi(vidageMs / LIGHT_FIELD_ITERATIONS, 4)} ms par image — l'ordre de grandeur qu'il faut`,
+      "pour qu'il ne puisse plus avaler le signal.",
       '',
-      `Relecture seule (1×1, vidage de pipeline)     : ${arrondi(relecture, 2)} ms`,
-      `Composition à la résolution du masque — brut  : ${arrondi(compositionBrut, 2)} ms   net : ${arrondi(resume.compositionNetMs, 2)} ms`,
-      `Agrandissement au viewport (640×480)  — brut  : ${arrondi(agrandissementBrut, 2)} ms   net : ${arrondi(resume.agrandissementNetMs, 2)} ms`,
-      `Total net                                     : ${arrondi(resume.totalNetMs, 2)} ms   (budget ${resume.budgetMs} ms, R3-05)`,
+      "Coût par image d'un cycle complet :",
+      ...lignesDestinations,
+      '',
+      'Décomposition par la pente (coût plat / coût variable avec la surface de destination) :',
+      ...lignesPente,
       '',
       resume.verdict,
       '',
-      '⚠ Fenêtre de mesure (piège n°4) : une SEULE composition et un SEUL agrandissement sont',
-      'chronométrés ici — cela établit le coût par image de cette opération précise, pas une',
-      'dérive sur la durée d\'une séance (voir section 4 pour la tenue thermique dans le temps).',
-      '',
       '⚠ Ce que cette section NE mesure PAS :',
-      '  — l\'occlusion par les murs (les sweeps) : DÉJÀ mesurée section 10, 2,6 ms sous cast',
-      '    actif pour un budget de 300 ms. Le coût total d\'un éclairage réel serait',
+      "  — l'occlusion par les murs (les sweeps) : DÉJÀ mesurée section 10, 2,6 ms sous cast",
+      "    actif pour un budget de 300 ms. Le coût total d'un éclairage réel serait",
       '    sweep + composition, mais ce calcul ne se fait pas ici : lire les deux séparément.',
-      '  — le comportement de la tablette elle-même si cette page tourne ailleurs (mauvais monde).',
+      "  — l'application du champ sur le décor (le mélange d'une LightLayer par-dessus la",
+      "    carte). Cette section compose le champ et l'agrandit ; elle ne le mélange à rien.",
+      "  — une dérive sur la durée d'une séance (voir section 4 pour la tenue thermique).",
+      '  — le comportement de la tablette si cette page tourne ailleurs (mauvais monde).',
     ].join('\n')
   );
 }

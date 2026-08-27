@@ -90,6 +90,14 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  d'universalité. Pur, sans DOM ni I/O — il reçoit des
 │   │                                  pixels, il rend un verdict. ⚠ Il AVERTIT et ne corrige
 │   │                                  rien : l'adaptateur hexagonal est le lot 4.
+│   │   ├─ ambianceImage.js       [Z]  ambiance PROPOSÉE d'après la luminance de l'image.
+│   │   │                              ⛔ Existe parce que le bloc `environment` de Dungeon
+│   │   │                              Alchemist est CONSTANT — `baked_lighting: true`,
+│   │   │                              `ambient_light: ffffffff` — de jour comme de nuit et
+│   │   │                              quel que soit le mode d'export. L'image, elle, sait :
+│   │   │                              12,6 de luminance moyenne la nuit contre 64 le jour.
+│   │   │                              ⚠ Il PROPOSE, le MJ tranche. Pur, sans DOM ni I/O —
+│   │   │                              il reçoit des pixels, comme gridPitch.js
 │   │   └─ blockedEdges.js        [2]  segments UVTT → Set<edgeKey>, par croisement
 │                                      centre-à-centre. Porte une MÉMOÏSATION par étage,
 │                                      indexée sur levelId + empreinte géométrique : c'est
@@ -103,7 +111,14 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │
 │   ├─ vision/
 │   │   ├─ sweep.js               [2]  visibilité 2D → polygone
-│   │   └─ fog.js                 [2]  masque raster, OR, encodage PNG
+│   │   ├─ fog.js                 [2]  masque raster, OR, encodage PNG
+│   │   └─ lightField.js          [Z]  champ lumineux à 8 px/case : compose les sources en
+│   │                                  additif plafonné, occluses par leur polygone de sweep.
+│   │                                  ⚠ AUCUN DOM, et ne connaît pas la grille — centres et
+│   │                                  rayons lui arrivent en pixels carte, comme à fog.js.
+│   │                                  La signature de cache vit dans la couche, comme celle
+│   │                                  du fog vit dans fogLayer.js. Coût mesuré par M2 :
+│   │                                  1,80 ms pour 93 sources sur Tab S9 FE
 │   │
 │   ├─ render/
 │   │   ├─ stage.js               [1a] contexte Canvas 2D + ordre des couches
@@ -127,6 +142,11 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   └─ layers/
 │   │       ├─ background.js      [1a] image de fond
 │   │       ├─ gridLayer.js       [1a] délègue le tracé à GridAdapter.renderGrid
+│   │       ├─ light.js           [Z]  champ lumineux agrandi et mélangé sur le décor.
+│   │                                  ⚠ SOUS les pions, décision du mainteneur du
+│   │                                  26/08/2026 : la lisibilité des pions à trois écrans
+│   │                                  a été validée en séance, la teinter la remettrait
+│   │                                  en jeu. Lit le champ de vision/lightField.js
 │   │       ├─ walls.js           [2]  tracé des murs de l'étage (vue MJ seule)
 │   │       ├─ portals.js         [2]  indicateur d'état des trois états
 │   │       ├─ links.js           [3]  marqueurs de liaisons MJ/joueurs
@@ -544,19 +564,53 @@ Un échec de l'un de ces tests **bloque la tâche**, même si la fonctionnalité
 
 Du fond vers la surface. Ordre figé : il détermine la lisibilité à table.
 
-```
-1. background      image de fond (ou vidéo)
-2. gridLayer       quadrillage
-3. moveZone        cases atteignables        ← non interactif
-4. templates       gabarits de zone d'effet
-5. tokens          pions + badges
-6. fogLayer        masque de fog             ← au-dessus des pions
-7. (DOM)           overlays : révélation d'image, sélecteur d'étage
-```
+⚠ **Les deux vues n'ont pas la même pile**, et c'est voulu.
+
+| # | Vue MJ (`js/app/gm.js`) | Vue joueurs (`js/app/player.js`) |
+|---|---|---|
+| 1 | `background` image de fond (ou vidéo) | `background` |
+| 2 | `grid` quadrillage | `grid` |
+| 3 | **`light` champ lumineux** ← n'éclaire QUE le décor | **`light`** |
+| 4 | `walls` murs de l'étage | — ⛔ **jamais côté joueurs** |
+| 5 | `portals` état des trois états de porte | `portals` |
+| 6 | `links` marqueurs de liaisons | `links` |
+| 7 | `moveZone` cases atteignables — non interactif | `moveZone` |
+| 8 | `templates` gabarits de zone d'effet | `templates` |
+| 9 | `tokens` pions + badges | `tokens` |
+| 10 | `fog` masque de fog ← **au-dessus des pions** | `fog` |
+| 11 | — | `feedback` ⚠ **au-dessus du fog**, voir ci-dessous |
+| 12 | `measure` mesure de distance — MJ local | — |
+| 13 | `pings` marqueur « regarde ici », transitoire | `pings` |
+| 14 | (DOM) overlays : révélation d'image, sélecteur d'étage | (DOM) |
+
+⚠ **`feedback` n'est pas un fichier de couche** et n'a donc rien à faire au §1 : c'est un **créneau**
+du rendu joueurs qui rappelle deux méthodes secondaires de couches déjà montées —
+`moveZoneLayer.renderDestinationFeedback` et `linksLayer.renderPrompt`. Il est **au-dessus du fog
+délibérément** : l'invite de franchissement s'écrit dans la case du *voisin*, que rien ne garantit
+explorée.
+
+> ⚠ **Cette section n'énumérait que 7 rangs jusqu'au 26/08/2026**, en une seule liste pour les deux
+> vues : `walls`, `portals`, `links`, `measure`, `pings` et `feedback` manquaient, alors que les cinq
+> premiers sont au manifeste §1 depuis les lots 2 à 4. L'ordre relatif de ce qui y figurait était
+> juste — c'était une **omission**, pas une erreur d'ordre. Rétabli en lisant les deux piles
+> réellement montées, `gm.js` et `player.js`.
+
+⛔ **La source de vérité de cet ordre est `CANVAS_LAYER_ORDER` dans `js/render/stage.js`**, pas le
+point d'appel : `renderLayerStack` parcourt cette liste et **jamais** les clés qu'on lui passe. Une
+couche branchée dans `gm.js` mais absente de la liste n'est jamais appelée, **en silence** — payé le
+26/08/2026 avec `light`, que ni le typage ni la porte n'ont vu. Le test d'architecture n°9 le garde
+désormais.
 
 `fogLayer` **au-dessus** de `tokens` : c'est ce qui garantit mécaniquement l'interdiction
 n°3 des conventions — un pion en zone non visible est masqué par le fog, pas par une
 condition d'affichage qu'on peut oublier.
+
+`light` **sous tout ce qui doit rester lisible** — décision du mainteneur du 26/08/2026. Le champ
+lumineux se pose juste au-dessus du décor (fond + quadrillage) et **sous** les murs, les portes, les
+liaisons, les gabarits et les pions. La raison est la même pour tous : leur lisibilité à trois écrans
+a été validée en séance, et les teinter la remettrait en jeu — les quatorze marqueurs d'état et les
+badges d'élévation ont coûté une campagne de jugement à eux seuls (chantier Q). ⚠ Le quadrillage,
+lui, **est** éclairé : une pièce noire n'a pas à montrer une grille en pleine lumière.
 
 ---
 

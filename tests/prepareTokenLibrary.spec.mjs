@@ -4,7 +4,7 @@
 //
 // Écrit le 9 août 2026 après une revue par mutation. L'éditeur de pions avait gagné les champs
 // `id`, `visionBright`, `visionDim` et `maxHp`, et 660 lignes de changement n'apportaient aucun
-// test : forcer `visionBright: 0, visionDim: 0, hp: null` sur tout pion généré laissait les 330
+// test : forcer `visionDim: 0, hp: null` sur tout pion généré laissait les 330
 // tests unitaires et les 8 scénarios de pion au vert.
 //
 // ⚠ Ce n'est pas un défaut théorique. Sur un étage sombre, un pion à `visionDim: 0` ne contribue
@@ -88,7 +88,6 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
             kind: charge?.entry?.kind,
             sizeCells: charge?.entry?.sizeCells,
             speedCells: charge?.entry?.speedCells,
-            visionBright: charge?.entry?.visionBright,
             visionDim: charge?.entry?.visionDim,
             emitsLight: null,
             borderColor: charge?.entry?.borderColor,
@@ -120,7 +119,6 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
   await page.selectOption('#token-kind', 'pc');
   await page.fill('#token-size-cells', '1');
   await page.fill('#token-speed-cells', '4');
-  await page.fill('#token-vision-bright', '7');
   await page.fill('#token-vision-dim', '12');
   await page.fill('#token-max-hp', '23');
 
@@ -128,9 +126,12 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
 
   await expect.poll(() => charge, { timeout: 5000 }).not.toBeNull();
 
-  // ⭐ Le cœur du test : des valeurs **distinctes des défauts** du formulaire (5 et 10 pour la
+  // ⭐ Le cœur du test : des valeurs **distinctes des défauts** du formulaire (10 pour la
   // vision, 3 pour la vitesse). Réutiliser les défauts laisserait passer un champ ignoré.
-  expect(charge.entry.visionBright).toBe(7);
+  //
+  // ⛔ La « Vision claire » a été retirée du formulaire ET du modèle le 26/08/2026
+  // (chantier Z) : le moteur n'a jamais lu qu'un seul rayon, et il n'y en aura qu'un. Le
+  // champ restant dit désormais ce qu'il est — la portée DANS LE NOIR.
   expect(charge.entry.visionDim).toBe(12);
   expect(charge.entry.maxHp).toBe(23);
   expect(charge.entry.speedCells).toBe(4);

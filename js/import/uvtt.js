@@ -349,6 +349,7 @@ export function parseUvtt(jsonInput) {
     let lightIdx = 1;
     let lumieresRejetees = 0;
     let lumieresNormalisees = 0;
+    let lumieresSansOmbres = 0;
     for (const l of data.lights) {
       if (
         !l || !l.position ||
@@ -368,12 +369,17 @@ export function parseUvtt(jsonInput) {
       const range = Number.isFinite(rawRange) ? Math.min(Math.max(rawRange, 0), 20) : 5;
       const intensity = Number.isFinite(rawIntensity) ? Math.min(Math.max(rawIntensity, 0), 1) : 1;
       if (range !== rawRange || intensity !== rawIntensity) lumieresNormalisees++;
+      if (l.shadows === false) lumieresSansOmbres++;
       lights.push({
         id: lightId,
         at: { cellX: l.position.x, cellY: l.position.y },
         range,
         intensity,
         color: parsedColor.color,
+        // ⚠ Conservé fidèlement, mais NON HONORÉ au rendu — décision §4.4b du 26/08/2026 :
+        // le champ lumineux nourrissant la vision, une source qui traverserait un mur ferait
+        // VOIR à travers ce mur. Le rendu occlut donc toutes les sources. Ce qui est écarté se
+        // dit, jamais en silence : voir l'avertissement plus bas.
         shadows: l.shadows ?? true,
       });
     }
@@ -387,6 +393,17 @@ export function parseUvtt(jsonInput) {
       warnings.push(
         `${lumieresNormalisees} lumière(s) normalisée(s) vers les bornes du moteur ` +
           '(portée 0..20 cases, intensité 0..1).'
+      );
+    }
+    // ⭐ Ce que le moteur n'honore PAS se dit. Relevé du 26/08/2026 : les 303 sources des trois
+    // exports réels du dépôt déclarent toutes `shadows: true`, donc ce cas ne s'est jamais
+    // présenté. Le jour où une carte en porte une, le mainteneur le sait — et il décide avec un
+    // cas réel sous les yeux, plutôt que de découvrir un rendu qui diffère sans explication.
+    if (lumieresSansOmbres > 0) {
+      warnings.push(
+        `${lumieresSansOmbres} lumière(s) demandent à ignorer les murs (shadows: false) : ` +
+          'rendues AVEC ombres. Le champ lumineux nourrit la vision — une source traversant ' +
+          'un mur ferait voir à travers.'
       );
     }
   }

@@ -6,6 +6,7 @@ import { FrameLoop } from '../render/frame.js';
 import { BackgroundLayer } from '../render/layers/background.js';
 import { VideoBackdrop } from '../render/videoBackdrop.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
+import { LightLayer } from '../render/layers/light.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
@@ -113,6 +114,7 @@ export async function bootstrapGMApp(options = {}) {
   });
   videoBackdrop.attach(canvas.parentElement, canvas);
   const gridLayer = new GridLayer();
+  const lightLayer = new LightLayer();
   const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
   const linksLayer = new LinksLayer();
@@ -313,37 +315,69 @@ export async function bootstrapGMApp(options = {}) {
       const exploredFog = getExploredFog(activeLevel);
       if (!exploredFog) return;
 
+      // ⭐ **Le champ lumineux se compose ICI, avant la vision, et jamais dans `rAF`.**
+      // C'est la règle du projet depuis le fog — un calcul sur mutation du store, mis en
+      // cache par signature. La couche de rendu le redemandera à l'image suivante et
+      // trouvera le même champ : son `update` est gardé par la même signature.
+      lightLayer.update(grid, activeLevel, state.campaign?.tokens ?? [], {
+        extractSegments: extractBlockedSegments,
+      });
+
       const change = fogLayer.updateVision(grid, activeLevel, state.campaign?.tokens ?? [], {
         extractSegments: extractBlockedSegments,
       });
 
-      const polygons = fogLayer.getVisiblePolygons();
       const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
       const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
       const gridScale = Math.abs(origin1.x - origin0.x);
 
-      if (change && polygons.length > 0) {
-        exploredFog.reveal(polygons, origin0, gridScale);
+      // La règle du mode tactique, assemblée une seule fois et servie deux fois : au masque
+      // exploré, qui la mémorise, et à la vision publiée, qui ne mémorise rien.
+      //
+      //     visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
+      //
+      // ⚠ `getFieldCanvas()` rend `null` au tout premier passage. `composeVisibleMask` se
+      // replie alors sur la ligne de vue ENTIÈRE : mieux vaut le comportement d'avant le
+      // chantier qu'un écran noir en pleine séance.
+      const entreesVision = {
+        losPolygons: fogLayer.getLosPolygons(),
+        nearPolygons: fogLayer.getNearPolygons(),
+        litCanvas: lightLayer.getFieldCanvas(),
+        mapOrigin: origin0,
+        gridScale,
+      };
+
+      let visibleFog = visibleFogMap.get(activeLevel.id);
+      if (
+        !visibleFog ||
+        visibleFog.widthCells !== activeLevel.widthCells ||
+        visibleFog.heightCells !== activeLevel.heightCells
+      ) {
+        visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
+        visibleFogMap.set(activeLevel.id, visibleFog);
+      }
+
+      const currentSig = fogLayer.getVisionSignature();
+      const aPublier = transport && lastVisibleSignatureMap.get(activeLevel.id) !== currentSig;
+
+      // ⛔ Ne composer que si l'un des deux consommateurs en a besoin. Composer à chaque
+      // notification du store rebouclerait exactement comme le faisait la publication
+      // inconditionnelle décrite plus haut.
+      if (change || aPublier) {
+        visibleFog.composeVisible(entreesVision);
+      }
+
+      if (change) {
+        // ⭐ `revealMask` fait l'UNION avec ce qui était exploré ; `composeVisible` REMPLACE.
+        // Les confondre ferait s'accumuler la vision courante d'une image à l'autre, et la
+        // table verrait encore ce qu'elle a quitté.
+        exploredFog.revealMask(visibleFog.canvas);
         // Amendement A1 & A2 : la vision s'est versée dans le masque, vider l'undo de cet étage
         gmPanel?.fogTools?.clearUndoStack(activeLevel.id);
         scheduleFogPublish(activeLevel.id, exploredFog);
       }
 
-      const currentSig = fogLayer.getVisionSignature();
-      if (transport && lastVisibleSignatureMap.get(activeLevel.id) !== currentSig) {
-        let visibleFog = visibleFogMap.get(activeLevel.id);
-        if (
-          !visibleFog ||
-          visibleFog.widthCells !== activeLevel.widthCells ||
-          visibleFog.heightCells !== activeLevel.heightCells
-        ) {
-          visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
-          visibleFogMap.set(activeLevel.id, visibleFog);
-        }
-        visibleFog.clear();
-        if (polygons.length > 0) {
-          visibleFog.reveal(polygons, origin0, gridScale);
-        }
+      if (aPublier) {
         publishVisibleVision(activeLevel.id, visibleFog, currentSig);
       }
     } finally {
@@ -466,6 +500,7 @@ export async function bootstrapGMApp(options = {}) {
     snapshot: 0,
     background: 0,
     grid: 0,
+    light: 0,
     walls: 0,
     portals: 0,
     links: 0,
@@ -559,6 +594,23 @@ export async function bootstrapGMApp(options = {}) {
         gridLayer.render(stage.context, grid);
         layerDurations.grid = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
+      // ⭐ Rang 3 : la lumière module le DÉCOR — le fond et le quadrillage — et rien d'autre.
+      // Tout ce qui suit (murs, portes, liaisons, gabarits, pions) reste à ses couleurs propres,
+      // parce que sa lisibilité à trois écrans a été validée en séance. Décision du 26/08/2026.
+      light: () => {
+        lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        // `update` est gardé par sa propre signature : il ne recompose que si une lumière, un
+        // mur, une porte ou l'ambiante a bougé. Un PJ qui se déplace ne le réveille pas.
+        lightLayer.update(grid, activeLevel, state.campaign?.tokens ?? [], {
+          extractSegments: extractBlockedSegments,
+        });
+        lightLayer.render(stage.context, grid, activeLevel, {
+          role: 'gm',
+          mode: gmPanel?.getMode(),
+          suppressed: videoBackdrop.active,
+        });
+        layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
       walls: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const draft = gmPanel?.wallEditor?.isArmed() ? gmPanel.wallEditor.getDraft() : null;
@@ -635,6 +687,10 @@ export async function bootstrapGMApp(options = {}) {
               role: 'gm',
               extractSegments: extractBlockedSegments,
               exploredCanvas: exploredFog.canvas,
+              // ⭐ La vision courante composée par `syncVision`, déjà découpée par
+              // l'éclairage. Sans elle, la couche se rabattrait sur son repli conservateur
+              // et le MJ ne verrait que les portées nocturnes — jamais les pièces éclairées.
+              visibleCanvas: visibleFogMap.get(activeLevel.id)?.canvas,
             }
           );
         }
@@ -894,11 +950,34 @@ export async function bootstrapGMApp(options = {}) {
                 store.getCampaign()?.tokens ?? [],
                 { extractSegments: extractBlockedSegments }
               );
-              const polys = fogLayer.getVisiblePolygons();
-              if (polys.length > 0) {
-                const coin0 = grilleArrivee.mapFromCellPoint({ cellX: 0, cellY: 0 });
-                const coin1 = grilleArrivee.mapFromCellPoint({ cellX: 1, cellY: 0 });
-                fogArrivee.reveal(polys, coin0, Math.abs(coin1.x - coin0.x));
+              const coin0 = grilleArrivee.mapFromCellPoint({ cellX: 0, cellY: 0 });
+              const coin1 = grilleArrivee.mapFromCellPoint({ cellX: 1, cellY: 0 });
+              const echelleArrivee = Math.abs(coin1.x - coin0.x);
+
+              // ⛔ **Le champ lumineux de l'étage d'ARRIVÉE, pas celui de l'étage affiché.**
+              // `lightLayer` porte le champ de l'étage courant ; s'en servir ici découperait
+              // la vision d'un étage par l'éclairage d'un autre. On compose donc à part, comme
+              // le code le fait déjà pour `fogArrivee`.
+              //
+              // ⚠ Sans cette intersection, franchir un escalier vers une cave NOIRE en
+              // révélerait toute la ligne de vue : le pion verrait dans le noir ce que la
+              // règle tactique lui interdit, et le masque publié le graverait pour de bon.
+              const lumiereArrivee = new LightLayer();
+              lumiereArrivee.update(grilleArrivee, etageArrivee, store.getCampaign()?.tokens ?? [], {
+                extractSegments: extractBlockedSegments,
+              });
+
+              const visionArrivee = new ExploredFog(etageArrivee.widthCells, etageArrivee.heightCells);
+              const compose = visionArrivee.composeVisible({
+                losPolygons: fogLayer.getLosPolygons(),
+                nearPolygons: fogLayer.getNearPolygons(),
+                litCanvas: lumiereArrivee.getFieldCanvas(),
+                mapOrigin: coin0,
+                gridScale: echelleArrivee,
+              });
+
+              if (compose) {
+                fogArrivee.revealMask(visionArrivee.canvas);
                 scheduleFogPublish(etageArrivee.id, fogArrivee);
               }
             }

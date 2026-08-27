@@ -197,6 +197,7 @@ export class FrameProbe {
         <th>Vision</th>
         <th>Fond</th>
         <th>Grille</th>
+        <th>Lumière</th>
         <th>Portes</th>
         <th>Pions</th>
         <th>Fog</th>
@@ -235,6 +236,7 @@ export class FrameProbe {
         <td>${value('vision')}ms</td>
         <td>${value('background')}ms</td>
         <td>${value('grid')}ms</td>
+        <td>${value('light')}ms</td>
         <td>${value('portals')}ms</td>
         <td>${value('tokens')}ms</td>
         <td>${value('fog')}ms</td>

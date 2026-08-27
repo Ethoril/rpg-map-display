@@ -606,7 +606,6 @@ test('updateToken accepte les champs d’édition du pion, et les applique ensem
     hidden: true,
     playerMovable: false,
     locked: true,
-    visionBright: 7,
     visionDim: 14,
     markers: ['prone'],
   });
@@ -620,7 +619,6 @@ test('updateToken accepte les champs d’édition du pion, et les applique ensem
   assert.equal(token?.hidden, true);
   assert.equal(token?.playerMovable, false);
   assert.equal(token?.locked, true);
-  assert.equal(token?.visionBright, 7);
   assert.equal(token?.visionDim, 14);
   assert.deepEqual(token?.markers, ['prone']);
 

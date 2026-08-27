@@ -304,3 +304,52 @@ test('bornes — NaN et Infinity sont rejetés, là où `typeof` les laissait pa
     'le rejet doit être compté et dit, jamais silencieux'
   );
 });
+
+test('⭐ Z-04 — une lumière `shadows: false` est conservée, mais son écart est DIT', () => {
+  // ⛔ Le rendu occlut toutes les sources, `shadows: false` compris (décision §4.4b du
+  // 26/08/2026) : le champ lumineux nourrit la vision, donc une source traversant un mur
+  // ferait VOIR à travers. Mais un import n'écarte jamais rien en silence — c'est la règle
+  // d'universalité. Le champ reste donc importé fidèlement, ET l'écart est signalé.
+  const res = parseUvtt({
+    resolution: { pixels_per_grid: 100, map_size: { x: 10, y: 10 } },
+    lights: [
+      { position: { x: 2, y: 2 }, range: 4, intensity: 1, color: '#ffffff', shadows: false },
+      { position: { x: 5, y: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false },
+      { position: { x: 8, y: 8 }, range: 4, intensity: 1, color: '#ffffff', shadows: true },
+    ],
+    image: '',
+  });
+
+  // 1. Le champ survit à l'import, fidèlement. Le jeter serait perdre de l'information.
+  assert.equal(res.level.lights.length, 3);
+  assert.equal(res.level.lights[0].shadows, false);
+  assert.equal(res.level.lights[2].shadows, true);
+
+  // 2. Et l'écart est dit, avec son compte exact.
+  const avert = res.warnings.find((w) => w.includes('shadows: false'));
+  assert.ok(avert, 'l’écart doit être signalé');
+  assert.ok(avert.includes('2 lumière'), `le compte doit être exact, obtenu : ${avert}`);
+  assert.ok(avert.includes('AVEC ombres'), 'il doit dire ce que le moteur fait à la place');
+
+  // ⭐ Preuve par mutation : sans le compteur, ou en le branchant sur `shadows === true`,
+  // ce test rougit — 2 sources sur 3 sont concernées, jamais 1 ni 3.
+  assert.ok(!avert.includes('3 lumière') && !avert.includes('1 lumière'));
+
+  // 3. Un corpus entièrement `shadows: true` — celui du dépôt, 303 sources sur 303 — ne
+  //    déclenche AUCUN avertissement. Un avertissement qui crie toujours ne se lit plus.
+  const propre = parseUvtt({
+    resolution: { pixels_per_grid: 100, map_size: { x: 10, y: 10 } },
+    lights: [{ position: { x: 2, y: 2 }, range: 4, intensity: 1, color: '#fff', shadows: true }],
+    image: '',
+  });
+  assert.equal(propre.warnings.filter((w) => w.includes('shadows')).length, 0);
+
+  // 4. `shadows` absent vaut `true` : le silence de l'export n'est pas une demande.
+  const absent = parseUvtt({
+    resolution: { pixels_per_grid: 100, map_size: { x: 10, y: 10 } },
+    lights: [{ position: { x: 2, y: 2 }, range: 4, intensity: 1, color: '#fff' }],
+    image: '',
+  });
+  assert.equal(absent.level.lights[0].shadows, true);
+  assert.equal(absent.warnings.filter((w) => w.includes('shadows')).length, 0);
+});
