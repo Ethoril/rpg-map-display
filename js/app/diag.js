@@ -506,7 +506,16 @@ async function diagnosticHorlogeEtCanal() {
 async function diagnosticLumieres() {
   const { FogLayer } = await import('../render/layers/fogLayer.js');
   const catalogue = await (await fetch('maps/catalog.json')).json();
-  const lignes = ['Coût d’une mutation lumineuse — R3-05', '', 'À lancer sur le poste MJ.', ''];
+  const lignes = [
+    'Coût d’une mutation lumineuse — R3-05',
+    '',
+    'À lancer sur le poste MJ.',
+    '',
+    '⚠ Les murs sont pris en compte depuis le 27/08/2026. Avant cette date, cette section',
+    'balayait des cartes SANS obstacle : le relevé de 2,6 ms du 11/08 ne mesurait donc pas',
+    'l’occlusion, qui est pourtant le terme dominant. Tout relevé antérieur est à jeter.',
+    '',
+  ];
 
   /** @type {Array<{ nom: string, sources: number, pire: number }>} */
   const releves = [];
@@ -549,7 +558,21 @@ async function diagnosticLumieres() {
         tokens[0].cell = { a: 2 + essai, b: 2 + essai };
         couche.invalidate?.();
         const t0 = performance.now();
-        couche.updateVision(grid, level, tokens, {});
+        // ⛔ **`extractSegments` était ABSENT jusqu'au 27/08/2026, et cette section ne mesurait
+        // donc AUCUN mur.** `updateVision` se rabat sur `[]` quand ni `segments` ni
+        // `extractSegments` ne lui sont fournis : elle balayait des cartes vides.
+        //
+        // Le sweep coûte en proportion du nombre de segments à sa portée — c'est le terme qui
+        // domine, et c'est celui que l'occlusion introduit. Mesuré sur ce dépôt le 27/08,
+        // `testbig150` et ses 1338 murs passent de **2,65 ms sans murs à 45,5 ms avec**,
+        // sur la même machine et le même code. Un facteur 17.
+        //
+        // ⚠ Le relevé tablette de 2,6 ms du 11/08 mesurait donc des cartes sans murs, et le
+        // §11 de `ETAT.md` en a tiré « l'occlusion par les murs, déjà mesurée section 10 ».
+        // C'est faux, et c'est corrigé là-bas aussi. Le verdict — « ça tient dans 300 ms » —
+        // survit très probablement, mais la marge annoncée était surestimée d'un ordre de
+        // grandeur, et **elle doit être remesurée**.
+        couche.updateVision(grid, level, tokens, { extractSegments: extractBlockedSegments });
         pire = Math.max(pire, performance.now() - t0);
       }
       releves.push({ nom: `${entree.id} / ${level.id}`, sources, pire: arrondi(pire, 1) });

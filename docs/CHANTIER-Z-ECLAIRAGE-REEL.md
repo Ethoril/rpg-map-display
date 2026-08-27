@@ -42,8 +42,16 @@ Village étage 00, **93 sources réellement lues**, masque 336 × 336 px, Tab S9
 
    Aucune source ne dépasse le plafond de 20 cases (`VISION_MAX_RANGE_CELLS`), donc le garde-fou de
    L-02 joue déjà. ⭐ **Et l'instrument existe déjà** : la **section 10** de `diag.html` mesure
-   exactement ce coût sur toutes les cartes publiées — 2,6 ms sous cast aujourd'hui, **avec** le
-   filtre. La relancer après Z-05 donne le delta directement, sans écrire une ligne de sonde.
+   ce coût sur toutes les cartes publiées. ⛔ **Mais elle ne le mesurait pas** : elle appelait
+   `updateVision` sans extracteur de segments, donc **sans aucun mur** — le terme qui domine.
+   Réparée le 27/08/2026. Son relevé de 2,6 ms du 11/08 est à jeter, et le §11 d'`ETAT.md`
+   comme ce journal en avaient tiré « l'occlusion est déjà mesurée », ce qui était faux.
+
+   ⭐ **Ce que l'A/B du 27/08 établit, sur le poste Windows et à charge identique** : le
+   chantier rend `updateVision` **2,8× plus rapide** avec les murs — 45,5 ms sur `main`
+   contre 16,3 ms sur la branche, pire cas `testbig150`. Le village passe de 34,1 à 1,8 ms.
+   Retirer les sweeps de lumière du chemin de vision paie largement les deux sweeps par PJ
+   qu'il coûte.
 
 3. **Le cast.** Non relevé le 26/08. La section 10 l'avait été. Non bloquant à 2 % du budget, mais
    ⛔ aucun critère de performance ne se coche sans le dispositif réel.

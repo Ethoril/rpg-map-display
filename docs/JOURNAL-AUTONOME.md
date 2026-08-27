@@ -471,7 +471,7 @@ sources vers 93 « ne valent rien ».*
 
 Et ce que la section ne mesure toujours pas, par construction :
 
-- **l'occlusion par les murs** — déjà mesurée section 10, 2,6 ms sous cast actif ;
+- **l'occlusion par les murs** — ⛔ **PAS mesurée, contrairement à ce qui était écrit ici.** La section 10 balayait des cartes sans murs jusqu'au 27/08/2026 : son 2,6 ms ne portait pas sur l'occlusion. Instrument réparé, relevé à refaire ;
 - ⚠ **l'application du champ sur le décor** — le mélange d'une `LightLayer` par-dessus la carte. La
   section compose le champ et l'agrandit ; elle ne le mélange à rien. C'est un coût réel, non mesuré,
   et il porte sur la surface de l'écran. À ajouter au devis de la phase 3.

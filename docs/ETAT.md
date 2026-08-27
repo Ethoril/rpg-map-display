@@ -94,7 +94,19 @@
 > un budget de 300 ms. ⭐ L'hypothèse écrite était de 200 à 280 ms : la mesure est **douze à
 > dix-sept fois meilleure**.
 >
-> ✅ **Confirmé sur la tablette le 11/08/2026, même section : 2,6 ms**, soit 1 % du budget de 300 ms
+> ⛔ **« Confirmé sur la tablette le 11/08/2026, même section : 2,6 ms », soit 1 % du budget de 300 ms**
+> ⛔ **CE CHIFFRE EST À JETER — corrigé le 27/08/2026.** La section 10 appelait
+> `updateVision(grid, level, tokens, {})`, **sans extracteur de segments**. `updateVision` se
+> rabat alors sur une liste de murs **vide** : elle balayait des cartes sans aucun obstacle,
+> c'est-à-dire sans le terme qui domine le coût d'un sweep.
+>
+> Mesuré sur le poste Windows le 27/08, même code et même corpus : `testbig150` et ses
+> **1338 murs** passent de **2,65 ms sans murs à 45,5 ms avec**. Un facteur **17**.
+>
+> ⚠ Le verdict — « ça tient dans les 300 ms » — survit très probablement : 45 ms sur ce poste
+> font ~110 ms sur la tablette, soit encore un tiers du budget. Mais **la marge annoncée était
+> surestimée d'un ordre de grandeur**, et elle doit être remesurée avec l'instrument réparé.
+
 > et mieux encore que le poste MJ. **Cast actif, confirmé par le mainteneur : la porte matérielle de
 > R3-05 est donc entièrement fermée.** Il ne reste au lot 3 que le critère 1, qui attend du contenu
 > — trois cartes réelles licenciées à trois étages — et non du code.
@@ -1412,7 +1424,7 @@ mieux que ce soit écrit ici qu'oublié puis cité.
 | 6bis — sweep sur les cartes publiées | positif, résultats « exceptionnels » sur la carte vidéo |
 | 7 — fond animé, matériel ou logiciel | **décodage matériel annoncé** (`powerEfficient` vrai) |
 | 7bis — lecture réelle du fond animé | 29,9 i/s ; verdict « rampe » ⚠ **faux par construction**, voir plus bas |
-| 10 — coût de la vision avec lumières | **2,6 ms**, pour un budget de 300 ms, **sous cast actif** |
+| 10 — coût de la vision avec lumières | ⛔ **2,6 ms — CHIFFRE À JETER** : la section balayait des cartes **sans murs** jusqu'au 27/08/2026. À remesurer |
 | 11 — motifs à juger (chantier Q) | aucun souci de visibilité |
 | 15 — onglets MJ réellement ouverts | image 5 · handout 5 · gabarits 4 · pions 3 · cartes 2 · fog 2 · murs 1 |
 | R2 — décodage froid | `Image.decode()` **1 118 ms** sur `testbig150.webp` |
