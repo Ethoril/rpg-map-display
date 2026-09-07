@@ -1812,6 +1812,16 @@ export function createGMPanel(container, options = {}) {
             by: 'gm',
           });
         },
+        // UX-15 : emmener la table sur l'étage actif du MJ, par le même chemin de publication
+        // que les autres événements du panneau — aucun accès au transport dans le composant.
+        onShowLevel: (levelId) => {
+          transport?.publish({
+            type: 'level.show',
+            payload: { levelId },
+            at: Date.now(),
+            by: 'gm',
+          });
+        },
       })
     : null;
 

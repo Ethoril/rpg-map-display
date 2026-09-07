@@ -148,6 +148,27 @@ export function applyNetworkEvent(event) {
       store.selectLevel(payload.levelId);
       return true;
     }
+    // ── UX-15 : le MJ EMMÈNE la table sur un étage ─────────────────────────────────────────
+    //
+    // Miroir exact de `level.select` juste au-dessus, et validé de la même façon — mais
+    // l'application est inversée entre les deux vues. `level.select` est ignoré par la
+    // tablette et appliqué par le MJ (son propre point de vue) ; `level.show` est appliqué
+    // par la tablette et ignoré par le MJ (son propre point de vue à lui n'a pas à bouger). Les
+    // deux filtres vivent en dehors de ce réducteur, avant `applyNetworkEvent` — `js/app/player.js`
+    // pour `level.select`, `js/app/gm.js` pour `level.show` — parce que le réducteur est partagé
+    // par les deux vues et doit rester capable d'appliquer les deux cas.
+    case 'level.show': {
+      if (!payload.levelId || typeof payload.levelId !== 'string') {
+        console.error('Événement "level.show" refusé : payload malformé');
+        return false;
+      }
+      if (!campaign?.levels.some((level) => level.id === payload.levelId)) {
+        console.error(`Événement "level.show" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      store.selectLevel(payload.levelId);
+      return true;
+    }
     // ── Lot 3, S-03 : franchissement d'une liaison ────────────────────────────────────────
     //
     // L'événement porte le **pion et la liaison**, jamais la destination : chaque poste la

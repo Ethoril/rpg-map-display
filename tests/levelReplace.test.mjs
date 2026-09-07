@@ -293,6 +293,43 @@ test('UX-13 : Réseau — applyNetworkEvent avec level.replace', () => {
   assert.equal(resBad2, false);
 });
 
+test('UX-15 : Réseau — applyNetworkEvent avec level.show refuse un étage inconnu, bruyamment et sans muter', () => {
+  setupCampagneTest();
+  store.selectLevel('rdc');
+
+  const avant = store.getActiveLevelId();
+  const journal = console.error;
+  /** @type {string[]} */
+  const messages = [];
+  console.error = (...args) => messages.push(String(args[0]));
+  try {
+    const res = applyNetworkEvent({
+      type: 'level.show',
+      payload: { levelId: 'inexistant' },
+      at: Date.now(),
+      by: 'gm',
+    });
+    assert.equal(res, false, 'un étage inconnu doit être refusé');
+    assert.equal(store.getActiveLevelId(), avant, 'le store ne doit pas avoir muté');
+    assert.ok(
+      messages.some((m) => m.includes('level.show') && m.includes('inexistant')),
+      'le refus doit être journalisé, pas silencieux'
+    );
+  } finally {
+    console.error = journal;
+  }
+
+  // Et un étage connu, lui, est bien appliqué — c'est le réducteur partagé par les deux vues.
+  const res = applyNetworkEvent({
+    type: 'level.show',
+    payload: { levelId: 'et1' },
+    at: Date.now(),
+    by: 'gm',
+  });
+  assert.equal(res, true);
+  assert.equal(store.getActiveLevelId(), 'et1');
+});
+
 test('UX-13 : fogTools.clearFog vide le masque exploré et la pile undo de l étage actif sans lever', async () => {
   const fogMap = new Map();
   const fogRdc = new ExploredFog(10, 8, createMockCanvas);

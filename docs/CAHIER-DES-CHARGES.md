@@ -597,6 +597,26 @@ S'appuie entièrement sur des briques déjà spécifiées : énumération de cas
 >
 > **Amendement L-10 (05/08/2026)** : La forme réelle déplaçable et pivotable (cercle et cône à 60°) remplace le surlignage des cases. Plus d'énumération de cases. Découpe stricte par les murs au `ctx.clip()` sur le polygone de sweep. `origin` passe en `MapPoint` carte et la pointe du cône est l'ancre fixe des rotations. Les joueurs peuvent manipuler les gabarits libres marqués `visibleToPlayers`.
 
+> **Amendement UX-15 (07/09/2026) — `level.show`, le geste qui emmène la table.** UX-10 a découplé
+> l'étage affiché des joueurs de celui du MJ : `level.select` est **ignoré par la tablette**, et le
+> sélecteur des joueurs (UX-12) n'offre que les étages **connus** — « un étage inconnu est ABSENT,
+> pas grisé ». Une carte fraîchement chargée n'ayant aucun brouillard révélé, la table n'avait donc
+> **aucun moyen d'y aller** et le MJ **aucun moyen de l'y emmener**, alors que la décision du
+> 16/08/2026 le supposait explicitement (« ils y viendront par un escalier, ou parce que le MJ les y
+> emmène avec la barre d'étage »). Constaté en séance le 07/09/2026, et tranché le même jour : le
+> mainteneur veut **une action explicite**, pas un couplage restauré.
+>
+> `level.show` porte `{ levelId }` et fait cela, et **rien d'autre** :
+>
+> - ⛔ **appliqué par la tablette, ignoré par le MJ** — exactement le miroir de `level.select`, que
+>   la tablette ignore. Les deux filtres vivent dans l'application, avant le réducteur, parce que le
+>   réducteur est partagé par les deux vues ;
+> - il **ne déplace aucun pion**, ne change pas l'étage du MJ, ne recadre aucune vue ;
+> - l'étage affiché des joueurs reste un **point de vue local**, retenu en stockage local et absent
+>   du document de campagne : l'événement est une **commande ponctuelle**, pas de l'état persisté ;
+> - ⚠ le MJ n'apprend **pas** où la table se trouve. L'étage affiché des joueurs ne circule pas, donc
+>   la barre ne peut annoncer que ce qu'elle a **publié**, jamais ce que la tablette montre.
+
 Règle le principal arbitrage verbal pénible à table — « est-ce que le gobelin est dans la
 boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 
@@ -796,6 +816,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `level.replace` | MJ | ponctuel — `{ levelId, patch }`, voir l amendement UX-13 |
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
+| `level.show` | **MJ seul** | ponctuel — `{ levelId }`, voir l amendement UX-15 |
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 

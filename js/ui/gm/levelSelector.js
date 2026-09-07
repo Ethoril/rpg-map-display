@@ -6,6 +6,8 @@
  * @property {() => { id: string, name?: string }[]} getLevels - Renvoie les résumés des étages de la campagne
  * @property {() => string | null} getActiveLevelId - Renvoie l'identifiant de l'étage actif
  * @property {(levelId: string) => void} onSelectLevel - Rappel lors de la sélection d'un étage par le MJ
+ * @property {(levelId: string) => void} [onShowLevel] - Rappel quand le MJ publie l'étage actif vers la tablette (UX-15).
+ *   Sans transport dedans : ce module ne le connaît pas, le câblage se fait chez l'appelant.
  */
 
 /**
@@ -31,11 +33,13 @@ export function createLevelSelector(container, options) {
 
   container.innerHTML = `
     <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
-    <select id="gm-level-select" style="flex: 1; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
+    <select id="gm-level-select" style="flex: 1; min-width: 0; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
+    <button id="gm-level-show" type="button" title="Publie cet étage sur la tablette des joueurs" style="flex-shrink: 0; white-space: nowrap; padding: 0.35rem 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;">Emmener la table</button>
     <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
   `;
 
   const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
+  const showLevelBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-level-show'));
   const levelStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-level-status'));
 
   // ⛔ **Le cadenas 🔒 a été retiré par UX-10 (18/08/2026).**
@@ -63,6 +67,34 @@ export function createLevelSelector(container, options) {
         levelStatus.style.color = '#e74c3c';
         levelStatus.textContent = err instanceof Error ? err.message : String(err);
         update();
+      }
+    },
+    { signal: listeners.signal }
+  );
+
+  // ── UX-15 : emmener la table sur l'étage affiché du MJ ──────────────────────────────────
+  //
+  // ⛔ Un geste, pas un couplage restauré (« rien ne se déplace dans le dos de personne »).
+  // Le bouton publie `level.show` avec l'étage **actuellement actif du MJ** ; il ne fait rien
+  // de plus — aucun pion ne bouge, aucun étage du MJ ne change.
+  showLevelBtn.addEventListener(
+    'click',
+    () => {
+      const actif = options.getActiveLevelId();
+      if (!actif || !options.onShowLevel) return;
+      try {
+        options.onShowLevel(actif);
+        levelStatus.style.color = '#888';
+        // ⚠ **Honnête, pas optimiste.** L'étage affiché par la tablette ne circule pas vers le
+        // MJ — rien ne le lui dirait s'il se trompait de route ou perdait la connexion entre
+        // la publication et l'écran. Le statut n'annonce donc que ce que CE poste vient de
+        // PUBLIER, jamais ce que la table montre réellement : c'est le mensonge d'interface que
+        // ce dépôt corrige partout ailleurs (fog, vision, lumière), pas une place pour en semer un.
+        const nom = options.getLevels().find((l) => l.id === actif)?.name || actif;
+        levelStatus.textContent = `publié : ${nom}`;
+      } catch (err) {
+        levelStatus.style.color = '#e74c3c';
+        levelStatus.textContent = err instanceof Error ? err.message : String(err);
       }
     },
     { signal: listeners.signal }

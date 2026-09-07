@@ -291,6 +291,132 @@ test("UX-10 : franchir l'escalier téléporte le pion, et ne déplace ni l'écra
  * et se défaire au premier F5 : l'instantané servi par le transport porte l'étage du MJ, et sans
  * mémoire locale la tablette y retomberait — exactement le couplage qu'on vient de couper.
  */
+/**
+ * UX-15 — le MJ EMMÈNE la table sur un étage, par un geste explicite.
+ *
+ * ⚠ En deux temps, et le premier temps n'est pas un détail : il rejoue exactement le test
+ * UX-10 ci-dessus (la barre du MJ ne fait QUE le regarder, elle) pour montrer que le bouton
+ * est un geste supplémentaire, pas un couplage restauré. Sans ce premier temps, on ne
+ * distinguerait pas « le bouton fonctionne » de « le sélecteur a recommencé à emmener la
+ * table », qui est exactement la régression qu'UX-10 avait corrigée.
+ */
+const SNAPSHOT_SHOW = structuredClone(SNAPSHOT);
+SNAPSHOT_SHOW.campaign.campaignId = 'c-show';
+SNAPSHOT_SHOW.campaign.levels[0].imageUrl = 'maps/rdc-show.webp';
+SNAPSHOT_SHOW.campaign.levels[1].imageUrl = 'maps/etage-show.webp';
+
+/** @param {import('@playwright/test').Page} page */
+const etageEtImage = (page) =>
+  page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const level = store.getActiveLevel();
+    return { activeLevelId: store.getActiveLevelId(), imageUrl: level?.imageUrl ?? null };
+  });
+
+test('UX-15 : le MJ change sa propre barre sans emmener la table, puis l’y emmène d’un clic', async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `ux15-show-${Date.now()}`;
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT_SHOW);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  const mj = await context.newPage();
+  await installBrowserTransport(mj, sessionId, SNAPSHOT_SHOW);
+  await mj.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(mj);
+
+  expect(await etageEtImage(joueur)).toMatchObject({
+    activeLevelId: 'rdc',
+    imageUrl: 'maps/rdc-show.webp',
+  });
+
+  // 1. Le MJ change SA barre. C'est UX-10 : la table ne bouge pas.
+  await mj.selectOption('#gm-level-select', 'etage');
+  await expect.poll(() => etageEtImage(mj)).toMatchObject({ activeLevelId: 'etage' });
+
+  await joueur.waitForTimeout(1200);
+  expect(
+    await etageEtImage(joueur),
+    'le simple changement de barre du MJ ne doit rien emmener'
+  ).toMatchObject({ activeLevelId: 'rdc', imageUrl: 'maps/rdc-show.webp' });
+
+  // 2. Le MJ clique le bouton : la table est cette fois EMMENÉE sur l'étage affiché du MJ.
+  await mj.click('#gm-level-show');
+  await expect
+    .poll(() => etageEtImage(joueur), { timeout: 8000 })
+    .toMatchObject({ activeLevelId: 'etage', imageUrl: 'maps/etage-show.webp' });
+
+  // Et la vue MJ, elle, n'a pas bougé du geste qui emmène la table.
+  expect(await etageEtImage(mj)).toMatchObject({ activeLevelId: 'etage' });
+
+  await context.close();
+});
+
+/**
+ * UX-15 — le cas qui motive tout : emmener la table sur un étage SANS brouillard révélé.
+ *
+ * Une carte fraîchement chargée, ou un étage que personne n'a jamais visité, n'a aucun masque
+ * exploré : avant ce geste, la table n'avait aucun moyen d'y aller (UX-12 l'exclut du
+ * sélecteur), et le MJ aucun moyen de l'y emmener (UX-10 a coupé la bascule automatique).
+ */
+test('UX-15 : emmener la table sur un étage sans brouillard révélé — elle l’affiche, et il figure dans sa barre', async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `ux15-nofog-${Date.now()}`;
+
+  // Un troisième étage, vierge de tout pion : aucune vision n'y a jamais été calculée, donc
+  // aucun masque exploré n'existe pour lui avant le geste.
+  const snapshot = structuredClone(SNAPSHOT_SHOW);
+  snapshot.campaign.campaignId = 'c-show-nofog';
+  const grenier = structuredClone(snapshot.campaign.levels[1]);
+  grenier.id = 'grenier';
+  grenier.name = 'Grenier';
+  grenier.imageUrl = 'maps/grenier.webp';
+  snapshot.campaign.levels.push(grenier);
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, snapshot);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  const mj = await context.newPage();
+  await installBrowserTransport(mj, sessionId, snapshot);
+  await mj.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(mj);
+
+  // Précondition : aucun masque n'existe pour le grenier avant le geste.
+  expect(
+    await mj.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('grenier'))
+  ).toBeNull();
+
+  await mj.selectOption('#gm-level-select', 'grenier');
+  await mj.click('#gm-level-show');
+
+  // La table affiche le grenier…
+  await expect.poll(() => etageEtImage(joueur), { timeout: 8000 }).toMatchObject({
+    activeLevelId: 'grenier',
+  });
+
+  // …et il figure dans sa barre, alors même qu'aucun pion n'y a jamais vu quoi que ce soit :
+  // c'est l'exception « étage AFFICHÉ », pas un étage devenu « connu ».
+  await expect
+    .poll(() =>
+      joueur.evaluate(() =>
+        [...document.querySelectorAll('#player-level-tabs .player-level-tab')].map(
+          (b) => /** @type {HTMLElement} */ (b).dataset.levelId
+        )
+      )
+    )
+    .toContain('grenier');
+
+  await context.close();
+});
+
 test('UX-10 : après un F5, la tablette retrouve SON étage, pas celui du MJ', async ({ browser }) => {
   const context = await browser.newContext();
   const sessionId = `f5-etage-${Date.now()}`;

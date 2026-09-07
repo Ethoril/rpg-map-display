@@ -886,6 +886,25 @@ export async function bootstrapGMApp(options = {}) {
       }
 
 
+      // ⛔ **`level.show` est ignoré ici, et c'est le miroir exact d'UX-10.** L'étage affiché du
+      // MJ est son propre point de vue : ce n'est pas parce qu'il vient d'emmener la table sur un
+      // étage que le sien doit y basculer aussi — les deux vues restent aussi découplées dans ce
+      // sens qu'elles le sont déjà dans l'autre.
+      //
+      // ⚠ Il est écarté **avant** `applyNetworkEvent` et non dans le réducteur, exactement comme
+      // `level.select` l'est côté joueurs dans `js/app/player.js` : le réducteur est partagé par
+      // les deux vues, et la tablette, elle, doit continuer de l'appliquer.
+      //
+      // ⚠ **AUCUN TEST NE DISTINGUE CE FILTRE, et il faut le dire ici.** Mutation faite le
+      // 07/09/2026 : filtre retiré, les cinq tests de `levelSwitch.spec.mjs` restent verts.
+      // La raison est structurelle, pas un trou de couverture : le bouton publie toujours
+      // l'étage **actif du MJ**, et `level.select` synchronise déjà les postes MJ entre eux —
+      // un second MJ est donc TOUJOURS déjà sur cet étage quand le `level.show` lui arrive.
+      // Le garde est défensif : il tient si un émetteur publie un jour un autre étage. Même
+      // profil que la dette E-3 de `QUESTIONS-EN-ATTENTE.md`. ⛔ Ne pas le retirer au motif
+      // qu'il est vert sous mutation.
+      if (event.type === 'level.show') return;
+
       // Position d'avant, lue AVANT que l'événement ne la remplace. Le payload porte
       // normalement `from`, mais s'y fier seul laisserait le trajet non révélé sur un
       // client qui l'omet — et rien ne le signalerait.

@@ -106,8 +106,14 @@ export function createPlayerLevelSelector(container, options) {
    * chaque notification ferait perdre le focus clavier et clignoter la barre sous le doigt.
    */
   function update() {
-    const connus = options.getLevels().filter((l) => options.isKnown(l.id));
     const actif = options.getActiveLevelId();
+    // ⭐ UX-15 : l'étage AFFICHÉ figure toujours dans la barre, même s'il n'est pas « connu ».
+    // Sinon une table qu'on vient d'emmener sur une carte neuve (`level.show`) lirait une barre
+    // qui ne montre pas où elle est, sans aucun moyen d'y revenir. La règle « un étage inconnu
+    // est absent » (UX-12, décision du 19/08 : « la table ne voit que les étages où elle est
+    // allée ») reste vraie pour tous les AUTRES étages — ceci n'en fait pas un étage « rendu
+    // connu », seulement un étage montré tel quel.
+    const connus = options.getLevels().filter((l) => options.isKnown(l.id) || l.id === actif);
 
     // Un seul étage connu : la barre n'apporte rien, elle disparaît — même règle que la barre
     // d'étage du MJ, et elle compte double ici, où l'écran doit rester une carte et rien d'autre.
