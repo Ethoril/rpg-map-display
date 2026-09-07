@@ -10,7 +10,12 @@ import { createLinkEditor } from './linkEditor.js';
 import { createTemplateTools } from './templateTools.js';
 import { createLevelSelector } from './levelSelector.js';
 import { VERSION } from '../../core/version.js';
-import { GM_SESSION_STORAGE_KEY, STATUS_MARKER_IDS, STATUS_MARKER_LABEL_FR } from '../../core/constants.js';
+import {
+  GM_SESSION_STORAGE_KEY,
+  STATUS_MARKER_IDS,
+  STATUS_MARKER_LABEL_FR,
+  TOKEN_TORCH_DEFAULT,
+} from '../../core/constants.js';
 import { isStatusMarker } from '../../core/schema.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
@@ -212,6 +217,15 @@ export function createGMPanel(container, options = {}) {
 
             <label for="token-edit-locked" style="font-size: 0.85rem; color: #aaa;">Verrouillé :</label>
             <input type="checkbox" id="token-edit-locked" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+
+            <label for="token-edit-vision-dim" style="font-size: 0.85rem; color: #aaa;">Vision dans le noir (cases) :</label>
+            <input type="number" id="token-edit-vision-dim" min="0" max="60" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+
+            <label for="token-edit-torch" style="font-size: 0.85rem; color: #aaa;">Porte une torche :</label>
+            <input type="checkbox" id="token-edit-torch" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
+
+            <label for="token-edit-torch-range" style="font-size: 0.85rem; color: #aaa;">Portée (cases) :</label>
+            <input type="number" id="token-edit-torch-range" min="1" max="20" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
 
             <label for="token-hp-current" style="font-size: 0.85rem; color: #aaa;">PV (courant / max) :</label>
             <div style="display: flex; align-items: center; gap: 0.4rem;">
@@ -1100,6 +1114,9 @@ export function createGMPanel(container, options = {}) {
   const tokenEditHidden = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-hidden'));
   const tokenEditPlayerMovable = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-player-movable'));
   const tokenEditLocked = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-locked'));
+  const tokenEditVisionDim = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-vision-dim'));
+  const tokenEditTorch = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-torch'));
+  const tokenEditTorchRange = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-torch-range'));
   const tokenEditStatus = /** @type {HTMLElement} */ (container.querySelector('#token-edit-status'));
   const btnDeleteToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-delete-token'));
   const btnReserveToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-reserve-token'));
@@ -1202,6 +1219,9 @@ export function createGMPanel(container, options = {}) {
     tokenEditHidden,
     tokenEditPlayerMovable,
     tokenEditLocked,
+    tokenEditVisionDim,
+    tokenEditTorch,
+    tokenEditTorchRange,
     tokenHpMax,
     ...markerCheckboxes,
   ];
@@ -1267,12 +1287,21 @@ export function createGMPanel(container, options = {}) {
       [tokenEditBorderColor, selectedToken.borderColor || '#ffffff'],
       [tokenEditSizeCells, String(selectedToken.sizeCells ?? 1)],
       [tokenEditSpeedCells, String(selectedToken.speedCells ?? 1)],
+      [tokenEditVisionDim, String(selectedToken.visionDim ?? 0)],
+      [tokenEditTorchRange, String(selectedToken.emitsLight?.range ?? TOKEN_TORCH_DEFAULT.range)],
     ])) {
       if (document.activeElement !== control) control.value = value;
     }
     tokenEditHidden.checked = Boolean(selectedToken.hidden);
     tokenEditPlayerMovable.checked = Boolean(selectedToken.playerMovable);
     tokenEditLocked.checked = Boolean(selectedToken.locked);
+    if (document.activeElement !== tokenEditTorch) {
+      tokenEditTorch.checked = selectedToken.emitsLight != null;
+    }
+    // La portée n'a de sens que torche allumée : au-delà du désactivé général (aucun pion
+    // sélectionné), elle se redésactive quand la case est décochée — même motif que les PV
+    // courants au-dessus, qui se ferment quand `hp` est `null`.
+    tokenEditTorchRange.disabled = !tokenEditTorch.checked;
 
     const activeMarkers = new Set(selectedToken.markers ?? []);
     for (const cb of markerCheckboxes) {
@@ -1561,6 +1590,63 @@ export function createGMPanel(container, options = {}) {
   tokenEditLocked.addEventListener(
     'change',
     () => applyTokenPatch({ locked: tokenEditLocked.checked }),
+    { signal: listeners.signal }
+  );
+
+  tokenEditVisionDim.addEventListener(
+    'change',
+    () => {
+      const value = parseInt(tokenEditVisionDim.value, 10);
+      if (!Number.isInteger(value) || value < 0 || value > 60) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = 'La vision dans le noir doit être un entier entre 0 et 60 cases.';
+        updateTokenEditUIFromStore();
+        return;
+      }
+      if (value === store.getSelectedToken()?.visionDim) return;
+      applyTokenPatch({ visionDim: value });
+    },
+    { signal: listeners.signal }
+  );
+
+  // Cocher pose une torche par défaut (`TOKEN_TORCH_DEFAULT`), avec la portée déjà saisie si
+  // le champ en montrait une ; décocher l'éteint (`emitsLight: null`). La portée se republie
+  // séparément ci-dessous, y compris torche déjà allumée.
+  tokenEditTorch.addEventListener(
+    'change',
+    () => {
+      if (tokenEditTorch.checked) {
+        const range = parseInt(tokenEditTorchRange.value, 10);
+        applyTokenPatch({
+          emitsLight: {
+            range: Number.isInteger(range) && range >= 1 && range <= 20 ? range : TOKEN_TORCH_DEFAULT.range,
+            intensity: TOKEN_TORCH_DEFAULT.intensity,
+            color: TOKEN_TORCH_DEFAULT.color,
+          },
+        });
+      } else {
+        applyTokenPatch({ emitsLight: null });
+      }
+    },
+    { signal: listeners.signal }
+  );
+
+  tokenEditTorchRange.addEventListener(
+    'change',
+    () => {
+      const value = parseInt(tokenEditTorchRange.value, 10);
+      if (!Number.isInteger(value) || value < 1 || value > 20) {
+        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.textContent = 'La portée de la torche doit être un entier entre 1 et 20 cases.';
+        updateTokenEditUIFromStore();
+        return;
+      }
+      const current = store.getSelectedToken()?.emitsLight;
+      if (current && value === current.range) return;
+      applyTokenPatch({
+        emitsLight: { range: value, intensity: TOKEN_TORCH_DEFAULT.intensity, color: TOKEN_TORCH_DEFAULT.color },
+      });
+    },
     { signal: listeners.signal }
   );
 

@@ -1148,7 +1148,7 @@ Critères :
 - [x] Taper une case d'escalier téléporte le pion et bascule la vue de la tablette.
 - [x] Le fog de chaque étage est indépendant et persistant.
 - [x] Le cadenas empêche la bascule auto quand le groupe est séparé.
-- [x] Un pion « Torche » éclaire et son déplacement met la vision à jour.
+- [x] Un pion « Torche » éclaire et son déplacement met la vision à jour. ⚠ **Coché sur le moteur, inatteignable en séance jusqu'au 07/09/2026** : `Token.emitsLight` était lu de bout en bout et validé par une torche synthétique, mais `js/ui/gm/tokenMaker.js` codait `emitsLight: null` en dur et aucune interface ne l'écrivait. Le panneau MJ porte désormais une case « Porte une torche » et sa portée sur le pion sélectionné.
 - [x] Une carte `baked_lighting: true` est signalée et n'est pas double-éclairée.
 
 > **Lot 3 porté à 5/6 le 07/08/2026.** Le parcours complet, le fog et le cadenas sont réunis dans

@@ -512,6 +512,16 @@ export const TOKEN_HIT_MARGIN_SCREEN_PX = 24;
 export const TOKEN_HIT_MAX_CELL_RATIO = 0.75;
 
 /**
+ * Torche par défaut, posée en séance depuis le panneau MJ sur un pion qui n'en portait pas.
+ *
+ * Ces valeurs ne sont pas inventées : ce sont celles de la torche synthétique de
+ * `js/app/diag.js` (mesure du chantier Z sur le coût du champ lumineux), reprises ici pour
+ * qu'une seule source décide de ce qu'est « une torche » par défaut — le diagnostic et
+ * l'interface ne doivent pas dériver chacun de son côté.
+ */
+export const TOKEN_TORCH_DEFAULT = { range: 6, intensity: 1, color: '#ffdca8' };
+
+/**
  * Constantes du Chantier R — La châsse des pions.
  * Toutes les grandeurs d'affichage sont exprimées en pixels ÉCRAN (divisées par le zoom au dessin).
  */
