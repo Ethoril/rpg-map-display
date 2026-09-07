@@ -591,3 +591,20 @@ présent, pas en son absence.
 - Tout `C-1`…`C-8` / `D-2`…`D-4` de `QUESTIONS-EN-ATTENTE.md` — décisions produit, aucune n'a bougé.
   ⚠ `D-1` (§12 q.9) n'a plus d'objet depuis Z-05 : à faire refléter dans ce document, ce n'est pas
   fait à cette date.
+
+---
+
+## ⛔ 27 août 2026, soir (20h16) — reprise planifiée suivante : rien n'a bougé, arrêt
+
+Reprise sans contexte frais, `rpg-map-display-boucle-autonome`, ~3h30 après l'entrée précédente
+(`e8ebeb9`, 16h48). `git status` propre en entrée sur `autonome/2026-08`.
+
+**Vérifié, dans les deux sens :** `origin/main` et `main` identiques ; `origin/autonome/2026-08` et
+`autonome/2026-08` identiques ; `autonome/2026-08` toujours 3 commits devant `main` (les seules
+entrées de journal du 26 et 27/08, docs seul) et `main` n'a **aucun** commit que la branche autonome
+n'a pas. Rien poussé nulle part depuis la dernière reprise.
+
+`CHANTIER-AUTONOME.md` §2 inchangé : toujours les quatre mêmes tranches, toutes livrées depuis le
+19/08. Aucune n'y a été déposée.
+
+⛔ **File toujours vide. Conformément à la charte §3, arrêt immédiat — aucun travail inventé.**
