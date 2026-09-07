@@ -148,6 +148,20 @@ export const FOG_VEIL_PLAYER_EXPLORED = 0.5;
 export const LIGHT_GM_DARKNESS_RATIO = 0.5;
 
 /**
+ * Plancher de luminosité pour une zone VUE mais NON ÉCLAIRÉE — décision du mainteneur du
+ * 07/09/2026 : « une zone vue sans lumière doit être rendue en niveaux de gris, c'est pas mal
+ * pour montrer le côté vision nocturne ».
+ *
+ * Sans lui, `LightLayer` peignait cette zone en noir opaque : le brouillard révèle honnêtement
+ * la portée nocturne d'un PJ (`visionDim`, Terme 2 de la règle tactique — voir `vision/fog.js`)
+ * mais la modulation, elle, y était vide, donc le décor y disparaissait entièrement.
+ *
+ * ⭐ **Ce n'est pas une mesure, c'est un jugement d'œil** — réglable en ce seul endroit. Le
+ * mainteneur le corrigera après l'avoir vu à la table.
+ */
+export const LIGHT_NIGHT_VISION_FLOOR = 0.35;
+
+/**
  * Les quatorze marqueurs d'état — **liste close**, CdC §12 Q7 tranchée le 04/08/2026.
  *
  * L'assertion de constance posée sur le littéral ci-dessous n'est pas décorative : elle fait

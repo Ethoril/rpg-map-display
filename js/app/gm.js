@@ -608,6 +608,9 @@ export async function bootstrapGMApp(options = {}) {
           role: 'gm',
           mode: gmPanel?.getMode(),
           suppressed: videoBackdrop.active,
+          // ⭐ La vision courante, déjà composée par `syncVision` : c'est elle qui donne au
+          // stencil « vu sans lumière » sa zone (voir `light.js`). Sans elle, aucun stencil.
+          visibleCanvas: visibleFogMap.get(activeLevel.id)?.canvas,
         });
         layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },

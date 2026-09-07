@@ -305,3 +305,114 @@ test('Panneau MJ : modifier la vision dans le noir d\'un pion posé change la vi
   await expect.poll(dernierPng, 'la vision dans le noir portée à 15 change le masque publié')
     .not.toBe(pngAvant);
 });
+
+/**
+ * La preuve réelle du stencil « vu sans lumière » (décision du mainteneur du 07/09/2026).
+ *
+ * ⛔ **Pourquoi un navigateur, et pas le mock de `lightLayer.test.mjs`.** Ce mock ne modélise
+ * pas `globalCompositeOperation = 'saturation'` — il ne peut donc rien prouver sur la
+ * désaturation elle-même, seulement sur les DÉCISIONS de la couche (quand elle peint, à
+ * partir de quel cache). La composition réelle — un gris qui désature sans changer la
+ * luminance — n'existe que dans un vrai Canvas 2D.
+ *
+ * Le montage passe par les VRAIES pièces de la règle tactique (`FogLayer.updateVision`,
+ * `ExploredFog.composeVisible`, `LightLayer`), plutôt que par un masque visible fabriqué à la
+ * main : c'est le stencil ∧ ¬champ qui est sous preuve, pas seulement son tampon.
+ *
+ * Géométrie : une lampe au centre de la case (2,2), portée 2 cases — bien en-deçà des 20
+ * cases du plafond technique de ligne de vue, donc VUE quelle que soit la portée du PJ. Un PJ
+ * en (7,7) avec `visionDim: 6` voit sa propre case dans le noir (Terme 2), à 707 px de la
+ * lampe — largement hors de sa portée de 200 px. Aucun mur : la ligne de vue ne rogne rien.
+ */
+test('R… ⭐ VU SANS LUMIÈRE : la portée nocturne d’un PJ sort en gris, une source garde sa couleur', async ({ page }) => {
+  /** @type {string[]} */
+  const erreurs = [];
+  page.on('pageerror', (e) => erreurs.push(e.message));
+  await page.goto('/player.html');
+
+  await page.addScriptTag({
+    type: 'module',
+    content: `
+      import { FogLayer } from './js/render/layers/fogLayer.js';
+      import { LightLayer } from './js/render/layers/light.js';
+      import { gridFor } from './js/grid/index.js';
+      import { createLevel, createToken } from './js/core/schema.js';
+      import { ExploredFog } from './js/vision/fog.js';
+
+      const level = createLevel({
+        id: 'rdc', widthCells: 10, heightCells: 10, pxPerCell: 100,
+        ambient: { level: 0, baked: false },
+        lights: [{ id: 'l1', at: { cellX: 2, cellY: 2 }, range: 2, intensity: 1, color: '#ffffff' }],
+      });
+      const grid = gridFor(level);
+      const pj = createToken({ id: 'pj1', levelId: 'rdc', kind: 'pc', cell: { a: 7, b: 7 }, visionDim: 6 });
+
+      const fogLayer = new FogLayer();
+      fogLayer.updateVision(grid, level, [pj], { segments: [] });
+
+      const lightLayer = new LightLayer();
+      lightLayer.update(grid, level, [pj], { segments: [] });
+
+      const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+      const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+      const gridScale = Math.abs(origin1.x - origin0.x);
+
+      const visibleFog = new ExploredFog(level.widthCells, level.heightCells);
+      visibleFog.composeVisible({
+        losPolygons: fogLayer.getLosPolygons(),
+        nearPolygons: fogLayer.getNearPolygons(),
+        litCanvas: lightLayer.getFieldCanvas(),
+        mapOrigin: origin0,
+        gridScale,
+      });
+
+      // Scène RÉELLE, à une couleur franche connue et UNIFORME sur toute la carte —
+      // seule façon de comparer deux points de la même image sans qu'un décor déjà gris
+      // n'affaiblisse l'assertion.
+      const scene = document.createElement('canvas');
+      scene.width = 1000; scene.height = 1000;
+      const ctx = scene.getContext('2d');
+      const brut = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+
+      ctx.fillStyle = 'rgb(200, 60, 30)';
+      ctx.fillRect(0, 0, scene.width, scene.height);
+      const decorAvant = brut(250, 250); // vérifie la fixture AVANT toute lumière
+
+      lightLayer.render(ctx, grid, level, { role: 'players', visibleCanvas: visibleFog.canvas });
+
+      window.__mesuresNocturnes = {
+        decorAvant,
+        eclaire: brut(250, 250),     // au centre de la lampe
+        nonEclaire: brut(750, 850),  // portée nocturne du PJ, à 707+ px de la lampe
+      };
+    `,
+  });
+
+  await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__mesuresNocturnes));
+  const { decorAvant, eclaire, nonEclaire } = await page.evaluate(
+    () => /** @type {any} */ (window).__mesuresNocturnes
+  );
+
+  // ⭐ D'abord, la fixture : sa couleur est bien franche (canaux nettement inégaux), sans quoi
+  // les deux assertions suivantes seraient creuses. Relu sur la scène AVANT tout rendu, pas
+  // seulement supposé : (200, 60, 30), soit 170 d'écart entre R et B et 140 entre R et V.
+  expect(decorAvant[0], 'fixture : rouge franc').toBe(200);
+  expect(decorAvant[1], 'fixture : vert franc').toBe(60);
+  expect(decorAvant[2], 'fixture : bleu franc').toBe(30);
+
+  // Point A — dans la source : la couleur d'origine SURVIT (canaux nettement inégaux).
+  // Une modulation par une lumière blanche ne peut qu'échelonner les trois canaux ensemble,
+  // jamais les égaliser.
+  expect(Math.abs(eclaire[0] - eclaire[1]), 'éclairé : R et V doivent rester nettement inégaux').toBeGreaterThan(60);
+  expect(Math.abs(eclaire[0] - eclaire[2]), 'éclairé : R et B doivent rester nettement inégaux').toBeGreaterThan(60);
+
+  // Point B — la portée nocturne du PJ, hors de portée de la lampe : VISIBLE (le plancher
+  // l'empêche de tomber à noir) ET désaturé (R ≈ G ≈ B, à quelques unités près).
+  const somme = nonEclaire[0] + nonEclaire[1] + nonEclaire[2];
+  expect(somme, '⛔ vu sans lumière ne doit PAS être noir').toBeGreaterThan(15);
+  expect(Math.abs(nonEclaire[0] - nonEclaire[1]), 'vision nocturne : R ≈ V').toBeLessThan(6);
+  expect(Math.abs(nonEclaire[1] - nonEclaire[2]), 'vision nocturne : V ≈ B').toBeLessThan(6);
+  expect(Math.abs(nonEclaire[0] - nonEclaire[2]), 'vision nocturne : R ≈ B').toBeLessThan(6);
+
+  expect(erreurs).toEqual([]);
+});

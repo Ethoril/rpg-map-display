@@ -1,6 +1,6 @@
 // @ts-check
 
-import { LIGHT_GM_DARKNESS_RATIO } from '../../core/constants.js';
+import { LIGHT_GM_DARKNESS_RATIO, LIGHT_NIGHT_VISION_FLOOR } from '../../core/constants.js';
 import { LightField, cappedLightRange } from '../../vision/lightField.js';
 
 /** @typedef {import('../../core/types.js').Level} Level */
@@ -18,6 +18,19 @@ import { LightField, cappedLightRange } from '../../vision/lightField.js';
 //
 // ⭐ **Le quadrillage, lui, est éclairé** — une pièce noire n'a pas à montrer une grille en
 // pleine lumière.
+//
+// ── Le stencil « vu sans lumière » (décision du mainteneur du 07/09/2026) ─────────────────
+//
+// La règle tactique de `vision/fog.js` est : visible = (ligne de vue ∩ éclairé) ∪ portée
+// propre dans le noir (`visionDim`, Terme 2, ajouté SANS condition). Le brouillard révèle donc
+// déjà honnêtement le disque de vision nocturne d'un PJ — mais jusqu'ici cette couche peignait
+// la zone en noir opaque, faute d'y distinguer « pas vu » de « vu, mais pas éclairé ».
+//
+// La démonstration qui règle ça est courte : visible ∧ ¬éclairé = (LoS ∩ éclairé ∪ portée
+// propre) ∧ ¬éclairé = portée propre ∧ ¬éclairé, puisque (LoS ∩ éclairé) ∧ ¬éclairé est vide.
+// **C'est exactement la zone à peindre en niveaux de gris**, et elle ne demande aucune
+// plomberie de polygones : masque visible ∧ ¬champ lumineux, tous deux déjà disponibles à la
+// résolution du masque (`FOG_MASK_PX_PER_CELL`).
 
 /**
  * Rassemble les sources d'un étage, converties en **pixels carte**.
@@ -198,11 +211,28 @@ export class LightLayer {
     this._modulationCtx = null;
     /** @type {number} Révision du champ dont le tampon de modulation est issu. */
     this._modulationRevision = -1;
+    /** @type {number|null} Révision du stencil nocturne dont la modulation est issue. */
+    this._modulationStencilRev = null;
     /** @type {any} Tampon de voile, pour le chemin « fond animé ». */
     this._voile = null;
     this._voileCtx = null;
     /** @type {number} Révision du champ dont le tampon de voile est issu. */
     this._voileRevision = -1;
+    /** @type {number|null} Révision du stencil nocturne dont le voile est issu. */
+    this._voileStencilRev = null;
+    /** @type {any} Tampon du stencil « vu sans lumière » : masque visible ∧ ¬champ lumineux. */
+    this._stencilNocturne = null;
+    this._stencilNocturneCtx = null;
+    /** @type {number} Révision du champ dont le stencil est issu. */
+    this._stencilChampRev = -1;
+    /** @type {any} Révision du masque visible dont le stencil est issu (`__fogRevision` ou l'objet lui-même). */
+    this._stencilVisibleRev = null;
+    /** @type {number} Compteur de reconstruction du stencil, estampillé sur son canvas — même
+     *  convention que `__fogRevision` de `fogLayer.js` : le stencil est mutable EN PLACE, sa
+     *  référence ne change donc jamais, et c'est ce compteur qui rend sa mutation observable. */
+    this._stencilRevisionCounter = 0;
+    /** @type {boolean} Ambiante pleine au dernier `update` : le stencil y serait vide. */
+    this._pleineLumiere = false;
     /** @type {number} Sources peintes au dernier calcul, pour observation extérieure. */
     this.lastSourceCount = 0;
   }
@@ -226,6 +256,7 @@ export class LightLayer {
     this._signature = '';
     this._modulationRevision = -1;
     this._voileRevision = -1;
+    this._stencilChampRev = -1;
   }
 
   /**
@@ -276,6 +307,7 @@ export class LightLayer {
     // Dungeon Alchemist vaut `true` en toutes circonstances : la garde ne s'appuie donc plus
     // sur lui mais sur la seule chose qui décide vraiment — le niveau d'ambiante.
     const pleineLumiere = (Number(level.ambient?.level) || 0) >= 1;
+    this._pleineLumiere = pleineLumiere;
     const sources = pleineLumiere ? [] : collectLightSources(level, tokens || [], adaptateur);
     this.lastSourceCount = sources.length;
 
@@ -307,12 +339,27 @@ export class LightLayer {
    * « noir opaque + le champ en additif », construite **une fois par recomposition** et non
    * par image, à la résolution du masque : 336 × 336 pour le village, négligeable.
    *
+   * ⭐ **Le stencil « vu sans lumière » y ajoute un plancher, APRÈS le champ, et c'est l'ordre
+   * qui compte** : multiplier par du noir détruit le décor (§ci-dessus), et un plancher ajouté
+   * AVANT le champ serait ensuite recouvert par lui là où le champ porte peu. Le stencil est
+   * peint en `lighter` à l'opacité `LIGHT_NIGHT_VISION_FLOOR` — sa propre alpha (qui décroît
+   * déjà avec l'éclairement, voir `_construireStencilNocturne`) fait que ce plancher s'estompe
+   * de lui-même dans une pénombre plutôt que de basculer net.
+   *
    * @param {any} mainCtx
+   * @param {any} stencil Le stencil « vu sans lumière », ou `null` s'il n'y a rien à peindre.
    */
-  _construireModulation(mainCtx) {
+  _construireModulation(mainCtx, stencil) {
     const champ = this._field;
     if (!champ || !champ.canvas) return null;
-    if (this._modulation && this._modulationRevision === champ.revision) return this._modulation;
+    const stencilRev = stencil ? stencil.__stencilRevision : null;
+    if (
+      this._modulation &&
+      this._modulationRevision === champ.revision &&
+      this._modulationStencilRev === stencilRev
+    ) {
+      return this._modulation;
+    }
 
     if (
       !this._modulation ||
@@ -334,10 +381,80 @@ export class LightLayer {
     ctx.fillRect(0, 0, champ.maskWidth, champ.maskHeight);
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(champ.canvas, 0, 0);
+    if (stencil) {
+      ctx.globalAlpha = LIGHT_NIGHT_VISION_FLOOR;
+      ctx.drawImage(stencil, 0, 0);
+      ctx.globalAlpha = 1;
+    }
     ctx.globalCompositeOperation = 'source-over';
 
     this._modulationRevision = champ.revision;
+    this._modulationStencilRev = stencilRev;
     return this._modulation;
+  }
+
+  /**
+   * Construit le stencil « vu sans lumière » : masque visible ∧ ¬champ lumineux (voir la
+   * démonstration en tête de fichier). Gris opaque, réduit à la zone VUE (`destination-in`
+   * sur le masque visible) puis rongé par ce que le champ éclaire (`destination-out` sur son
+   * canvas) : il reste de l'alpha exactement là où c'est vu et non éclairé, et
+   * **partiellement** dans une pénombre — c'est voulu : `destination-out` retire de l'alpha
+   * proportionnellement à celle du champ, donc la désaturation qui consomme ce stencil (voir
+   * `render`) s'estompe à mesure que la lumière monte au lieu de basculer net. Une pénombre
+   * garde donc un peu de couleur.
+   *
+   * En cache, à la résolution du masque, reconstruit seulement quand le champ OU la révision
+   * du masque visible ont changé — même convention `__fogRevision` que `fogLayer.js`.
+   *
+   * @param {any} mainCtx
+   * @param {any} visibleCanvas Le masque visible, à la résolution du masque (8 px/case).
+   */
+  _construireStencilNocturne(mainCtx, visibleCanvas) {
+    const champ = this._field;
+    if (!champ || !champ.canvas || !visibleCanvas) return null;
+
+    const visibleRev = visibleCanvas.__fogRevision ?? visibleCanvas;
+    if (
+      this._stencilNocturne &&
+      this._stencilChampRev === champ.revision &&
+      this._stencilVisibleRev === visibleRev
+    ) {
+      return this._stencilNocturne;
+    }
+
+    if (
+      !this._stencilNocturne ||
+      this._stencilNocturne.width !== champ.maskWidth ||
+      this._stencilNocturne.height !== champ.maskHeight
+    ) {
+      this._stencilNocturne = canvasHorsEcran(champ.maskWidth, champ.maskHeight, mainCtx, this._fabrique);
+      if (this._stencilNocturne) {
+        this._stencilNocturne.width = champ.maskWidth;
+        this._stencilNocturne.height = champ.maskHeight;
+        this._stencilNocturneCtx = this._stencilNocturne.getContext('2d');
+      }
+    }
+    const ctx = this._stencilNocturneCtx;
+    if (!ctx) return null;
+
+    // Gris opaque — ici blanc : achromatique (R=G=B), ce qui compte est son ALPHA pour le
+    // plancher et sa saturation NULLE pour la désaturation, jamais sa teinte exacte.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, champ.maskWidth, champ.maskHeight);
+    // Ne garde que la zone VUE.
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(visibleCanvas, 0, 0);
+    // Ronge par ce que le champ éclaire.
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.drawImage(champ.canvas, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    this._stencilChampRev = champ.revision;
+    this._stencilVisibleRev = visibleRev;
+    this._stencilRevisionCounter += 1;
+    this._stencilNocturne.__stencilRevision = this._stencilRevisionCounter;
+    return this._stencilNocturne;
   }
 
   /**
@@ -367,6 +484,13 @@ export class LightLayer {
    *    `fogLayer`, et un test e2e épingle que le brouillard couvre le fond animé. ⚠ Ce chemin
    *    **assombrit sans teinter** : la teinte d'une source est perdue au-dessus d'une vidéo.
    *
+   *    ⛔ **Et il ne peut pas non plus désaturer.** La vidéo joue SOUS le canvas ; rien ici ne
+   *    peut moduler la couleur de ses pixels, seulement l'opacité du voile posé par-dessus. Le
+   *    voile peut donc porter le plancher de vision nocturne (une `destination-out`
+   *    supplémentaire, à hauteur du plancher, qui l'éclaircit localement), mais jamais la
+   *    désaturation — même limite que celle déjà consignée sur la teinte ci-dessus. Ne pas
+   *    essayer de la contourner.
+   *
    * @param {CanvasRenderingContext2D} ctx Contexte de scène, déjà transformé par la caméra
    * @param {any} adaptateur
    * @param {Level|null} level
@@ -375,6 +499,9 @@ export class LightLayer {
    * @param {'play'|'prep'} [options.mode] Mode du panneau MJ (UX-03). ⚠ 'prep', pas
    *        'prepare' : c'est la valeur que `createGMPanel().getMode()` rend réellement.
    * @param {boolean} [options.suppressed] Le fond animé peint sous le canvas
+   * @param {any} [options.visibleCanvas] Le masque visible courant (MJ : `visibleFogMap`,
+   *        joueurs : `getPlayerVisibleCanvas`) — à la résolution du masque. Sans lui, aucun
+   *        stencil « vu sans lumière » n'est construit : voir l'économie plus bas.
    * @returns {boolean} `true` si quelque chose a été peint
    */
   render(ctx, adaptateur, level, options = {}) {
@@ -415,10 +542,19 @@ export class LightLayer {
     // entièrement noire et il ne pourrait plus mener la partie. La table, elle, voit le noir.
     const attenuation = role === 'gm' ? LIGHT_GM_DARKNESS_RATIO : 1;
 
+    // ⭐ Stencil « vu sans lumière ». ⛔ **Économie, et elle protège un invariant existant** :
+    // à ambiante pleine ou sans masque visible fourni, le stencil serait vide de toute façon
+    // (rien de non-éclairé, ou rien à y découper) — on ne le construit ni ne le peint. Sans
+    // cette garde, le test « plein jour, décor intact, sans cas particulier » verrait passer
+    // un stencil vide à chaque image pour rien.
+    const stencil = (this._pleineLumiere || !options.visibleCanvas)
+      ? null
+      : this._construireStencilNocturne(ctx, options.visibleCanvas);
+
     if (options.suppressed) {
       // Voile : noir, d'opacité complémentaire à l'éclairement. `destination-out` retire du
       // noir opaque exactement ce que le champ apporte de lumière.
-      const voile = this._construireVoile(ctx);
+      const voile = this._construireVoile(ctx, stencil);
       if (!voile) return false;
       ctx.save();
       ctx.globalAlpha = attenuation;
@@ -428,7 +564,7 @@ export class LightLayer {
       return true;
     }
 
-    const modulation = this._construireModulation(ctx);
+    const modulation = this._construireModulation(ctx, stencil);
     if (!modulation) return false;
 
     ctx.save();
@@ -436,6 +572,19 @@ export class LightLayer {
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(modulation, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
     ctx.restore();
+
+    if (stencil) {
+      // Désaturation, APRÈS le multiply : une seule passe. Un gris est de saturation NULLE,
+      // donc la destination perd sa couleur en gardant sa luminance — exactement la
+      // « vision nocturne en niveaux de gris » demandée. L'alpha du stencil, déjà proportionnel
+      // à ce que le champ n'éclaire PAS (voir `_construireStencilNocturne`), fait qu'une
+      // pénombre ne bascule pas net : elle garde un peu de couleur.
+      ctx.save();
+      ctx.globalAlpha = attenuation;
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.drawImage(stencil, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
+      ctx.restore();
+    }
     return true;
   }
 
@@ -443,12 +592,26 @@ export class LightLayer {
    * Tampon de voile : du noir dont l'opacité est le complément de l'éclairement.
    * Construit à la même cadence que la modulation — une fois par recomposition.
    *
+   * ⭐ Le stencil, s'il y en a un, y ajoute une seconde `destination-out` à hauteur du
+   * plancher : elle éclaircit le voile (donc la zone qu'il assombrit) exactement là où
+   * c'est vu et non éclairé. ⛔ **Il ne peut porter que ça** — voir la limite consignée
+   * dans `render`, chemin `suppressed` : rien ici ne peut désaturer une vidéo posée sous
+   * le canvas.
+   *
    * @param {any} mainCtx
+   * @param {any} stencil Le stencil « vu sans lumière », ou `null`.
    */
-  _construireVoile(mainCtx) {
+  _construireVoile(mainCtx, stencil) {
     const champ = this._field;
     if (!champ || !champ.canvas) return null;
-    if (this._voile && this._voileRevision === champ.revision) return this._voile;
+    const stencilRev = stencil ? stencil.__stencilRevision : null;
+    if (
+      this._voile &&
+      this._voileRevision === champ.revision &&
+      this._voileStencilRev === stencilRev
+    ) {
+      return this._voile;
+    }
 
     if (!this._voile || this._voile.width !== champ.maskWidth || this._voile.height !== champ.maskHeight) {
       this._voile = canvasHorsEcran(champ.maskWidth, champ.maskHeight, mainCtx, this._fabrique);
@@ -467,9 +630,15 @@ export class LightLayer {
     ctx.fillRect(0, 0, champ.maskWidth, champ.maskHeight);
     ctx.globalCompositeOperation = 'destination-out';
     ctx.drawImage(champ.canvas, 0, 0);
+    if (stencil) {
+      ctx.globalAlpha = LIGHT_NIGHT_VISION_FLOOR;
+      ctx.drawImage(stencil, 0, 0);
+      ctx.globalAlpha = 1;
+    }
     ctx.globalCompositeOperation = 'source-over';
 
     this._voileRevision = champ.revision;
+    this._voileStencilRev = stencilRev;
     return this._voile;
   }
 }

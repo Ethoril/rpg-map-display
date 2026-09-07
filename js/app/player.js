@@ -542,6 +542,9 @@ export async function bootstrapPlayerApp(options = {}) {
         lightLayer.render(stage.context, grid, activeLevel, {
           role: 'players',
           suppressed: videoBackdrop.active,
+          // ⭐ Même masque que la couche de fog utilise plus bas — le stencil « vu sans
+          // lumière » en a besoin pour savoir ce que la table VOIT (voir `light.js`).
+          visibleCanvas: getPlayerVisibleCanvas(activeLevel),
         });
         layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },

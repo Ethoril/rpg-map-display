@@ -8,6 +8,7 @@ import { createLevel, createToken } from '../js/core/schema.js';
 import {
   FOG_MASK_PX_PER_CELL,
   LIGHT_GM_DARKNESS_RATIO,
+  LIGHT_NIGHT_VISION_FLOOR,
   FOG_VEIL_GM_UNEXPLORED,
   FOG_VEIL_GM_EXPLORED,
   FOG_VEIL_PLAYER_UNEXPLORED,
@@ -36,6 +37,10 @@ function createMockCanvas(width, height) {
   /** @param {string} texte */
   function lireRgba(texte) {
     if (texte === '#000000') return { couleur: [0, 0, 0], alpha: 1 };
+    // ⭐ Ajouté pour le stencil « vu sans lumière » (`_construireStencilNocturne`), qui remplit
+    // en blanc — gris opaque achromatique, voir son commentaire. Même convention que le noir
+    // ci-dessus : un littéral reconnu tel quel, pas une entrée de plus dans la regex `rgba?`.
+    if (texte === '#ffffff') return { couleur: [255, 255, 255], alpha: 1 };
     const m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(texte);
     if (!m) return { couleur: [0, 0, 0], alpha: 1 };
     return {
@@ -65,14 +70,21 @@ function createMockCanvas(width, height) {
           alpha * (1 - ab) * src +
           alpha * ab * ((src * fond) / 255) +
           (1 - alpha) * fondPremultiplie;
-      } else if (mode === 'destination-out') {
-        // Ne touche pas les couleurs, ronge l'alpha. Traité plus bas.
+      } else if (mode === 'destination-out' || mode === 'destination-in') {
+        // Ne touchent pas les couleurs, ne rongent que l'alpha. Traité plus bas.
       } else {
         pixels[index + canal] = source + pixels[index + canal] * (1 - alpha);
       }
     }
     if (mode === 'destination-out') {
       pixels[index + 3] = pixels[index + 3] * (1 - alpha);
+    } else if (mode === 'destination-in') {
+      // ⭐ Ajouté pour le stencil « vu sans lumière » (`_construireStencilNocturne`) : ne
+      // garde de la destination que ce que la SOURCE couvre — `resultAlpha = destAlpha ×
+      // srcAlpha`. C'est un modèle, pas le Porter-Duff complet : comme `destination-out`
+      // ci-dessus, il ne touche pas la couleur, ce qui suffit ici puisque le stencil est
+      // rempli d'un gris opaque uniforme avant cette étape.
+      pixels[index + 3] = pixels[index + 3] * alpha;
     } else if (mode === 'lighter') {
       pixels[index + 3] = Math.min(255, pixels[index + 3] + alpha * 255);
     } else if (mode === 'multiply') {
@@ -153,7 +165,12 @@ function createMockCanvas(width, height) {
           const srcLigne = Math.min(src.height - 1, (sy + ((ligne - dy) / dh) * sh) | 0);
           const srcIndex = (srcLigne * src.width + srcCol) * 4;
           const alpha = (src.pixels[srcIndex + 3] / 255) * this.globalAlpha;
-          if (alpha <= 0 && mode !== 'multiply') continue;
+          // `destination-in` rejoint `multiply` dans cette exception : une source à alpha NUL
+          // doit y EFFACER la destination (`destAlpha × 0 = 0`), ce n'est pas un no-op comme
+          // pour `lighter`/`destination-out`. Sauter l'appel y laisserait le stencil « vu sans
+          // lumière » plein hors de la zone visible — exactement l'inverse de ce qu'il doit
+          // modéliser.
+          if (alpha <= 0 && mode !== 'multiply' && mode !== 'destination-in') continue;
           fusionner(
             (ligne * width + col) * 4,
             [src.pixels[srcIndex], src.pixels[srcIndex + 1], src.pixels[srcIndex + 2]],
@@ -601,4 +618,130 @@ test('14. ⭐ EXIGENCE : jour et nuit sur la même couche, sans bavure entre eux
   };
   assert.equal(rendu(memeEtageJour), 200, 'jour : décor intact');
   assert.equal(rendu(memeEtageNuit), 0, 'nuit sans source à cet endroit : décor noir');
+});
+
+/**
+ * Fabrique un masque visible mock, à la résolution du masque (8 px/case, comme
+ * `champ.maskWidth/maskHeight`) : gris opaque sur le rectangle donné, transparent ailleurs.
+ * @param {number} largeur @param {number} hauteur @param {{x:number,y:number,w:number,h:number}} rect
+ */
+function masqueVisible(largeur, hauteur, rect) {
+  const masque = createMockCanvas(largeur, hauteur);
+  const ctx = masque._ctx;
+  ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  return masque;
+}
+
+test('15. ⭐ VU SANS LUMIÈRE : le masque visible porte le PLANCHER, pas du noir', () => {
+  // Décision du mainteneur du 07/09/2026. Étage sans aucune source : le champ est vide
+  // partout, donc SEUL le stencil (masque visible ∧ ¬champ) peut expliquer une différence
+  // entre les deux moitiés du masque.
+  const level = etage({ ambient: { level: 0, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+
+  const maskW = champDe(couche).maskWidth;   // 80 : 10 cases × 8 px/case
+  const maskH = champDe(couche).maskHeight;
+  // Visible seulement sur la moitié GAUCHE du masque.
+  const masque = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW / 2, h: maskH });
+
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+
+  const modulation = couche._modulation._ctx;
+  const vu = pixelAu(modulation, maskW / 4, maskH / 2);       // dans la moitié visible
+  const nonVu = pixelAu(modulation, (3 * maskW) / 4, maskH / 2); // hors du masque
+
+  assert.notEqual(vu.red, 0, '⛔ vu et non éclairé ne doit PAS rester noir');
+  assert.ok(
+    Math.abs(vu.red - 255 * LIGHT_NIGHT_VISION_FLOOR) < 2,
+    `attendu le plancher (${255 * LIGHT_NIGHT_VISION_FLOOR}), obtenu ${vu.red}`
+  );
+  assert.equal(nonVu.red, 0, 'hors du masque visible : rien à peindre, donc toujours noir');
+});
+
+test('16. Une passe `saturation` est dessinée quand la zone existe, et seulement alors', () => {
+  const level = etage({ ambient: { level: 0, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+  const maskW = champDe(couche).maskWidth;
+  const maskH = champDe(couche).maskHeight;
+  const masque = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW, h: maskH });
+
+  const avecMasque = createMockCanvas(1000, 1000)._ctx;
+  couche.render(avecMasque, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+  assert.ok(
+    avecMasque.journal.some((/** @type {any} */ e) => e.op === 'drawImage' && e.mode === 'saturation'),
+    'la désaturation doit être dessinée'
+  );
+
+  // ⛔ Sans masque visible fourni, aucun stencil — donc aucune passe.
+  const sansMasque = createMockCanvas(1000, 1000)._ctx;
+  couche.render(sansMasque, ADAPTATEUR, level, { role: 'players' });
+  assert.ok(
+    !sansMasque.journal.some((/** @type {any} */ e) => e.mode === 'saturation'),
+    '⛔ aucun masque visible ⇒ aucune passe de désaturation'
+  );
+});
+
+test('17. ⭐ Ambiante PLEINE : aucune passe supplémentaire — le test 13 doit rester vert', () => {
+  // Économie du brief : à ambiante pleine, le stencil serait vide de toute façon (rien de
+  // non-éclairé). On ne le construit ni ne le peint, MÊME si un masque visible est fourni.
+  const level = etage({ ambient: { level: 1, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+  const maskW = champDe(couche).maskWidth;
+  const maskH = champDe(couche).maskHeight;
+  const masque = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW, h: maskH });
+
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  ctx.fillStyle = 'rgba(200, 200, 200, 1)';
+  ctx.fillRect(0, 0, 1000, 1000);
+
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+
+  assert.ok(
+    !ctx.journal.some((/** @type {any} */ e) => e.mode === 'saturation'),
+    '⛔ ambiante pleine : aucune passe de désaturation, même avec un masque visible'
+  );
+  assert.equal(couche._modulationStencilRev, null, '⛔ aucun stencil composé dans la modulation');
+  assert.equal(pixelAu(ctx, 500, 500).red, 200, 'et le décor sort toujours INTACT (test 13)');
+});
+
+test('18. La modulation se reconstruit quand la révision du masque VISIBLE change, et pas plus souvent', () => {
+  const level = etage({ ambient: { level: 0, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+  const maskW = champDe(couche).maskWidth;
+  const maskH = champDe(couche).maskHeight;
+
+  // ⭐ Convention `__fogRevision` de `fogLayer.js`, reprise ici : le masque est mutable EN
+  // PLACE, sa RÉFÉRENCE ne change donc jamais — seule cette estampille le fait.
+  const masque = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW, h: maskH });
+  masque.__fogRevision = 1;
+
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+  const revision1 = couche._modulationStencilRev;
+  const dessinsApres1 = couche._modulation._ctx.journal.length;
+  assert.notEqual(revision1, null, 'un stencil a bien été composé');
+
+  // Deuxième image, RIEN n'a changé : ni le champ, ni la révision du masque.
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+  assert.equal(couche._modulationStencilRev, revision1, '⛔ pas de reconstruction sans changement');
+  assert.equal(
+    couche._modulation._ctx.journal.length, dessinsApres1,
+    '⛔ pas plus souvent : aucun dessin de plus dans le tampon de modulation'
+  );
+
+  // Le masque MUTE en place (même référence), et c'est cette estampille-là qui doit
+  // déclencher la reconstruction — comparer la seule référence resterait bloqué dessus,
+  // exactement le défaut que le brief interdit.
+  masque.__fogRevision = 2;
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+  assert.notEqual(
+    couche._modulationStencilRev, revision1,
+    '⛔ la révision du masque visible a changé : la modulation doit suivre'
+  );
 });

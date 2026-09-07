@@ -526,3 +526,79 @@ les six autres      {"level":1, ...}            <== jour, décor intact
 d'étage — carte isolée et scène multi-cartes — qui dupliquent le même réglage. La proposition
 n'avait été posée que dans le premier. La porte était verte, le code compilait, et les cartes du
 mainteneur passaient par l'autre : effet nul, en silence.
+
+---
+
+## 9. La suite du 07/09/2026 — ce que la séance a montré, et ce qui manquait au chantier
+
+> Le mainteneur a joué une séance avec le chantier Z déployé. Verdict : **« le rendu est
+> satisfaisant en soi »**, la différence de luminosité est perceptible sur la bascule 🌙. Trois
+> manques sont sortis de cette séance, tous fermés le même jour.
+
+### ⛔ 9.1 Le canal réseau perdait ce qu'il transportait — et ce n'était pas la lumière
+
+Symptôme rapporté : charger le village par la bibliothèque ne faisait **rien** côté joueurs, et un
+pion PJ posé ensuite n'apparaissait pas davantage.
+
+Cause unique, reproduite en node sur le vrai réducteur : **Realtime Database ne stocke ni `null`,
+ni tableau vide, ni objet vide — la clé disparaît de ce qui est écrit.** `scene.load` perdait donc
+`campaign.tokens`, `reserve`, `templates`, `settings`, et par étage `videoUrl` et
+`animatedOverlays` ; le réducteur refusait l'instantané (« `tokens` doit être un tableau ») et
+conservait l'état courant. `token.add` perdait `emitsLight`, `hp` et `markers`, et levait.
+
+⭐ **Les événements de la séance ordinaire n'ont aucun champ nul** — `token.move`,
+`portal.toggle`, `level.ambient` — et la tablette reçoit son état initial par Firestore, lui
+fidèle. C'est pourquoi le défaut est resté invisible plusieurs séances.
+
+Correctif à la frontière du transport (`encodeEventForRtdb` / `decodeEventFromRtdb`). ⛔ **Aucun
+test ne pouvait le voir** : le harnais e2e est un `BroadcastChannel` à clone structuré, donc
+fidèle là où le vrai canal est lossy. Leçon consignée en §F de `QUESTIONS-EN-ATTENTE.md`, dette
+**E-9** pour la publication qui échoue en silence.
+
+### ✅ 9.2 La torche se coche en séance — le moteur savait déjà, personne ne l'écrivait
+
+`Token.emitsLight` était lu de bout en bout depuis Z-02/Z-03, et **inatteignable** :
+`tokenMaker.js` codait `emitsLight: null` en dur. Le panneau MJ porte désormais, sur le pion
+sélectionné, « Porte une torche » et sa portée, plus « Vision dans le noir » enfin modifiable sur
+un pion **déjà posé**. `TOKEN_TORCH_DEFAULT` (portée 6, `#ffdca8`) reprend la torche synthétique
+de `diag.js` : une seule source décide de ce qu'est une torche par défaut.
+
+⚠ **Fait de jeu à connaître** : une torche dont la portée ne dépasse pas le `visionDim` de son
+porteur ne change **rien à ce que lui voit** — le Terme 2 de la règle tactique porte déjà jusque
+là. Elle éclaire pour les autres et pour le décor.
+
+### ✅ 9.3 « Vu sans lumière » se rend en NIVEAUX DE GRIS — décision du mainteneur
+
+⛔ **Le défaut que le chantier Z avait laissé, et qu'aucun de ses quatorze tests ne regardait.** Le
+brouillard révèle honnêtement le disque de vision nocturne d'un PJ (Terme 2), mais la couche y
+peignait du **noir opaque** : un PJ à vision nocturne dans un donjon non éclairé révélait du noir,
+seuls les pions restant visibles puisqu'ils sont au-dessus du rang 3. Côté MJ le défaut était à
+moitié masqué par `LIGHT_GM_DARKNESS_RATIO`.
+
+La zone à peindre se démontre en une ligne : **visible ∧ ¬éclairé = portée propre ∧ ¬éclairé**,
+puisque `(LoS ∩ éclairé) ∧ ¬éclairé` est vide. Aucune plomberie de polygones : le masque visible
+et le champ sont tous deux à `FOG_MASK_PX_PER_CELL`, et le masque existe **des deux côtés**
+(`visibleFogMap` au MJ, `getPlayerVisibleCanvas` aux joueurs).
+
+| | |
+|---|---|
+| **le stencil** | gris opaque, `destination-in` le masque visible, `destination-out` le champ |
+| **le plancher** | `LIGHT_NIGHT_VISION_FLOOR = 0.35`, ajouté **dans la modulation, après le champ** — multiplier par du noir détruit le décor, et ajouter du gris après ne rend qu'un aplat |
+| **la désaturation** | une passe `saturation` après le `multiply` : un gris est de saturation nulle, la destination perd sa couleur en gardant sa luminance |
+
+⭐ **La désaturation s'estompe d'elle-même quand la lumière monte** : `destination-out` retire de
+l'alpha proportionnellement à celle du champ, donc une pénombre garde un peu de couleur. Ce n'est
+pas un réglage, c'est la composition.
+
+⚠ **Coût** : jusqu'à deux passes de plus par image quand un masque visible est fourni et que la
+carte n'est pas en pleine lumière — une `lighter` dans la modulation (en cache, donc par
+recomposition et non par image) et la `saturation` sur la scène. À ambiante pleine ou sans masque,
+**zéro passe de plus** : l'invariant « en plein jour le décor sort intact » est protégé par le
+test 17. ⛔ Aucun verdict de performance ici — la mesure appartient au mainteneur, sur la tablette.
+
+⛔ **Limite assumée au-dessus d'un fond animé** : la vidéo joue SOUS le canvas, donc le voile peut
+porter le plancher mais **jamais la désaturation**. Même limite que celle déjà consignée sur la
+teinte.
+
+⚠ **`LIGHT_NIGHT_VISION_FLOOR` est un jugement d'œil, pas une mesure**, réglable en un seul
+endroit. Il attend le verdict du mainteneur à la table.
