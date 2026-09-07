@@ -607,6 +607,7 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
 | E-6 | `ambient.color` importé, validé, persisté, **lu par aucun rendu** | `js/core/schema.js` | Voir B-1 |
 | E-7 | `if (!level \|\| !grid) return new Set()` — un adaptateur nul rend « aucun mur ne bloque », en silence | `js/import/blockedEdges.js:253` | Même forme que le défaut corrigé en R-04a, mais changer le comportement peut casser des appelants qui passent `null` pendant le chargement |
 | E-8 | La marge de `DRAG_HOLD_MS` n'est que de **10,8 ms** — appui p95 mesuré à 139,2 ms pour un seuil à 150 | `js/core/constants.js` | C'est ce chiffre qu'il faudra reprendre si la zone morte 150–500 ms est un jour découplée |
+| E-9 | Une publication RTDB qui échoue est **invisible** : `publish()` est en « tire et oublie » (`.catch(_reportError)`), **aucun appelant n’enregistre `onError`** — l’erreur part en `console.error` puis en `throw` hors pile — et la bibliothèque de scènes annonce « ✓ chargée » sans attendre la résolution | `js/transport/FirebaseTransport.js:1447`, `js/ui/gm/sceneLibrary.js:132` | C’est ce qui a laissé le défaut du canal (corrigé le 07/09/2026) passer inaperçu plusieurs séances. Le corriger demande soit un `publish` qui rende une promesse — il traverse `Transport.js`, `LocalSocketTransport` et le harnais de test — soit un `onError` branché sur une surface d’erreur du panneau MJ. **À trancher** |
 
 ---
 
@@ -628,3 +629,11 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
 - ⚠ **Un message de commit qui cache son contenu coûte un aller-retour complet.** G-01 avait été
   livrée dans un commit intitulé `docs(...)` qui transportait trois fichiers de code : le travail a
   été réclamé deux fois par écrit alors qu'il était fait.
+- ⛔ **Le harnais e2e est FIDÈLE là où le vrai canal est LOSSY.** Le 07/09/2026, `scene.load` et
+  `token.add` n’arrivaient **jamais** à la tablette en prod : Realtime Database ne stocke ni `null`,
+  ni tableau vide, ni objet vide — la clé disparaît de ce qui est écrit — et le payload amputé était
+  refusé par le réducteur (« `tokens` doit être un tableau »), la table restant sur la carte
+  précédente. Or `tests/browserTestTransport.mjs` est un `BroadcastChannel` à clone structuré, donc
+  **fidèle** : les 206 e2e étaient verts, y compris un cas écrit exprès avec la vraie carte du
+  village. **Un vert e2e ne dit rien du chemin `FirebaseTransport`**, que rien n’exerce ; le seul
+  garde-fou possible est un test unitaire qui **modélise** la perte — `tests/transport.test.mjs`.

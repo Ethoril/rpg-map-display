@@ -7,7 +7,9 @@ import {
     FirebaseTransport,
     assertNoNestedArrays,
     assertNoTransientAssetUrls,
+    decodeEventFromRtdb,
     decodeSnapshotFromFirestore,
+    encodeEventForRtdb,
     encodedJsonByteLength,
     encodeSnapshotForFirestore,
     EVENT_RETENTION_CLIENT_STALE_AFTER_MS,
@@ -360,6 +362,100 @@ test('isOwnEvent identifie un écho sans casser les anciens NetEvent', () => {
     assert.equal(transport.isOwnEvent(/** @type {any} */ ({ clientId: 'client-local' })), true);
     assert.equal(transport.isOwnEvent(/** @type {any} */ ({ clientId: 'autre-client' })), false);
     assert.equal(transport.isOwnEvent(/** @type {any} */ ({ type: 'ancien-format' })), false);
+});
+
+/**
+ * Modélise la perte que Realtime Database inflige réellement à un objet écrit : la clé
+ * d'une valeur `null`, `undefined`, d'un tableau vide ou d'un objet vide DISPARAÎT du
+ * document. Ce n'est pas le code de production qui porte cette règle — RTDB ne s'installe
+ * pas en test — c'est ce modèle qui la porte, ici, pour l'aller-retour ci-dessous.
+ *
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function modeleRtdb(value) {
+    if (Array.isArray(value)) {
+        return value.map(modeleRtdb).filter((entry) => entry !== undefined);
+    }
+    if (value && typeof value === 'object') {
+        /** @type {Record<string, unknown>} */
+        const reduit = {};
+        for (const [cle, entree] of Object.entries(value)) {
+            if (entree === null || entree === undefined) continue;
+            if (Array.isArray(entree) && entree.length === 0) continue;
+            const portee = modeleRtdb(entree);
+            if (portee && typeof portee === 'object' && !Array.isArray(portee) && Object.keys(portee).length === 0) continue;
+            reduit[cle] = portee;
+        }
+        return reduit;
+    }
+    return value;
+}
+
+test('un événement porteur de null et de conteneurs vides revient identique après la perte RTDB', () => {
+    // Forme réaliste : une campagne dont les champs vides sont précisément ceux que le
+    // rapport de terrain a vus disparaître (`scene.load`, `token.add`).
+    const event = /** @type {any} */ ({
+        type: 'scene.load',
+        payload: {
+            campaign: {
+                tokens: [],
+                reserve: [],
+                templates: [],
+                settings: {},
+                levels: [
+                    { id: 'rdc', videoUrl: null, animatedOverlays: [] },
+                ],
+            },
+            tokenAjoute: {
+                id: 'pion-1',
+                emitsLight: null,
+                hp: null,
+                markers: [],
+            },
+        },
+        at: 1000,
+        by: 'gm',
+        eventId: 'c_abc:1000:xyz',
+        clientId: 'c_abc',
+    });
+
+    const encoded = encodeEventForRtdb(event);
+    assert.equal(typeof encoded.payload, 'string', 'le payload doit devenir une chaîne JSON');
+    // Invariant : ces cinq champs restent réels au premier niveau, non encodés.
+    assert.equal(encoded.type, 'scene.load');
+    assert.equal(encoded.at, 1000);
+    assert.equal(encoded.by, 'gm');
+    assert.equal(encoded.eventId, 'c_abc:1000:xyz');
+    assert.equal(encoded.clientId, 'c_abc');
+
+    const ampute = modeleRtdb(encoded);
+    const decoded = decodeEventFromRtdb(ampute);
+    assert.deepEqual(decoded, event);
+});
+
+test('decodeEventFromRtdb tolère un payload à l’ancienne forme, déjà objet', () => {
+    const ancienneEntree = {
+        type: 'token.move',
+        payload: { tokenId: 'pion-1', cell: { a: 3, b: 4 } },
+        at: 500,
+        by: 'players',
+        eventId: 'c_old:500:aaa',
+        clientId: 'c_old',
+    };
+    assert.deepEqual(decodeEventFromRtdb(ancienneEntree), ancienneEntree);
+});
+
+test('decodeEventFromRtdb rend null sur un payload chaîne illisible', () => {
+    assert.equal(
+        decodeEventFromRtdb({ type: 'portal.toggle', payload: '{not json', at: 1, by: 'gm' }),
+        null
+    );
+});
+
+test('decodeEventFromRtdb rend {} quand payload est absent', () => {
+    const decoded = decodeEventFromRtdb({ type: 'ping', at: 1, by: 'gm' });
+    assert.deepEqual(decoded?.payload, {});
 });
 
 test('le store de présence ignore les entrées invalides, expirées et le client local', () => {

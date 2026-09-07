@@ -530,6 +530,56 @@ export function decodeSnapshotFromFirestore(data) {
   return mapLevelWalls(data, decodeWalls);
 }
 
+/**
+ * Encode un événement pour l'écriture RTDB. `type`, `at`, `by`, `eventId` et `clientId`
+ * restent des champs réels au premier niveau — la rétention, l'acquittement et
+ * `isOwnEvent` les lisent directement dans `snapshot.val()` — et seul `payload` devient une
+ * chaîne JSON.
+ *
+ * Realtime Database ne stocke ni `null`, ni tableau vide, ni objet vide : la clé DISPARAÎT
+ * purement et simplement de ce qui est écrit. Un `payload` amputé de ses champs vides fait
+ * échouer `assertValidCampaign` chez l'abonné, ou lui fait rendre un instantané invalide. Un
+ * `payload` sérialisé en chaîne traverse cette frontière intact.
+ *
+ * @param {NetEvent & { eventId?: string, clientId?: string|null }} event
+ * @returns {{ type: string, at: number, by: string, eventId: string|undefined, clientId: string|null|undefined, payload: string }}
+ */
+export function encodeEventForRtdb(event) {
+  return {
+    type: event.type,
+    at: event.at,
+    by: event.by,
+    eventId: event.eventId,
+    clientId: event.clientId,
+    payload: JSON.stringify(event.payload ?? {}),
+  };
+}
+
+/**
+ * Inverse de `encodeEventForRtdb`, tolérant : `payload` chaîne → `JSON.parse` ; `payload`
+ * objet (ancienne forme, écrite avant ce correctif) → conservé tel quel ; `payload` absent →
+ * `{}`. Un JSON illisible rend `null`, pour que l'appelant traite l'entrée comme invalide —
+ * exactement comme il le fait déjà aujourd'hui pour une ancienne entrée sans `type`.
+ *
+ * @param {unknown} raw
+ * @returns {(NetEvent & { eventId?: string, clientId?: string|null })|null}
+ */
+export function decodeEventFromRtdb(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = /** @type {any} */ (raw);
+  let payload = entry.payload;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  } else if (payload === undefined) {
+    payload = {};
+  }
+  return { ...entry, payload };
+}
+
 export const FIRESTORE_V3_SCHEMA_VERSION = 3;
 export const FIRESTORE_BATCH_MAX_OPERATIONS = 500;
 
@@ -1107,7 +1157,7 @@ export class FirebaseTransport {
       (snapshot) => {
         if (epoch !== this._sessionEpoch) return;
         const eventKey = snapshot.key;
-        const netEvent = /** @type {NetEvent|null} */ (snapshot.val());
+        const netEvent = decodeEventFromRtdb(snapshot.val());
         // M\u00eame une ancienne entr\u00e9e invalide ne doit pas bloquer toute la file. Le client
         // l'a observ\u00e9e et n'en a donc pas besoin. Les entr\u00e9es valides sont d'abord
         // tamponn\u00e9es ou livr\u00e9es, puis seulement accus\u00e9es au r\u00e9seau.
@@ -1395,7 +1445,7 @@ export class FirebaseTransport {
     };
 
     const eventsRef = ref(this._db, `session/${this._sessionId}/events`);
-    Promise.resolve(push(eventsRef, complet))
+    Promise.resolve(push(eventsRef, encodeEventForRtdb(complet)))
       .then(() => this._scheduleAutomaticRetention())
       .catch((err) => this._reportError(err, `publication de "${complet.type}"`));
   }

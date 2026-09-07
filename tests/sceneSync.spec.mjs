@@ -414,4 +414,62 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
       tokenCell: { a: 3, b: 4 },
     });
   });
+
+  test('« Charger » le village réel bascule la vue joueurs, pas seulement le MJ', async ({
+    browser,
+  }) => {
+    // Scénario rapporté en séance : le vrai catalogue (8 cartes), la vraie
+    // scène village (3 étages, 253 murs, 114 lumières), et la table déjà
+    // posée sur une AUTRE carte avant le clic. Aucune interception de
+    // maps/catalog.json ni de maps/generated/*.scene.json : ce sont les
+    // fichiers réels servis par scripts/serve.mjs, pas la fixture minimale.
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const sessionId = `scene-village-${Date.now()}`;
+
+    const player = await openPlayer(context, sessionId);
+
+    const gm = await context.newPage();
+    /** @type {string[]} */
+    const gmErrors = [];
+    gm.on('pageerror', (err) => gmErrors.push(err.message));
+    await installBrowserTransport(gm, sessionId, EMPTY_SNAPSHOT);
+    await gm.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(gm);
+    await gm.click('#gm-mode-prep');
+    await gm.click('.gm-tab-btn[data-tab="scene-library"]');
+    await gm.waitForSelector('.scene-card-load');
+
+    // La table est d'abord posée sur une autre carte du catalogue.
+    await gm.click('.scene-card[data-map-id="manoir-rdc"] .scene-card-load');
+    await expect(gm.locator('.scene-library-status')).toContainText('chargée');
+    await expect.poll(() => readScene(player)).toMatchObject({ campaignId: 'campaign-manoir-rdc' });
+
+    // Geste réel : clic sur « Charger » de la carte du village.
+    await gm.click('.scene-card[data-map-id="test_village_complet"] .scene-card-load');
+    await expect(gm.locator('.scene-library-status')).toContainText('chargée');
+
+    const attenduVillageJoueurs = {
+      campaignId: 'campaign-test_village_complet',
+      activeLevelId: 'test_village_complet_00',
+      imageUrl: 'maps/generated/test_village_complet_00.webp',
+    };
+
+    // ⭐ L'assertion qui compte : ce que la vue JOUEURS affiche, pas le MJ.
+    await expect
+      .poll(async () => {
+        const scene = await readScene(player);
+        if (!scene) return null;
+        return {
+          campaignId: scene.campaignId,
+          activeLevelId: scene.activeLevelId,
+          imageUrl: scene.imageUrl,
+        };
+      })
+      .toEqual(attenduVillageJoueurs);
+
+    expect(await readScene(gm)).toMatchObject(attenduVillageJoueurs);
+    expect(gmErrors).toEqual([]);
+
+    await context.close();
+  });
 });
