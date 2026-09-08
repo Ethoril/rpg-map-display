@@ -608,3 +608,49 @@ n'a pas. Rien poussé nulle part depuis la dernière reprise.
 19/08. Aucune n'y a été déposée.
 
 ⛔ **File toujours vide. Conformément à la charte §3, arrêt immédiat — aucun travail inventé.**
+
+---
+
+## ⛔ 8 septembre 2026 (01h50) — reprise planifiée : le mainteneur a repris la main directement, FILE TOUJOURS VIDE, arrêt
+
+Reprise sans contexte frais, `rpg-map-display-boucle-autonome`. `git status` propre en entrée sur
+`autonome/2026-08`.
+
+**Vérifié, dans les deux sens :** `git fetch` sans nouveauté ; `origin/main`, `main` et
+`autonome/2026-08` pointent tous les trois sur `fc32e22` — plus aucun écart entre les trois, dans
+aucun sens.
+
+### Ce qui a changé depuis la dernière entrée (27/08 soir, `655be07`)
+
+Le mainteneur est revenu le **07/09/2026** et a mené quatre commits **directement sur `main`**,
+avec Opus en co-auteur — pas par la file autonome, sur le même schéma que le chantier Z du
+26-27/08 :
+
+- `501642e` — le canal RTDB n'écrivait ni `null` ni conteneur vide : `scene.load` et `token.add`
+  n'arrivaient jamais à la table en production. Corrigé à la frontière du transport.
+- `181fa5b` — la torche se coche en séance sur un pion posé, et « Vision dans le noir » devient
+  réglable après coup, plus seulement à la création.
+- `8ec6d4b` — décision du mainteneur : une zone vue sans lumière sort en niveaux de gris plutôt
+  qu'en noir opaque.
+- `fc32e22` — UX-15 : un geste explicite (« Emmener la table ») pour faire basculer les joueurs sur
+  un étage, tranché en séance le jour même.
+
+Détail complet déjà consigné dans la mémoire `point_de_reprise` et dans
+`CHANTIER-Z-ECLAIRAGE-REEL.md` §9 — pas repris ici pour ne pas dupliquer une seconde source de
+vérité.
+
+### État de la file
+
+`CHANTIER-AUTONOME.md` §2 est inchangé depuis le 18/08 : les quatre tranches qu'il listait sont
+livrées et fusionnées depuis longtemps, et **rien de neuf n'y a été déposé**. Le travail du 07/09
+ne compte pas comme un dépôt dans cette file — il a été mené avec le mainteneur présent, comme le
+chantier Z, pas en son absence.
+
+Relu aussi `QUESTIONS-EN-ATTENTE.md` en entier : rien n'y est entré sous une forme éligible à la
+file (§2 exige une réussite vérifiable sans œil humain **et** aucune décision produit). C-5 et C-6
+restent des défauts actifs mais chacun est explicitement noté « pas corrigé tout de suite » pour
+une raison de fond — C-5 traverse une convention de coordonnées à trancher, C-6 touche un
+départage partagé par le refus « case occupée ». Aucun des deux n'a été ajouté à la file par le
+mainteneur ; les y glisser de soi-même serait ouvrir un chantier non listé.
+
+⛔ **Donc : file vide. Conformément à la charte §3, arrêt immédiat — aucun travail inventé.**
