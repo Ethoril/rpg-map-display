@@ -444,3 +444,278 @@ test('UX-10 : après un F5, la tablette retrouve SON étage, pas celui du MJ', a
 
   await context.close();
 });
+
+/**
+ * Défaut rapporté en séance, localisé le 09/09/2026 dans `syncVision` (`js/app/gm.js`) : elle
+ * ne calculait la vision que pour l'étage actif du MJ. Un PJ qui franchissait une liaison
+ * changeait bien d'étage, et cet étage devenait « connu » — le bloc `link.traverse` publiait
+ * son masque EXPLORÉ — mais son masque VISIBLE, celui que `tokens.js` exige pour peindre un
+ * pion côté joueurs, n'était jamais publié tant que le MJ n'allait pas lui-même sur cet étage.
+ * La table voyait l'étage proposé dans son sélecteur, et rien dessus.
+ *
+ * ⚠ On asserte ici sur ce que la vue JOUEURS peut lire — le masque visible reçu et le pion
+ * effectivement peint à l'écran — jamais sur un drapeau interne du MJ.
+ */
+
+/**
+ * Luminosité moyenne autour d'un point carte, côté joueurs — le pion sur son fond peint
+ * l'élève nettement, le fog noir opaque la laisse proche de zéro. Même idiome que la sonde de
+ * `multiLevelJourney.spec.mjs` (« la table voit réellement le pion »).
+ * @param {import('@playwright/test').Page} page
+ * @param {number} mapX @param {number} mapY
+ */
+const luminositeAutourDe = (page, mapX, mapY) =>
+  page.evaluate(
+    ([x, y]) => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const p = app.camera.mapToScreen({ x, y });
+      const res = app.stage?.resolution ?? 1;
+      const d = app.context.getImageData(
+        Math.round((p.screenX - 8) * res),
+        Math.round((p.screenY - 8) * res),
+        Math.round(16 * res),
+        Math.round(16 * res)
+      ).data;
+      let somme = 0;
+      for (let i = 0; i < d.length; i += 4) somme += (d[i] + d[i + 1] + d[i + 2]) / 3;
+      return somme / (d.length / 4);
+    },
+    [mapX, mapY]
+  );
+
+test('syncVision — un PJ franchit une liaison, le MJ ne touche à rien, la table voit son pion sur l’étage d’arrivée', async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `syncvision-defaut-${Date.now()}`;
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT_LIAISON);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  const mj = await context.newPage();
+  await installBrowserTransport(mj, sessionId, SNAPSHOT_LIAISON);
+  await mj.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(mj);
+
+  await expect.poll(() => aLaVision(joueur, 'rdc'), { timeout: 8000 }).toBe(true);
+
+  // Le joueur seul franchit l'escalier — deux taps sur sa propre case.
+  await taper(joueur, 3, 3, 100);
+  await taper(joueur, 3, 3, 100);
+  await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
+
+  // ⭐ Le MJ n'a rien fait : il regarde toujours le rez-de-chaussée.
+  expect(await etageActif(mj)).toBe('rdc');
+
+  // 1. Le masque VISIBLE de l'étage d'arrivée — pas seulement l'exploré — est publié.
+  await expect.poll(() => aLaVision(joueur, 'etage'), { timeout: 8000 }).toBe(true);
+
+  // 2. La table va voir cet étage, geste purement local (UX-12) : le pion doit s'y dessiner.
+  await joueur.evaluate(async () => {
+    (await import('../js/state/store.js')).selectLevel('etage');
+  });
+  await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
+  await expect
+    .poll(() => luminositeAutourDe(joueur, 750, 650), { timeout: 8000 })
+    .toBeGreaterThan(20);
+
+  await context.close();
+});
+
+/**
+ * Défaut miroir, trouvé le 09/09/2026 en relisant le correctif ci-dessus qui a ajouté les deux
+ * tests précédents : `syncVision` entre dans sa boucle tout étage qui porte au moins un PJ, plus
+ * l'étage actif du MJ — mais un étage qui vient de PERDRE son dernier PJ n'y entrait plus.
+ * Sa vision publiée n'était donc plus jamais recalculée : la tablette gardait le dernier masque
+ * visible, celui que le PJ parti voyait, et un PNJ qui entrerait ensuite dans ce cône figé
+ * s'afficherait à la table alors que plus personne n'y regarde.
+ *
+ * ⚠ On asserte sur ce que la vue JOUEURS peut lire — le masque visible reçu pour l'étage vidé —
+ * jamais sur un drapeau interne du MJ. Le décodage réutilise `decodeFogPng` /
+ * `getOrExtractMaskAlpha`, les mêmes fonctions que `player.js` : un masque vide, c'est un canal
+ * alpha entièrement à zéro.
+ */
+
+/**
+ * @param {import('@playwright/test').Page} page
+ * @param {string} levelId
+ * @param {number} widthCells @param {number} heightCells
+ * @returns {Promise<boolean|null>} `null` si rien n'a encore été publié pour cet étage
+ */
+const masqueVisibleVide = (page, levelId, widthCells, heightCells) =>
+  page.evaluate(
+    async ([id, w, h]) => {
+      const store = await import('../js/state/store.js');
+      const fog = await import('../js/vision/fog.js');
+      const png = store.getSessionVision(/** @type {string} */ (id));
+      if (!png) return null;
+      const canvas = await fog.decodeFogPng(
+        png,
+        /** @type {number} */ (w),
+        /** @type {number} */ (h)
+      );
+      const alpha = fog.getOrExtractMaskAlpha(
+        canvas,
+        /** @type {number} */ (w),
+        /** @type {number} */ (h)
+      );
+      return alpha ? [...alpha].every((a) => a === 0) : null;
+    },
+    [levelId, widthCells, heightCells]
+  );
+
+test('syncVision — le dernier PJ quitte un étage : son masque visible publié devient VIDE', async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `syncvision-vide-${Date.now()}`;
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT_LIAISON);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  const mj = await context.newPage();
+  await installBrowserTransport(mj, sessionId, SNAPSHOT_LIAISON);
+  await mj.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(mj);
+
+  // La table regarde le rez-de-chaussée (défaut), et le PJ y est seul, posté sur l'escalier :
+  // son masque visible y est non vide.
+  await expect.poll(() => aLaVision(joueur, 'rdc'), { timeout: 8000 }).toBe(true);
+  await expect
+    .poll(() => masqueVisibleVide(joueur, 'rdc', 12, 10), { timeout: 8000 })
+    .toBe(false);
+
+  // ⭐ Le MJ s'en va ailleurs : il ne rend plus le rez-de-chaussée à son propre écran, et ce
+  // sera bientôt un étage sans aucun PJ — les deux conditions qui, avant ce correctif, sortaient
+  // un étage de la boucle de `syncVision`.
+  await mj.selectOption('#gm-level-select', 'etage');
+  await expect.poll(() => etageActif(mj), { timeout: 8000 }).toBe('etage');
+
+  // Le PJ, seul sur le rez-de-chaussée, franchit l'escalier vers l'étage — deux taps sur sa
+  // propre case, comme dans les tests ci-dessus.
+  await taper(joueur, 3, 3, 100);
+  await taper(joueur, 3, 3, 100);
+  await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
+
+  // Le rez-de-chaussée n'a plus aucun PJ, et le MJ n'y est pas : sans le correctif, son masque
+  // visible reste celui d'avant le franchissement, non vide.
+  await expect
+    .poll(() => masqueVisibleVide(joueur, 'rdc', 12, 10), { timeout: 8000 })
+    .toBe(true);
+
+  await context.close();
+});
+
+test('groupe séparé — un PJ bouge sur un étage que le MJ ne regarde pas : sa vision se publie et se met à jour', async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `groupe-separe-${Date.now()}`;
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  const mj = await context.newPage();
+  await installBrowserTransport(mj, sessionId, SNAPSHOT);
+  await mj.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(mj);
+
+  // Le MJ reste au rez-de-chaussée toute la scène : personne ne va vérifier l'étage.
+  expect(await etageActif(mj)).toBe('rdc');
+
+  // ⭐ Dès le démarrage, l'étage porte un PJ (`pj-etage`) : sa vision doit déjà être connue,
+  // MJ ou pas MJ dessus. Preuve qu'un étage entre dans la boucle par PJ, pas par MJ actif.
+  await expect.poll(() => aLaVision(joueur, 'etage'), { timeout: 8000 }).toBe(true);
+
+  // Combien de `vision.update` l'étage a déjà reçus (le tout premier, à l'ouverture de
+  // session). Compté côté MJ : c'est lui qui les publie. Le mouvement à suivre en compte au
+  // moins un de plus — la garde par étage n'empêche que les republications SANS changement.
+  const visionsEtage = () =>
+    mj.evaluate(() =>
+      /** @type {any} */ (window).__RPG_TEST_WIRE__.published.filter(
+        (/** @type {any} */ e) => e.type === 'vision.update' && e.payload.levelId === 'etage'
+      ).length
+    );
+  const avant = await visionsEtage();
+
+  // Le joueur consulte SEUL l'étage — choix local, ne publie rien (UX-10/12).
+  await joueur.evaluate(async () => {
+    (await import('../js/state/store.js')).selectLevel('etage');
+  });
+  await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
+
+  // Il déplace son PJ, posté là-haut, d'une case : sélection puis destination.
+  await taper(joueur, 5, 5, 100);
+  await taper(joueur, 6, 5, 100);
+  await expect.poll(() => etageDuPion(joueur, 'pj-etage'), { timeout: 8000 }).toBe('etage:6,5');
+
+  // Le MJ n'a pas bougé : la scène exacte du groupe séparé.
+  expect(await etageActif(mj)).toBe('rdc');
+
+  // Et pourtant la vision de l'étage se REPUBLIE, mise à jour par le mouvement du PJ — la
+  // signature qui commande la publication porte la case du pion, changée par ce mouvement,
+  // même si le résultat composé se trouve être visuellement identique dans cette pièce ouverte.
+  await expect.poll(visionsEtage, { timeout: 8000 }).toBeGreaterThan(avant);
+
+  await context.close();
+});
+
+/**
+ * ⭐ LE test qui manquait à la relecture du correctif ci-dessus : au repos, rien n'est
+ * republié. Un PJ posté sur un étage que le MJ ne regarde pas suffisait, avant ce correctif,
+ * à faire tourner `syncVisionForLevel` sur cet étage à chaque mutation du store — et
+ * `fogLayer.invalidate()`, en fin de passe non active, effaçait la garde de l'instance
+ * PARTAGÉE : au tour suivant, `updateVision` ne reconnaissait plus rien, republiait, ce qui
+ * mutait le store, qui rappelait `syncVision`. Un masque d'environ 13 Kio par seconde,
+ * indéfiniment, partie à l'arrêt.
+ *
+ * ⚠ Sans l'attente franche ci-dessous, ce test ne prouve rien : le cycle défectueux tourne
+ * au throttle de `scheduleFogPublish`, 1 Hz — il faut laisser passer au moins un cycle
+ * entier pour le voir, ou ne pas le voir.
+ */
+test("au repos, un PJ sur un étage non regardé par le MJ : rien n'est republié", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const sessionId = `au-repos-${Date.now()}`;
+
+  const joueur = await context.newPage();
+  await installBrowserTransport(joueur, sessionId, SNAPSHOT);
+  await joueur.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(joueur);
+
+  const mj = await context.newPage();
+  await installBrowserTransport(mj, sessionId, SNAPSHOT);
+  await mj.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(mj);
+
+  // Le MJ reste au rez-de-chaussée ; `pj-etage` est posté sur l'étage depuis le snapshot
+  // initial — c'est la précondition exacte qui déclenchait le rebouclage.
+  expect(await etageActif(mj)).toBe('rdc');
+  await expect.poll(() => aLaVision(joueur, 'etage'), { timeout: 8000 }).toBe(true);
+
+  const evenementsFog = () =>
+    mj.evaluate(() =>
+      /** @type {any} */ (window).__RPG_TEST_WIRE__.published.filter(
+        (/** @type {any} */ e) => e.type === 'fog.update' || e.type === 'vision.update'
+      ).length
+    );
+
+  // Laisser la première salve de publications se stabiliser avant de compter.
+  await mj.waitForTimeout(1200);
+  const avant = await evenementsFog();
+
+  // La scène est laissée tranquille : aucune interaction, ni côté MJ ni côté table. Au moins
+  // 2,5 s, franchement au-delà du cycle de republication défectueux (throttlé à 1 Hz).
+  await mj.waitForTimeout(2500);
+
+  expect(await evenementsFog(), 'aucune publication au repos').toBe(avant);
+
+  await context.close();
+});

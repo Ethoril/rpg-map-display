@@ -9,7 +9,7 @@ import { GridLayer } from '../render/layers/gridLayer.js';
 import { LightLayer } from '../render/layers/light.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
 import { TokensLayer } from '../render/layers/tokens.js';
-import { FogLayer } from '../render/layers/fogLayer.js';
+import { FogLayer, buildVisionSignature } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
 import { LinksLayer } from '../render/layers/links.js';
 import { WallsLayer } from '../render/layers/walls.js';
@@ -153,8 +153,11 @@ export async function bootstrapGMApp(options = {}) {
       fog = new ExploredFog(level.widthCells, level.heightCells);
       exploredFogMap.set(level.id, fog);
       // Le masque qui vient de naître est vierge : la vision courante doit y être
-      // reversée, ce que `syncVision` ne fait que sur changement de signature.
+      // reversée, ce que `syncVision` ne fait que sur changement de signature. Effacer
+      // `fogLayer` seul ne force plus rien depuis la garde par étage : il faut aussi
+      // effacer l'entrée de cet étage dans `lastVisionSyncSignatureMap`.
       fogLayer.invalidate();
+      lastVisionSyncSignatureMap.delete(level.id);
 
       const savedFog = store.getSessionFog(level.id);
       if (savedFog) {
@@ -163,6 +166,7 @@ export async function bootstrapGMApp(options = {}) {
         // On resynchronise donc derrière lui, plutôt que de parier sur l'ordonnancement.
         void fog.importPng(savedFog).then(() => {
           fogLayer.invalidate();
+          lastVisionSyncSignatureMap.delete(level.id);
           syncVision();
           requestRender();
         });
@@ -221,6 +225,18 @@ export async function bootstrapGMApp(options = {}) {
   /** @type {Map<string, string>} */
   const lastVisibleSignatureMap = new Map();
 
+  /**
+   * Signature de vision avec laquelle la dernière passe de `syncVisionForLevel` s'est
+   * terminée, PAR ÉTAGE — indépendante de `fogLayer._lastSignature`, qui appartient à
+   * l'instance PARTAGÉE et se fait écraser par le voisin non actif (`invalidate()` en fin
+   * de passe). Sans cette garde séparée, un étage non actif qui republie à 1 Hz effaçait
+   * aussi la garde de l'étage actif au tour suivant : `updateVision` ne reconnaissait plus
+   * rien, `change` valait `true` pour tous les étages, et la mutation du store rappelait
+   * `syncVision` sans fin — les « 13 Kio par seconde », partie à l'arrêt.
+   * @type {Map<string, string>}
+   */
+  const lastVisionSyncSignatureMap = new Map();
+
   /** @type {ReturnType<typeof setTimeout>|null} */
   let visionResendTimer = null;
 
@@ -243,6 +259,10 @@ export async function bootstrapGMApp(options = {}) {
     visionResendTimer = setTimeout(() => {
       visionResendTimer = null;
       lastVisibleSignatureMap.clear();
+      // La garde par étage de `syncVisionForLevel` sortirait avant même d'atteindre la
+      // décision de publier, si rien n'a changé depuis la dernière passe : sans la vider
+      // aussi, une tablette qui revient sur une table à l'arrêt ne recevrait jamais rien.
+      lastVisionSyncSignatureMap.clear();
       syncVision();
     }, 250);
   }
@@ -298,11 +318,152 @@ export async function bootstrapGMApp(options = {}) {
    * défaut observé le 2 août 2026. Mesuré par mutation : MJ privé de frames, zéro
    * `vision.update` publié ; frames rendues, publication immédiate.
    *
-   * Garde anti-rebouclage : la révélation du masque exploré est conditionnée au changement réel
-   * de la vision (change && polygons.length > 0), et la publication de la vision visible au changement
-   * de sa signature (lastVisibleSignatureMap). Les appeler inconditionnellement rebouclerait :
-   * publier écrit dans le store, le store notifie, la notification rappelle cette fonction — et le
-   * MJ diffusait alors un masque de 13 Kio par seconde, indéfiniment, même partie à l'arrêt.
+   * Garde anti-rebouclage : `syncVisionForLevel` sort tôt, PAR ÉTAGE, sur
+   * `lastVisionSyncSignatureMap` — jamais sur l'état de `fogLayer`, qui est une instance
+   * PARTAGÉE et se fait invalider par le voisin non actif à chaque passage. S'y fier a
+   * réellement régressé une fois (correctif UX-15) : `change` valait alors `true` pour
+   * tous les étages dès qu'un PJ occupait un étage non actif, la publication du masque
+   * exploré rappelait `store.setSessionFog`, le store notifiait, la notification
+   * rappelait cette fonction — et le MJ diffusait un masque de 13 Kio par seconde,
+   * indéfiniment, même partie à l'arrêt. La garde par étage coupe le cycle avant le
+   * premier calcul ; la publication de la vision visible garde en plus son propre
+   * changement de signature (lastVisibleSignatureMap).
+   *
+   * ⛔ **`fogLayer` et `lightLayer` sont des instances PARTAGÉES**, réutilisées à chaque passage
+   * pour ne pas garder d'état. Les faire tourner pour un étage qui n'est pas `isActiveLevel`
+   * écraserait l'état de l'étage affiché — c'est le piège que `syncVision`, plus bas, contourne
+   * en traitant l'étage actif EN DERNIER et en effaçant `fogLayer` (`invalidate()`) après
+   * chaque étage non actif. `lightLayer`, lui, n'est jamais touché pour un étage non actif :
+   * une `LightLayer` temporaire porte son champ, comme le faisait déjà le bloc `link.traverse`.
+   *
+   * @param {import('../core/types.js').Level} level
+   * @param {boolean} isActiveLevel
+   * @param {import('../core/types.js').Token[]} tokens
+   */
+  function syncVisionForLevel(level, isActiveLevel, tokens) {
+    const grid = gridFor(level);
+    const exploredFog = getExploredFog(level);
+    if (!exploredFog) return;
+
+    // ⭐ Garde PAR ÉTAGE, AVANT tout calcul — voir `lastVisionSyncSignatureMap` plus haut.
+    // `fogLayer` est une instance PARTAGÉE : sa propre signature interne se fait écraser
+    // par le voisin non actif (`invalidate()` en fin de passe, plus bas), donc s'y fier
+    // ferait recalculer — et republier — tous les étages à chaque mutation du store, même
+    // au repos. La garde ici ne dépend que de cet étage : sortir tôt règle les deux à la
+    // fois, plus d'effet de bord au repos et plus de recalcul pour un étage qui n'a pas
+    // bougé. `fogLayer` retrouvera de toute façon la bonne vision au rendu suivant : son
+    // `render()` rappelle `updateVision` lui-même, mémoïsé par sa propre signature.
+    const signature = buildVisionSignature(level, tokens, grid);
+    if (lastVisionSyncSignatureMap.get(level.id) === signature) return;
+    lastVisionSyncSignatureMap.set(level.id, signature);
+
+    // ⭐ **Le champ lumineux se compose ICI, avant la vision, et jamais dans `rAF`.**
+    // C'est la règle du projet depuis le fog — un calcul sur mutation du store, mis en
+    // cache par signature. La couche de rendu le redemandera à l'image suivante et
+    // trouvera le même champ : son `update` est gardé par la même signature.
+    const lumiere = isActiveLevel ? lightLayer : new LightLayer();
+    lumiere.update(grid, level, tokens, { extractSegments: extractBlockedSegments });
+
+    fogLayer.updateVision(grid, level, tokens, {
+      extractSegments: extractBlockedSegments,
+    });
+
+    const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+    const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+    const gridScale = Math.abs(origin1.x - origin0.x);
+
+    // La règle du mode tactique, assemblée une seule fois et servie deux fois : au masque
+    // exploré, qui la mémorise, et à la vision publiée, qui ne mémorise rien.
+    //
+    //     visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
+    //
+    // ⚠ `getFieldCanvas()` rend `null` au tout premier passage. `composeVisibleMask` se
+    // replie alors sur la ligne de vue ENTIÈRE : mieux vaut le comportement d'avant le
+    // chantier qu'un écran noir en pleine séance.
+    const entreesVision = {
+      losPolygons: fogLayer.getLosPolygons(),
+      nearPolygons: fogLayer.getNearPolygons(),
+      litCanvas: lumiere.getFieldCanvas(),
+      mapOrigin: origin0,
+      gridScale,
+    };
+
+    let visibleFog = visibleFogMap.get(level.id);
+    if (
+      !visibleFog ||
+      visibleFog.widthCells !== level.widthCells ||
+      visibleFog.heightCells !== level.heightCells
+    ) {
+      visibleFog = new ExploredFog(level.widthCells, level.heightCells);
+      visibleFogMap.set(level.id, visibleFog);
+    }
+
+    const currentSig = fogLayer.getVisionSignature();
+    // ⚠ La garde anti-rebouclage joue PAR ÉTAGE : `lastVisibleSignatureMap` est indexée par
+    // `level.id`, donc un étage qui n'a pas changé ne republie rien, même si un autre étage
+    // vient d'être traité dans la même passe.
+    const aPublier = transport && lastVisibleSignatureMap.get(level.id) !== currentSig;
+
+    // La garde par étage, tout en haut de cette fonction, a déjà établi que cet étage a
+    // changé — plus besoin de reconditionner sur la valeur de retour de
+    // `fogLayer.updateVision`, qui appartient à l'instance PARTAGÉE et pas à cet étage
+    // précis. Composer, reverser dans l'exploré et vider l'undo sont donc inconditionnels
+    // ici ; seule la publication de la vision visible garde sa propre condition, sur SA
+    // signature (`lastVisibleSignatureMap`), qui peut différer (cf. `scheduleVisionResend`).
+    visibleFog.composeVisible(entreesVision);
+
+    // ⭐ `revealMask` fait l'UNION avec ce qui était exploré ; `composeVisible` REMPLACE.
+    // Les confondre ferait s'accumuler la vision courante d'une image à l'autre, et la
+    // table verrait encore ce qu'elle a quitté.
+    exploredFog.revealMask(visibleFog.canvas);
+    // Amendement A1 & A2 : la vision s'est versée dans le masque, vider l'undo de cet étage
+    gmPanel?.fogTools?.clearUndoStack(level.id);
+    scheduleFogPublish(level.id, exploredFog);
+
+    if (aPublier) {
+      publishVisibleVision(level.id, visibleFog, currentSig);
+    }
+
+    // Étage non actif : `fogLayer` a servi de passage, on n'y laisse rien traîner pour que
+    // l'étage suivant — actif ou non — reparte sur une signature vide plutôt que la sienne.
+    if (!isActiveLevel) fogLayer.invalidate();
+  }
+
+  /**
+   * Passe d'autorité du fog : recalcule la vision de chaque étage qui la réclame, la verse
+   * dans son masque exploré, et publie les deux masques aux tablettes.
+   *
+   * ⭐ **Chaque étage qui porte au moins un pion PJ entre dans la boucle, plus l'étage actif du
+   * MJ.** Sans ça, un groupe séparé — qu'un franchissement de liaison rend normal, cf. UX-10 —
+   * laissait un étage entier sans aucune vision publiée tant que le MJ n'y était pas lui-même :
+   * la table n'y voyait aucun pion, même après que l'étage soit devenu « connu » (UX-12).
+   * L'étage actif, lui, entre toujours dans la boucle même sans PJ dessus : lui seul est rendu
+   * à l'écran du MJ, et c'est le seul dont l'absence de pion doit vider la vision affichée.
+   *
+   * ⭐ **Un étage qui a déjà publié un masque visible y entre aussi, même sans PJ dessus.**
+   * Le défaut miroir : un étage qui vient de perdre son dernier PJ (celui-ci a franchi une
+   * liaison) sortait alors de la boucle et sa vision publiée n'était plus jamais recalculée —
+   * la tablette gardait le dernier masque visible, celui que le PJ parti voyait, et un PNJ
+   * qui y entrait ensuite s'affichait à la table alors que plus personne n'y regardait.
+   * `lastVisibleSignatureMap` porte une entrée pour tout étage déjà publié : la tester suffit,
+   * pas besoin d'un registre séparé. Le coût reste borné : sans PJ, la signature de vision de
+   * cet étage ne bouge plus d'un passage à l'autre, donc `updateVision` sort par son test de
+   * signature sans extraire un seul mur, et `publishVisibleVision` ne republie rien — un étage
+   * vidé ne coûte qu'une passe UNE FOIS, celle qui publie le masque vide, pas à chaque mutation
+   * suivante du store.
+   *
+   * ⭐ **L'étage actif est traité EN DERNIER**, voir `syncVisionForLevel` : les instances
+   * partagées doivent finir la passe en portant l'état de l'étage que le MJ rend réellement.
+   *
+   * ⚠ **AUCUN TEST NE DISTINGUE CET ORDRE, et il faut le dire ici.** Mutation faite le
+   * 09/09/2026 : étage actif traité en premier, les tests restent verts. La raison est
+   * structurelle : traiter l'actif en premier laisse seulement `fogLayer` invalidé en fin de
+   * passe (dernier étage non actif traité), donc un recalcul redondant — mais pas faux — au
+   * rendu suivant, pour un résultat identique. C'est une garantie de code, pas un comportement
+   * observable — même profil que la dette E-10 de `QUESTIONS-EN-ATTENTE.md`.
+   *
+   * ⚠ Elle ne vit pas dans la boucle de rendu, et ne doit pas y retourner — voir la note
+   * d'origine plus haut sur le 2 août 2026.
    */
   function syncVision() {
     const visionStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -311,75 +472,17 @@ export async function bootstrapGMApp(options = {}) {
       const activeLevel = state.activeLevel;
       if (!activeLevel) return;
 
-      const grid = gridFor(activeLevel);
-      const exploredFog = getExploredFog(activeLevel);
-      if (!exploredFog) return;
+      const tokens = state.campaign?.tokens ?? [];
+      const levels = state.campaign?.levels ?? [];
 
-      // ⭐ **Le champ lumineux se compose ICI, avant la vision, et jamais dans `rAF`.**
-      // C'est la règle du projet depuis le fog — un calcul sur mutation du store, mis en
-      // cache par signature. La couche de rendu le redemandera à l'image suivante et
-      // trouvera le même champ : son `update` est gardé par la même signature.
-      lightLayer.update(grid, activeLevel, state.campaign?.tokens ?? [], {
-        extractSegments: extractBlockedSegments,
-      });
-
-      const change = fogLayer.updateVision(grid, activeLevel, state.campaign?.tokens ?? [], {
-        extractSegments: extractBlockedSegments,
-      });
-
-      const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-      const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-      const gridScale = Math.abs(origin1.x - origin0.x);
-
-      // La règle du mode tactique, assemblée une seule fois et servie deux fois : au masque
-      // exploré, qui la mémorise, et à la vision publiée, qui ne mémorise rien.
-      //
-      //     visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
-      //
-      // ⚠ `getFieldCanvas()` rend `null` au tout premier passage. `composeVisibleMask` se
-      // replie alors sur la ligne de vue ENTIÈRE : mieux vaut le comportement d'avant le
-      // chantier qu'un écran noir en pleine séance.
-      const entreesVision = {
-        losPolygons: fogLayer.getLosPolygons(),
-        nearPolygons: fogLayer.getNearPolygons(),
-        litCanvas: lightLayer.getFieldCanvas(),
-        mapOrigin: origin0,
-        gridScale,
-      };
-
-      let visibleFog = visibleFogMap.get(activeLevel.id);
-      if (
-        !visibleFog ||
-        visibleFog.widthCells !== activeLevel.widthCells ||
-        visibleFog.heightCells !== activeLevel.heightCells
-      ) {
-        visibleFog = new ExploredFog(activeLevel.widthCells, activeLevel.heightCells);
-        visibleFogMap.set(activeLevel.id, visibleFog);
+      for (const level of levels) {
+        if (level.id === activeLevel.id) continue;
+        const aUnPJ = tokens.some((t) => t && t.levelId === level.id && t.kind === 'pc');
+        const dejaPublie = lastVisibleSignatureMap.has(level.id);
+        if (aUnPJ || dejaPublie) syncVisionForLevel(level, false, tokens);
       }
 
-      const currentSig = fogLayer.getVisionSignature();
-      const aPublier = transport && lastVisibleSignatureMap.get(activeLevel.id) !== currentSig;
-
-      // ⛔ Ne composer que si l'un des deux consommateurs en a besoin. Composer à chaque
-      // notification du store rebouclerait exactement comme le faisait la publication
-      // inconditionnelle décrite plus haut.
-      if (change || aPublier) {
-        visibleFog.composeVisible(entreesVision);
-      }
-
-      if (change) {
-        // ⭐ `revealMask` fait l'UNION avec ce qui était exploré ; `composeVisible` REMPLACE.
-        // Les confondre ferait s'accumuler la vision courante d'une image à l'autre, et la
-        // table verrait encore ce qu'elle a quitté.
-        exploredFog.revealMask(visibleFog.canvas);
-        // Amendement A1 & A2 : la vision s'est versée dans le masque, vider l'undo de cet étage
-        gmPanel?.fogTools?.clearUndoStack(activeLevel.id);
-        scheduleFogPublish(activeLevel.id, exploredFog);
-      }
-
-      if (aPublier) {
-        publishVisibleVision(activeLevel.id, visibleFog, currentSig);
-      }
+      syncVisionForLevel(activeLevel, true, tokens);
     } finally {
       const visionEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
       frameProbe.recordVision(visionEnd - visionStart);
@@ -941,75 +1044,20 @@ export async function bootstrapGMApp(options = {}) {
       // ⚠ Le cadenas 🔒 disparaît avec ce bloc : il n'existait que pour se soustraire à cette
       // bascule. Un cadenas qui ne suspend plus rien serait un contrôle qui ment, exactement le
       // défaut que ce lot corrige ailleurs.
-
+      //
       // ── UX-10 : l'étage d'arrivée devient CONNU, sans que personne n'y soit emmené ────────
       //
-      // ⭐ Conséquence directe et non évidente du retrait de la bascule : `syncVision` ne calcule
-      // que pour l'étage actif du MJ. Sans le suivi, un PJ pouvait monter un escalier sans
-      // qu'aucun masque exploré ne naisse jamais là-haut — et un étage sans masque n'est pas
-      // « connu », donc il n'apparaîtrait pas dans le sélecteur des joueurs (UX-12). Le
-      // découplage aurait rendu l'étage d'arrivée inatteignable pour la table.
+      // ⭐ Ce n'est plus câblé ICI. `applyNetworkEvent`, juste au-dessus, a déjà muté le store —
+      // et cette mutation a déjà notifié `syncVision` **synchroniquement**, avant que ce point du
+      // code soit atteint (`notifySubscribers` dans `state/store.js` appelle ses abonnés en
+      // ligne). `syncVision` calcule désormais la vision de tout étage qui porte un PJ, celui
+      // d'arrivée compris, la publie — masque exploré ET masque visible, pas seulement le premier
+      // comme le faisait ce bloc — et rend donc ce recalcul spécifique redondant. Un bloc dupliqué
+      // manuellement ici referait le même travail deux fois pour rien.
       //
-      // On calcule donc **une fois**, à l'instant précis où un pion PJ y obtient une ligne de
-      // vue. C'est exactement la notion que le brief demande, prise au passé.
-      //
-      // ⚠ `fogLayer` est une instance partagée : la calculer pour un autre étage écrase son état
-      // courant. D'où l'`invalidate()` qui suit — sans lui, l'étage actif du MJ garderait la
-      // signature de l'étage d'arrivée et ne se recalculerait pas.
-      if (mute && event.type === 'link.traverse') {
-        const pionMonte = store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId);
-        const etageArrivee = pionMonte
-          ? store.getCampaign()?.levels.find((l) => l.id === pionMonte.levelId)
-          : null;
-        if (pionMonte?.kind === 'pc' && etageArrivee && etageArrivee.id !== store.getActiveLevelId()) {
-          try {
-            const fogArrivee = getExploredFog(etageArrivee);
-            if (fogArrivee) {
-              const grilleArrivee = gridFor(etageArrivee);
-              fogLayer.updateVision(
-                grilleArrivee,
-                etageArrivee,
-                store.getCampaign()?.tokens ?? [],
-                { extractSegments: extractBlockedSegments }
-              );
-              const coin0 = grilleArrivee.mapFromCellPoint({ cellX: 0, cellY: 0 });
-              const coin1 = grilleArrivee.mapFromCellPoint({ cellX: 1, cellY: 0 });
-              const echelleArrivee = Math.abs(coin1.x - coin0.x);
-
-              // ⛔ **Le champ lumineux de l'étage d'ARRIVÉE, pas celui de l'étage affiché.**
-              // `lightLayer` porte le champ de l'étage courant ; s'en servir ici découperait
-              // la vision d'un étage par l'éclairage d'un autre. On compose donc à part, comme
-              // le code le fait déjà pour `fogArrivee`.
-              //
-              // ⚠ Sans cette intersection, franchir un escalier vers une cave NOIRE en
-              // révélerait toute la ligne de vue : le pion verrait dans le noir ce que la
-              // règle tactique lui interdit, et le masque publié le graverait pour de bon.
-              const lumiereArrivee = new LightLayer();
-              lumiereArrivee.update(grilleArrivee, etageArrivee, store.getCampaign()?.tokens ?? [], {
-                extractSegments: extractBlockedSegments,
-              });
-
-              const visionArrivee = new ExploredFog(etageArrivee.widthCells, etageArrivee.heightCells);
-              const compose = visionArrivee.composeVisible({
-                losPolygons: fogLayer.getLosPolygons(),
-                nearPolygons: fogLayer.getNearPolygons(),
-                litCanvas: lumiereArrivee.getFieldCanvas(),
-                mapOrigin: coin0,
-                gridScale: echelleArrivee,
-              });
-
-              if (compose) {
-                fogArrivee.revealMask(visionArrivee.canvas);
-                scheduleFogPublish(etageArrivee.id, fogArrivee);
-              }
-            }
-          } catch (err) {
-            networkStatus.update('error', err);
-          } finally {
-            fogLayer.invalidate();
-          }
-        }
-      }
+      // Preuve par mutation, gardée dans le rapport de la tranche qui a retiré ce bloc (09/09) :
+      // le supprimer laisse verts `tests/multiLevelJourney.spec.mjs` (l'étage devient connu) et
+      // `tests/levelSwitch.spec.mjs` (franchissement, groupe séparé).
 
       // Un déplacement venu de la table est un trajet **marché** : tout ce qui a été
       // aperçu en chemin reste acquis (critère 7). C'est ici, et nulle part ailleurs,

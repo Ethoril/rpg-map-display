@@ -43,7 +43,7 @@ export function resetVisionComputeCount() {
  * @param {GridAdapter} grid
  * @returns {string}
  */
-function buildVisionSignature(level, tokens, grid) {
+export function buildVisionSignature(level, tokens, grid) {
   if (!level) return '';
 
   /** @type {string[]} */
