@@ -284,6 +284,29 @@ fractionnaires depuis le **coin**. Changer `HexGrid` pour rendre le coin est pro
 réponse, mais elle traverse `portals.js`, `walls.js`, `blockedEdges.js` et l'import. C'est un
 chantier, pas un correctif d'une ligne.
 
+> ⭐ **Mise à jour du 09/09/2026 — la moitié VISIBLE est fermée, la convention reste ouverte.** Le
+> mainteneur a vu le défaut en séance sur une carte hexagonale : la zone de déplacement affichait
+> « une alternance en damier de rectangles rouges et transparents ». C'était bien ce piège —
+> `js/render/layers/moveZone.js` fabriquait la case par différence de deux `mapFromCellPoint`, donc
+> 1,5 case en rangée paire et 0,5 en impaire.
+>
+> Le contrat porte désormais `cellPath(ctx, cell)` : chaque grille trace le contour de sa case — un
+> carré pour `SquareGrid`, le vrai hexagone pour `HexGrid`, dont `renderGrid` partage maintenant
+> l'unique écriture de cette géométrie. La zone se peint en un seul chemin, ce qui supprime aussi
+> les coutures d'alpha entre cases voisines.
+>
+> ⛔ **Et `cellBounds` n'était PAS la réponse ici** : remplir la boîte englobante d'un hexagone
+> déborde par ses coins, en territoire de la voisine **diagonale** — donc annoncerait au joueur des
+> cases hors de portée. Épinglé par une sonde à 60 % du segment vers ce centre voisin. ⚠ Le centre
+> exact de la voisine, lui, ne peut **mathématiquement pas** attraper ce défaut : la boîte d'un
+> hexagone pointe-en-haut est taillée exactement à son emprise et s'arrête pile sur l'arête
+> partagée en rangée égale. Une assertion posée là serait restée verte sous mutation.
+>
+> ⚠ **Ce qui reste ouvert est la convention elle-même** — `mapFromCellPoint` rendant le centre en
+> hexagonal et le coin en carré — et ses quatre consommateurs : murs, portails, lumières, import.
+> Le rendu des pions (`cellBounds`, G-1) et celui de la zone de déplacement (`cellPath`) sont
+> désormais à l'abri ; le reste ne l'est pas.
+
 **Ce qui ferme la question** : trancher la convention dans `GridAdapter.js` — coin, et pas centre —
 puis aligner `HexGrid` et vérifier les quatre consommateurs. ⚠ Aucun test ne défend aujourd'hui la
 géométrie d'un pion hexagonal ; il en faudra un avant de toucher quoi que ce soit.

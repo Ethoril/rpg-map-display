@@ -63,5 +63,11 @@
  *
  * @property {(ctx: CanvasRenderingContext2D, viewport?: object) => void} renderGrid
  *   Trace le quadrillage sur le contexte 2D. Seule dépendance de rendu tolérée dans l'adaptateur.
+ *
+ * @property {(ctx: CanvasRenderingContext2D, cell: Cell) => void} cellPath
+ *   Ajoute au CHEMIN COURANT (`ctx`) le contour de la case, comme sous-chemin : ne remplit ni
+ *   ne trace rien, c'est l'appelant qui décide. `SquareGrid` y trace le carré de la case,
+ *   `HexGrid` le vrai hexagone — **jamais** une boîte englobante (`cellBounds`), qui déborde
+ *   sur les cases voisines en hexagonal et annoncerait au joueur des cases hors de portée.
  */
 export {}

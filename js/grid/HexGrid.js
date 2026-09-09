@@ -281,6 +281,29 @@ export class HexGrid {
   }
 
   /**
+   * Ajoute au chemin courant le contour hexagonal (six sommets) de la case, comme sous-chemin :
+   * ne remplit ni ne trace rien, c'est l'appelant qui décide (voir `GridAdapter.cellPath`).
+   * Géométrie pointe-en-haut centrée sur `pointFromCell` — celle validée à l'œil par
+   * `renderGrid`, qui l'appelle désormais au lieu de la dupliquer.
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Cell} cell
+   * @returns {void}
+   */
+  cellPath(ctx, cell) {
+    const R = this.pxPerCell / SQRT3;
+    const center = this.pointFromCell(cell);
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 6) + (i * Math.PI / 3);
+      const vx = center.x + R * Math.cos(angle);
+      const vy = center.y + R * Math.sin(angle);
+      if (i === 0) ctx.moveTo(vx, vy);
+      else ctx.lineTo(vx, vy);
+    }
+    ctx.closePath();
+  }
+
+  /**
    * Trace le quadrillage hexagonal sur le contexte Canvas 2D.
    *
    * @param {CanvasRenderingContext2D} ctx
@@ -294,20 +317,10 @@ export class HexGrid {
     ctx.globalAlpha = this.opacity;
     ctx.lineWidth = 1;
 
-    const R = this.pxPerCell / SQRT3;
-
     ctx.beginPath();
     for (let col = 0; col < this.widthCells; col++) {
       for (let row = 0; row < this.heightCells; row++) {
-        const center = this.pointFromCell({ a: col, b: row });
-        for (let i = 0; i < 6; i++) {
-          const angle = (Math.PI / 6) + (i * Math.PI / 3);
-          const vx = center.x + R * Math.cos(angle);
-          const vy = center.y + R * Math.sin(angle);
-          if (i === 0) ctx.moveTo(vx, vy);
-          else ctx.lineTo(vx, vy);
-        }
-        ctx.closePath();
+        this.cellPath(ctx, { a: col, b: row });
       }
     }
     ctx.stroke();

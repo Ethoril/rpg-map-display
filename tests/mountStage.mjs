@@ -4,6 +4,7 @@
 import { initStage, renderLayerStack } from '../js/render/stage.js';
 import { FrameLoop } from '../js/render/frame.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
+import { gridFor } from '../js/grid/index.js';
 import { GridLayer } from '../js/render/layers/gridLayer.js';
 import { BackgroundLayer } from '../js/render/layers/background.js';
 import { TokensLayer } from '../js/render/layers/tokens.js';
@@ -277,12 +278,16 @@ const probe = {
     levelOverrides = {},
     token = null,
     cellsReachableKeys = [],
+    // Points de carte supplémentaires à échantillonner, en plus du centre de chaque case —
+    // sert à sonder un point précis (p. ex. juste à l'intérieur d'une case voisine, côté
+    // débordement d'une boîte englobante hexagonale) sans exposer toute l'image.
+    samplePoints = [],
   }) => {
     const level = createLevel(levelOverrides);
     const width = level.grid.offsetX + level.widthCells * level.pxPerCell;
     const height = level.grid.offsetY + level.heightCells * level.pxPerCell;
     resetCanvas(width, height);
-    const grid = new SquareGrid(level);
+    const grid = gridFor(level);
     const reachableCells = new Map(cellsReachableKeys.map((/** @type {string} */ key) => [key, 1]));
     const renderedCells = moveZoneLayer.render(context, grid, {
       selectedToken: token,
@@ -297,7 +302,10 @@ const probe = {
         cellAlphaMap[`${a},${b}`] = pixelAt(width, height, pixels, point.x, point.y).a;
       }
     }
-    return { cellAlphaMap, renderedCells };
+    const sampleAlphas = samplePoints.map(
+      (/** @type {{x: number, y: number}} */ p) => pixelAt(width, height, pixels, p.x, p.y).a
+    );
+    return { cellAlphaMap, renderedCells, sampleAlphas };
   },
   testMoveZoneFeedbackRender: (/** @type {any} */ {
     levelOverrides = {},

@@ -56,11 +56,14 @@ export class MoveZoneLayer {
       return false;
     }
 
-    const p0 = grid.mapFromCellPoint({ cellX: feedback.cell.a, cellY: feedback.cell.b });
-    const p1 = grid.mapFromCellPoint({ cellX: feedback.cell.a + 1, cellY: feedback.cell.b + 1 });
-    const centerX = (p0.x + p1.x) / 2;
-    const centerY = (p0.y + p1.y) / 2;
-    const radius = Math.min(Math.abs(p1.x - p0.x), Math.abs(p1.y - p0.y)) * 0.32;
+    // Centre par `cellCenter` (jamais faux, dans les deux pavages) et rayon par `cellBounds` —
+    // plus la différence de deux `mapFromCellPoint`, fausse d'une demi-case en hexagonal selon
+    // la parité de rangée (C-5, `docs/QUESTIONS-EN-ATTENTE.md`).
+    const center = grid.cellCenter(feedback.cell);
+    const bounds = grid.cellBounds({ cellX: feedback.cell.a, cellY: feedback.cell.b }, 1);
+    const centerX = center.x;
+    const centerY = center.y;
+    const radius = Math.min(bounds.width, bounds.height) * 0.32;
     const zoom = Math.max(0.01, options.zoom);
     const progress = elapsed / DESTINATION_FEEDBACK_MS;
 
@@ -100,13 +103,15 @@ export class MoveZoneLayer {
     ctx.globalAlpha = 0.3;
     let renderedCells = 0;
 
+    // Un seul chemin, un seul fill() : à cette globalAlpha, remplir case par case superposerait
+    // l'alpha sur les bords communs et laisserait des coutures — voir GridAdapter.cellPath.
+    ctx.beginPath();
     for (const key of reachableCells.keys()) {
       const cell = parseCellKey(key);
-      const p0 = grid.mapFromCellPoint({ cellX: cell.a, cellY: cell.b });
-      const p1 = grid.mapFromCellPoint({ cellX: cell.a + 1, cellY: cell.b + 1 });
-      ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+      grid.cellPath(ctx, cell);
       renderedCells++;
     }
+    ctx.fill();
 
     ctx.restore();
     return renderedCells;

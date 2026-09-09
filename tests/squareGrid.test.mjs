@@ -148,6 +148,40 @@ test('Conversion aux 4 coins et sous différents zooms et offsets via SquareGrid
   assert.deepEqual(gridZoom.cellFromPoint({ x: 190, y: 160 }), { a: 2, b: 2 });
 });
 
+test('SquareGrid.cellPath : trace un carré de 4 sommets aux bonnes coordonnées, sans rien remplir', () => {
+  const level = createLevel({ pxPerCell: 100, widthCells: 10, heightCells: 10, grid: { type: 'square', offsetX: 15, offsetY: 25 } });
+  const grid = gridFor(level);
+
+  // Faux contexte qui journalise, motif repris de `tests/lightLayer.test.mjs`.
+  /** @type {any[]} */
+  const journal = [];
+  const ctx = /** @type {any} */ ({
+    moveTo: (/** @type {number} */ x, /** @type {number} */ y) => journal.push(['moveTo', x, y]),
+    lineTo: (/** @type {number} */ x, /** @type {number} */ y) => journal.push(['lineTo', x, y]),
+    closePath: () => journal.push(['closePath']),
+    rect: (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ w, /** @type {number} */ h) => journal.push(['rect', x, y, w, h]),
+    fill: () => journal.push(['fill']),
+    fillRect: (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ w, /** @type {number} */ h) => journal.push(['fillRect', x, y, w, h]),
+  });
+
+  grid.cellPath(ctx, { a: 2, b: 3 });
+
+  // 4 sommets : un moveTo (le premier) + trois lineTo, puis la fermeture du sous-chemin.
+  const moveTos = journal.filter((e) => e[0] === 'moveTo');
+  const lineTos = journal.filter((e) => e[0] === 'lineTo');
+  assert.equal(moveTos.length, 1);
+  assert.equal(lineTos.length, 3);
+  assert.ok(journal.some((e) => e[0] === 'closePath'));
+
+  // Coin haut-gauche (15 + 2*100, 25 + 3*100) = (215, 325), côté 100.
+  assert.deepEqual(moveTos[0].slice(1), [215, 325]);
+  const sommets = [moveTos[0].slice(1), ...lineTos.map((e) => e.slice(1))];
+  assert.deepEqual(sommets, [[215, 325], [315, 325], [315, 425], [215, 425]]);
+
+  // ⛔ Rien n'est rempli ni tracé : c'est l'appelant qui décide.
+  assert.ok(!journal.some((e) => e[0] === 'fill' || e[0] === 'fillRect' || e[0] === 'rect'));
+});
+
 test('Composée écran -> pixels carte -> case (via screenToMapPoint + SquareGrid.cellFromPoint)', () => {
   const level = createLevel({
     pxPerCell: 140,

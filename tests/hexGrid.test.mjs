@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLevel, createCampaign } from '../js/core/schema.js';
 import { gridFor } from '../js/grid/index.js';
+import { HexGrid } from '../js/grid/HexGrid.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { cellKey } from '../js/core/cellKey.js';
+
+const SQRT3 = Math.sqrt(3);
 
 test('G-04 Critère 1 : Coexistence d’un étage hex et carré dans la même campagne', () => {
   const levelSquare = createLevel({
@@ -233,6 +236,55 @@ test('R-07 : la conversion odd-r ⇄ cubique de neighbors, distance et cellsInRa
     trier([{ a: 4, b: 4 }, { a: 6, b: 4 }, { a: 4, b: 3 }, { a: 5, b: 3 }, { a: 4, b: 5 }, { a: 5, b: 5 }]),
     'cellsInRange à budget 1 atteint exactement les six voisines, la case de départ exclue'
   );
+});
+
+test('HexGrid.cellPath : trace un hexagone de 6 sommets aux bonnes coordonnées, sans rien remplir', () => {
+  const levelHex = createLevel({
+    id: 'lvl-hex-cellpath',
+    grid: { type: 'hex', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+    widthCells: 10,
+    heightCells: 10,
+    pxPerCell: 140,
+  });
+  const grid = new HexGrid(levelHex);
+
+  // Faux contexte qui journalise, motif repris de `tests/lightLayer.test.mjs`.
+  /** @type {any[]} */
+  const journal = [];
+  const ctx = /** @type {any} */ ({
+    moveTo: (/** @type {number} */ x, /** @type {number} */ y) => journal.push(['moveTo', x, y]),
+    lineTo: (/** @type {number} */ x, /** @type {number} */ y) => journal.push(['lineTo', x, y]),
+    closePath: () => journal.push(['closePath']),
+    rect: (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ w, /** @type {number} */ h) => journal.push(['rect', x, y, w, h]),
+    fill: () => journal.push(['fill']),
+    fillRect: (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ w, /** @type {number} */ h) => journal.push(['fillRect', x, y, w, h]),
+  });
+
+  const cell = { a: 5, b: 4 };
+  grid.cellPath(ctx, cell);
+
+  const moveTos = journal.filter((e) => e[0] === 'moveTo');
+  const lineTos = journal.filter((e) => e[0] === 'lineTo');
+  assert.equal(moveTos.length, 1, 'un seul moveTo, premier sommet');
+  assert.equal(lineTos.length, 5, 'cinq lineTo pour les cinq sommets suivants');
+  assert.ok(journal.some((e) => e[0] === 'closePath'));
+
+  // Sommets attendus : angle π/6 + i·π/3, rayon pxPerCell/√3, centrés sur pointFromCell(cell) —
+  // la même géométrie que `renderGrid`, déplacée ici (voir son commentaire).
+  const R = 140 / SQRT3;
+  const center = grid.pointFromCell(cell);
+  const attendus = [0, 1, 2, 3, 4, 5].map((i) => {
+    const angle = (Math.PI / 6) + (i * Math.PI / 3);
+    return [center.x + R * Math.cos(angle), center.y + R * Math.sin(angle)];
+  });
+  const obtenus = [moveTos[0].slice(1), ...lineTos.map((e) => e.slice(1))];
+  for (let i = 0; i < 6; i++) {
+    assert.ok(Math.abs(obtenus[i][0] - attendus[i][0]) < 1e-9, `sommet ${i}, x`);
+    assert.ok(Math.abs(obtenus[i][1] - attendus[i][1]) < 1e-9, `sommet ${i}, y`);
+  }
+
+  // ⛔ Rien n'est rempli ni tracé : c'est l'appelant qui décide.
+  assert.ok(!journal.some((e) => e[0] === 'fill' || e[0] === 'fillRect' || e[0] === 'rect'));
 });
 
 test('R-02 : Grille HexGrid odd-r — Bornes rectangulaires 12x12 et aller-retour cellFromPoint(pointFromCell(c))', () => {

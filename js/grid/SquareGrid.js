@@ -206,6 +206,26 @@ export class SquareGrid {
   }
 
   /**
+   * Ajoute au chemin courant le contour carré de la case, comme sous-chemin : ne remplit ni ne
+   * trace rien, c'est l'appelant qui décide (voir `GridAdapter.cellPath`).
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Cell} cell
+   * @returns {void}
+   */
+  cellPath(ctx, cell) {
+    const x0 = this.offsetX + cell.a * this.pxPerCell;
+    const y0 = this.offsetY + cell.b * this.pxPerCell;
+    const x1 = x0 + this.pxPerCell;
+    const y1 = y0 + this.pxPerCell;
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x0, y1);
+    ctx.closePath();
+  }
+
+  /**
    * Trace le quadrillage sur le contexte Canvas 2D.
    *
    * @param {CanvasRenderingContext2D} ctx
