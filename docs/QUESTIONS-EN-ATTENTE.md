@@ -63,6 +63,8 @@ budget de 300 ms.** Le champ lumineux tient, et **WebGL n'est pas justifié**. D
 et conséquences : `PLAN-SUITE.md` §1, M2. La lumière n'attend donc plus une mesure, elle attend une
 **décision** — voir D-1 et la phase 3 du plan.
 
+⚠ **AJOURNÉ PAR LE MAINTENEUR le 09/09/2026** — « le cast sera traité ultérieurement ». ⛔ Ne plus le remettre en tête de liste : c'est sa décision, pas un oubli.
+
 ⚠ **Ce qui reste, et c'est mineur** : le relevé **sous cast** n'a pas pu être fait. Le précédent
 existe — la section 10 avait été mesurée sous cast actif. Avec 2 % du budget consommé, le cast ne
 peut raisonnablement pas renverser le verdict ; mais **aucun critère de performance ne se coche sans
@@ -583,21 +585,20 @@ en information donnée à la table.
 
 ## D. Décisions produit encore ouvertes
 
-### D-1 §12 q.9 — l'approximation de la lumière vue
+### D-1 ✅ §12 q.9 — SANS OBJET depuis Z-05, et ce n'est pas « tranchée »
 
-La règle « une lumière n'est pas un œil » est tranchée et implantée. Ce qui reste ouvert est
-l'**approximation** : le test porte sur le **centre** de la source, donc un PJ qui aperçoit une lampe
-se voit révéler *tout son halo*.
+⛔ **Cette entrée décrivait une approximation qui n'existe plus.** Jusqu'au 26/08/2026, chaque
+lumière produisait un polygone de vision dès qu'un PJ avait une ligne de vue jusqu'à son **centre**
+(`vuParUnPJ`) : voir la lampe révélait tout son halo. La tranche Z-05 a **retiré ce code**. Une
+lumière n'est plus un œil : elle éclaire — `js/vision/lightField.js` la compose sans aucun
+observateur — et c'est la ligne de vue du PJ **vers chaque point** qui décide de ce qui est vu.
 
-⭐ **Le déclencheur est écrit** : voir en séance une pièce entière se dévoiler parce qu'un PJ aperçoit
-une lampe par une porte.
+Le halo derrière un angle n'est donc plus révélé, et l'approximation n'a plus de support. ⭐ La
+question ne se ferme pas par un arbitrage : **elle disparaît avec le code qui la portait.** Voir
+`docs/CHANTIER-Z-ECLAIRAGE-REEL.md` §4.6, et le §12 du cahier des charges, qui fait foi.
 
-**Deux non-déclenchements consignés** : le 11/08 sur `testvideo-3`, où les murs obliques bloquent la
-ligne vers les lampes ; et le **13/08**, où le mainteneur a éprouvé les angles de vision sur porte
-ouverte et juge le comportement « tout à fait adéquat ».
+⚠ Consigné le 09/09/2026 — le journal du 27/08 relevait déjà que ce document ne le reflétait pas.
 
-La version stricte coûterait 15 à 20 ms pour six PJ contre 300 de budget — le vrai prix est **une
-centaine de lignes dans le chemin du fog**. Tant que le cas reste théorique, l'approximation tient.
 
 ### D-2 Le vrai nom dans l'historique public
 

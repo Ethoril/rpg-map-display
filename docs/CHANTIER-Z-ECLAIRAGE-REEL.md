@@ -601,4 +601,5 @@ porter le plancher mais **jamais la désaturation**. Même limite que celle déj
 teinte.
 
 ⚠ **`LIGHT_NIGHT_VISION_FLOOR` est un jugement d'œil, pas une mesure**, réglable en un seul
-endroit. Il attend le verdict du mainteneur à la table.
+endroit. ✅ **Verdict rendu le 09/09/2026 : « le gris est parfait ».** La valeur est donc
+acquise, plus une proposition.

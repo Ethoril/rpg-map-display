@@ -156,8 +156,9 @@ export const LIGHT_GM_DARKNESS_RATIO = 0.5;
  * la portée nocturne d'un PJ (`visionDim`, Terme 2 de la règle tactique — voir `vision/fog.js`)
  * mais la modulation, elle, y était vide, donc le décor y disparaissait entièrement.
  *
- * ⭐ **Ce n'est pas une mesure, c'est un jugement d'œil** — réglable en ce seul endroit. Le
- * mainteneur le corrigera après l'avoir vu à la table.
+ * ⭐ **Ce n'est pas une mesure, c'est un jugement d'œil** — réglable en ce seul endroit.
+ * ✅ **Validé à la table le 09/09/2026** : « le gris est parfait ». ⛔ Ne pas le retoucher sans
+ * un nouveau verdict d'œil du mainteneur.
  */
 export const LIGHT_NIGHT_VISION_FLOOR = 0.35;
 

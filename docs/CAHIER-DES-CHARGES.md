@@ -1316,33 +1316,24 @@ Critères :
    > ce sont deux vocabulaires clos, portés par deux champs, et un quinzième **marqueur**
    > rouvrirait Q7 exactement comme avant.
 8. ~~**Gabarits manipulables par les joueurs ?**~~ **Tranchée le 04/08/2026 : MJ seul au lot 2** (Voir `TRANCHE-L08-GABARITS.md` §10). **Rouverte et amendée le 05/08/2026 (L-10)** : Les joueurs manipulent (déplacer, pivoter) les gabarits visibles (`visibleToPlayers`), avec autorisation à l'émission. La pose, l'effacement et le réglage restent réservés au MJ. Voir `TRANCHE-L10-GABARITS-LIBRES.md`.
-9. **Une lumière vue révèle-t-elle tout ce qu'elle éclaire, ou seulement ce que le PJ voit ?**
-   **Ouverte, et mise de côté sciemment le 11/08/2026.**
+9. ~~**Une lumière vue révèle-t-elle tout ce qu'elle éclaire, ou seulement ce que le PJ voit ?**~~
+   ✅ **SANS OBJET depuis la tranche Z-05, le 26/08/2026 — et ce n'est pas « tranchée ».**
 
-   La règle de base est tranchée et implantée : *une lumière n'est pas un œil*. Une source
-   ne contribue à la visibilité que si un PJ a une ligne de vue dégagée jusqu'à elle, et sans
-   PJ sur l'étage rien n'est visible. Elle vient d'un constat de séance — une carte Dungeon
-   Alchemist, qui en place systématiquement, se dévoilait toute seule **sans aucun pion**.
+   Le code qui portait la question a été **retiré**. Jusque-là, chaque lumière produisait un
+   polygone de vision dès qu'un PJ avait une ligne de vue jusqu'à son **centre** (`vuParUnPJ`),
+   et c'est de ce test sur le centre que venait l'approximation : voir la lampe révélait tout
+   son halo.
 
-   Ce qui reste ouvert est l'**approximation** retenue : le test porte sur le **centre** de la
-   source. Un PJ qui aperçoit une lampe se voit donc révéler *tout son halo*, y compris des
-   recoins que lui-même ne verrait pas. Le cas visible serait : apercevoir une lanterne par
-   l'embrasure d'une porte et découvrir toute la pièce derrière.
+   En mode tactique, la décomposition est autre, et plus simple : **le champ lumineux** est une
+   propriété de la carte, composé sans aucun observateur (`js/vision/lightField.js`) ; **la
+   vision** est le sweep du PJ, découpé par le niveau de lumière atteint ; **la révélation** est
+   leur intersection. La révélation exige donc la ligne de vue du PJ **vers chaque point**, plus
+   jusqu'au seul centre de la source — le halo derrière un angle n'est plus révélé, et
+   l'approximation n'a plus de support pour exister.
 
-   **La version stricte** croiserait, pour chaque PJ, son polygone de vue à portée complète
-   avec l'union des zones éclairées. Coût estimé, mesuré sur les cartes du dépôt :
-   - l'intersection elle-même est **quasi gratuite** — le masque de fog est déjà rasterisé à
-     8 px/case, soit 336 × 336 px sur la plus grande carte : un seul `source-in` ;
-   - ce qui coûte est **un balayage supplémentaire par PJ**, et seulement dans le noir : sous
-     ambiante allumée le polygone à portée maximale existe déjà. Environ **+4 à 7 ms** avec
-     six PJ sur `test_village_complet_00`, soit 15 à 20 ms contre 300 de budget ;
-   - le vrai prix est **une centaine de lignes dans le chemin du fog**, celui où une erreur
-     fait voir aux joueurs ce qu'ils ne devraient pas.
-
-   ⭐ **Le déclencheur pour y revenir est écrit** : voir en séance une pièce entière se
-   dévoiler parce qu'un PJ aperçoit une lampe par une porte. Tant que le cas reste théorique,
-   l'approximation tient. Tentative de reproduction sur `testvideo-3` le 11/08/2026 : les murs
-   obliques de la tour bloquent la ligne vers les lampes, le cas ne s'est pas déclenché.
+   ⭐ Une lampe éclaire qu'on la regarde ou non. Voir `docs/CHANTIER-Z-ECLAIRAGE-REEL.md` §4.6.
+   ⚠ Consigné ici le 09/09/2026 : la question était restée ouverte dans ce document quinze jours
+   après que son objet avait disparu du code.
 
 > **Amendement UX-14 (18/08/2026) — la réserve de pions.** `token.reserve` porte `{ tokenId }` et
 > range un pion **hors du plateau**, avec son état entier : ses PV, ses marqueurs, son élévation et
