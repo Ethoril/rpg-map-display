@@ -860,11 +860,43 @@ export function createGMPanel(container, options = {}) {
     });
   }
 
+  // ⭐ **Armer la pose d'un pion, un seul geste, trois entrées (UX-08).** Le pion partait en
+  // `cell: {a: 0, b: 0}` codé en dur, donc un PNJ créé en séance apparaissait à l'angle de la
+  // carte — souvent hors écran, souvent sous le brouillard — et il fallait le glisser jusqu'à sa
+  // place sous les yeux de la table. C'est le comportement de tout le reste du panneau : le
+  // gabarit, le ping, la pose d'extrémité A d'une liaison.
+  //
+  // ⛔ L'armement passe par `setActiveTool` et **pas par un mécanisme parallèle** : c'est lui qui
+  // garantit l'exclusivité mutuelle, donc qu'armer la pose d'un pion désarme le pinceau de fog,
+  // et réciproquement.
+  //
+  // ⚠ La bibliothèque de pions (« ➕ Instancier ») a été OUBLIÉE lors d'UX-08 : elle a continué à
+  // ajouter le pion elle-même, en (0,0), jusqu'à ce que le mainteneur le signale le 09/09/2026.
+  // D'où ce helper unique : une quatrième entrée ne pourra plus oublier la règle une troisième
+  // fois sans le voir en un coup d'œil.
+  /**
+   * @param {import('../../core/types.js').Token} token
+   * @param {{depuisLaReserve?: boolean}} [opts]
+   */
+  function armerPose(token, { depuisLaReserve = false } = {}) {
+    pendingToken = token;
+    pendingFromReserve = depuisLaReserve;
+    setActiveTool('token-place');
+    tokenMaker.setStatus(`« ${token.label} » prêt : tapez la carte pour le poser.`, '#f5a623');
+  }
+
+  const tokenMaker = createTokenMaker(tokenMakerMount, {
+    defaultLevelId: store.getActiveLevelId(),
+    onGenerate: (token, _dataUrl) => {
+      armerPose(token);
+    },
+  });
+
   // Initialisation de la bibliothèque de pions
   /** @type {{destroy: () => void} | null} */
   let tokenLibrary = null;
   if (tokenLibraryMount) {
-    createTokenLibrary(tokenLibraryMount, { transport })
+    createTokenLibrary(tokenLibraryMount, { onArmPlacement: (token) => armerPose(token) })
       .then((lib) => {
         tokenLibrary = lib;
       })
@@ -877,25 +909,6 @@ export function createGMPanel(container, options = {}) {
         `;
       });
   }
-
-  // ⭐ **« Générer » ARME l'outil, il n'ajoute plus (UX-08).** Le pion partait en `cell: {a: 0,
-  // b: 0}` codé en dur, donc un PNJ créé en séance apparaissait à l'angle de la carte — souvent
-  // hors écran, souvent sous le brouillard — et il fallait le glisser jusqu'à sa place sous les
-  // yeux de la table. C'est le comportement de tout le reste du panneau : le gabarit, le ping,
-  // la pose d'extrémité A d'une liaison.
-  //
-  // ⛔ L'armement passe par `setActiveTool` et **pas par un mécanisme parallèle** : c'est lui qui
-  // garantit l'exclusivité mutuelle, donc qu'armer la pose d'un pion désarme le pinceau de fog,
-  // et réciproquement.
-  const tokenMaker = createTokenMaker(tokenMakerMount, {
-    defaultLevelId: store.getActiveLevelId(),
-    onGenerate: (token, _dataUrl) => {
-      pendingToken = token;
-      pendingFromReserve = false;
-      setActiveTool('token-place');
-      tokenMaker.setStatus('Pion prêt : tapez la carte pour le poser.', '#f5a623');
-    },
-  });
 
   // Initialisation de la bibliothèque de cartes
   /** @type {{destroy: () => void} | null} */
@@ -1186,10 +1199,7 @@ export function createGMPanel(container, options = {}) {
         poser.addEventListener('click', () => {
           // ⭐ Exactement l'armement d'UX-08, avec la même exclusivité mutuelle : sortir un pion
           // de la réserve, c'est le poser quelque part.
-          pendingToken = pion;
-          pendingFromReserve = true;
-          setActiveTool('token-place');
-          tokenMaker.setStatus(`« ${pion.label} » prêt : tapez la carte pour le poser.`, '#f5a623');
+          armerPose(pion, { depuisLaReserve: true });
         });
 
         ligne.append(pastille, texte, poser);

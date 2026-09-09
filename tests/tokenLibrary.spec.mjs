@@ -53,12 +53,15 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     );
   });
 
-  test('1. Affiche le pion dans la bibliothèque et instancie un pion pré-réglé sur l’étage actif', async ({ page }) => {
+  test('1. « Instancier » ARME la pose (UX-08) — aucun pion tant que le MJ n’a pas tapé la case', async ({ page }) => {
     /** @type {string[]} */
     const pageErrors = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
 
-    await page.goto('/gm.html');
+    const sessionId = `test-tokenlib-arm-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, null);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
 
     // S'assurer qu'un étage est actif dans le store
     await page.evaluate(async (lvl) => {
@@ -73,11 +76,39 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     await expect(page.locator('.token-card')).toHaveCount(1);
     await expect(page.locator('.token-card-name')).toHaveText('Éclaireur Goblinoïde');
 
-    // Instanciation initiale sur l'étage actif
     await page.click('.token-card-instantiate');
 
-    // Statut visuel confirmation
-    await expect(page.locator('.token-library-status')).toContainText('instancié');
+    // Statut visuel : prêt à poser, pas « instancié » — ce serait faux tant que rien n'est posé.
+    await expect(page.locator('.token-library-status')).toContainText('prêt');
+
+    // ⭐ « Instancier » ARME, il n'ajoute rien à lui seul : c'est la moitié du critère, et un
+    // code qui ajouterait ET armerait passerait au vert sans elle.
+    const outilActif = () =>
+      page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.getActiveToolName());
+    const pions = () =>
+      page.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        return (store.getCampaign()?.tokens ?? []).map((t) => ({ label: t.label, cell: t.cell }));
+      });
+
+    expect(await outilActif(), 'instancier doit armer la pose').toBe('token-place');
+    expect(await pions(), 'instancier ne doit ajouter aucun pion à lui seul').toEqual([]);
+
+    // Tap au centre d'une case précise : (3, 6) sur une grille à 140 px/case.
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 3.5 * 140, y: 6.5 * 140 },
+        screenPos: { x: 300, y: 300 },
+      });
+    });
+
+    // ⭐ La case visée, précisément — pas seulement « différente de (0,0) », qui passerait au
+    // vert sur un pion posé n'importe où ailleurs que l'angle.
+    const poses = await pions();
+    expect(poses.length, 'le tap doit avoir posé le pion').toBe(1);
+    expect(poses[0].cell, 'le pion se pose sur la case tapée, exactement').toEqual({ a: 3, b: 6 });
+    expect(await outilActif(), 'l’outil se désarme seul après la pose').toBe('none');
 
     // Vérifier les valeurs exactes dans le store
     const addedToken = await page.evaluate(async () => {
@@ -97,6 +128,34 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     expect(addedToken?.borderColor).toBe('#e74c3c');
 
     expect(pageErrors).toEqual([]);
+  });
+
+  test('1b. Armer depuis la bibliothèque désarme un outil précédemment armé (exclusivité mutuelle)', async ({ page }) => {
+    const sessionId = `test-tokenlib-exclusivite-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, null);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+
+    await page.evaluate(async (lvl) => {
+      const store = await import('../js/state/store.js');
+      store.addLevel(lvl);
+    }, FAKE_LEVEL);
+
+    // Armer un autre outil d'abord (motif de tests/gmToolDisarm.spec.mjs).
+    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#fog-btn-tool-reveal');
+    let tool = await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.getActiveToolName());
+    expect(tool).toBe('fog-reveal');
+
+    await page.click('.gm-tab-btn[data-tab="token-maker"]');
+    await page.click('.token-card-instantiate');
+
+    tool = await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.getActiveToolName());
+    expect(tool, 'armer depuis la bibliothèque doit prendre la main').toBe('token-place');
+    expect(
+      await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.fogTools?.getActiveTool()),
+      'le pinceau de fog doit avoir été désarmé'
+    ).toBe('none');
   });
 
   test('2. Instanciation sans étage actif : refusée bruyamment sans muter le store', async ({ page }) => {
@@ -215,6 +274,15 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     await pageGM.click('.gm-tab-btn[data-tab="token-maker"]');
     await expect(pageGM.locator('.token-card')).toHaveCount(1);
     await pageGM.click('.token-card-instantiate');
+
+    // « Instancier » arme la pose : il faut taper la carte pour que le pion existe et se publie.
+    await pageGM.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: 3.5 * 140, y: 6.5 * 140 },
+        screenPos: { x: 300, y: 300 },
+      });
+    });
 
     // Le seul chemin entre les deux pages est le canal du navigateur : aucun
     // relais par le test. Attente de condition et non de durée.

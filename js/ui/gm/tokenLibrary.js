@@ -3,22 +3,25 @@ import { validateTokenCatalog, createTokenFromLibraryEntry } from '../../import/
 import * as store from '../../state/store.js';
 
 /**
- * @typedef {import('../../transport/Transport.js').Transport} Transport
  * @typedef {import('../../core/types.js').TokenLibraryEntry} TokenLibraryEntry
+ * @typedef {import('../../core/types.js').Token} Token
  */
 
 /**
  * Options du composant tokenLibrary
  * @typedef {Object} TokenLibraryOptions
- * @property {Transport} [transport] Transport optionnel pour la synchronisation
+ * @property {(token: Token) => void} [onArmPlacement] Rappel armant la pose du pion fabriqué
+ *   (UX-08/UX-14) — le composant ne l'ajoute plus lui-même à la campagne. Optionnel : un appelant
+ *   qui ne le fournit pas ne voit rien s'armer.
  * @property {string} [catalogUrl='maps/tokens/catalog.json'] URL relative du catalogue de pions
  */
 
 /**
  * Monte la bibliothèque de pions pré-réglés.
  *
- * Charge `maps/tokens/catalog.json`, affiche les pions disponibles et permet au MJ
- * d'instancier un pion pré-réglé sur l'étage actif sans saisie de métadonnées.
+ * Charge `maps/tokens/catalog.json`, affiche les pions disponibles et permet au MJ d'ARMER la
+ * pose d'un pion pré-réglé (UX-08/UX-14) — sans saisie de métadonnées, mais sans l'ajouter non
+ * plus : la case reste à taper.
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {TokenLibraryOptions} [options={}]
@@ -29,7 +32,7 @@ export async function createTokenLibrary(container, options = {}) {
     throw new Error('createTokenLibrary : conteneur HTML requis');
   }
 
-  const { transport, catalogUrl = 'maps/tokens/catalog.json' } = options;
+  const { onArmPlacement, catalogUrl = 'maps/tokens/catalog.json' } = options;
   const listeners = new AbortController();
 
   container.innerHTML = `
@@ -62,46 +65,31 @@ export async function createTokenLibrary(container, options = {}) {
   }
 
   /**
-   * Instancie un pion sur l'étage actif.
+   * Fabrique le pion depuis l'entrée du catalogue et ARME sa pose (UX-08/UX-14), au lieu de
+   * l'ajouter directement sur l'étage actif : c'est `placePendingTokenAt` du panneau qui publiera
+   * `token.add`, une fois la case connue.
    *
    * @param {TokenLibraryEntry} entry
-   * @param {HTMLButtonElement} btn
    */
-  function handleInstantiateToken(entry, btn) {
+  function handleInstantiateToken(entry) {
     const activeLevelId = store.getActiveLevelId();
     if (!activeLevelId) {
       setStatus('error', `✗ Instanciation impossible : aucun étage actif dans la campagne.`);
       return;
     }
 
-    const originalText = btn.textContent;
-    btn.disabled = true;
+    if (!onArmPlacement) {
+      setStatus('error', `✗ Impossible d'instancier « ${entry.name} » : composant non configuré pour armer la pose.`);
+      return;
+    }
 
     try {
       const token = createTokenFromLibraryEntry(entry, { levelId: activeLevelId });
-      store.addToken(token);
-
-      if (transport) {
-        transport.publish({
-          type: 'token.add',
-          payload: { token },
-          at: Date.now(),
-          by: 'gm',
-        });
-      }
-
-      setStatus('ok', `✓ Pion « ${entry.name} » instancié sur l'étage actif`);
-      btn.textContent = '✓ Fait';
-      btn.style.background = '#2a5a3a';
-      setTimeout(() => {
-        btn.textContent = originalText;
-        btn.style.background = '#4a90e2';
-        btn.disabled = false;
-      }, 1200);
+      onArmPlacement(token);
+      setStatus('ok', `✓ « ${entry.name} » prêt : tapez la carte pour le poser.`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setStatus('error', `✗ Impossible d'instancier « ${entry.name} » : ${errMsg}`);
-      btn.disabled = false;
     }
   }
 
@@ -172,7 +160,7 @@ export async function createTokenLibrary(container, options = {}) {
     btnInstantiate.addEventListener(
       'click',
       () => {
-        handleInstantiateToken(entry, btnInstantiate);
+        handleInstantiateToken(entry);
       },
       { signal: listeners.signal }
     );
