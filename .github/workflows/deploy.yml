@@ -45,6 +45,18 @@ jobs:
       # vrais moteurs de règles. Le projet `demo-*` interdit tout repli accidentel en production.
       - run: pnpm run test:firebase-rules
 
+      # ⛔ **Le depot google-chrome du runner casse `apt-get update`, et il n'a rien a voir
+      # avec Playwright.** Le 09/09/2026, la porte a rougi DEUX FOIS de suite sans qu'un seul
+      # test ne tourne : `E: Failed to fetch .../chrome-stable/deb/.../Packages.gz Hash Sum
+      # mismatch` — Google avait publie un index incoherent avec son fichier Release, et
+      # `--with-deps` (qui fait un `apt-get update`) sortait en 100. Une porte rouge fige
+      # Pages : la prod restait sans les correctifs pour une raison etrangere au depot.
+      #
+      # ⚠ On retire donc cette source avant d'installer. Ce n'est PAS un contournement de la
+      # porte : les dependances systeme de Chromium restent installees par `--with-deps`, et
+      # tous les tests tournent ensuite a l'identique. Seul le depot tiers inutile disparait.
+      - run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+
       - run: pnpm exec playwright install --with-deps chromium
 
       # Ordre du moins coûteux au plus coûteux. La cohérence statique des import
