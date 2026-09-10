@@ -582,19 +582,36 @@ et le champ sont tous deux à `FOG_MASK_PX_PER_CELL`, et le masque existe **des 
 
 | | |
 |---|---|
-| **le stencil** | gris opaque, `destination-in` le masque visible, `destination-out` le champ |
+| **le stencil du plancher** (`_stencilNocturne`) | gris opaque, `destination-in` le masque visible, `destination-out` le champ BRUT |
 | **le plancher** | `LIGHT_NIGHT_VISION_FLOOR = 0.35`, ajouté **dans la modulation, après le champ** — multiplier par du noir détruit le décor, et ajouter du gris après ne rend qu'un aplat |
-| **la désaturation** | une passe `saturation` après le `multiply` : un gris est de saturation nulle, la destination perd sa couleur en gardant sa luminance |
+| **le stencil couleur** (`_stencilCouleur`, depuis le 10/09/2026) | même construction, mais `destination-out` le champ AMPLIFIÉ (`_construireChampAmplifie`) — distinct du précédent |
+| **la désaturation** | une passe `saturation` après le `multiply`, sur le stencil COULEUR : un gris est de saturation nulle, la destination perd sa couleur en gardant sa luminance |
 
-⭐ **La désaturation s'estompe d'elle-même quand la lumière monte** : `destination-out` retire de
-l'alpha proportionnellement à celle du champ, donc une pénombre garde un peu de couleur. Ce n'est
-pas un réglage, c'est la composition.
+⛔ **« La désaturation s'estompe d'elle-même quand la lumière monte » — démenti par l'usage le
+10/09/2026.** C'était l'affirmation de ce paragraphe jusqu'à cette date, présentée comme voulue :
+`destination-out` retire de l'alpha proportionnellement à celle du champ, donc une pénombre garde
+un peu de couleur. En séance, le mainteneur, mot pour mot : « il continue à voir en niveaux de
+gris alors que dans le champ de la lumière il devrait voir en couleur. » Chiffré : à mi-rayon
+d'un halo (alpha du champ 0,50), le gris résiduel valait 50 % ; aux trois quarts (alpha 0,25), il
+valait 75 %. La plus grande partie d'un halo restait donc grise.
 
-⚠ **Coût** : jusqu'à deux passes de plus par image quand un masque visible est fourni et que la
-carte n'est pas en pleine lumière — une `lighter` dans la modulation (en cache, donc par
-recomposition et non par image) et la `saturation` sur la scène. À ambiante pleine ou sans masque,
-**zéro passe de plus** : l'invariant « en plein jour le décor sort intact » est protégé par le
-test 17. ⛔ Aucun verdict de performance ici — la mesure appartient au mainteneur, sur la tablette.
+⭐ **Ce qui remplace ce paragraphe : la clarté et la couleur se séparent, parce que la nature les
+sépare.** Le plancher de luminosité (`LIGHT_NIGHT_VISION_FLOOR` ci-dessous) reste inchangé et
+continue de suivre le champ réel — la clarté du décor est progressive. La désaturation, elle,
+consomme désormais un second stencil, `_construireStencilCouleur` (`js/render/layers/light.js`),
+rongé par un champ AMPLIFIÉ plutôt que par le champ brut : le champ dessiné
+`LIGHT_COLOR_VISION_GAIN` fois sur lui-même en `lighter` (`alpha' = min(1, GAIN × alpha)`, voir
+`core/constants.js`). À `GAIN = 4`, la couleur revient dès un quart de l'intensité crête — donc
+dès les trois quarts du rayon — et il ne reste un dégradé que dans le dernier quart, contre la
+totalité du halo auparavant. Vision scotopique contre photopique : la clarté est un continu, la
+vision des couleurs a un seuil.
+
+⚠ **Coût** : jusqu'à TROIS passes de plus par image quand un masque visible est fourni et que la
+carte n'est pas en pleine lumière — deux `lighter`/`drawImage` en cache (la modulation, et
+désormais le champ amplifié qui nourrit le stencil couleur, chacun par recomposition et non par
+image) et la `saturation` sur la scène. À ambiante pleine ou sans masque, **zéro passe de plus** :
+l'invariant « en plein jour le décor sort intact » est protégé par le test 17. ⛔ Aucun verdict de
+performance ici — la mesure appartient au mainteneur, sur la tablette.
 
 ⛔ **Limite assumée au-dessus d'un fond animé** : la vidéo joue SOUS le canvas, donc le voile peut
 porter le plancher mais **jamais la désaturation**. Même limite que celle déjà consignée sur la
@@ -603,3 +620,7 @@ teinte.
 ⚠ **`LIGHT_NIGHT_VISION_FLOOR` est un jugement d'œil, pas une mesure**, réglable en un seul
 endroit. ✅ **Verdict rendu le 09/09/2026 : « le gris est parfait ».** La valeur est donc
 acquise, plus une proposition.
+
+⚠ **`LIGHT_COLOR_VISION_GAIN = 4` est une HYPOTHÈSE, pas une mesure** — posée le 10/09/2026 en
+même temps que le défaut, jamais encore jugée à l'œil sur ce gain précis. Réglable en un seul
+endroit (`core/constants.js`), à côté du plancher.

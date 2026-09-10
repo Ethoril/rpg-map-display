@@ -10,6 +10,7 @@ import {
   FOG_MASK_PX_PER_CELL,
   LIGHT_GM_DARKNESS_RATIO,
   LIGHT_NIGHT_VISION_FLOOR,
+  LIGHT_COLOR_VISION_GAIN,
   FOG_VEIL_GM_UNEXPLORED,
   FOG_VEIL_GM_EXPLORED,
   FOG_VEIL_PLAYER_UNEXPLORED,
@@ -815,4 +816,88 @@ test('19. ⭐ C-2 — une lampe ÉTEINTE n’émet RIEN, et basculer l’état f
   assert.equal(couche.lastSourceCount, 1);
   assert.equal(couche.update(ADAPTATEUR, levelEteint, []), true, 'la bascule DOIT recomposer');
   assert.equal(couche.lastSourceCount, 0, 'plus aucune source une fois éteinte');
+});
+
+test('20. ⭐ Le champ AMPLIFIÉ est dessiné GAIN fois en `lighter`, et se met en cache sur la révision du champ', () => {
+  // Ambiante à 0,2 : un remplissage UNIFORME (pas de dégradé, donc éprouvable par ce mock —
+  // voir la remarque en tête de fichier), qui représente une zone à peine éclairée.
+  const level = etage({ ambient: { level: 0.2, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  const amplifie = couche._construireChampAmplifie(ctx);
+  assert.ok(amplifie, 'un tampon amplifié doit exister');
+
+  const dessins = amplifie._ctx.journal.filter(
+    (/** @type {any} */ e) => e.op === 'drawImage' && e.mode === 'lighter'
+  );
+  assert.equal(dessins.length, LIGHT_COLOR_VISION_GAIN, 'le champ brut doit être dessiné GAIN fois, en additif');
+
+  // alpha brut = 0,2 × 255 = 51 ; amplifié = min(255, GAIN × 51).
+  const brut = pixelAu(champDe(couche).canvas._ctx, 5, 5);
+  assert.ok(Math.abs(brut.alpha - 51) < 2, `alpha brut attendu ~51, obtenu ${brut.alpha}`);
+  const attendu = Math.min(255, LIGHT_COLOR_VISION_GAIN * brut.alpha);
+  const obtenu = pixelAu(amplifie._ctx, 5, 5);
+  assert.ok(Math.abs(obtenu.alpha - attendu) < 2, `alpha amplifié attendu ~${attendu}, obtenu ${obtenu.alpha}`);
+
+  // Deuxième appel, rien n'a changé : le tampon est réutilisé tel quel.
+  const journalAvant = amplifie._ctx.journal.length;
+  const memeAmplifie = couche._construireChampAmplifie(ctx);
+  assert.equal(memeAmplifie, amplifie, 'aucune reconstruction sans changement du champ');
+  assert.equal(amplifie._ctx.journal.length, journalAvant, '⛔ pas de dessin supplémentaire');
+
+  // ⭐ Une mutation du champ doit le reconstruire — même exigence que le tampon de modulation
+  // (test 9) : un champ amplifié figé sur son premier état suivrait mal une lampe qui bouge.
+  couche.update(ADAPTATEUR, etage({ ambient: { level: 0.5, baked: false } }), []);
+  const apres = couche._construireChampAmplifie(ctx);
+  assert.equal(couche._champAmplifieRevision, champDe(couche).revision);
+  const dessinsApres = apres._ctx.journal.filter(
+    (/** @type {any} */ e) => e.op === 'drawImage' && e.mode === 'lighter'
+  );
+  assert.ok(
+    dessinsApres.length > dessins.length,
+    '⛔ le champ amplifié doit se reconstruire quand le champ change'
+  );
+});
+
+test('21. ⭐ Le stencil COULEUR est DISTINCT du stencil du plancher — l’un ronge le champ brut, l’autre l’amplifié', () => {
+  // Décision du mainteneur du 10/09/2026 : la couleur revient à SEUIL, la clarté du décor
+  // reste progressive. Ambiante uniforme à 0,2 pour rendre les deux résidus calculables.
+  const level = etage({ ambient: { level: 0.2, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+
+  const maskW = champDe(couche).maskWidth;
+  const maskH = champDe(couche).maskHeight;
+  const masque = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW, h: maskH });
+
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: masque });
+
+  const plancher = pixelAu(couche._stencilNocturne._ctx, maskW / 2, maskH / 2);
+  const couleur = pixelAu(couche._stencilCouleur._ctx, maskW / 2, maskH / 2);
+
+  // Plancher : rongé par le champ BRUT (alpha ≈ 0,2) — résidu ≈ 255 × 0,8 = 204. INCHANGÉ par
+  // ce chantier : la clarté du décor doit continuer de suivre le champ réel.
+  assert.ok(Math.abs(plancher.alpha - 204) < 3, `plancher : résidu attendu ~204, obtenu ${plancher.alpha}`);
+
+  // Couleur : rongé par le champ AMPLIFIÉ (GAIN × 0,2) — résidu ≈ 255 × (1 − min(1, GAIN×0,2)).
+  const attenue = Math.min(1, LIGHT_COLOR_VISION_GAIN * 0.2);
+  const residuAttendu = 255 * (1 - attenue);
+  assert.ok(
+    Math.abs(couleur.alpha - residuAttendu) < 3,
+    `couleur : résidu attendu ~${residuAttendu}, obtenu ${couleur.alpha}`
+  );
+
+  // ⛔ Preuve par mutation (a) du rapport : ronger le stencil couleur par le champ BRUT (comme
+  // avant le 10/09/2026) ferait `couleur.alpha === plancher.alpha` — cette assertion rougirait.
+  assert.ok(
+    couleur.alpha < plancher.alpha,
+    '⛔ le stencil couleur doit être plus rongé que celui du plancher, sinon la couleur revient aussi lentement qu’avant'
+  );
+
+  // Et la couche peint bien une passe de désaturation à partir de ce stencil.
+  const dessinSaturation = ctx.journal.find((/** @type {any} */ e) => e.op === 'drawImage' && e.mode === 'saturation');
+  assert.ok(dessinSaturation, 'une passe de désaturation doit être dessinée');
 });

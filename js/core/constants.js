@@ -163,6 +163,52 @@ export const LIGHT_GM_DARKNESS_RATIO = 0.5;
 export const LIGHT_NIGHT_VISION_FLOOR = 0.35;
 
 /**
+ * Gain de saturation du champ amplifié consommé par le stencil de DÉSATURATION — décision du
+ * mainteneur du 10/09/2026, en séance : « avec un pion PJ qui est dans le noir, quand j'ajoute
+ * une lumière ça modifie bien son champ de vision, ce qui est cool. Mais il continue à voir en
+ * niveaux de gris alors que dans le champ de la lumière il devrait voir en couleur. »
+ *
+ * ⛔ **Le défaut mesuré.** `LightField.compose` peint chaque source en dégradé radial LINÉAIRE
+ * (alpha = intensité au centre, 0 au bord), et jusqu'ici le stencil rongeait son alpha par ce
+ * champ BRUT en `destination-out` — donc proportionnellement à lui. Le gris résiduel valait
+ * `1 − alpha` :
+ *
+ * | position dans le halo | alpha du champ | gris résiduel (avant) |
+ * |---|---|---|
+ * | centre | 1,00 | 0 % — couleur pleine |
+ * | mi-rayon | 0,50 | **50 %** |
+ * | trois quarts | 0,25 | **75 %** |
+ *
+ * La plus grande partie d'un halo restait donc grise — c'était écrit au §9.3 du chantier Z
+ * comme un choix voulu (« la désaturation s'estompe quand la lumière monte »), et l'usage l'a
+ * démenti.
+ *
+ * ⭐ **Ce que ce gain corrige : la nature sépare la clarté de la vision des couleurs.** La
+ * clarté du décor reste progressive (`LIGHT_NIGHT_VISION_FLOOR` ci-dessus, INCHANGÉ), mais la
+ * vision des couleurs a un SEUIL — vision scotopique contre photopique. Le champ amplifié est
+ * le champ dessiné `LIGHT_COLOR_VISION_GAIN` fois sur lui-même en `lighter`, ce qui sature vite
+ * son alpha vers 1 : `alpha' = min(1, GAIN × alpha)`.
+ *
+ * À `GAIN = 4` :
+ *
+ * | position dans le halo | alpha du champ | alpha amplifié | gris résiduel (après) |
+ * |---|---|---|---|
+ * | centre | 1,00 | 1,00 | 0 % |
+ * | mi-rayon | 0,50 | 1,00 (saturé) | **0 %** — couleur pleine |
+ * | trois quarts | 0,25 | 1,00 (saturé) | **0 %** — couleur pleine |
+ * | frange extérieure (>75 %) | <0,25 | <1,00 | dégradé, jusqu'à 100 % au bord |
+ *
+ * La couleur revient dès un quart de l'intensité crête, et il ne reste un dégradé que dans le
+ * dernier quart du rayon — exactement le seuil demandé.
+ *
+ * ⚠ **Ce n'est pas une mesure, c'est l'hypothèse du mainteneur** — à confirmer ou ajuster à
+ * l'œil, comme `LIGHT_NIGHT_VISION_FLOOR`. Sert UNIQUEMENT à ronger le stencil de désaturation
+ * (`LightLayer._construireStencilCouleur`) — le plancher de luminosité continue de suivre le
+ * champ réel, non amplifié.
+ */
+export const LIGHT_COLOR_VISION_GAIN = 4;
+
+/**
  * Les quatorze marqueurs d'état — **liste close**, CdC §12 Q7 tranchée le 04/08/2026.
  *
  * L'assertion de constance posée sur le littéral ci-dessous n'est pas décorative : elle fait

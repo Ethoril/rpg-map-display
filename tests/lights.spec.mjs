@@ -418,6 +418,137 @@ test('R… ⭐ VU SANS LUMIÈRE : la portée nocturne d’un PJ sort en gris, un
   expect(erreurs).toEqual([]);
 });
 
+/**
+ * La preuve en pixels du SEUIL de désaturation (décision du mainteneur du 10/09/2026).
+ *
+ * Mot pour mot, en séance : « avec un pion PJ qui est dans le noir, quand j'ajoute une lumière
+ * ça modifie bien son champ de vision, ce qui est cool. Mais il continue à voir en niveaux de
+ * gris alors que dans le champ de la lumière il devrait voir en couleur. »
+ *
+ * Même montage géométrique que le test « VU SANS LUMIÈRE » ci-dessus : lampe au centre de la
+ * case (2,2), portée 2 cases (200 px, `pxPerCell: 100`), donc centrée en (200, 200). Le point
+ * `(300, 200)` est à 100 px du centre — exactement la MI-RAYON du halo, alpha du champ brut
+ * mesuré 0,47 (dégradé linéaire à 64 sommets, pas exactement 0,5). Avant le correctif,
+ * `destination-out` par le champ BRUT y laissait la majorité du gris résiduel. Le point
+ * `(390, 200)`, à 190 px (0,95 du rayon), reste dans la frange extérieure où le champ AMPLIFIÉ
+ * n'a pas encore saturé — le dégradé doit y survivre, en comparatif seulement : la valeur
+ * absolue dépend de la composition native `saturation` du navigateur, pas modélisable à la
+ * main.
+ *
+ * ⚠ **`visionDim: 20` (le plafond), pas 6 comme le test précédent.** Sondé (mesure directe
+ * du canvas) : avec `visionDim: 6`, le PJ à (7,7) est à 640 px du point mi-rayon, hors de son
+ * disque de vision nocturne (600 px) — le masque visible s'y limite alors à `LoS ∩ éclairé`,
+ * dont l'alpha suit lui-même le champ, ce qui mêle « visibilité partielle » et « gain de
+ * désaturation » dans le même nombre et masque la mutation (a). Au plafond, le disque de
+ * vision nocturne couvre tout le halo : le masque y est mesuré PLEINEMENT opaque (255), et
+ * seul le gain de désaturation explique la différence mi-rayon / frange.
+ */
+test('R… ⭐ SEUIL DE COULEUR : à MI-RAYON d’un halo, la couleur est déjà revenue (gain de désaturation)', async ({ page }) => {
+  /** @type {string[]} */
+  const erreurs = [];
+  page.on('pageerror', (e) => erreurs.push(e.message));
+  await page.goto('/player.html');
+
+  await page.addScriptTag({
+    type: 'module',
+    content: `
+      import { FogLayer } from './js/render/layers/fogLayer.js';
+      import { LightLayer } from './js/render/layers/light.js';
+      import { gridFor } from './js/grid/index.js';
+      import { createLevel, createToken } from './js/core/schema.js';
+      import { ExploredFog } from './js/vision/fog.js';
+
+      const level = createLevel({
+        id: 'rdc', widthCells: 10, heightCells: 10, pxPerCell: 100,
+        ambient: { level: 0, baked: false },
+        lights: [{ id: 'l1', at: { cellX: 2, cellY: 2 }, range: 2, intensity: 1, color: '#ffffff' }],
+      });
+      const grid = gridFor(level);
+      // ⭐ visionDim au PLAFOND (20 cases) : le disque de vision nocturne du PJ (Terme 2) couvre
+      // alors tout le halo de la lampe, et le masque visible y est PLEINEMENT opaque partout —
+      // découplé de l'alpha du champ. Sans ce découplage, le masque visible se limiterait à
+      // (LoS ∩ éclairé) dans cette zone, dont l'alpha suit lui-même le champ : la comparaison
+      // mi-rayon / frange se ferait alors sur un stencil déjà atténué par la visibilité, pas
+      // seulement par le gain de désaturation — un mauvais test masquerait la mutation (a).
+      const pj = createToken({ id: 'pj1', levelId: 'rdc', kind: 'pc', cell: { a: 7, b: 7 }, visionDim: 20 });
+
+      const fogLayer = new FogLayer();
+      fogLayer.updateVision(grid, level, [pj], { segments: [] });
+
+      const lightLayer = new LightLayer();
+      lightLayer.update(grid, level, [pj], { segments: [] });
+
+      const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+      const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+      const gridScale = Math.abs(origin1.x - origin0.x);
+
+      const visibleFog = new ExploredFog(level.widthCells, level.heightCells);
+      visibleFog.composeVisible({
+        losPolygons: fogLayer.getLosPolygons(),
+        nearPolygons: fogLayer.getNearPolygons(),
+        litCanvas: lightLayer.getFieldCanvas(),
+        mapOrigin: origin0,
+        gridScale,
+      });
+
+      const scene = document.createElement('canvas');
+      scene.width = 1000; scene.height = 1000;
+      const ctx = scene.getContext('2d');
+      const brut = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+
+      ctx.fillStyle = 'rgb(200, 60, 30)';
+      ctx.fillRect(0, 0, scene.width, scene.height);
+
+      lightLayer.render(ctx, grid, level, { role: 'players', visibleCanvas: visibleFog.canvas });
+
+      window.__mesuresSeuilCouleur = {
+        miRayon: brut(300, 200),   // 100 px du centre (200,200) : mi-rayon, alpha brut ≈ 0,47
+        frange: brut(360, 200),    // 160 px du centre : frange extérieure, alpha brut ≈ 0,16
+      };
+    `,
+  });
+
+  await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__mesuresSeuilCouleur));
+  const { miRayon, frange } = await page.evaluate(
+    () => /** @type {any} */ (window).__mesuresSeuilCouleur
+  );
+
+  // ⭐ Test 1 du brief, celui qui compte : à MI-RAYON, la couleur doit être revenue — canaux
+  // nettement inégaux, exactement comme au centre de la lampe (voir le test précédent).
+  // ⛔ Preuve par mutation (a) : revenir au champ BRUT pour le `destination-out` du stencil
+  // couleur fait rougir ces deux assertions (le point retombe à moitié gris).
+  const ecartRV = Math.abs(miRayon[0] - miRayon[1]);
+  const ecartRB = Math.abs(miRayon[0] - miRayon[2]);
+  expect(ecartRV, `mi-rayon : R et V doivent rester nettement inégaux (obtenu ${miRayon})`).toBeGreaterThan(60);
+  expect(ecartRB, `mi-rayon : R et B doivent rester nettement inégaux (obtenu ${miRayon})`).toBeGreaterThan(60);
+
+  // Test 2 du brief : la frange extérieure garde un dégradé — en COMPARATIF, jamais en seuil
+  // absolu, puisque la composition `saturation` réelle du navigateur n'est pas modélisable à
+  // la main. ⚠ **L'écart BRUT (R−V) ne suffit pas** : la frange est aussi plus SOMBRE que le
+  // mi-rayon (moins de champ à multiplier), ce qui réduit l'écart brut par simple assombrissement
+  // — indépendamment de toute désaturation, et ça a fait passer une mutation (b) inaperçue à la
+  // première écriture de ce test. L'indicateur qui isole la SATURATION de la LUMINOSITÉ est le
+  // rapport `|R−V| / (R+V+B)` : invariant à un assombrissement uniforme, il chute vers 0 quand un
+  // gris s'y mélange. Le point à 0,8 du rayon doit rester MOINS saturé, au sens de ce rapport,
+  // que le mi-rayon (déjà pleinement saturé, alpha amplifié ≥ 1).
+  /** @param {number[]} rgb */
+  const saturation = ([r, v, b]) => {
+    const somme = r + v + b;
+    return somme > 0 ? Math.abs(r - v) / somme : 0;
+  };
+  const saturationMiRayon = saturation(miRayon);
+  const saturationFrange = saturation(frange);
+  // ⛔ Preuve par mutation (b) : un gain énorme (100) sature aussi la frange — l'écart chute à
+  // ~0 et cette assertion rougit. Marge de 0,05 : mesuré 0,376 (code fixé) contre 0,479 (gain
+  // 100, quasi identique au 0,477 du mi-rayon) — largement au-delà du bruit de mesure.
+  expect(
+    saturationMiRayon - saturationFrange,
+    `frange (${saturationFrange.toFixed(3)}) doit être MOINS saturée que mi-rayon (${saturationMiRayon.toFixed(3)}) — obtenu mi-rayon=${miRayon}, frange=${frange}`
+  ).toBeGreaterThan(0.05);
+
+  expect(erreurs).toEqual([]);
+});
+
 // C-2, tranche 2 — les GESTES : basculer, poser, supprimer.
 //
 // ⭐ Chaque test précharge sa campagne via `installBrowserTransport` (INSTANTANÉ de transport),

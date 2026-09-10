@@ -1,6 +1,10 @@
 // @ts-check
 
-import { LIGHT_GM_DARKNESS_RATIO, LIGHT_NIGHT_VISION_FLOOR } from '../../core/constants.js';
+import {
+  LIGHT_GM_DARKNESS_RATIO,
+  LIGHT_NIGHT_VISION_FLOOR,
+  LIGHT_COLOR_VISION_GAIN,
+} from '../../core/constants.js';
 import { LightField, cappedLightRange } from '../../vision/lightField.js';
 
 /** @typedef {import('../../core/types.js').Level} Level */
@@ -233,7 +237,9 @@ export class LightLayer {
     this._voileRevision = -1;
     /** @type {number|null} Révision du stencil nocturne dont le voile est issu. */
     this._voileStencilRev = null;
-    /** @type {any} Tampon du stencil « vu sans lumière » : masque visible ∧ ¬champ lumineux. */
+    /** @type {any} Tampon du stencil « vu sans lumière » : masque visible ∧ ¬champ lumineux.
+     *  ⭐ Consommé UNIQUEMENT par le plancher de luminosité (`_construireModulation`,
+     *  `_construireVoile`) — la clarté du décor suit le champ RÉEL, décision du 10/09/2026. */
     this._stencilNocturne = null;
     this._stencilNocturneCtx = null;
     /** @type {number} Révision du champ dont le stencil est issu. */
@@ -244,6 +250,24 @@ export class LightLayer {
      *  convention que `__fogRevision` de `fogLayer.js` : le stencil est mutable EN PLACE, sa
      *  référence ne change donc jamais, et c'est ce compteur qui rend sa mutation observable. */
     this._stencilRevisionCounter = 0;
+    /** @type {any} Champ lumineux AMPLIFIÉ (`LIGHT_COLOR_VISION_GAIN`) — ne nourrit QUE le
+     *  stencil de désaturation ci-dessous, jamais le plancher. Voir `_construireChampAmplifie`. */
+    this._champAmplifie = null;
+    this._champAmplifieCtx = null;
+    /** @type {number} Révision du champ dont l'amplifié est issu. */
+    this._champAmplifieRevision = -1;
+    /** @type {any} Tampon du stencil de DÉSATURATION — décision du mainteneur du 10/09/2026 :
+     *  masque visible ∧ ¬champ AMPLIFIÉ, à seuil plutôt qu'à dégradé. Distinct de
+     *  `_stencilNocturne` : la couleur revient vite, la clarté du décor reste progressive. */
+    this._stencilCouleur = null;
+    this._stencilCouleurCtx = null;
+    /** @type {number} Révision du champ dont le stencil couleur est issu. */
+    this._stencilCouleurChampRev = -1;
+    /** @type {any} Révision du masque visible dont le stencil couleur est issu. */
+    this._stencilCouleurVisibleRev = null;
+    /** @type {number} Compteur de reconstruction du stencil couleur, même convention que
+     *  `_stencilRevisionCounter` ci-dessus. */
+    this._stencilCouleurRevisionCounter = 0;
     /** @type {boolean} Ambiante pleine au dernier `update` : le stencil y serait vide. */
     this._pleineLumiere = false;
     /** @type {number} Sources peintes au dernier calcul, pour observation extérieure. */
@@ -270,6 +294,8 @@ export class LightLayer {
     this._modulationRevision = -1;
     this._voileRevision = -1;
     this._stencilChampRev = -1;
+    this._champAmplifieRevision = -1;
+    this._stencilCouleurChampRev = -1;
   }
 
   /**
@@ -411,10 +437,16 @@ export class LightLayer {
    * démonstration en tête de fichier). Gris opaque, réduit à la zone VUE (`destination-in`
    * sur le masque visible) puis rongé par ce que le champ éclaire (`destination-out` sur son
    * canvas) : il reste de l'alpha exactement là où c'est vu et non éclairé, et
-   * **partiellement** dans une pénombre — c'est voulu : `destination-out` retire de l'alpha
-   * proportionnellement à celle du champ, donc la désaturation qui consomme ce stencil (voir
-   * `render`) s'estompe à mesure que la lumière monte au lieu de basculer net. Une pénombre
-   * garde donc un peu de couleur.
+   * **partiellement** dans une pénombre — c'est voulu, et c'est ce que ce stencil-ci doit
+   * garder : `destination-out` retire de l'alpha proportionnellement à celle du champ, donc le
+   * PLANCHER de luminosité qui le consomme (`_construireModulation`, `_construireVoile`)
+   * s'estompe à mesure que la lumière monte au lieu de basculer net.
+   *
+   * ⛔ **Ne consomme plus la désaturation depuis le 10/09/2026.** Ronger par le champ BRUT
+   * rendait la désaturation, elle aussi, proportionnelle — la plus grande partie d'un halo
+   * restait grise (voir `LIGHT_COLOR_VISION_GAIN`, `core/constants.js`). La clarté du décor
+   * doit rester progressive, mais la vision des couleurs a un SEUIL : c'est ce que
+   * `_construireStencilCouleur` ci-dessous fournit désormais à `render`.
    *
    * En cache, à la résolution du masque, reconstruit seulement quand le champ OU la révision
    * du masque visible ont changé — même convention `__fogRevision` que `fogLayer.js`.
@@ -468,6 +500,128 @@ export class LightLayer {
     this._stencilRevisionCounter += 1;
     this._stencilNocturne.__stencilRevision = this._stencilRevisionCounter;
     return this._stencilNocturne;
+  }
+
+  /**
+   * Construit le champ AMPLIFIÉ — décision du mainteneur du 10/09/2026 : le champ lumineux
+   * dessiné `LIGHT_COLOR_VISION_GAIN` fois sur lui-même en `lighter`, ce qui additionne son
+   * alpha et le sature vite vers 1 (`alpha' = min(1, GAIN × alpha)`). Voir la constante,
+   * `core/constants.js`, pour le tableau de chiffres qui justifie le gain.
+   *
+   * ⛔ **Sert UNIQUEMENT à ronger le stencil de désaturation** (`_construireStencilCouleur`
+   * ci-dessous). Ni la modulation ni le voile n'en tiennent compte : le plancher de luminosité
+   * continue de suivre le champ RÉEL, non amplifié — c'est la moitié de la séparation demandée
+   * (clarté progressive, couleur à seuil).
+   *
+   * En cache, à la résolution du masque, reconstruit seulement quand le champ a changé — même
+   * convention que les autres tampons de cette classe.
+   *
+   * @param {any} mainCtx
+   * @returns {any}
+   */
+  _construireChampAmplifie(mainCtx) {
+    const champ = this._field;
+    if (!champ || !champ.canvas) return null;
+    if (this._champAmplifie && this._champAmplifieRevision === champ.revision) {
+      return this._champAmplifie;
+    }
+
+    if (
+      !this._champAmplifie ||
+      this._champAmplifie.width !== champ.maskWidth ||
+      this._champAmplifie.height !== champ.maskHeight
+    ) {
+      this._champAmplifie = canvasHorsEcran(champ.maskWidth, champ.maskHeight, mainCtx, this._fabrique);
+      if (this._champAmplifie) {
+        this._champAmplifie.width = champ.maskWidth;
+        this._champAmplifie.height = champ.maskHeight;
+        this._champAmplifieCtx = this._champAmplifie.getContext('2d');
+      }
+    }
+    const ctx = this._champAmplifieCtx;
+    if (!ctx) return null;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, champ.maskWidth, champ.maskHeight);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let passe = 0; passe < LIGHT_COLOR_VISION_GAIN; passe++) {
+      ctx.drawImage(champ.canvas, 0, 0);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    this._champAmplifieRevision = champ.revision;
+    return this._champAmplifie;
+  }
+
+  /**
+   * Construit le stencil de DÉSATURATION : masque visible ∧ ¬champ AMPLIFIÉ — décision du
+   * mainteneur du 10/09/2026, jumeau de `_construireStencilNocturne` ci-dessus mais rongé par
+   * le champ **amplifié** (`_construireChampAmplifie`) plutôt que par le champ brut.
+   *
+   * ⭐ **C'est ce qui rend la désaturation à SEUIL plutôt qu'à dégradé.** Le champ amplifié
+   * sature vite vers 1, donc ce qu'il reste à ronger ici tombe vite à 0 : une pénombre à mi-
+   * rayon (alpha brut 0,5) est déjà entièrement ôtée du stencil, donc entièrement en couleur.
+   * Seule la frange extérieure du halo, où le champ amplifié n'a pas encore saturé, garde un
+   * dégradé.
+   *
+   * ⛔ **Distinct de `_stencilNocturne`, et c'est voulu** : celui-ci ne nourrit QUE la
+   * désaturation (`render`, passe `saturation`), jamais le plancher de luminosité — ronger le
+   * plancher par le champ amplifié le ferait basculer net lui aussi, ce que le mainteneur n'a
+   * pas demandé et que le §9.3 du chantier Z interdit désormais explicitement.
+   *
+   * En cache, à la résolution du masque, reconstruit seulement quand le champ OU la révision
+   * du masque visible ont changé — même convention que `_construireStencilNocturne`.
+   *
+   * @param {any} mainCtx
+   * @param {any} visibleCanvas Le masque visible, à la résolution du masque (8 px/case).
+   */
+  _construireStencilCouleur(mainCtx, visibleCanvas) {
+    const champ = this._field;
+    if (!champ || !champ.canvas || !visibleCanvas) return null;
+
+    const champAmplifie = this._construireChampAmplifie(mainCtx);
+    if (!champAmplifie) return null;
+
+    const visibleRev = visibleCanvas.__fogRevision ?? visibleCanvas;
+    if (
+      this._stencilCouleur &&
+      this._stencilCouleurChampRev === champ.revision &&
+      this._stencilCouleurVisibleRev === visibleRev
+    ) {
+      return this._stencilCouleur;
+    }
+
+    if (
+      !this._stencilCouleur ||
+      this._stencilCouleur.width !== champ.maskWidth ||
+      this._stencilCouleur.height !== champ.maskHeight
+    ) {
+      this._stencilCouleur = canvasHorsEcran(champ.maskWidth, champ.maskHeight, mainCtx, this._fabrique);
+      if (this._stencilCouleur) {
+        this._stencilCouleur.width = champ.maskWidth;
+        this._stencilCouleur.height = champ.maskHeight;
+        this._stencilCouleurCtx = this._stencilCouleur.getContext('2d');
+      }
+    }
+    const ctx = this._stencilCouleurCtx;
+    if (!ctx) return null;
+
+    // Même construction que `_construireStencilNocturne` : gris opaque, réduit à la zone
+    // VUE, puis rongé — ici par le champ AMPLIFIÉ, pas le brut.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, champ.maskWidth, champ.maskHeight);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(visibleCanvas, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.drawImage(champAmplifie, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    this._stencilCouleurChampRev = champ.revision;
+    this._stencilCouleurVisibleRev = visibleRev;
+    this._stencilCouleurRevisionCounter += 1;
+    this._stencilCouleur.__stencilRevision = this._stencilCouleurRevisionCounter;
+    return this._stencilCouleur;
   }
 
   /**
@@ -564,6 +718,13 @@ export class LightLayer {
       ? null
       : this._construireStencilNocturne(ctx, options.visibleCanvas);
 
+    // ⭐ Stencil de DÉSATURATION — décision du 10/09/2026, même économie que ci-dessus : à
+    // ambiante pleine ou sans masque, il serait vide de toute façon. Distinct de `stencil`,
+    // qui ne nourrit plus que le plancher de luminosité (voir `_construireStencilCouleur`).
+    const stencilCouleur = (this._pleineLumiere || !options.visibleCanvas)
+      ? null
+      : this._construireStencilCouleur(ctx, options.visibleCanvas);
+
     if (options.suppressed) {
       // Voile : noir, d'opacité complémentaire à l'éclairement. `destination-out` retire du
       // noir opaque exactement ce que le champ apporte de lumière.
@@ -586,16 +747,17 @@ export class LightLayer {
     ctx.drawImage(modulation, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
     ctx.restore();
 
-    if (stencil) {
+    if (stencilCouleur) {
       // Désaturation, APRÈS le multiply : une seule passe. Un gris est de saturation NULLE,
       // donc la destination perd sa couleur en gardant sa luminance — exactement la
-      // « vision nocturne en niveaux de gris » demandée. L'alpha du stencil, déjà proportionnel
-      // à ce que le champ n'éclaire PAS (voir `_construireStencilNocturne`), fait qu'une
-      // pénombre ne bascule pas net : elle garde un peu de couleur.
+      // « vision nocturne en niveaux de gris » demandée. ⭐ Ce stencil-ci est rongé par le champ
+      // AMPLIFIÉ (`LIGHT_COLOR_VISION_GAIN`), pas le brut — décision du 10/09/2026 : la
+      // désaturation bascule à SEUIL plutôt que de s'estomper proportionnellement à
+      // l'éclairement, seule la frange extérieure d'un halo garde un dégradé.
       ctx.save();
       ctx.globalAlpha = attenuation;
       ctx.globalCompositeOperation = 'saturation';
-      ctx.drawImage(stencil, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
+      ctx.drawImage(stencilCouleur, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
       ctx.restore();
     }
     return true;
