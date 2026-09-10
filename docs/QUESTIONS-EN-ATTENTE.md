@@ -21,6 +21,12 @@ la tablette.
 
 ### A-1 ⛔ R2-03 — l'étape 5, sur la vraie vue joueurs
 
+> ## ✅ FERMÉE le 10/09/2026 — l'essai est fait
+>
+> Le mainteneur a refait le scénario sur la vraie vue joueurs : **R2-03 est tenu**. La doublure
+> 1024 px du chantier P est bien ce que la tablette peint en premier, et le plein format — 1,14 s
+> à froid — ne tombe dans aucune frame. ⛔ Ne plus rouvrir sans un nouveau relevé.
+
 **Où on en est.** L'instrument est réparé le 12/08 et le relevé tablette est fait le 13/08 :
 brut **1 206,1 ms**, relecture **68,5 ms**, **net 1 137,6 ms**, doublure 1024 px **2,2 ms**.
 
@@ -41,6 +47,11 @@ format tombe dans une frame quelque part, et c'est un vrai défaut.
 
 ### A-2 Le hit-test hexagonal « au doigt du premier coup »
 
+> ## ✅ FERMÉE le 10/09/2026 — constatée à la tablette
+>
+> Le mainteneur a validé le geste. L'option (a) a donc tranché : le constat réel, pas un banc
+> de visée. Le critère est coché au §11 du CdC, qui fait foi.
+
 Critère du lot 4. L'arrondi cubique est **exact sur 16 287 points balayés**, mais « au doigt » est un
 geste, pas un calcul. Les portes ont eu leur banc de visée — erreur p50 2,9 px, réussite 100 % dès
 0,25 case ; l'hexagone n'a pas d'équivalent.
@@ -49,6 +60,12 @@ geste, pas un calcul. Les portes ont eu leur banc de visée — erreur p50 2,9 p
 du banc de visée des portes ; (c) cocher sur lecture, l'exactitude géométrique étant prouvée.
 
 ### A-3 Le décompte du lot 4 — trois critères à cocher sur lecture
+
+> ## ✅ FERMÉE le 10/09/2026 — les trois critères sont cochés
+>
+> Lecture faite : coexistence hex/carré, cases atteignables à coût uniforme respectant les murs,
+> mesure sans quitter le Zero-UI. ⭐ **Avec A-1 et A-2, le lot 4 passe à 6/6 et le cahier des
+> charges à 41/41.** Coché au §11, qui fait foi — pas ici.
 
 `HexGrid`, `MeasureLayer` et le sélecteur de pavage sont livrés et éprouvés. Trois critères sur
 quatre ne demandent plus que la lecture du mainteneur : coexistence hex/carré, cases atteignables à

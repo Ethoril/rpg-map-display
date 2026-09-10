@@ -1254,10 +1254,10 @@ Critères :
 Mesure au geste, ping, undo MJ, réglages fins.
 
 Critères :
-- [ ] Un étage `grid.type: 'hex'` coexiste avec des étages carrés importés d'UVTT.
-- [ ] Le hit-test pixel→hexagone sélectionne la bonne case au doigt du premier coup.
-- [ ] Les cases atteignables en hexagone sont à coût uniforme 1 et respectent les murs.
-- [ ] Mesurer une distance sans quitter le Zero-UI.
+- [x] Un étage `grid.type: 'hex'` coexiste avec des étages carrés importés d'UVTT. ✅ **Coché sur lecture du mainteneur le 10/09/2026** (A-3).
+- [x] Le hit-test pixel→hexagone sélectionne la bonne case au doigt du premier coup. ✅ **Constaté à la tablette par le mainteneur le 10/09/2026** (A-2) — l'exactitude géométrique était déjà prouvée sur 16 287 points balayés, le geste manquait.
+- [x] Les cases atteignables en hexagone sont à coût uniforme 1 et respectent les murs. ✅ **Coché sur lecture du mainteneur le 10/09/2026** (A-3). ⚠ Le rendu de cette zone était faux jusqu'au 09/09 — damier de rectangles, voir C-5 — et se peint désormais en vrais hexagones.
+- [x] Mesurer une distance sans quitter le Zero-UI. ✅ **Coché sur lecture du mainteneur le 10/09/2026** (A-3).
 - [x] Un ping est visible sur les trois postes en < 500 ms. **Livré le 12/08/2026, chantier X**
       (`CHANTIER-X-PING.md`). Émission MJ par bouton armé, affichage sur les trois postes,
       horodatage réhorodaté à la réception. ⚠ Le budget est éprouvé sur transport local : les
