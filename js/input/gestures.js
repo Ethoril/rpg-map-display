@@ -30,6 +30,15 @@
  */
 
 /**
+ * @typedef {Object} DragLightIntention
+ * @property {'dragLight'} type
+ * @property {ScreenPoint} screenPos Position courante sur l'écran
+ * @property {MapPoint} mapPos Même position sur la carte
+ * @property {string} lightId Identifiant déterminé au pointerdown
+ * @property {'start'|'move'|'end'} phase Phase du glisser
+ */
+
+/**
  * @typedef {Object} PinchZoomIntention
  * @property {'pinchZoom'} type
  * @property {number} scaleFactor Facteur d'échelle relatif (ex: 1.05)
@@ -62,7 +71,7 @@
  */
 
 /**
- * @typedef {TapIntention | PanIntention | DragTokenIntention | DragTemplateIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
+ * @typedef {TapIntention | PanIntention | DragTokenIntention | DragLightIntention | DragTemplateIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
  */
 
 /**

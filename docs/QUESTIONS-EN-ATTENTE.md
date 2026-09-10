@@ -205,6 +205,86 @@ orphelins sont seulement **signalés**, jamais supprimés.
 
 ### C-2 Lumières cliquables comme les portes
 
+> ## ✅ CORRIGÉ le 11/09/2026 — les quatre événements de lumière étaient publiés et **jamais
+> appliqués à la réception**
+>
+> `js/app/networkEvents.js` applique **vingt** types d'événements. Aucun des quatre de la
+> lumière : ni `light.toggle`, ni `light.place`, ni `light.move`, ni `light.delete`. Le `default`
+> du `switch` rend `false` **sans un mot** : ils sont jetés en silence, comme les publications
+> muettes d'E-9.
+>
+> ⛔ **Et ce n'est pas cosmétique.** `js/app/player.js` porte ce commentaire, qui énonce la
+> conception : « des sources, que la tablette a déjà toutes. Deux entrées identiques donnent deux
+> champs identiques — rien à publier, rien à désynchroniser. » La tablette **recalcule son propre
+> champ lumineux** depuis sa copie de `level.lights`. La prémisse « la tablette a déjà toutes les
+> sources » n'est vraie que si les événements lui parviennent — et `scene.load`, seul porteur de la
+> scène entière, n'est publié que par la bibliothèque, sur chargement explicite.
+>
+> **Conséquence** : le MJ éteint une lampe, la vision publiée rétrécit correctement (le brouillard
+> est juste, il vient du MJ), **mais le halo reste allumé sur la tablette**, et en couleur. Idem
+> pour une lampe posée ou supprimée en séance. Après un F5 la tablette est juste — elle relit
+> Firestore — donc le défaut ne se voit qu'en cours de séance.
+>
+> ### ⭐ Prouvé, pas déduit
+>
+> Sonde node sur les modules publics, sans toucher un fichier : une campagne à une lampe allumée,
+> puis `applyNetworkEvent({ type: 'light.toggle', payload: { levelId, lightId, on: false } })`.
+>
+> | | `light.on` | sources retenues par `collectLightSources` |
+> |---|---|---|
+> | avant | `true` | 1 |
+> | après | `true` | 1 |
+>
+> La bascule ne franchit pas la frontière. ⚠ **Ce trou a traversé la relecture des tranches 1 et
+> 2, la mienne comprise** : tous les tests de lumière sont **à une seule page**, côté MJ. Aucun ne
+> fait franchir la frontière réseau à un événement de lumière. Un test à DEUX pages était la seule
+> chose qui pouvait l'attraper.
+>
+> ### ⚠ Et le balayage complet, pour ne pas crier au loup
+>
+> 34 types d'événements sont publiés dans `js/`. Cinq ne passent pas par `applyNetworkEvent` :
+>
+> | type | destinataire |
+> |---|---|
+> | `view.change` | ✅ traité **directement** dans `js/app/player.js:786` (effet local, sans rejeu) |
+> | `ping` | ✅ traité directement dans `player.js:799` et `gm.js:1032` — et le code **dit** pourquoi : « il ne passe pas par `applyNetworkEvent`, qui le laisserait tomber silencieusement » |
+> | `diag.ping` | ✅ consommé par son propre abonné dans `js/app/diag.js:1560` |
+> | `light.toggle` / `light.place` / `light.delete` | ⛔ **aucun destinataire, nulle part** |
+>
+> Les trois lumières sont donc les **seuls** types publiés que personne ne reçoit. ⭐ Et le code
+> portait déjà l'avertissement, à côté du `ping` : le `default` de `applyNetworkEvent` « laisse tomber
+> silencieusement ». Il était écrit, et il n'a pas servi.
+>
+> ### ✅ Ce qui a été fait, et ce que la porte défend désormais
+>
+> Les quatre `case` sont branchés dans `js/app/networkEvents.js`, sur le patron de
+> `portal.toggle` et `template.remove` — les réducteurs (`setLightState`, `placeLight`,
+> `moveLight`, `removeLight`) existaient tous et sont corrects, ils n'ont pas été touchés.
+> L'invariant du §7 est respecté : `light.place` et `light.move` ne touchent jamais `on`,
+> `light.toggle` est seul à l'écrire et il porte l'état absolu. `light.delete` est idempotent et
+> ne remplit pas la console sur un rejeu.
+>
+> **Deux tests dans `tests/lights.test.mjs`**, et l'assertion porte sur `collectLightSources` —
+> la fonction dont la couche de lumière se sert pour savoir ce qui éclaire — et non sur le seul
+> drapeau `on` : un test sur le drapeau serait une étiquette, le nombre de sources retenues est
+> l'effet. **Prouvé par mutation** : renommer les trois `case` ajoutés fait rougir ces deux tests
+> et eux seuls (7 verts, 2 rouges).
+>
+> ### ⭐ La leçon, plus large que le défaut
+>
+> **Tous les tests de lumière étaient à UNE SEULE page, côté MJ.** Aucun ne faisait franchir la
+> frontière réseau à un événement de lumière. Le défaut a donc traversé deux tranches, leur
+> relecture et la mienne — non par manque d'attention, mais parce que **le corpus de tests ne
+> pouvait structurellement pas le voir**.
+>
+> ⛔ **Pour tout chantier qui publie un événement : un test qui le fait RECEVOIR, pas seulement
+> émettre.** Un chantier réseau testé d'un seul côté ne prouve que la moitié de son contrat.
+>
+> ⚠ Et une prémisse fausse a été corrigée en route : j'avais écrit une garde d'idempotence
+> justifiée par « une lampe importée n'a pas de champ `on` ». Faux — `normalizeLevel` pose
+> `on = true` au chargement. Le test qui devait défendre ce cas impossible a été refait sur le
+> fait vrai : c'est **la normalisation** qui rend la garde sûre, et c'est elle qui est testée.
+
 > ## ✅ TRANCHÉ le 10/09/2026 — quatre décisions, et le chantier est cadré
 >
 > - **Deux états, allumée ou éteinte.** Un clic bascule. ⛔ Pas de troisième état à la manière des

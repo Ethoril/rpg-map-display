@@ -883,3 +883,289 @@ test('C-2 : les joueurs n\'ont aucun chemin vers la bascule — un tap sur une l
   expect(apres.on, 'la lampe reste allumée : les joueurs ne peuvent pas la basculer').toBe(true);
   expect(apres.publieToggle, 'aucun light.toggle ne part côté joueurs').toBe(false);
 });
+
+// C-2, tranche 3 — le GLISSER de lampe.
+//
+// ⭐ Ces quatre tests pilotent de VRAIS événements pointer sur le canvas, pas
+// `pointerInput.emit({ type: 'dragLight' })` comme les tests de tap ci-dessus. C'est délibéré :
+// une intention émise à la main court-circuiterait `canStartLightDrag`, donc l'arbitrage
+// pion/lampe/porte — précisément le mécanisme que le test 3 doit éprouver.
+
+/**
+ * Position PAGE (le repère de `page.mouse`) d'un point CARTE, calculée par la VRAIE caméra de
+ * la page : ni les tests ni cette suite ne rejouent la conversion carte→écran.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{x: number, y: number, width: number, height: number}} box Boîte du canvas
+ * @param {{x: number, y: number}} mapPos
+ * @returns {Promise<{x: number, y: number}>}
+ */
+async function pagePointFor(page, box, mapPos) {
+  const p = await page.evaluate(
+    (m) => /** @type {any} */ (window).__RPG_APP__.camera.mapToScreen(m),
+    mapPos
+  );
+  const dedans = p.screenX >= 0 && p.screenX <= box.width && p.screenY >= 0 && p.screenY <= box.height;
+  expect(
+    dedans,
+    `le point carte (${mapPos.x}, ${mapPos.y}) doit tomber DANS le canvas pour être atteignable à la souris — obtenu (${p.screenX}, ${p.screenY}) dans ${box.width}x${box.height}`
+  ).toBe(true);
+  return { x: box.x + p.screenX, y: box.y + p.screenY };
+}
+
+/**
+ * Boîte du canvas MJ, non nulle.
+ * @param {import('@playwright/test').Page} page
+ */
+async function boardBox(page) {
+  const box = await page.locator('#board').boundingBox();
+  if (!box) throw new Error('#board boundingBox est null');
+  return box;
+}
+
+/**
+ * Ce qui a réellement été publié, filtré par type.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} type
+ * @returns {Promise<any[]>}
+ */
+function publishedOfType(page, type) {
+  return page.evaluate(
+    (t) =>
+      (/** @type {any} */ (window).__RPG_TEST_WIRE__?.published ?? []).filter(
+        (/** @type {any} */ e) => e.type === t
+      ),
+    type
+  );
+}
+
+/**
+ * Position de la lampe `id` sur le premier étage.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} id
+ */
+function lightAt(page, id) {
+  return page.evaluate(async (lightId) => {
+    const store = await import('../js/state/store.js');
+    const light = store
+      .getCampaign()
+      ?.levels[0].lights.find((/** @type {any} */ l) => l.id === lightId);
+    return light ? { ...light.at } : null;
+  }, id);
+}
+
+test('C-2 : glisser une lampe la déplace et ne publie light.move QU\'UNE FOIS', async ({ page }) => {
+  const sessionId = `light-drag-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-drag', name: 'Drag', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    ambient: { level: 1, baked: false },
+    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-drag', levels: [level] }),
+    activeLevelId: 'level-drag',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const box = await boardBox(page);
+  // Départ : le centre de la case (5,5). Arrivée : (750, 650) → case (7, 6).
+  const depart = await pagePointFor(page, box, { x: 550, y: 550 });
+  const arrivee = await pagePointFor(page, box, { x: 750, y: 650 });
+
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+  await page.mouse.up();
+
+  expect(await lightAt(page, 'l1'), 'la lampe est arrivée exactement sur la case relâchée')
+    .toEqual({ cellX: 7, cellY: 6 });
+
+  // ⭐ On COMPTE les publications : un `light.move` par `pointermove` laisserait la dernière
+  // juste tout en inondant le réseau, et « la dernière est la bonne » passerait au vert.
+  const moves = await publishedOfType(page, 'light.move');
+  expect(moves.length, 'exactement UN light.move, quel que soit le nombre de pointermove').toBe(1);
+  expect(moves[0].payload).toEqual({
+    levelId: 'level-drag', lightId: 'l1', at: { cellX: 7, cellY: 6 },
+  });
+});
+
+test('C-2 : pendant le glisser, AVANT le relâcher, rien n\'est publié et le store est intact', async ({ page }) => {
+  const sessionId = `light-drag-silence-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-silence', name: 'Silence', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    ambient: { level: 0, baked: false },
+    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  // Un PJ, pour que la vision soit réellement calculée et publiée : sans lui, « aucune vision
+  // n'est partie » serait vrai même sur une régression.
+  const pj = createToken({ id: 'pj1', levelId: 'level-silence', cell: { a: 1, b: 1 }, kind: 'pc', visionDim: 0 });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-silence', levels: [level], tokens: [pj] }),
+    activeLevelId: 'level-silence',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  // La passe d'autorité du démarrage publie sa vision ; on attend qu'elle soit passée, sinon
+  // le décompte de référence ci-dessous serait pris au milieu.
+  await expect.poll(async () => (await publishedOfType(page, 'vision.update')).length)
+    .toBeGreaterThan(0);
+  const visionsAvant = (await publishedOfType(page, 'vision.update')).length;
+
+  const box = await boardBox(page);
+  const depart = await pagePointFor(page, box, { x: 550, y: 550 });
+  const arrivee = await pagePointFor(page, box, { x: 750, y: 650 });
+
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+
+  // ⛔ Le doigt est ENCORE POSÉ. C'est la règle centrale : rien ne se publie avant `pointerup`,
+  // et rien n'a bougé dans le store — donc le champ éclairé n'a pas été recomposé.
+  expect((await publishedOfType(page, 'light.move')).length, 'aucun light.move avant le relâcher').toBe(0);
+  expect((await publishedOfType(page, 'vision.update')).length, 'aucune vision republiée pendant le glisser').toBe(visionsAvant);
+  expect(await lightAt(page, 'l1'), 'la lampe est toujours sur sa case de départ')
+    .toEqual({ cellX: 5, cellY: 5 });
+
+  // Et le relâcher, lui, agit : sans cette moitié, un glisser totalement inerte serait vert.
+  await page.mouse.up();
+  expect(await lightAt(page, 'l1')).toEqual({ cellX: 7, cellY: 6 });
+  expect((await publishedOfType(page, 'light.move')).length).toBe(1);
+});
+
+test('C-2 : ⭐ le tap et le glisser désignent le MÊME objet, lampe comme pion', async ({ page }) => {
+  const sessionId = `light-drag-arbitrage-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-drag-arb', name: 'Arbitrage du glisser', pxPerCell: 100, widthCells: 20, heightCells: 20,
+    ambient: { level: 1, baked: false },
+    lights: [
+      // Point A (780, 750) : centre de cette lampe à (790, 750), donc à 10 — et le pion
+      // `npc-far` (case 8,7 → rectangle x 800..900) à 20, dans sa marge de saisie mais PLUS
+      // LOIN. La lampe doit gagner les deux gestes.
+      { id: 'l-close', at: { cellX: 7.4, cellY: 7.0 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      // Point B (1000, 1000) : centre de cette lampe à (985, 1000), donc à 15 — et le pion
+      // `npc-under-tap` pile sous le doigt, à 0. Le pion doit gagner les deux gestes.
+      { id: 'l-near-token', at: { cellX: 9.35, cellY: 9.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      // Point C (1500, 1450) : centre de cette lampe à (1515, 1450), donc à 15 — et la PORTE
+      // ci-dessous à 5. C'est le point où le crochet de la lampe doit RENDRE LA MAIN : sans
+      // l'arbitrage commun, il saisirait cette lampe alors que le tap, lui, ouvre la porte.
+      { id: 'l-behind-door', at: { cellX: 14.65, cellY: 14.0 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+    ],
+    portals: [
+      { id: 'door-near', a: { cellX: 15.05, cellY: 14 }, b: { cellX: 15.05, cellY: 15 }, state: 'closed', freestanding: false },
+    ],
+  });
+  const tokenFar = createToken({ id: 'npc-far', levelId: 'level-drag-arb', cell: { a: 8, b: 7 }, kind: 'npc' });
+  const tokenAtTap = createToken({ id: 'npc-under-tap', levelId: 'level-drag-arb', cell: { a: 10, b: 10 }, kind: 'npc' });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-drag-arb', levels: [level], tokens: [tokenFar, tokenAtTap] }),
+    activeLevelId: 'level-drag-arb',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  /**
+   * Case courante d'un pion.
+   * @param {string} id
+   */
+  const cellOf = (id) => page.evaluate(async (tokenId) => {
+    const store = await import('../js/state/store.js');
+    const token = store.getCampaign()?.tokens.find((/** @type {any} */ t) => t.id === tokenId);
+    return token ? { ...token.cell } : null;
+  }, id);
+
+  // 1. Le TAP au point A bascule la LAMPE — c'est l'arbitrage de référence.
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap', screenPos: { x: 780, y: 750 }, mapPos: { x: 780, y: 750 },
+    });
+  });
+  const onApresTap = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].lights
+      .find((/** @type {any} */ l) => l.id === 'l-close')?.on
+  );
+  expect(onApresTap, 'le tap au point A désigne la lampe, pas le pion voisin').toBe(false);
+
+  // 2. Le GLISSER depuis CE MÊME point A doit déplacer la LAMPE, et laisser le pion en place.
+  const box = await boardBox(page);
+  let depart = await pagePointFor(page, box, { x: 780, y: 750 });
+  let arrivee = await pagePointFor(page, box, { x: 450, y: 450 });
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+  await page.mouse.up();
+
+  expect(await lightAt(page, 'l-close'), 'le glisser au point A a déplacé la LAMPE')
+    .toEqual({ cellX: 4, cellY: 4 });
+  expect(await cellOf('npc-far'), 'et le pion voisin n\'a PAS bougé').toEqual({ a: 8, b: 7 });
+
+  // 3. L'inverse au point B : le pion gagne, et le glisser déplace le PION.
+  depart = await pagePointFor(page, box, { x: 1000, y: 1000 });
+  arrivee = await pagePointFor(page, box, { x: 350, y: 1450 });
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+  await page.mouse.up();
+
+  expect(await cellOf('npc-under-tap'), 'le glisser au point B a déplacé le PION')
+    .toEqual({ a: 3, b: 14 });
+  expect(await lightAt(page, 'l-near-token'), 'et la lampe voisine, plus loin, n\'a PAS bougé')
+    .toEqual({ cellX: 9.35, cellY: 9.5 });
+
+  // 4. Point C : la PORTE gagne. Le tap l'ouvre — et le glisser depuis ce même point ne doit
+  // PAS emporter la lampe qui traîne dans sa tolérance ; il pan la carte, comme un glisser
+  // dans le vide. C'est ici que le crochet de la lampe doit rendre la main.
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap', screenPos: { x: 1500, y: 1450 }, mapPos: { x: 1500, y: 1450 },
+    });
+  });
+  const porteApresTap = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].portals[0].state
+  );
+  expect(porteApresTap, 'le tap au point C désigne la porte, pas la lampe voisine').toBe('open');
+
+  depart = await pagePointFor(page, box, { x: 1500, y: 1450 });
+  arrivee = await pagePointFor(page, box, { x: 1900, y: 1900 });
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+  await page.mouse.up();
+
+  expect(await lightAt(page, 'l-behind-door'), 'le glisser au point C n\'emporte PAS la lampe')
+    .toEqual({ cellX: 14.65, cellY: 14.0 });
+});
+
+test('C-2 : un glisser relâché hors carte ne déplace rien et ne publie rien', async ({ page }) => {
+  const sessionId = `light-drag-hors-carte-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-hors', name: 'Hors carte', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    ambient: { level: 1, baked: false },
+    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-hors', levels: [level] }),
+    activeLevelId: 'level-hors',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const box = await boardBox(page);
+  const depart = await pagePointFor(page, box, { x: 550, y: 550 });
+  // Au-delà du bord DROIT de la carte (10 cases × 100 px = 1000) : `cellFromPoint` rend `null`,
+  // et la marge que la caméra laisse autour de l'étage rend ce point atteignable à la souris.
+  const arrivee = await pagePointFor(page, box, { x: 1100, y: 550 });
+
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+  await page.mouse.up();
+
+  expect(await lightAt(page, 'l1'), 'la lampe est restée sur sa case').toEqual({ cellX: 5, cellY: 5 });
+  expect((await publishedOfType(page, 'light.move')).length, 'rien ne part sur le réseau').toBe(0);
+});

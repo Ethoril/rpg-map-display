@@ -39,7 +39,10 @@ export class LightMarkersLayer {
    * @param {CanvasRenderingContext2D} ctx
    * @param {GridAdapter} grid
    * @param {Level} level
-   * @param {{ zoom?: number }} [options]
+   * @param {{
+   *   zoom?: number,
+   *   dragPreview?: { lightId: string, mapPos: import('../../core/types.js').MapPoint }|null,
+   * }} [options]
    * @returns {number} Nombre de marqueurs rendus.
    */
   render(ctx, grid, level, options = {}) {
@@ -57,7 +60,13 @@ export class LightMarkersLayer {
       // ⛔ `mapFromCellPoint` rend l'ORIGINE de la case (un coin), pas son centre — leçon du
       // jour (C-5). `cellCenter` prend un `Cell {a,b}` et rend toujours un centre, dans les
       // deux pavages ; `light.at` est un `CellPoint {cellX,cellY}`, d'où la conversion.
-      const point = grid.cellCenter({ a: light.at.cellX, b: light.at.cellY });
+      // ⭐ Pendant un glisser MJ, SEUL ce marqueur suit le doigt — le champ éclairé reste où il
+      // est, faute de mutation du store. Même patron que l'aperçu de pion (`tokens.js`) : la
+      // position est celle du doigt, non accrochée à la grille, l'accrochage se fait au relâcher.
+      const point =
+        options.dragPreview?.lightId === light.id
+          ? options.dragPreview.mapPos
+          : grid.cellCenter({ a: light.at.cellX, b: light.at.cellY });
       // ⭐ Booléen à deux états, jamais un troisième : `on !== false` traite une valeur absente
       // comme allumée, ceinture de la normalisation faite par `schema.normalizeLevel`.
       const on = light.on !== false;

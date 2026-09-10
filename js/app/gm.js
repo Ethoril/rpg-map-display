@@ -595,6 +595,14 @@ export async function bootstrapGMApp(options = {}) {
   /** @type {{tokenId: string, mapPos: MapPoint}|null} */
   let dragPreview = null;
   /**
+   * Lampe en cours de glisser, et la position du doigt. Même nature que `dragPreview` : état de
+   * rendu transitoire, jamais dans le store ni sur le réseau. ⛔ C'est ce qui garde le HALO
+   * immobile pendant le geste — déplacer la lampe dans le store à chaque `move` republierait de
+   * la vision en continu.
+   * @type {{lightId: string, mapPos: MapPoint}|null}
+   */
+  let dragLightPreview = null;
+  /**
    * Porte verrouillée que le MJ vient de taper en vain, et l'instant du tap. État de rendu
    * transitoire, comme `dragPreview` : il ne va ni dans le store ni sur le réseau — l'autre MJ
    * n'a pas à voir clignoter un geste qui n'est pas le sien.
@@ -829,7 +837,10 @@ export async function bootstrapGMApp(options = {}) {
       },
       // ⛔ Vue MJ SEULE (rang 12) : `player.js` ne branche jamais cette couche.
       lightMarkers: () => {
-        lightMarkersLayer.render(stage.context, grid, activeLevel, { zoom: camera.zoom });
+        lightMarkersLayer.render(stage.context, grid, activeLevel, {
+          zoom: camera.zoom,
+          dragPreview: dragLightPreview,
+        });
       },
       measure: () => {
         measureLayer.render(stage.context, grid, activeLevel, {
@@ -1248,6 +1259,71 @@ export async function bootstrapGMApp(options = {}) {
   syncVision();
 
   /**
+   * Arbitrage à trois candidats — pion, lampe, porte — par distance en unités CARTE.
+   *
+   * ⭐ **Un seul point d'entrée pour le tap ET pour le glisser.** Le tap et le glisser doivent
+   * désigner le même objet par construction, pas par ressemblance de deux hit-tests écrits
+   * côte à côte : c'est ce doublon qui laissait le glisser saisir un pion à portée de marge
+   * alors que le tap, lui, basculait la lampe plus proche.
+   *
+   * @param {import('../core/types.js').MapPoint} mapPos
+   * @returns {{
+   *   kind: 'token'|'light'|'portal'|null,
+   *   tokenHit: ReturnType<typeof findHitToken>,
+   *   lightHit: ReturnType<typeof findHitLight>,
+   *   portalHit: ReturnType<typeof findHitPortal>,
+   * }}
+   */
+  function arbitrateHit(mapPos) {
+    const state = store.getState();
+    if (!state.activeLevel) {
+      return { kind: null, tokenHit: null, lightHit: null, portalHit: null };
+    }
+    const grid = gridFor(state.activeLevel);
+
+    // Aucun `filter` : le MJ doit pouvoir désigner un PNJ caché. Seul `locked` est déclassé —
+    // il reste sélectionnable (c'est le geste qui sert à le déverrouiller) mais ne vole pas la
+    // désignation d'un voisin libre. ⛔ Ne pas y mettre la manipulabilité *joueur* : elle
+    // déclasserait les PNJ, que le MJ manipule autant que les PJ.
+    const tokenHit = findHitToken(
+      grid,
+      state.activeLevel,
+      mapPos,
+      camera.zoom,
+      state.campaign?.tokens ?? [],
+      { deprioritize: (t) => !!t.locked }
+    );
+
+    // Même arbitrage par distance que la vue joueurs (js/ui/player/bootstrap.js) : le plus
+    // proche gagne, comparé en unités CARTE — c'est elle qui porte la géométrie. Avant ce
+    // chantier, le pion gagnait toujours ici, sans même la borne d'exactitude qu'avait la vue
+    // joueurs ; un pion à portée de marge mais plus loin qu'une porte volait la désignation.
+    const portalHit = findHitPortal(grid, state.activeLevel, mapPos, camera.zoom);
+
+    // ⭐ La lampe (C-2) est un TROISIÈME candidat dans CETTE MÊME comparaison — ⛔ ne pas la
+    // tester « avant » ou « après » les deux autres : c'est précisément l'ordre des branches
+    // qui rendait une porte inatteignable derrière un pion, corrigé aujourd'hui, et que le
+    // même défaut recréerait ici pour la lampe.
+    const lightHit = findHitLight(grid, state.activeLevel, mapPos, camera.zoom);
+
+    /** @type {Array<{ kind: 'token'|'light'|'portal', dist: number }>} */
+    const candidates = [];
+    // Priorité au premier candidat de la liste à distance égale — c'est le biais qui existait
+    // déjà pour porte/pion (le pion gagnait une égalité stricte).
+    if (tokenHit) candidates.push({ kind: 'token', dist: tokenHit.dist });
+    if (lightHit) candidates.push({ kind: 'light', dist: lightHit.dist });
+    if (portalHit) candidates.push({ kind: 'portal', dist: portalHit.dist });
+    candidates.sort((a, b) => a.dist - b.dist);
+
+    return {
+      kind: candidates.length > 0 ? candidates[0].kind : null,
+      tokenHit,
+      lightHit,
+      portalHit,
+    };
+  }
+
+  /**
    * @param {import('../input/gestures.js').InputIntention} intention
    */
   function handleIntention(intention) {
@@ -1538,49 +1614,15 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
-      const grid = gridFor(state.activeLevel);
-      // Aucun `filter` : le MJ doit pouvoir désigner un PNJ caché. Seul `locked` est déclassé —
-      // il reste sélectionnable (c'est le geste qui sert à le déverrouiller) mais ne vole pas la
-      // désignation d'un voisin libre. ⛔ Ne pas y mettre la manipulabilité *joueur* : elle
-      // déclasserait les PNJ, que le MJ manipule autant que les PJ.
-      const tokenHit = findHitToken(
-        grid,
-        state.activeLevel,
-        intention.mapPos,
-        camera.zoom,
-        state.campaign?.tokens ?? [],
-        { deprioritize: (t) => !!t.locked }
-      );
-
-      // Même arbitrage par distance que la vue joueurs (js/ui/player/bootstrap.js) : le plus
-      // proche gagne, comparé en unités CARTE — c'est elle qui porte la géométrie. Avant ce
-      // chantier, le pion gagnait toujours ici, sans même la borne d'exactitude qu'avait la vue
-      // joueurs ; un pion à portée de marge mais plus loin qu'une porte volait la désignation.
-      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos, camera.zoom);
-
-      // ⭐ La lampe (C-2) est un TROISIÈME candidat dans CETTE MÊME comparaison — ⛔ ne pas la
-      // tester « avant » ou « après » les deux autres : c'est précisément l'ordre des branches
-      // qui rendait une porte inatteignable derrière un pion, corrigé aujourd'hui, et que le
-      // même défaut recréerait ici pour la lampe.
-      const hitLight = findHitLight(grid, state.activeLevel, intention.mapPos, camera.zoom);
-
-      /** @type {Array<{ kind: 'token'|'light'|'portal', dist: number }>} */
-      const candidates = [];
-      // Priorité au premier candidat de la liste à distance égale — c'est le biais qui existait
-      // déjà pour porte/pion (le pion gagnait une égalité stricte).
-      if (tokenHit) candidates.push({ kind: 'token', dist: tokenHit.dist });
-      if (hitLight) candidates.push({ kind: 'light', dist: hitLight.dist });
-      if (hitPortal) candidates.push({ kind: 'portal', dist: hitPortal.dist });
-      candidates.sort((a, b) => a.dist - b.dist);
-      const winner = candidates.length > 0 ? candidates[0].kind : null;
+      const { kind: winner, tokenHit, lightHit, portalHit } = arbitrateHit(intention.mapPos);
 
       if (winner === 'token' && tokenHit) {
         store.selectToken(tokenHit.token.id);
         return;
       }
 
-      if (winner === 'light' && hitLight) {
-        const light = hitLight.light;
+      if (winner === 'light' && lightHit) {
+        const light = lightHit.light;
         // Bascule (C-2) : l'état ABSOLU est publié, jamais « inverse-le » (comme
         // `portal.toggle`) — c'est ce qui rend l'événement rejouable sans diverger.
         const targetOn = !(light.on !== false);
@@ -1594,8 +1636,8 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
-      if (winner === 'portal' && hitPortal) {
-        const portal = hitPortal.portal;
+      if (winner === 'portal' && portalHit) {
+        const portal = portalHit.portal;
         /** @type {'open'|'closed'|null} */
         let targetState = null;
         if (portal.state === 'closed') {
@@ -1730,6 +1772,45 @@ export async function bootstrapGMApp(options = {}) {
       return;
     }
 
+    if (intention.type === 'dragLight') {
+      if (intention.phase !== 'end') {
+        // ⛔ **Aucune mutation, aucune publication tant que le doigt est posé.** Seul le
+        // marqueur suit le doigt ; le champ éclairé, lui, ne bouge pas — parce qu'il ne peut
+        // pas bouger sans que `moveLight` recompose la vision, et republier de la vision à
+        // chaque `move` est exactement ce que la règle du glisser MJ interdit.
+        dragLightPreview = { lightId: intention.lightId, mapPos: intention.mapPos };
+        requestRender();
+        return;
+      }
+
+      dragLightPreview = null;
+      const state = store.getState();
+      if (!state.activeLevel) {
+        requestRender();
+        return;
+      }
+      const levelId = state.activeLevel.id;
+      const grid = gridFor(state.activeLevel);
+      const targetCell = grid.cellFromPoint(intention.mapPos);
+      const light = (state.activeLevel.lights || []).find((li) => li.id === intention.lightId);
+      if (!targetCell || !light) {
+        // Relâché hors de la grille : la lampe reste où elle était, l'aperçu disparaît, et rien
+        // ne part sur le réseau — même issue qu'un glisser de pion hors carte.
+        requestRender();
+        return;
+      }
+
+      const at = { cellX: targetCell.a, cellY: targetCell.b };
+      store.moveLight(levelId, intention.lightId, at);
+      transport?.publish({
+        type: 'light.move',
+        payload: { levelId, lightId: intention.lightId, at },
+        at: Date.now(),
+        by: 'gm',
+      });
+      return;
+    }
+
     if (intention.type === 'dragTemplate') {
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return;
@@ -1797,17 +1878,18 @@ export async function bootstrapGMApp(options = {}) {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return null;
-      const grid = gridFor(state.activeLevel);
       // Même règle qu'au tap : c'est le même point d'entrée pour les deux gestes (brief O §2).
-      const hit = findHitToken(
-        grid,
-        state.activeLevel,
-        mapPos,
-        camera.zoom,
-        state.campaign.tokens || [],
-        { deprioritize: (t) => !!t.locked }
-      );
-      return hit?.token.id ?? null;
+      // ⭐ Le pion doit GAGNER l'arbitrage, pas seulement exister sous le doigt : un hit-test
+      // isolé rendait le pion au glisser là où le tap, lui, basculait la lampe plus proche.
+      const { kind, tokenHit } = arbitrateHit(mapPos);
+      return kind === 'token' ? (tokenHit?.token.id ?? null) : null;
+    },
+    canStartLightDrag: (_screenPos, mapPos) => {
+      if (gmPanel?.getActiveToolName?.() !== 'none') return null;
+      const state = store.getState();
+      if (!state.activeLevel) return null;
+      const { kind, lightHit } = arbitrateHit(mapPos);
+      return kind === 'light' ? (lightHit?.light.id ?? null) : null;
     },
     canStartTemplateDrag: (_screenPos, mapPos) => {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;

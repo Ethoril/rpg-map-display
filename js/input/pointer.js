@@ -30,6 +30,9 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  * @property {number} [longPressMs=500] Seuil pour l'appui long (ms)
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartTokenDrag]
  *   Hit-test injecté par la vue MJ. L'input ne connaît jamais le store.
+ * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartLightDrag]
+ *   Hit-test lampe injecté par la vue MJ. Consulté seulement si aucun pion n'a pris le glisser :
+ *   c'est le même arbitrage que le tap qui décide, côté application.
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => { templateId: string, dragMode: 'move'|'rotate' }|null} [canStartTemplateDrag]
  *   Hit-test gabarit injecté par l'application (MJ et joueurs).
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => boolean} [canStartBrush]
@@ -55,6 +58,7 @@ export class PointerInput {
     this.dragDistanceThreshold = options.dragDistanceThreshold ?? 5;
     this.longPressMs = options.longPressMs ?? 500;
     this.canStartTokenDrag = options.canStartTokenDrag ?? (() => null);
+    this.canStartLightDrag = options.canStartLightDrag ?? (() => null);
     this.canStartTemplateDrag = options.canStartTemplateDrag ?? (() => null);
     this.canStartBrush = options.canStartBrush ?? (() => false);
 
@@ -73,10 +77,12 @@ export class PointerInput {
     /** @type {boolean} */
     this.longPressTriggered = false;
 
-    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'templateDrag'|'brushing'} */
+    /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'gmLightDrag'|'templateDrag'|'brushing'} */
     this.mode = 'idle';
     /** @type {string|null} */
     this.dragTokenId = null;
+    /** @type {string|null} */
+    this.dragLightId = null;
     /** @type {{ templateId: string, dragMode: 'move'|'rotate' }|null} */
     this.dragTemplateHit = null;
 
@@ -157,6 +163,7 @@ export class PointerInput {
     this.lastPinchCenter = null;
     this.initialPinchDistance = 0;
     this.dragTokenId = null;
+    this.dragLightId = null;
     this.dragTemplateHit = null;
     this.longPressTriggered = false;
     this.mode = 'idle';
@@ -252,8 +259,15 @@ export class PointerInput {
           this.role === 'gm'
             ? this.canStartTokenDrag(screenPos, mapPos)
             : null;
+        // Un seul des trois l'emporte, dans cet ordre. Pion et lampe sont départagés par
+        // l'arbitrage commun au tap (`js/app/gm.js`) : les deux crochets ne peuvent pas
+        // répondre pour le même point, la cascade ne fait que refléter cette exclusivité.
+        this.dragLightId =
+          this.role === 'gm' && !this.dragTokenId
+            ? this.canStartLightDrag(screenPos, mapPos)
+            : null;
         this.dragTemplateHit =
-          !this.dragTokenId
+          !this.dragTokenId && !this.dragLightId
             ? this.canStartTemplateDrag(screenPos, mapPos)
             : null;
         this.longPressTriggered = false;
@@ -280,6 +294,7 @@ export class PointerInput {
       }
       this.mode = 'pinching';
       this.dragTokenId = null;
+      this.dragLightId = null;
       this.dragTemplateHit = null;
 
       const pointers = Array.from(this.activePointers.values());
@@ -350,6 +365,30 @@ export class PointerInput {
           });
           return;
         }
+      } else if (this.role === 'gm' && this.dragLightId) {
+        const isExceeded = isDragThresholdExceeded(
+          this.startScreenPos,
+          screenPos,
+          this.startTime,
+          timeStamp,
+          this.dragHoldMs,
+          this.dragDistanceThreshold
+        );
+
+        if (isExceeded || this.mode === 'gmLightDrag') {
+          const isFirstDrag = this.mode !== 'gmLightDrag';
+          this.mode = 'gmLightDrag';
+
+          const mapPos = this.camera.screenToMap(screenPos);
+          this.emit({
+            type: 'dragLight',
+            lightId: this.dragLightId,
+            screenPos,
+            mapPos,
+            phase: isFirstDrag ? 'start' : 'move',
+          });
+          return;
+        }
       } else if (this.dragTemplateHit) {
         const isExceeded = isDragThresholdExceeded(
           this.startScreenPos,
@@ -385,6 +424,7 @@ export class PointerInput {
       ) {
         this.mode = 'panning';
         this.dragTokenId = null;
+        this.dragLightId = null;
         this.dragTemplateHit = null;
         this.queuePan(dx, dy);
       }
@@ -457,6 +497,15 @@ export class PointerInput {
           mapPos,
           phase: 'end',
         });
+      } else if (this.mode === 'gmLightDrag' && this.dragLightId) {
+        const mapPos = this.camera.screenToMap(screenPos);
+        this.emit({
+          type: 'dragLight',
+          lightId: this.dragLightId,
+          screenPos,
+          mapPos,
+          phase: 'end',
+        });
       } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
         const mapPos = this.camera.screenToMap(screenPos);
         this.emit({
@@ -501,6 +550,7 @@ export class PointerInput {
       this.lastScreenPos = null;
       this.mode = 'idle';
       this.dragTokenId = null;
+      this.dragLightId = null;
       this.dragTemplateHit = null;
       this.lastPinchCenter = null;
       this.longPressTriggered = false;
@@ -539,6 +589,7 @@ export class PointerInput {
       this.lastScreenPos = null;
       this.mode = 'idle';
       this.dragTokenId = null;
+      this.dragLightId = null;
       this.dragTemplateHit = null;
       this.lastPinchCenter = null;
     }

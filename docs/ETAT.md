@@ -1841,9 +1841,28 @@ depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jo
 ⛔ Le décompte fait foi au §11 du CdC : il n'y reste plus une seule case vide.
 
 ⚠ **« Complet » ne veut pas dire « fini »** : `QUESTIONS-EN-ATTENTE.md` porte encore des chantiers
-cadrés (bibliothèque de cartes, images de séance, déplacer une lampe au glisser) et onze dettes
-techniques, dont **E-11** — le masque de brouillard est isotrope alors que la grille hexagonale ne
-l'est pas. Ce qui est complet, c'est la liste des critères d'acceptation du §11.
+cadrés (bibliothèque de cartes, images de séance, déplacer une lampe au glisser) et douze dettes
+techniques consignées, dont onze encore ouvertes — E-11 est corrigée depuis le 11/09. Ce qui est
+complet, c'est la liste des critères d'acceptation du §11.
+
+> ### ⭐ Mise à jour du 11/09/2026 — E-11 est CORRIGÉE, et elle n'était pas dormante
+>
+> Ce paragraphe annonçait E-11 comme une dette ouverte « sans effet sur les cartes carrées, qui
+> sont tout le corpus de jeu réel ». Le mainteneur l'a rencontrée **le soir même** : sur
+> `marais-hex_16x16` en mode nuit et sans lampe, un personnage laissé dans le noir voyait **en
+> couleur** au lieu des niveaux de gris. Le masque se projette désormais avec une échelle **par
+> axe** — les rangées hexagonales ne sont espacées que de √3/2 case, et le contenu n'occupait
+> donc que 86,6 % de la hauteur du masque : 1,81 case de dérive en rangée 15.
+>
+> ⭐ **La leçon, plus large que le défaut** : une dette classée « sans effet sur le corpus actuel »
+> n'est pas dormante — elle attend un changement d'usage, et l'usage bascule précisément quand la
+> capacité qui la réveille vient d'être livrée. Ici, les cartes hexagonales.
+>
+> ⚠ Et une dette **nouvelle** a été consignée en la corrigeant, **E-12** : la largeur sur laquelle
+> le masque est réétiré vient d'un coin qui porte le décalage odd-r, donc une carte hexagonale à
+> nombre de rangées **impair** est étirée d'une demi-case en trop (mesuré : +3,13 %, soit 0,47
+> case de dérive à la colonne 15 ; exactement zéro si le nombre est pair). `marais-hex` a 16
+> rangées, donc le cas du mainteneur n'est pas touché, et aucune carte carrée ne l'est.
 
 **Historique du décompte : 37 sur 41.** Relevé pour éviter de confondre « le plateau est solide » et
 « le produit est proche ». Trois acquis le 12/08 : le **ping** du lot 4 (chantier X) ; le **critère 1

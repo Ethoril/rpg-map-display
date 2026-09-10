@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { createCampaign, createLevel, createToken, validateCampaign } from '../js/core/schema.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import { FogLayer, isAmbientLit } from '../js/render/layers/fogLayer.js';
+import { collectLightSources } from '../js/render/layers/light.js';
 import { gridFor } from '../js/grid/index.js';
 import { extractBlockedSegments } from '../js/import/blockedEdges.js';
 import { validateTokenCatalog, createTokenFromLibraryEntry } from '../js/import/tokenCatalog.js';
@@ -267,4 +268,215 @@ test('⭐ Chantier Z — le catalogue de pions accepte un `visionBright` résidu
   const pion = createTokenFromLibraryEntry(/** @type {any} */ (entree), { levelId: 'rdc', cell: { a: 0, b: 0 } });
   assert.equal('visionBright' in pion, false, 'la projection ne ressuscite pas le champ');
   assert.equal(pion.visionDim, 10);
+});
+
+/**
+ * ⛔ **C-2 — LE TROU DE RÉCEPTION, trouvé le 11/09/2026, et il avait traversé deux tranches.**
+ *
+ * Les tranches 1 et 2 **publiaient** `light.toggle`, `light.place` et `light.delete` sans que
+ * `applyNetworkEvent` n'en applique aucun : le `default` de son `switch` rend `false` **sans un
+ * mot**. Sur 34 types publiés dans le projet, ces trois-là étaient les seuls sans destinataire.
+ *
+ * ⛔ Et ce n'est pas cosmétique : `js/app/player.js` **recalcule son propre champ lumineux**
+ * depuis sa copie de `level.lights`, en s'appuyant sur une prémisse écrite — « des sources, que
+ * la tablette a déjà toutes ». Fausse tant que ces événements ne lui parviennent pas. Le MJ
+ * éteignait une lampe et **le halo restait allumé sur la tablette**, en couleur, jusqu'au F5
+ * suivant qui relisait Firestore.
+ *
+ * ⭐ **Pourquoi rien ne l'a vu** : tous les tests de lumière étaient à UNE SEULE page, côté MJ.
+ * Aucun ne faisait franchir la frontière réseau à un événement de lumière. C'est la leçon, plus
+ * que le défaut — un chantier réseau testé d'un seul côté ne prouve que la moitié.
+ *
+ * ⚠ L'assertion porte sur `collectLightSources` — la fonction dont la couche de lumière se sert
+ * pour savoir CE QUI ÉCLAIRE — et pas seulement sur le champ `on` du store. Une assertion sur le
+ * seul drapeau serait une étiquette ; le nombre de sources retenues est l'effet.
+ */
+test('⛔ C-2 réception : les QUATRE événements de lampe sont appliqués — sinon la tablette garde son halo', () => {
+  store.resetStore();
+  const level = createLevel({
+    id: 'rdc',
+    ambient: { level: 0, baked: false },
+    lights: [
+      { id: 'l1', at: { cellX: 5, cellY: 5 }, range: 3, intensity: 1, color: '#ffffff', shadows: true, on: true },
+    ],
+  });
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+
+  /** Ce que la couche de lumière retiendrait comme sources, à cet instant. */
+  const sources = () => {
+    const courant = store.getRenderSnapshot().activeLevel;
+    if (!courant) return -1;
+    return collectLightSources(courant, [], gridFor(courant)).length;
+  };
+  /** @param {string} id */
+  const lampe = (id) =>
+    (store.getRenderSnapshot().activeLevel?.lights || []).find((li) => li.id === id) ?? null;
+
+  assert.equal(sources(), 1, 'au départ la lampe allumée éclaire');
+
+  // 1. ÉTEINDRE — le cas exact du défaut : sans ce branchement, la tablette gardait son halo.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.toggle',
+      payload: { levelId: 'rdc', lightId: 'l1', on: false },
+      at: Date.now(), by: 'gm',
+    }),
+    true,
+    '⛔ light.toggle doit être APPLIQUÉ à la réception'
+  );
+  assert.equal(lampe('l1')?.on, false);
+  assert.equal(sources(), 0, '⛔ une lampe éteinte ne doit plus éclairer la tablette');
+
+  // 2. Rejouer la MÊME bascule ne mute rien : état absolu, donc idempotent.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.toggle',
+      payload: { levelId: 'rdc', lightId: 'l1', on: false },
+      at: Date.now(), by: 'gm',
+    }),
+    false,
+    'une lampe déjà éteinte ne remute pas'
+  );
+
+  // 3. POSER une seconde lampe : elle doit éclairer chez le destinataire.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.place',
+      payload: {
+        levelId: 'rdc',
+        light: { id: 'l2', at: { cellX: 2, cellY: 2 }, range: 4, intensity: 1, color: '#ffdca8', shadows: true, on: true },
+      },
+      at: Date.now(), by: 'gm',
+    }),
+    true,
+    '⛔ light.place doit être APPLIQUÉ à la réception'
+  );
+  assert.equal(sources(), 1, 'la lampe posée éclaire, l1 étant toujours éteinte');
+
+  // 4. ⛔ L'INVARIANT DU §7 : `light.place` sur une lampe existante ne RALLUME pas.
+  //    C'est « un champ, un écrivain » — `light.toggle` est seul à écrire `on`.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.place',
+      payload: {
+        levelId: 'rdc',
+        light: { id: 'l1', at: { cellX: 5, cellY: 5 }, range: 6, intensity: 1, color: '#ffffff', shadows: true, on: true },
+      },
+      at: Date.now(), by: 'gm',
+    }),
+    true
+  );
+  assert.equal(lampe('l1')?.on, false, '⛔ light.place ne doit JAMAIS rallumer une lampe éteinte');
+  assert.equal(lampe('l1')?.range, 6, 'mais il corrige bien sa géométrie');
+  assert.equal(sources(), 1, 'et elle reste hors du champ, éteinte');
+
+  // 5. DÉPLACER : la position reçue est celle qui compte.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.move',
+      payload: { levelId: 'rdc', lightId: 'l2', at: { cellX: 7, cellY: 1 } },
+      at: Date.now(), by: 'gm',
+    }),
+    true
+  );
+  assert.deepEqual(lampe('l2')?.at, { cellX: 7, cellY: 1 });
+  assert.equal(lampe('l2')?.on, true, '⛔ light.move ne touche pas non plus à `on`');
+
+  // 6. SUPPRIMER, puis rejouer : idempotent, et sans lever.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.delete',
+      payload: { levelId: 'rdc', lightId: 'l2' },
+      at: Date.now(), by: 'gm',
+    }),
+    true,
+    '⛔ light.delete doit être APPLIQUÉ à la réception'
+  );
+  assert.equal(lampe('l2'), null);
+  assert.equal(sources(), 0, 'plus aucune source : l1 éteinte, l2 supprimée');
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.delete',
+      payload: { levelId: 'rdc', lightId: 'l2' },
+      at: Date.now(), by: 'gm',
+    }),
+    false,
+    'une lampe déjà absente rend false sans lever'
+  );
+
+  // 7. Et RALLUMER ramène bien la lumière — la bascule marche dans les deux sens.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.toggle',
+      payload: { levelId: 'rdc', lightId: 'l1', on: true },
+      at: Date.now(), by: 'gm',
+    }),
+    true
+  );
+  assert.equal(sources(), 1, '⛔ rallumer doit rendre la source au champ');
+});
+
+/**
+ * ⚠ **Ce test a d'abord été écrit sur une prémisse fausse**, et c'est pour cela qu'il existe sous
+ * cette forme. Je croyais qu'une lampe importée arrivait dans le store **sans** champ `on` —
+ * les exports UVTT n'en ont pas — et que la garde d'idempotence de `light.toggle` devait donc
+ * comparer `(light.on !== false)` à la charge sous peine de remuter toute la carte à chaque
+ * rejeu. ⛔ Faux : `normalizeLevel` pose `on = true` au chargement.
+ *
+ * ⭐ Ce qui rend la garde sûre est donc la **normalisation**, pas le détour dans la garde. C'est
+ * ça qui mérite un test : si `normalizeLevel` cessait de poser `on`, une lampe importée porterait
+ * `undefined`, et la comparaison stricte d'un autre appelant la ferait muter à chaque rejeu.
+ */
+test('C-2 réception : une lampe importée SANS champ `on` est NORMALISÉE à allumée, ce qui rend la garde sûre', () => {
+  store.resetStore();
+  const level = createLevel({
+    id: 'rdc',
+    ambient: { level: 0, baked: false },
+    // ⚠ La conversion est le SUJET du test, pas un contournement : le type `Light` exige `on`,
+    // et une scène déjà sur disque — ou n'importe quel export UVTT — ne le porte pas. C'est
+    // `normalizeLevel` qui rend cet objet conforme, et c'est ce qu'on vérifie juste après.
+    lights: [
+      /** @type {any} */ ({ id: 'uvtt', at: { cellX: 3, cellY: 3 }, range: 3, intensity: 1, color: '#ffffff', shadows: true }),
+    ],
+  });
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+
+  const lampe = () => (store.getRenderSnapshot().activeLevel?.lights || [])[0];
+  assert.equal(
+    lampe().on,
+    true,
+    '⛔ une lampe sans `on` doit arriver NORMALISÉE à allumée — c\'est ce qui rend la garde sûre'
+  );
+  assert.equal(collectLightSources(
+    /** @type {any} */ (store.getRenderSnapshot().activeLevel),
+    [],
+    gridFor(/** @type {any} */ (store.getRenderSnapshot().activeLevel))
+  ).length, 1, 'et elle éclaire');
+
+  // La garde mord donc : « allume-la » sur une lampe déjà allumée ne mute rien.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.toggle',
+      payload: { levelId: 'rdc', lightId: 'uvtt', on: true },
+      at: Date.now(), by: 'gm',
+    }),
+    false,
+    'une lampe déjà allumée ne remute pas'
+  );
+
+  // Mais l'éteindre mute, et retire la source du champ.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'light.toggle',
+      payload: { levelId: 'rdc', lightId: 'uvtt', on: false },
+      at: Date.now(), by: 'gm',
+    }),
+    true
+  );
+  assert.equal(lampe().on, false);
+  assert.equal(collectLightSources(
+    /** @type {any} */ (store.getRenderSnapshot().activeLevel),
+    [],
+    gridFor(/** @type {any} */ (store.getRenderSnapshot().activeLevel))
+  ).length, 0, '⛔ éteinte, elle ne doit plus éclairer');
 });

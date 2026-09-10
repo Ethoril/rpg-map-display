@@ -480,6 +480,138 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    // ⭐ **Les QUATRE événements de lampe sont reçus ici**, et il a fallu les brancher le
+    // 11/09/2026 : les tranches 1 et 2 les publiaient sans que personne ne les applique, et le
+    // `default` de ce `switch` les laissait tomber **en silence**. Or `js/app/player.js`
+    // **recalcule son propre champ lumineux** depuis sa copie de `level.lights` — sa prémisse
+    // écrite, « la tablette a déjà toutes les sources », n'est vraie que si ces événements lui
+    // parviennent. Sans eux, le MJ éteignait une lampe et **le halo restait allumé sur la
+    // tablette**, jusqu'au prochain F5 qui relisait Firestore.
+    //
+    // ⛔ Invariant du §7, à ne pas défaire ici : `light.place` et `light.move` ne touchent
+    // JAMAIS `on` ; `light.toggle` est le seul à l'écrire, et il porte l'état ABSOLU.
+    case 'light.move': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !payload.lightId || typeof payload.lightId !== 'string' ||
+        !payload.at || !Number.isFinite(payload.at.cellX) || !Number.isFinite(payload.at.cellY)
+      ) {
+        console.error('Événement "light.move" refusé : payload malformé');
+        return false;
+      }
+      const level = campaign?.levels.find((l) => l.id === payload.levelId);
+      if (!level) {
+        console.error(`Événement "light.move" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      const light = (level.lights || []).find((li) => li.id === payload.lightId);
+      if (!light) {
+        console.error(`Événement "light.move" refusé : lampe inconnue "${payload.lightId}"`);
+        return false;
+      }
+      // Position ABSOLUE, donc rejouable : une lampe déjà à cette case ne mute rien — même
+      // forme d'idempotence que `portal.toggle`, qui rend `false` sur un état déjà atteint.
+      if (light.at.cellX === payload.at.cellX && light.at.cellY === payload.at.cellY) {
+        return false;
+      }
+      try {
+        store.moveLight(payload.levelId, payload.lightId, payload.at);
+      } catch (err) {
+        console.error(
+          `Événement "light.move" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'light.toggle': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !payload.lightId || typeof payload.lightId !== 'string' ||
+        typeof payload.on !== 'boolean'
+      ) {
+        console.error('Événement "light.toggle" refusé : payload malformé');
+        return false;
+      }
+      const level = campaign?.levels.find((l) => l.id === payload.levelId);
+      if (!level) {
+        console.error(`Événement "light.toggle" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      const light = (level.lights || []).find((li) => li.id === payload.lightId);
+      if (!light) {
+        console.error(`Événement "light.toggle" refusé : lampe inconnue "${payload.lightId}"`);
+        return false;
+      }
+      // État ABSOLU, donc rejouable : une lampe déjà dans cet état ne mute rien — même forme
+      // d'idempotence que `portal.toggle`.
+      //
+      // ⚠ Le détour par `light.on !== false` plutôt que `light.on` est **défensif, pas
+      // nécessaire** : `normalizeLevel` (`js/core/schema.js`) pose déjà `on = true` quand le
+      // champ manque, donc une lampe du store porte toujours un booléen. Il aligne la garde sur
+      // la convention de `collectLightSources`, qui lit `on !== false` — si un jour une lampe
+      // entrait sans passer par la normalisation, les deux resteraient d'accord.
+      if ((light.on !== false) === payload.on) {
+        return false;
+      }
+      try {
+        store.setLightState(payload.levelId, payload.lightId, payload.on);
+      } catch (err) {
+        console.error(
+          `Événement "light.toggle" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'light.place': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !payload.light || typeof payload.light !== 'object' ||
+        !payload.light.id || typeof payload.light.id !== 'string'
+      ) {
+        console.error('Événement "light.place" refusé : payload malformé');
+        return false;
+      }
+      const level = campaign?.levels.find((l) => l.id === payload.levelId);
+      if (!level) {
+        console.error(`Événement "light.place" refusé : étage inconnu "${payload.levelId}"`);
+        return false;
+      }
+      // ⛔ Pas de garde d'idempotence ici, contrairement à ses voisins : `placeLight` est
+      // idempotent PAR IDENTIFIANT et remplace la géométrie d'une lampe existante en
+      // conservant son `on`. Court-circuiter sur « elle existe déjà » perdrait une
+      // correction de portée ou de couleur.
+      try {
+        store.placeLight(payload.levelId, payload.light);
+      } catch (err) {
+        console.error(
+          `Événement "light.place" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'light.delete': {
+      if (
+        !payload.levelId || typeof payload.levelId !== 'string' ||
+        !payload.lightId || typeof payload.lightId !== 'string'
+      ) {
+        console.error('Événement "light.delete" refusé : payload malformé');
+        return false;
+      }
+      // ⚠ Aucun refus sur étage ou lampe inconnus : `removeLight` est **idempotent** et rend
+      // `false` sans lever. Un rejeu, ou deux MJ qui suppriment la même lampe, ne doit pas
+      // remplir la console d'erreurs — patron de `template.remove`.
+      try {
+        return store.removeLight(payload.levelId, payload.lightId);
+      } catch (err) {
+        console.error(
+          `Événement "light.delete" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+    }
     case 'wall.add': {
       if (
         !payload.levelId || typeof payload.levelId !== 'string' ||

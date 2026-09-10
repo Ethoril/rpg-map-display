@@ -1275,9 +1275,11 @@ export function placeLight(levelId, lightData) {
 }
 
 /**
- * Déplace une lampe existante. ⛔ **`light.move` n'est pas émis dans la tranche 2** — le geste
- * (un glisser) attend la tranche 3, mais le réducteur doit exister dès maintenant : le contrat
- * réseau du §7 est complet avant le geste, précédent de `fog.reset`/`fog.paint`.
+ * Déplace une lampe existante, porté par `light.move` (amendement C-2). Émis par le **glisser**
+ * du MJ depuis la tranche 3 (11/09/2026) : le geste n'écrit ici qu'au relâcher, jamais pendant le
+ * glisser — `moveLight` recompose la vision, et republier de la vision à chaque `move` est
+ * exactement ce que la règle du glisser MJ interdit. Ce réducteur a existé une tranche avant son
+ * geste, pour que le contrat réseau du §7 soit complet d'abord.
  *
  * Même règle que `placeLight` : ne touche pas `on`.
  *
