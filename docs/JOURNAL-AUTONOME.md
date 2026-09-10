@@ -654,3 +654,54 @@ départage partagé par le refus « case occupée ». Aucun des deux n'a été a
 mainteneur ; les y glisser de soi-même serait ouvrir un chantier non listé.
 
 ⛔ **Donc : file vide. Conformément à la charte §3, arrêt immédiat — aucun travail inventé.**
+
+---
+
+## ⛔ 10 septembre 2026 — reprise planifiée : la fenêtre d'absence est close, la boucle est désarmée
+
+Reprise sans contexte frais, `rpg-map-display-boucle-autonome`. `git status` propre en entrée sur
+`autonome/2026-08`.
+
+**Vérifié, dans les deux sens :** `git fetch` sans nouveauté ; `origin/main`, `main` et
+`autonome/2026-08` pointent tous les trois sur `593700d`, aucun écart entre les trois.
+
+### Ce qui a changé depuis la dernière entrée (8 septembre 01h50, `d15b63a`)
+
+Cinq commits **directement sur `main`** le 09/09/2026, par le mainteneur — même schéma que le
+chantier Z du 26-27/08 et le travail du 07/09 : hors file autonome, avec décisions produit tranchées
+en séance.
+
+- `62d49c0` — la vision se publie désormais pour **chaque** étage porteur d'un PJ, plus seulement
+  celui du MJ.
+- `0e4f6bc` — la zone de déplacement se peint en vrais hexagones (`cellPath`), plus en damier de
+  rectangles — c'est le défaut décrit dans `QUESTIONS-EN-ATTENTE.md` C-5, dont la **moitié visible**
+  est notée fermée le 09/09 ; la convention `mapFromCellPoint` (coin vs centre) reste ouverte.
+- `4341e13` — « Instancier » depuis la bibliothèque de pions arme de nouveau la pose au doigt,
+  oubliée par UX-08.
+- `dc777db` — CI : dépôt `google-chrome` retiré du runner avant l'installation des navigateurs.
+- `593700d` — docs : le gris (B-1) est validé, le cast (A-4) ajourné par le mainteneur, §12 q.9
+  (D-1) sans objet depuis Z-05 — mise à jour de `QUESTIONS-EN-ATTENTE.md`.
+
+### État de la file
+
+`CHANTIER-AUTONOME.md` §2 inchangé depuis le 18/08 : les quatre tranches qu'il listait sont livrées
+et fusionnées depuis longtemps, rien de neuf n'y a été déposé. `QUESTIONS-EN-ATTENTE.md` relu en
+entier : les commits du 09/09 y ont fermé B-1, ajourné A-4 (volet cast) et clos D-1 sans rouvrir de
+case éligible à la file (§2 exige une réussite vérifiable sans œil humain **et** aucune décision
+produit). C-1 à C-8, A-1 à A-3, D-2 à D-4 restent en l'état, aucun ajouté à la file par le
+mainteneur. **File vide.**
+
+### ⛔ La boucle planifiée est désarmée, sur demande explicite du mainteneur
+
+`CHANTIER-AUTONOME.md` date sa propre validité : *« Le mainteneur est absent du 25 août au
+8 septembre 2026. »* Cette fenêtre était close depuis deux jours à l'ouverture de cette reprise, et
+le mainteneur travaille en séance directement sur `main` depuis le 07/09 — signalé ici avant qu'il
+ne demande d'agir. Il a répondu **« tu peux mettre fin à cette boucle »**.
+
+`mcp__scheduled-tasks__delete_scheduled_task` refuse de supprimer la tâche qui a lancé sa propre
+session. Désactivée à la place (`enabled: false`) via `update_scheduled_task` — la tâche
+`rpg-map-display-boucle-autonome` ne tirera plus. Sa suppression définitive, si voulue, doit se faire
+depuis une session ordinaire, pas depuis une reprise planifiée.
+
+**Fin du dispositif autonome, tel que prévu par la charte §6 : une branche à lire, ce journal, et
+aucune décision produit prise en l'absence du mainteneur.**
