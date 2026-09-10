@@ -757,6 +757,88 @@ export function addLevel(levelData) {
 }
 
 /**
+ * Retire un étage de la campagne et tout ce qu'il portait (amendement UX-16).
+ *
+ * Emporte avec l'étage : ses pions posés (`campaign.tokens`), ses gabarits (`campaign.templates`,
+ * qui portent un `levelId`), et **toute liaison dont une extrémité vivait dessus** — une liaison
+ * pendante serait un piège silencieux, invisible jusqu'au jour où quelqu'un tente de la franchir.
+ * Purge aussi le masque exploré et la vision de session de l'étage : sans cela, un étage réimporté
+ * plus tard sous le même identifiant hériterait d'un vieux brouillard.
+ *
+ * ⛔ **Ne touche PAS aux pions en réserve.** UX-14 : leur `levelId` et leur `cell` n'y sont qu'une
+ * trace de provenance, pas une position, et le schéma ne les valide ni contre les étages existants
+ * ni contre les bornes de la carte. Un pion rangé survit donc à la disparition de son étage
+ * d'origine — ne pas « corriger » ça en le filtrant ici.
+ *
+ * ⛔ **Le dernier étage ne se retire pas** : une campagne sans étage n'a pas de vue. C'est le
+ * miroir de la règle d'`addLevel`, qui ne sélectionne que s'il n'y avait pas d'étage actif —
+ * l'initialisation, seul cas où quelqu'un doit bien être choisi.
+ *
+ * ⚠ Si l'étage retiré était l'étage actif, un autre est sélectionné — le premier restant dans
+ * l'ordre. C'est le seul endroit où quelque chose bouge sans que personne l'ait demandé : le
+ * geste explicite et confirmé du MJ qui retire l'étage autorise ce déplacement-là.
+ *
+ * Rejeu inoffensif : un étage déjà absent rend `false` sans lever, comme `token.reserve`.
+ *
+ * @param {string} levelId
+ * @returns {boolean} true si un étage a été retiré
+ */
+export function removeLevel(levelId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!levelId || typeof levelId !== 'string') {
+    throw new Error("Identifiant d'étage requis");
+  }
+
+  const idx = campaign.levels.findIndex((l) => l.id === levelId);
+  if (idx < 0) return false;
+
+  if (campaign.levels.length <= 1) {
+    throw new Error(
+      `Retrait de l'étage "${levelId}" refusé : c'est le dernier, une campagne sans étage n'a pas de vue`
+    );
+  }
+
+  const candidate = structuredClone(campaign);
+  candidate.levels.splice(
+    candidate.levels.findIndex((l) => l.id === levelId),
+    1
+  );
+  candidate.tokens = candidate.tokens.filter((t) => t.levelId !== levelId);
+  candidate.templates = (candidate.templates || []).filter((t) => t.levelId !== levelId);
+  candidate.links = (candidate.links || []).filter(
+    (link) => link.a.levelId !== levelId && link.b.levelId !== levelId
+  );
+
+  assertValidCampaign(candidate, `Retrait de l'étage "${levelId}"`);
+  replaceCampaign(candidate);
+
+  // Le masque exploré et la vision de session de l'étage ne survivent pas : sans cette purge, un
+  // étage réimporté plus tard sous le même identifiant hériterait d'un vieux brouillard.
+  sessionFogMap.delete(levelId);
+  sessionVisionMap.delete(levelId);
+  if (currentSessionId) {
+    writeFogToStorage(currentSessionId, levelId, null);
+  }
+
+  // L'étage retiré était affiché : la vue retombe sur un autre, le premier restant dans l'ordre.
+  if (activeLevelId === levelId) {
+    const restants = getLevelSummaries();
+    activeLevelId = restants.length > 0 ? restants[0].id : null;
+  }
+
+  // Un pion sélectionné qui vivait sur l'étage retiré n'existe plus sur le plateau.
+  const selTokenId = getSelectedTokenId();
+  if (selTokenId && !candidate.tokens.some((t) => t.id === selTokenId)) {
+    clearSelectionState();
+  }
+
+  notifySubscribers();
+  return true;
+}
+
+/**
  * Met à jour l'étage actif avec les propriétés fournies.
  *
  * @param {Omit<Partial<Level>, 'grid'> & {grid?: Partial<import('../core/types.js').GridConfig>}} levelUpdates

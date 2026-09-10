@@ -8,6 +8,10 @@
  * @property {(levelId: string) => void} onSelectLevel - Rappel lors de la sélection d'un étage par le MJ
  * @property {(levelId: string) => void} [onShowLevel] - Rappel quand le MJ publie l'étage actif vers la tablette (UX-15).
  *   Sans transport dedans : ce module ne le connaît pas, le câblage se fait chez l'appelant.
+ * @property {(levelId: string) => void} [onDeleteLevel] - Rappel quand le MJ retire l'étage actif (UX-16),
+ *   appelé APRÈS confirmation. Sans transport dedans, comme `onShowLevel` : le câblage se fait chez l'appelant.
+ * @property {(levelId: string) => { tokens: number, links: number, templates: number, hasFog: boolean }} [getDeleteImpact]
+ *   Ce que le retrait de cet étage emporterait, pour que la confirmation le dise en nombre.
  */
 
 /**
@@ -35,11 +39,13 @@ export function createLevelSelector(container, options) {
     <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
     <select id="gm-level-select" style="flex: 1; min-width: 0; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
     <button id="gm-level-show" type="button" title="Publie cet étage sur la tablette des joueurs" style="flex-shrink: 0; white-space: nowrap; padding: 0.35rem 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;">Emmener la table</button>
+    <button id="gm-level-delete" type="button" title="Retire cet étage de la campagne, avec ses pions et ses liaisons" style="flex-shrink: 0; white-space: nowrap; padding: 0.35rem 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;">Supprimer l'étage</button>
     <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
   `;
 
   const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
   const showLevelBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-level-show'));
+  const deleteLevelBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-level-delete'));
   const levelStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-level-status'));
 
   // ⛔ **Le cadenas 🔒 a été retiré par UX-10 (18/08/2026).**
@@ -100,6 +106,56 @@ export function createLevelSelector(container, options) {
     { signal: listeners.signal }
   );
 
+  // ── UX-16 : retirer l'étage actif ────────────────────────────────────────────────────────
+  //
+  // Geste destructeur et sans annulation : la confirmation dit en nombre ce qui va être perdu.
+  // ⛔ Le dernier étage ne se retire pas — le refus est écrit dans la ligne d'état plutôt que de
+  // laisser le clic ne rien faire en silence, et le bouton est désactivé par avance dans `update()`.
+  deleteLevelBtn.addEventListener(
+    'click',
+    () => {
+      const actif = options.getActiveLevelId();
+      if (!actif) return;
+      const etages = options.getLevels();
+      if (etages.length <= 1) {
+        levelStatus.style.color = '#e74c3c';
+        levelStatus.textContent = "Impossible : c'est le dernier étage.";
+        return;
+      }
+      const nom = etages.find((l) => l.id === actif)?.name || actif;
+      const impact = options.getDeleteImpact?.(actif) ?? {
+        tokens: 0,
+        links: 0,
+        templates: 0,
+        hasFog: false,
+      };
+      const lignes = [
+        `Retirer l'étage « ${nom} » ?`,
+        '',
+        `${impact.tokens} pion(s) et ${impact.links} liaison(s) seront perdus.`,
+      ];
+      // ⚠ Les gabarits partent aussi, et le message doit le dire : annoncer moins que ce qu'on
+      // détruit, sur un geste sans annulation, serait le pire endroit pour un mensonge d'interface.
+      if (impact.templates > 0) {
+        lignes.push(`${impact.templates} gabarit(s) posé(s) sur cet étage seront perdus.`);
+      }
+      if (impact.hasFog) {
+        lignes.push('Le brouillard exploré de cet étage sera aussi perdu.');
+      }
+      lignes.push('', 'Cette action est irréversible.');
+      if (!window.confirm(lignes.join('\n'))) return;
+      try {
+        options.onDeleteLevel?.(actif);
+        levelStatus.style.color = '#888';
+        levelStatus.textContent = `étage « ${nom} » retiré`;
+      } catch (err) {
+        levelStatus.style.color = '#e74c3c';
+        levelStatus.textContent = err instanceof Error ? err.message : String(err);
+      }
+    },
+    { signal: listeners.signal }
+  );
+
   /**
    * Reflète les étages de la campagne et l'étage actif.
    *
@@ -112,7 +168,18 @@ export function createLevelSelector(container, options) {
     const actif = options.getActiveLevelId();
 
     // Un seul étage : la barre n'apporte rien, elle disparaît.
+    //
+    // ⚠ Ce masquage rend le refus du dernier étage inatteignable par ce bouton : à un seul étage,
+    // la barre entière — et donc « Supprimer l'étage » — est invisible, donc jamais cliquée. Le
+    // garde-fou juste en dessous (désactivation + titre) reste écrit pour le cas où cette barre
+    // deviendrait visible à un seul étage ; il ne comble pas ce trou-là, qui est signalé au
+    // mainteneur plutôt que résolu ici en déplaçant la barre.
     container.style.display = etages.length > 1 ? 'flex' : 'none';
+    deleteLevelBtn.disabled = etages.length <= 1;
+    deleteLevelBtn.title =
+      etages.length <= 1
+        ? "Le dernier étage ne peut pas être retiré : une campagne sans étage n'a pas de vue"
+        : 'Retire cet étage de la campagne, avec ses pions et ses liaisons';
     if (etages.length === 0) return;
 
     // Signature explicite, lisible et sans caractères de contrôle littéraux.

@@ -126,6 +126,27 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    // ── Amendement UX-16 : retirer un étage ─────────────────────────────────────────────────
+    //
+    // ⚠ Contrairement à `level.select`/`level.show`, cet événement est appliqué par **les deux
+    // vues** : l'étage n'existe plus pour personne, donc aucun filtre en amont de ce réducteur
+    // (voir `js/app/gm.js` pour `level.show`, `js/app/player.js` pour `level.select`).
+    case 'level.delete': {
+      if (!payload.levelId || typeof payload.levelId !== 'string') {
+        console.error('Événement "level.delete" refusé : payload malformé');
+        return false;
+      }
+      try {
+        // ⭐ Le `false` du store passe tel quel : un étage déjà retiré rend `false` **sans
+        // lever**, ce qui rend le rejeu inoffensif (`CONVENTIONS.md` §4).
+        return store.removeLevel(payload.levelId);
+      } catch (err) {
+        console.error(
+          `Événement "level.delete" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+    }
     // ── Lot 3, S-02 : la bascule d'étage traverse le réseau ────────────────────────────────
     //
     // Elle ne le faisait pas. `level.add` et `level.grid` existaient depuis le lot 1a, mais changer

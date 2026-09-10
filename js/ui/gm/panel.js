@@ -1832,6 +1832,33 @@ export function createGMPanel(container, options = {}) {
             by: 'gm',
           });
         },
+        // UX-16 : ce qui serait perdu, pour que la confirmation du composant le dise en nombre.
+        getDeleteImpact: (levelId) => {
+          const camp = store.getCampaign();
+          return {
+            tokens: (camp?.tokens ?? []).filter((t) => t.levelId === levelId).length,
+            links: (camp?.links ?? []).filter(
+              (l) => l.a.levelId === levelId || l.b.levelId === levelId
+            ).length,
+            // ⚠ `removeLevel` emporte AUSSI les gabarits de l'étage : les compter ici,
+            // sinon la confirmation annonce moins que ce qu'elle détruit.
+            templates: (camp?.templates ?? []).filter((t) => t.levelId === levelId).length,
+            hasFog: store.getSessionFog(levelId) !== null,
+          };
+        },
+        // UX-16 : retirer l'étage, puis publier seulement si la mutation locale a réussi —
+        // même principe qu'`onSelectLevel` ci-dessus : annoncer un retrait que le MJ n'a pas pu
+        // faire enverrait les autres postes retirer un étage que lui-même a gardé.
+        onDeleteLevel: (levelId) => {
+          const retire = store.removeLevel(levelId);
+          if (!retire) return;
+          transport?.publish({
+            type: 'level.delete',
+            payload: { levelId },
+            at: Date.now(),
+            by: 'gm',
+          });
+        },
       })
     : null;
 

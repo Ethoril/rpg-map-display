@@ -617,6 +617,31 @@ S'appuie entièrement sur des briques déjà spécifiées : énumération de cas
 > - ⚠ le MJ n'apprend **pas** où la table se trouve. L'étage affiché des joueurs ne circule pas, donc
 >   la barre ne peut annoncer que ce qu'elle a **publié**, jamais ce que la tablette montre.
 
+> **Amendement UX-16 (10/09/2026) — `level.delete`, retirer un étage.** `store.addLevel` existait
+> depuis toujours **sans jumeau** : aucun `removeLevel`, aucun événement, aucun bouton. Le seul
+> moyen de se débarrasser d'un étage était `scene.load`, qui remplace la campagne entière — donc
+> jette aussi les pions posés, le brouillard travaillé et la position de tout le monde. Deux imports
+> ratés laissaient deux étages morts dans la campagne, **pour toujours**, et dans le sélecteur que
+> le MJ ouvre à chaque changement de niveau. ⚠ Le défaut s'est aggravé de son propre succès : UX-01
+> a rendu l'ajout facile, et UX-15 a donné le geste qui emmène la table.
+>
+> `level.delete` porte `{ levelId }` et **emporte ce que l'étage portait** : ses pions, son masque
+> exploré, et **toute liaison dont une extrémité vivait dessus** — une liaison pendante serait un
+> piège silencieux. Décision du mainteneur du 10/09 : un bouton dans la barre d'étage, avec
+> confirmation, utilisable **en séance**. ⛔ La variante « les pions partent en réserve » est
+> écartée explicitement.
+>
+> - **Geste destructeur et sans annulation** : la confirmation dit ce qui va être perdu, en nombre.
+> - ⛔ **Le dernier étage ne se retire pas.** Une campagne sans aucun étage n'a pas de vue ; c'est le
+>   miroir de la règle d'`addLevel`, qui ne sélectionne que s'il n'y avait pas d'étage actif —
+>   l'initialisation, le seul cas où quelqu'un doit bien être choisi.
+> - ⚠ **C'est le seul endroit où quelque chose bouge sans que personne l'ait demandé**, et
+>   l'exception est assumée : si l'étage retiré était celui qu'un écran affichait, cet écran retombe
+>   sur un autre étage — le sien n'existe plus. La règle générale (« rien ne se déplace dans le dos
+>   de personne ») n'est pas levée : c'est le geste explicite du MJ, confirmé, qui autorise ce
+>   déplacement-là.
+> - **Rejeu inoffensif** : un étage déjà retiré rend `false` sans lever, comme `token.reserve`.
+
 Règle le principal arbitrage verbal pénible à table — « est-ce que le gobelin est dans la
 boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 
@@ -817,6 +842,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
 | `level.show` | **MJ seul** | ponctuel — `{ levelId }`, voir l amendement UX-15 |
+| `level.delete` | **MJ seul** | ponctuel — `{ levelId }`, voir l amendement UX-16 |
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 
