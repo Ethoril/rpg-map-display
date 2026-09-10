@@ -151,6 +151,22 @@ Aucun n'est commencé. Chacun demande un arbitrage avant d'écrire la première 
 
 ### C-1 Bibliothèque ++ — naviguer, supprimer, modifier, créer
 
+> ## ✅ TRANCHÉ le 10/09/2026 — renommer, supprimer, et une vignette
+>
+> Les trois, et **dans l'outil de préparation** : c'est le seul qui a le droit d'écrire sur le
+> disque, l'application déployée ne peut pas toucher à `maps/`.
+>
+> - **Renommer une scène** se fait aujourd'hui en éditant `maps/scenes.json` à la main, sans
+>   interface ni validateur — un piège sans garde-fou.
+> - **Supprimer une carte** doit emporter ses artefacts : aujourd'hui les orphelins sont seulement
+>   **signalés**, jamais supprimés, donc ils restent sur le disque **et dans le dépôt**.
+> - **Une vignette** évite d'ouvrir trois cartes pour trouver la bonne. ⚠ Le typedef
+>   `SceneLibraryEntry` porte déjà un `thumbUrl` que rien ne référence (dette E-5) : c'est là qu'il
+>   trouve son emploi, ou alors il faut le supprimer.
+>
+> ⚠ Et la dérive à corriger avant d'écrire quoi que ce soit dessus : `features.animated` est écrit
+> par le générateur, **absent du typedef et du validateur** du catalogue (dette E-4).
+
 **L'existant est asymétrique.** Les **pions** ont déjà un CRUD complet côté outil de préparation :
 `/api/tokens/save`, `/api/tokens/delete`, édition par repopulation du formulaire, image bornée à
 256 Kio, écriture atomique par renommage. Les **cartes** n'ont **rien** : pas de renommage, pas de
@@ -171,6 +187,25 @@ orphelins sont seulement **signalés**, jamais supprimés.
   catalogue : dérive à corriger avant d'écrire quoi que ce soit dessus.
 
 ### C-2 Lumières cliquables comme les portes
+
+> ## ✅ TRANCHÉ le 10/09/2026 — quatre décisions, et le chantier est cadré
+>
+> - **Deux états, allumée ou éteinte.** Un clic bascule. ⛔ Pas de troisième état à la manière des
+>   portes : « si un jour tu veux empêcher qu'on y touche, on l'ajoutera à ce moment-là ».
+> - ⭐ **L'éditeur de lumières — poser, déplacer, supprimer une lampe — fait partie de ce
+>   chantier, et c'en est le cœur.** Raison retenue : sans lui, seules les cartes que Dungeon
+>   Alchemist garnit de sources sont éclairables. Sur `ferme-isolee` et `marais-hex_16x16`, qui
+>   portent **0 lumière**, il n'existe aucun moyen de faire de la lumière sauf une torche portée.
+> - **Les joueurs ne basculent PAS une lumière : le MJ seul.** Une lampe décide de ce que six
+>   personnes voient, et l'éteindre n'est pas un geste qu'un personnage fait en marchant —
+>   contrairement à une porte, que les joueurs continuent d'ouvrir eux-mêmes.
+> - **Les marqueurs de lampe se dessinent sur l'écran du MJ seulement.** Une lampe éteinte n'a
+>   aucun indice dans le décor : un marqueur côté joueurs dirait « il y a quelque chose ici » dans
+>   une pièce noire. La couche `links` a déjà le précédent d'un rendu par rôle.
+>
+> ⛔ **Reste à faire AVANT la première ligne de code** : les noms d'événements entrent dans la
+> table du §7 du cahier des charges — la bascule d'une lampe, et les trois gestes de l'éditeur.
+> `CONVENTIONS.md` interdit d'inventer un nom d'événement.
 
 **Ce qui aide** : les portes donnent le patron complet — modèle à états, hit-test partagé entre les
 deux vues, événement réseau idempotent, mutation validée avant remplacement, et invalidation de cache
@@ -201,6 +236,28 @@ deux vues, événement réseau idempotent, mutation validée avant remplacement,
 
 ### C-3 Handouts — envoi de fichier et bibliothèque de session
 
+> ## ✅ TRANCHÉ le 10/09/2026 — ⛔ le projet n'héberge AUCUNE image de séance
+>
+> Le mainteneur a ajouté une exigence qui décide tout : **les images de séance pèsent plusieurs
+> mégaoctets et doivent pouvoir être VRAIMENT supprimées après usage**, « sinon on va avoir un truc
+> très gros ».
+>
+> ⛔ **Le fait qui a renversé sa première réponse** : publier une image, ici, c'est la **commiter**
+> — le site est construit depuis le dépôt. Or un fichier supprimé **reste dans l'historique git
+> pour toujours** : la suppression ne rend pas un octet. Le dépôt porte déjà **77 Mo** d'artefacts
+> de cartes publiés. « Supprimer vraiment » est donc impossible par cette route, et c'est
+> exactement la raison pour laquelle les sources UVTT sont exclues de git.
+>
+> **Décision : on garde le lien collé, et on améliore ce qui existe** — conversion d'adresse,
+> aperçu, petite bibliothèque de la séance en cours. L'image vit chez le mainteneur ; la
+> supprimer, c'est la supprimer chez lui, et le dépôt ne grossit jamais.
+>
+> ⚠ Écartés en connaissance de cause : **Firebase Storage** (seul chemin qui offrirait envoi en
+> séance *et* suppression réelle, mais un produit de plus, ses règles à écrire, un coût à
+> surveiller et un amendement à `STACK.md`) ; et **la tablette qui lirait le disque du Mac par le
+> réseau local** (l'adresse locale n'est pas dans les domaines autorisés Firebase — le blocage
+> déjà consigné).
+
 **L'existant est minimal.** Un `Handout` a **trois champs** : `id`, `name`, `imageUrl`. Il y a **un
 seul emplacement actif**, pas de liste, pas d'historique, aucun regroupement par session ni par
 campagne. L'`id` est fabriqué à chaque révélation et **n'adresse rien**.
@@ -225,6 +282,16 @@ image de pion collés depuis Drive restent cassés.
 - Plusieurs handouts affichables à la fois, ou toujours un seul ?
 
 ### C-4 Un skill de projet pour les passes UI/UX
+
+> ## ✅ SANS OBJET pour moitié, le 10/09/2026 — et l'autre moitié attend par principe
+>
+> ⭐ **Le skill « revue par mutation » EXISTE** : `.claude/skills/muter/`. La question posée le
+> 16/08 — « en écrire un, les deux, ou aucun » — est donc déjà répondue pour ce candidat-là, et ce
+> document ne l'avait pas vu.
+>
+> **Le skill d'ergonomie, lui, n'est pas écrit, et c'est délibéré** : la conclusion du 16/08 tient
+> — il s'écrira **en aval** d'une passe réussie, pour figer ce qui a marché, pas en amont pour la
+> guider. ⛔ Ne pas le rouvrir avant qu'une passe d'ergonomie ait effectivement réussi.
 
 **Réponse à la question posée** : aucun skill dédié à l'UI/UX n'est installé ici. Ce qui existe est
 `artifact-design`, qui porte sur des pages web publiées, et `dataviz`, qui porte sur les graphiques —
@@ -257,6 +324,28 @@ aujourd'hui dans la mémoire de l'assistant et dans `docs/`, pas dans un outil i
 > pour figer ce qui a marché — pas en amont pour la guider.
 
 ### C-5 ⛔ `mapFromCellPoint` ne veut pas dire la même chose selon le pavage — les pions sont faux en hexagonal
+
+> ## ✅ TRANCHÉ le 10/09/2026 — l'hexagone s'aligne sur le COIN
+>
+> Le mainteneur a d'abord objecté, et l'objection était juste : « je ne comprends pas pourquoi on
+> ne peut pas considérer que la position est le centre. Je ne construirai jamais manuellement des
+> murs sur une carte hexa, et la plupart du temps je mettrai des hexagones sur des cartes sans mur,
+> c'est pour du combat dans la nature. »
+>
+> **Réponse mesurée, qui a emporté la décision :**
+>
+> - on ne peut pas décréter « le centre » parce que la fonction est un **contrat partagé** et que
+>   le carré doit garder le coin : les fichiers UVTT donnent murs, portes et lampes sur des
+>   coordonnées de **coin**. Déclarer les entiers « centres » décalerait d'une demi-case les 131
+>   murs et 40 portes du manoir et les 253 murs du village ;
+> - ⭐ mais sur ses cartes hexagonales l'ambiguïté n'est consommée que par **une seule chose** :
+>   l'**ancre du masque de brouillard et de lumière**. Mesuré sur `marais-hex_16x16` —
+>   `mapFromCellPoint(0,0)` rend **(70, 70)** quand le coin réel de la case vaut **(0, −11)**, soit
+>   **70 px à droite et 81 px en bas**. Sur le manoir carré, écart nul. Et ces cartes portent bien
+>   **0 mur, 0 portail, 0 lumière**, exactement comme il le disait.
+>
+> Le chantier est donc **petit pour son corpus** : aligner `HexGrid` sur le coin, plus des tests. ⚠
+> Aucun test ne défend aujourd'hui cette géométrie : il en faut avant d'y toucher.
 
 **Trouvé le 16/08/2026** par la relecture du chantier des liaisons, hors de son périmètre. Ce n'est
 pas une dette dormante : c'est un **défaut actif**, dès qu'une carte hexagonale porte un pion.
@@ -315,6 +404,26 @@ géométrie d'un pion hexagonal ; il en faudra un avant de toucher quoi que ce s
 
 ### C-6 ⛔ Deux fonctions de désignation en désaccord — avec deux PJ empilés, c'est le mauvais qui franchit
 
+> ## ✅ TRANCHÉ le 10/09/2026 — ⛔ une case, un pion, POUR TOUS LES PIONS
+>
+> Le mainteneur écarte la correction que je recommandais (mettre les deux fonctions de désignation
+> d'accord) et **supprime la cause à la racine** : l'empilement devient impossible, et pas
+> seulement entre personnages joueurs — **entre tous les pions, joueurs comme PNJ**. Une règle
+> unique, facile à retenir et à expliquer à la table.
+>
+> ⚠ **Trois points à trancher au moment d'écrire, et qui ne le sont pas :**
+>
+> - **Les campagnes déjà enregistrées** qui contiennent un empilement seraient refusées au
+>   chargement. Les normaliser à la lecture — déplacer le second pion, ou l'envoyer en réserve — ou
+>   refuser franchement ? ⛔ Refuser une campagne existante est une régression bien plus chère que
+>   le défaut corrigé : c'est la règle qui a déjà été appliquée à `visionBright` et à
+>   `ambient.color`.
+> - **Les pions de plus d'une case.** Un pion 2×2 occupe une rosette de cases (`cellsOccupied`) :
+>   la règle porte-t-elle sur la case d'ancrage ou sur toute l'emprise ? La seconde est la seule
+>   cohérente avec ce que la table voit.
+> - **Le test « deux PJ empilés »** de `tests/multiLevelJourney.spec.mjs` fige le comportement
+>   actuel : il devra bouger avec le correctif.
+
 **Trouvé le 16/08/2026** par la relecture du chantier de l'invite de franchissement. Défaut
 antérieur au chantier, mais rendu visible par lui : il se manifeste maintenant sur un escalier.
 
@@ -348,6 +457,19 @@ qui ne s'est jamais produit en séance, et le correctif touche un départage don
 désignation et le refus de destination — deux chemins que le chantier O a déjà réglés finement.
 
 ### C-7 ⛔ On peut ajouter un étage, on ne peut pas en retirer — et UX-01 va rendre l'ajout facile
+
+> ## ✅ TRANCHÉ le 10/09/2026 — un bouton dans la barre d'étage, avec confirmation
+>
+> Le MJ choisit l'étage, confirme, et l'étage disparaît **avec ce qu'il portait** : ses pions, son
+> brouillard, ses liaisons vers les autres étages. Utilisable **en séance**, juste après un import
+> raté — c'est le cas qui motive le chantier.
+>
+> ⚠ **Geste destructeur et sans annulation** : la confirmation doit dire ce qui va être perdu.
+> ⛔ La variante « les pions partent en réserve » a été écartée explicitement.
+>
+> ⛔ **Reste à faire AVANT la première ligne** : le nom d'événement entre dans la table du §7 du
+> cahier des charges. ⚠ Et il faut décider ce qu'il advient d'une liaison dont **l'autre** extrémité
+> vivait sur l'étage supprimé — la laisser pendante serait un piège silencieux.
 
 **Trouvé le 16/08/2026** en relisant le plan d'implémentation de UX-01. Ce n'est pas un défaut de ce
 plan : c'est une conséquence de son succès.
@@ -443,6 +565,23 @@ qui serait le placement automatique que le principe interdit.
 ce qui reste demande encore les deux arbitrages ci-dessus.
 
 ### C-8 ⭐ Découpler les étages : chacun circule chez soi, les joueurs ne voient que ce qu'ils connaissent
+
+> ## ✅ LARGEMENT LIVRÉ, et le reste est tranché le 10/09/2026
+>
+> Les trois points de « ce qui est voulu » sont faits : **UX-10** a découplé les deux vues,
+> **UX-12** a donné aux joueurs leur propre sélecteur limité aux étages **connus** — dérivé du
+> masque exploré, sans champ ni événement nouveau, exactement comme ce document l'avait prévu — et
+> **UX-15** (`level.show`, 09/09) a donné au MJ le geste explicite qui manquait pour les y emmener.
+>
+> ⛔ **Ce qui restait est le piège annoncé ici même, et il est confirmé** : `getSessionFog` lit une
+> carte mémoire puis **le stockage local du client**. Une tablette neuve — ou dont le cache vient
+> d'être vidé, ce qui est arrivé le 09/09 pour le correctif du canal — ne connaît donc que les
+> étages que le MJ republie, c'est-à-dire ceux qui portent un PJ. Les joueurs perdent l'accès à des
+> niveaux qu'ils ont bel et bien explorés, sans que rien à l'écran ne le leur dise.
+>
+> **Décision : à la connexion, la tablette réclame les masques explorés de TOUS les étages**, pas
+> du seul étage affiché — une fois, au branchement. ⚠ `requestVisionResend` ne demande aujourd'hui
+> que `{ levelId: étage actif }` : c'est cette demande qui doit s'élargir.
 
 **Demandé le 16/08/2026, et jamais consigné jusque-là** — le mainteneur : « c'est un truc qu'on
 devait faire évoluer à l'avenir ça par contre, on a dû oublier de le consigner ».

@@ -74,4 +74,9 @@ Deux machines (Mac et poste Windows) synchronisées **par git seulement** : ce q
 n'existe pour aucune autre. `git fetch` puis lire **les deux sens** avant toute analyse — il y a déjà
 eu 11 commits de retard d'un côté et 4 non poussés, donc non vérifiés, de l'autre.
 
-Commits **sur demande**, pas spontanés.
+Commits **sur demande**, pas spontanés — ⭐ **sauf sur un chantier déjà arbitré**, où le mainteneur
+a ouvert l'autonomie le 10/09/2026 : concevoir, faire écrire, **vérifier soi-même par mutation**,
+passer la porte, commiter, pousser, et lui dire ce qui est en ligne et ce qu'il lui reste à éprouver
+à la table. ⛔ **On s'arrête quand on rencontre une décision que ses arbitrages ne couvrent pas** —
+un nom d'événement à inscrire au §7 du cahier des charges en est le cas typique. Les arbitrages en
+vigueur sont dans `docs/QUESTIONS-EN-ATTENTE.md`, marqués « ✅ TRANCHÉ ».
