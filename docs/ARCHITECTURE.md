@@ -155,9 +155,15 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
 │   │       ├─ templates.js       [2]  gabarits de zone d'effet
 │   │       ├─ measure.js         [4]  mesure de distance au geste (MJ local)
-│   │       └─ pings.js           [4]  marqueur « regarde ici », transitoire — ⚠ ne lit
+│   │       ├─ pings.js           [4]  marqueur « regarde ici », transitoire — ⚠ ne lit
 │   │                                  PAS le store : un ping est un geste, pas une donnée,
 │   │                                  et son âge se compte depuis la réception LOCALE
+│   │       └─ lightMarkers.js  [C-2] marqueurs des lampes, ALLUMÉES et ÉTEINTES —
+│   │                              ⛔ vue MJ SEULE, décision du mainteneur du 10/09/2026 :
+│   │                              un marqueur côté joueurs dirait « il y a quelque chose
+│   │                              ici » dans une pièce noire. Écart assumé au patron des
+│   │                              portes, qu'une porte fermée n'a pas besoin de dessiner
+│   │                              puisque le décor la montre : une lampe éteinte, si.
 │   │
 │   ├─ input/
 │   │   ├─ pointer.js             [1a] pointerdown/move/up → intentions abstraites
@@ -579,9 +585,10 @@ Du fond vers la surface. Ordre figé : il détermine la lisibilité à table.
 | 9 | `tokens` pions + badges | `tokens` |
 | 10 | `fog` masque de fog ← **au-dessus des pions** | `fog` |
 | 11 | — | `feedback` ⚠ **au-dessus du fog**, voir ci-dessous |
-| 12 | `measure` mesure de distance — MJ local | — |
-| 13 | `pings` marqueur « regarde ici », transitoire | `pings` |
-| 14 | (DOM) overlays : révélation d'image, sélecteur d'étage | (DOM) |
+| 12 | `lightMarkers` marqueurs des lampes — ⛔ MJ seul | — ⛔ **jamais côté joueurs** |
+| 13 | `measure` mesure de distance — MJ local | — |
+| 14 | `pings` marqueur « regarde ici », transitoire | `pings` |
+| 15 | (DOM) overlays : révélation d'image, sélecteur d'étage | (DOM) |
 
 ⚠ **`feedback` n'est pas un fichier de couche** et n'a donc rien à faire au §1 : c'est un **créneau**
 du rendu joueurs qui rappelle deux méthodes secondaires de couches déjà montées —

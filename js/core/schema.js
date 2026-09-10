@@ -273,6 +273,13 @@ export function normalizeLevel(level) {
       if (Number.isFinite(light.range)) {
         light.range = Math.min(Math.max(light.range, 0), 20);
       }
+      // Amendement C-2 (10/09/2026) : `Light.on` n'existait pas avant. Son absence dans une
+      // scène déjà sur disque vaut ALLUMÉE — une campagne existante ne se refuse jamais, elle
+      // se normalise (précédent `visionBright` et `ambient.color`). Une valeur déjà booléenne
+      // n'est jamais touchée.
+      if (typeof light.on !== 'boolean') {
+        light.on = true;
+      }
     }
   }
 
@@ -917,6 +924,9 @@ export function validateCampaign(campaign) {
           }
           if (typeof light.shadows !== 'boolean') {
             errors.push(`${lightPrefix} : shadows doit être un booléen`);
+          }
+          if (typeof light.on !== 'boolean') {
+            errors.push(`${lightPrefix} : on doit être un booléen`);
           }
         }
         // ⛔ `ambient.color` n'est plus validé, et son absence comme sa présence sont toutes

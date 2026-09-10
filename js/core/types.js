@@ -82,6 +82,10 @@
  * @property {number} intensity Intensité normalisée entre 0 et 1
  * @property {string} color
  * @property {boolean} shadows
+ * @property {boolean} on Allumée (`true`) ou éteinte (`false`) — **deux états seulement**,
+ *   décision du mainteneur du 10/09/2026 (amendement C-2). Une lampe déclarée par un UVTT est
+ *   allumée à l'import, et son absence dans une scène déjà sur disque vaut allumée : voir
+ *   `normalizeLevel` dans `js/core/schema.js`, même précédent que `Portal.state`.
  */
 
 /**

@@ -780,3 +780,39 @@ test('18. La modulation se reconstruit quand la révision du masque VISIBLE chan
     '⛔ la révision du masque visible a changé : la modulation doit suivre'
   );
 });
+
+test('19. ⭐ C-2 — une lampe ÉTEINTE n’émet RIEN, et basculer l’état force la recomposition', () => {
+  const allumee = { id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffffff', shadows: true, on: true };
+  const eteinte = { ...allumee, on: false };
+
+  // ⚠ Ambiante NULLE, indispensable : à ambiante pleine (le défaut de `etage()`) le champ est
+  // déjà blanc et aucune source n'est balayée — voir le test 2, même remarque.
+  const ambiante = { level: 0, baked: false };
+
+  // (1) Le champ lumineux ne la compose pas : aucune source collectée pour une lampe éteinte.
+  const levelAllume = etage({ ambient: ambiante, lights: [allumee] });
+  const levelEteint = etage({ ambient: ambiante, lights: [eteinte] });
+  assert.equal(collectLightSources(levelAllume, [], ADAPTATEUR).length, 1);
+  assert.equal(collectLightSources(levelEteint, [], ADAPTATEUR).length, 0, '⛔ une lampe éteinte n’émet rien');
+
+  // Absence du champ (scène déjà sur disque, jamais repassée par `normalizeLevel`) : vaut
+  // ALLUMÉE, même précédent que `Portal.state`.
+  const sansChamp = etage({
+    ambient: ambiante,
+    lights: [/** @type {any} */ ({ id: 'l2', at: { cellX: 1, cellY: 1 }, range: 3, intensity: 1, color: '#ffffff', shadows: true })],
+  });
+  assert.equal(collectLightSources(sansChamp, [], ADAPTATEUR).length, 1, 'absence du champ = allumée');
+
+  // (2) ⛔ Le piège nommé par C-2 : basculer l'état DOIT changer la signature de cache — sans
+  // quoi la bascule ne changerait rien à l'écran, le cache court-circuitant la recomposition.
+  const sigAllumee = buildLightSignature(levelAllume, [], ADAPTATEUR);
+  const sigEteinte = buildLightSignature(levelEteint, [], ADAPTATEUR);
+  assert.notEqual(sigAllumee, sigEteinte, '⛔ basculer une lampe doit changer la signature de cache');
+
+  // Et la couche recompose bien quand l'étage bascule.
+  const couche = new LightLayer({ createCanvas: fabrique });
+  assert.equal(couche.update(ADAPTATEUR, levelAllume, []), true, 'premier calcul');
+  assert.equal(couche.lastSourceCount, 1);
+  assert.equal(couche.update(ADAPTATEUR, levelEteint, []), true, 'la bascule DOIT recomposer');
+  assert.equal(couche.lastSourceCount, 0, 'plus aucune source une fois éteinte');
+});

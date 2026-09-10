@@ -12,6 +12,7 @@ import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer, buildVisionSignature } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
 import { LinksLayer } from '../render/layers/links.js';
+import { LightMarkersLayer } from '../render/layers/lightMarkers.js';
 import { WallsLayer } from '../render/layers/walls.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
@@ -118,6 +119,7 @@ export async function bootstrapGMApp(options = {}) {
   const wallsLayer = new WallsLayer();
   const portalsLayer = new PortalsLayer();
   const linksLayer = new LinksLayer();
+  const lightMarkersLayer = new LightMarkersLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
   const pingsLayer = new PingsLayer();
@@ -808,6 +810,10 @@ export async function bootstrapGMApp(options = {}) {
           );
         }
         layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      // ⛔ Vue MJ SEULE (rang 12) : `player.js` ne branche jamais cette couche.
+      lightMarkers: () => {
+        lightMarkersLayer.render(stage.context, grid, activeLevel, { zoom: camera.zoom });
       },
       measure: () => {
         measureLayer.render(stage.context, grid, activeLevel, {

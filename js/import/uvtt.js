@@ -381,6 +381,9 @@ export function parseUvtt(jsonInput) {
         // VOIR à travers ce mur. Le rendu occlut donc toutes les sources. Ce qui est écarté se
         // dit, jamais en silence : voir l'avertissement plus bas.
         shadows: l.shadows ?? true,
+        // Amendement C-2 (10/09/2026) : une lampe déclarée par un UVTT est ALLUMÉE. Le format
+        // n'a aucun champ d'état — deux états à trancher côté MJ, pas à l'import.
+        on: true,
       });
     }
     if (lumieresRejetees > 0) {

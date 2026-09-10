@@ -107,6 +107,7 @@ function setupCampagneTest() {
         intensity: 1,
         color: '#ffaa00',
         shadows: true,
+        on: true,
       },
     ],
   });

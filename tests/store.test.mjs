@@ -503,14 +503,17 @@ test('Une campagne héritée contenant un ARGB est chargée après conversion et
   // test est que le chargement les convertisse au lieu de refuser la campagne. Aucun
   // `@ts-ignore` n'est nécessaire ici — `color` est typé `string` — et il serait interdit
   // (`CONVENTIONS.md` §8 n°16).
-  camp.levels[0].lights.push({
+  // ⛔ `on` est aussi absent, exprès : même précédent que la couleur ARGB — une campagne
+  // enregistrée avant l'amendement C-2 n'a jamais porté ce champ, et le chargement doit la
+  // normaliser (allumée) plutôt que la refuser.
+  camp.levels[0].lights.push(/** @type {any} */ ({
     id: 'legacy-light',
     at: { cellX: 1, cellY: 1 },
     range: 5,
     intensity: 2.5,
     color: 'ffffffff',
     shadows: true,
-  });
+  }));
   // ⛔ `ambient.color` n'est plus ni normalisé ni validé (UX-07) : il est posé ici tel qu'une
   // campagne enregistrée le porte, et le chargement doit passer outre sans broncher.
   /** @type {any} */ (camp.levels[0].ambient).color = 'ffF7EAE4';
@@ -522,6 +525,7 @@ test('Une campagne héritée contenant un ARGB est chargée après conversion et
   const state = getState();
   const loadedLight = state.campaign?.levels[0].lights.find((l) => l.id === 'legacy-light');
   assert.equal(loadedLight?.color, '#ffffff');
+  assert.equal(loadedLight?.on, true, '⛔ C-2 : une lampe sans champ `on` est normalisée ALLUMÉE');
   // UX-07 critère 3 : la campagne se charge, et son `ambient.color` hérité traverse sans être
   // ni relu ni réécrit. On vérifie qu'il est passé **tel quel** : le normaliser reviendrait à
   // faire vivre un champ dont on a établi qu'il ne sert à rien.

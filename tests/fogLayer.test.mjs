@@ -699,7 +699,7 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
     walls: [[{ cellX: 5, cellY: 0 }, { cellX: 5, cellY: 10 }]],
     lights: [{
       id: 'fixed', at: { cellX: 2.5, cellY: 5.5 }, range: 3, intensity: 1,
-      color: '#ffffff', shadows: true,
+      color: '#ffffff', shadows: true, on: true,
     }],
   });
   const grid = gridFor(level);

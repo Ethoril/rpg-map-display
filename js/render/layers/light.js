@@ -64,6 +64,11 @@ export function collectLightSources(level, tokens, adaptateur) {
 
   for (const light of Array.isArray(level.lights) ? level.lights : []) {
     if (!light || !light.at) continue;
+    // Amendement C-2 : une lampe ÉTEINTE n'émet RIEN — ni lumière, ni contribution à la
+    // vision, puisque ce champ nourrit la règle tactique. `on` est normalisé par
+    // `normalizeLevel` (schema.js) ; `!== false` reste la ceinture d'un document non repassé
+    // par cette normalisation.
+    if (light.on === false) continue;
     const cases = cappedLightRange(light.range);
     if (cases <= 0) continue;
     sources.push({
@@ -163,9 +168,13 @@ export function buildLightSignature(level, tokens, adaptateur) {
   lumieres.sort((a, b) => String(a?.id).localeCompare(String(b?.id)));
   for (const light of lumieres) {
     if (!light) continue;
+    // ⛔ `on` DOIT figurer ici — piège nommé par l'amendement C-2. Sans lui, basculer une
+    // lampe ne changerait ni la géométrie ni les couleurs qui composent le reste de la
+    // signature : le cache la jugerait identique et court-circuiterait la recomposition,
+    // laissant la lampe visuellement allumée après qu'on l'a éteinte.
     parts.push(
       `l:${light.id}:at=${light.at?.cellX},${light.at?.cellY}:range=${light.range}:` +
-      `intensity=${light.intensity}:color=${light.color}`
+      `intensity=${light.intensity}:color=${light.color}:on=${light.on !== false}`
     );
   }
 

@@ -799,6 +799,10 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `scene.load` | MJ | ponctuel — déclenche un snapshot complet |
 | `level.show` | **MJ seul** | ponctuel — `{ levelId }`, voir l amendement UX-15 |
 | `level.delete` | **MJ seul** | ponctuel — `{ levelId }`, voir l amendement UX-16 |
+| `light.toggle` | **MJ seul** | ponctuel — `{ levelId, lightId, on }`, état **absolu**, voir l amendement C-2 |
+| `light.place` | **MJ seul** | ponctuel — `{ levelId, light }`, idempotent par identifiant, voir l amendement C-2 |
+| `light.move` | **MJ seul** | ponctuel — `{ levelId, lightId, at }`, voir l amendement C-2 |
+| `light.delete` | **MJ seul** | ponctuel — `{ levelId, lightId }`, voir l amendement C-2 |
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 
@@ -860,6 +864,33 @@ réécrit par `saveSnapshot` à chaque mutation.
 > (`exploredFogMap`), pas seulement ceux qui portent un PJ — sans quoi un étage exploré puis
 > quitté ne serait jamais rediffusé, faute de signature qui bouge. Décision du mainteneur du
 > 10/09/2026 (`QUESTIONS-EN-ATTENTE.md` C-8).
+
+> **Amendement C-2 (10/09/2026) — les lampes deviennent cliquables, et un éditeur les pose.**
+> Quatre décisions du mainteneur : **deux états** seulement (allumée ou éteinte, pas de troisième
+> à la manière des portes) ; **l'éditeur fait partie du chantier** et c'en est le cœur, sans quoi
+> les cartes sans source déclarée — `ferme-isolee`, `marais-hex_16x16`, **0 lumière** — restent
+> inéclairables ; **le MJ seul** bascule une lampe, contrairement aux portes que les joueurs
+> ouvrent ; et **les marqueurs ne se dessinent que sur son écran**.
+>
+> ⭐ **Quatre noms, et UN SEUL ÉCRIVAIN PAR CHAMP** — c'est la règle qui les rend sûrs. J'avais
+> proposé deux événements au motif que « deux chemins vers un même état final finissent par ne
+> plus se rejoindre » (amendement UX-14) ; le mainteneur a retenu quatre noms le 10/09/2026, et
+> le risque se contient ainsi :
+>
+> - ⛔ `light.place` et `light.move` **ne touchent JAMAIS l'état allumé/éteint** : sur une lampe
+>   qui existe déjà, le réducteur **conserve** son `on` courant et n'écrit que la géométrie ;
+> - ⛔ `light.toggle` est **le seul** à écrire `on`, et il porte l'état **absolu**, comme
+>   `portal.toggle` — jamais « inverse-le », qui divergerait au rejeu.
+>
+> Un champ, un écrivain : aucun divorce possible entre deux chemins.
+>
+> ⚠ **Le modèle gagne un champ** : `Light.on`, booléen. Une lampe déclarée par un UVTT est
+> **allumée** à l'import, et son absence dans une scène déjà sur disque vaut **allumée** — une
+> campagne existante ne se refuse jamais, elle se normalise (précédent `visionBright` et
+> `ambient.color`).
+>
+> ⚠ **Rejeu inoffensif partout** : une lampe déjà supprimée rend `false` sans lever, et une bascule
+> à l'état déjà atteint ne change rien — même profil que `token.reserve` et `portal.toggle`.
 
 > **Amendement UX-13 (18/08/2026)** : `level.replace` porte `{ levelId, patch }` et remplace le contenu d'un étage existant sur place (`imageUrl`, dimensions, pas de grille, géométrie vidée). Contrairement à `level.add`, il ne crée pas d'étage et s'applique immédiatement pour quiconque affichait déjà cet étage. Les pions de l'étage sont déplacés en réserve via autant d'événements `token.reserve` distincts, et le brouillard de l'étage est réinitialisé.
 

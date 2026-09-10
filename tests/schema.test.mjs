@@ -13,6 +13,7 @@ import {
   TOKEN_IMAGE_TOTAL_MAX_BYTES,
   validateCampaign,
   normalizeCampaign,
+  normalizeLevel,
   terrainCostRecordToMap,
   terrainCostMapToRecord,
 } from '../js/core/schema.js';
@@ -270,14 +271,14 @@ test('Conversion terrainCost Record <-> Map', () => {
 
 test('Validation refuse une couleur hors #RRGGBB sur au moins deux des 8 chemins du modèle', () => {
   const level = createLevel({ id: 'rdc' });
-  level.lights.push({
+  level.lights.push(/** @type {any} */ ({
     id: 'light-argb',
     at: { cellX: 1, cellY: 1 },
     range: 3,
     intensity: 1,
     color: 'ffffffff',
     shadows: true,
-  });
+  }));
   // ⛔ `ambient.color` était le huitième chemin de couleur ; il a été **retiré** par UX-07 —
   // importé, validé, persisté, et lu par aucun rendu. On le repose ici en donnée héritée, sale,
   // exprès : il ne doit plus produire d'erreur, sans quoi toutes les campagnes enregistrées
@@ -383,4 +384,28 @@ test('identifiantAleatoire — tient hors contexte sécurisé, là où randomUUI
   } finally {
     globalThis.crypto.randomUUID = vrai;
   }
+});
+
+test('⭐ C-2 — Light.on : absente sur une scène déjà sur disque, elle vaut ALLUMÉE (précédent Portal.state)', () => {
+  const level = createLevel({ id: 'rdc' });
+  level.lights.push(
+    /** @type {any} */ ({ id: 'sans-champ', at: { cellX: 1, cellY: 1 }, range: 3, intensity: 1, color: '#ffffff', shadows: true }),
+    { id: 'deja-eteinte', at: { cellX: 2, cellY: 2 }, range: 3, intensity: 1, color: '#ffffff', shadows: true, on: false },
+    { id: 'deja-allumee', at: { cellX: 3, cellY: 3 }, range: 3, intensity: 1, color: '#ffffff', shadows: true, on: true }
+  );
+
+  normalizeLevel(level);
+
+  assert.equal(level.lights[0].on, true, '⛔ une campagne existante ne se refuse jamais, elle se normalise');
+  assert.equal(level.lights[1].on, false, 'une valeur déjà booléenne ne doit jamais être touchée');
+  assert.equal(level.lights[2].on, true);
+});
+
+test('C-2 — validateCampaign refuse un `Light.on` non booléen', () => {
+  const level = createLevel({ id: 'rdc' });
+  level.lights.push(
+    /** @type {any} */ ({ id: 'sale', at: { cellX: 1, cellY: 1 }, range: 3, intensity: 1, color: '#ffffff', shadows: true, on: 'oui' })
+  );
+  const errors = validateCampaign(createCampaign({ levels: [level] }));
+  assert.ok(errors.some((err) => err.includes('lumière "sale"') && err.includes('on doit être un booléen')));
 });

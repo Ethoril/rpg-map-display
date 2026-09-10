@@ -353,3 +353,15 @@ test('⭐ Z-04 — une lumière `shadows: false` est conservée, mais son écart
   assert.equal(absent.level.lights[0].shadows, true);
   assert.equal(absent.warnings.filter((w) => w.includes('shadows')).length, 0);
 });
+
+test('⭐ C-2 — une lampe importée d’un UVTT est ALLUMÉE : le format n’a aucun champ d’état', () => {
+  const uvtt = {
+    format: 0.3, resolution: { map_origin: { x: 0, y: 0 }, map_size: { x: 5, y: 5 }, pixels_per_grid: 64 },
+    line_of_sight: [], portals: [],
+    lights: [{ position: { x: 2, y: 2 }, range: 4, intensity: 1, color: '#ffffff' }],
+    image: '',
+  };
+  const res = parseUvtt(JSON.stringify(uvtt));
+  assert.equal(res.lights.length, 1);
+  assert.equal(res.lights[0].on, true);
+});

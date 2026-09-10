@@ -72,7 +72,8 @@
           "range": 3,
           "intensity": 1,
           "color": "#ffffff",
-          "shadows": true
+          "shadows": true,
+          "on": true
         }
       ],
       "ambient": {

@@ -21,6 +21,10 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   'tokens',
   'fog',
   'feedback',
+  // ⭐ Rang 12 — chantier C-2, ⛔ vue MJ SEULE. Écart assumé au patron des portes : une porte
+  // fermée n'a pas besoin de se dessiner, le décor la montre déjà ; une lampe éteinte, si —
+  // rien dans le décor ne la signale. Décision du mainteneur du 10/09/2026.
+  'lightMarkers',
   'measure',
   // ⭐ Le ping est **au-dessus du fog**, délibérément. Un marqueur « regarde ici » masqué par le
   // brouillard serait invisible sans que le MJ sache pourquoi, et il pointerait dans le vide. Ce
