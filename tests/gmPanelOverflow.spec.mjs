@@ -118,12 +118,14 @@ for (const largeur of [1024, 1440]) {
     // c'est exactement la forme du débordement qui a déjà rougi en CI sur des fontes plus larges
     // (voir la leçon du 13/08 dans QUESTIONS-EN-ATTENTE.md §F). Le mesurer masqué revenait à ne
     // rien mesurer.
-    for (const [id, kind] of /** @type {[string, 'pc'|'npc'][]} */ ([
-      ['pj-overflow', 'pc'],
-      ['pnj-overflow', 'npc'],
+    for (const [id, kind, cell] of /** @type {[string, 'pc'|'npc', {a: number, b: number}][]} */ ([
+      ['pj-overflow', 'pc', { a: 1, b: 1 }],
+      // ⚠ Case distincte (C-6, `docs/QUESTIONS-EN-ATTENTE.md`) : une case, un pion — même quand,
+      // comme ici, les deux pions ne partagent jamais l'écran (un seul est sélectionné à la fois).
+      ['pnj-overflow', 'npc', { a: 2, b: 1 }],
     ])) {
       await page.evaluate(
-        async ({ id: identifiant, kind: espece }) => {
+        async ({ id: identifiant, kind: espece, cell: c }) => {
           const [store, schema] = await Promise.all([
             import('../js/state/store.js'),
             import('../js/core/schema.js'),
@@ -137,13 +139,13 @@ for (const largeur of [1024, 1440]) {
               label: espece === 'pc' ? 'Aldric de Montcorbeau l’Ancien' : 'Gobelin sanguinaire',
               kind: espece,
               levelId,
-              cell: { a: 1, b: 1 },
+              cell: c,
               hp: { current: 12, max: 20 },
             })
           );
           store.selectToken(identifiant);
         },
-        { id, kind }
+        { id, kind, cell }
       );
       await expect(page.locator('#gm-vitals-bar')).toBeVisible();
       await page.waitForTimeout(250);

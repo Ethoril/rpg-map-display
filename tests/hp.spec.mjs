@@ -172,7 +172,10 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
         name: 'Campagne PV C4',
         levels: [FAKE_LEVEL],
         links: [],
-        tokens: [{ ...FAKE_PJ }, { ...FAKE_PNJ }],
+        // ⚠ Case distincte pour le PJ (C-6, `docs/QUESTIONS-EN-ATTENTE.md`) : une case, un pion.
+        // Rester à portée de vue du PNJ importe aussi — sans le PJ pour l'éclairer, le pixel
+        // échantillonné côté joueurs serait celui du brouillard, pas celui de l'absence de badge.
+        tokens: [{ ...FAKE_PJ, cell: { a: 2, b: 2 } }, { ...FAKE_PNJ }],
         templates: [],
         settings: {},
       },

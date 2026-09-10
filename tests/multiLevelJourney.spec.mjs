@@ -207,20 +207,14 @@ test('R3-03 — le MJ bride le pion pendant qu’il est sélectionné : l’invi
   }
 });
 
-test('R3-03 — deux PJ empilés : taper la case passe de l’un à l’autre', async ({ browser }) => {
-  // ⭐ Ce test fige un comportement que le chantier du 16/08/2026 a cassé puis réparé, et que rien
-  // ne défendait : la branche « je tape ma propre case » avait d'abord été remontée AVANT la
-  // resélection, ce qui rendait le second PJ insélectionnable au doigt tant que le premier l'était.
-  // Balayage des 51 specs : aucune ne posait deux `kind: 'pc'` sur la même case. La régression
-  // serait donc repassée en silence.
-  //
-  // ⚠ Ce test décrit le comportement ACTUEL, pas un idéal : voir C-6 dans
-  // `docs/QUESTIONS-EN-ATTENTE.md` — `exactTokenAtCell` prend le premier du tableau tandis que
-  // `findHitToken` départage par identifiant, et ce désaccord fait franchir le mauvais pion.
-  // Le second PJ est en TÊTE du tableau et porte l'identifiant le PLUS GRAND : c'est ce qui met
-  // les deux fonctions de désignation en désaccord, et c'est le seul agencement qui atteint la
-  // branche de resélection. `findHitToken` départage par identifiant croissant et choisira
-  // « hero » ; `exactTokenAtCell` prend le premier du tableau et rendra « zzz-second ».
+test('R3-03 — une campagne chargée avec deux PJ empilés se normalise : le second part en réserve, le premier franchit seul', async ({ browser }) => {
+  // ⭐ Ce test défendait un comportement que le mainteneur a supprimé À LA RACINE le 10/09/2026
+  // — C-6, `docs/QUESTIONS-EN-ATTENTE.md` : « UNE CASE, UN PION, POUR TOUS LES PIONS ». L'empilement
+  // devient impossible, entre tous les pions, joueurs comme PNJ ; il n'y a donc plus de second PJ
+  // à désigner au doigt. Une campagne ENREGISTRÉE qui en contenait un ne se refuse pas pour
+  // autant — précédent `visionBright`/`ambient.color` : la normaliser au chargement coûte moins
+  // cher qu'un import refusé. Le pion au plus petit identifiant reste sur la case, l'autre part
+  // en réserve.
   const empiles = structuredClone(snapshot);
   empiles.campaign.tokens.unshift(/** @type {any} */ ({
     ...structuredClone(empiles.campaign.tokens[0]), id: 'zzz-second', label: 'Second',
@@ -233,26 +227,32 @@ test('R3-03 — deux PJ empilés : taper la case passe de l’un à l’autre', 
   await player.goto(`/player.html?session=${sessionId}`);
   await waitForApp(player);
 
-  const selection = () => player.evaluate(async () =>
-    (await import('../js/state/store.js')).getState().selectedTokenId);
+  // « hero » < « zzz-second » : c'est lui qui reste sur le plateau, quel que soit l'ordre du
+  // tableau — « zzz-second » a pourtant été inséré EN TÊTE, exprès.
+  const etatChargement = await player.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return {
+      surLePlateau: store.getState().campaign?.tokens.map((t) => t.id),
+      enReserve: store.getReserve().map((t) => t.id),
+    };
+  });
+  expect(etatChargement.surLePlateau).toEqual(['hero']);
+  expect(etatChargement.enReserve).toEqual(['zzz-second']);
 
-  // Tap 1 : `findHitToken` départage par identifiant, donc « hero » l'emporte sur « zzz-second ».
-  await tapLink(player);
-  await expect.poll(selection, { timeout: 8000 }).toBe('hero');
-  // Tap 2 : la case porte un autre PJ manipulable, la sélection lui passe. Sans cette branche, on
-  // franchirait directement et le second PJ ne serait jamais désignable.
-  await tapLink(player);
-  await expect.poll(selection, { timeout: 8000 }).toBe('zzz-second');
+  // Le survivant se sélectionne et franchit l'escalier comme n'importe quel pion seul sur sa case.
+  await tapLink(player); await tapLink(player);
+  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({
+    token: { levelId: 'et1', cell: { a: 2, b: 2 } },
+  });
   await context.close();
 });
 
-test('R3-03 — un PNJ posé sur la même case n’empêche pas de prendre l’escalier', async ({ browser }) => {
-  // ⭐ Rien n'interdit au MJ de poser un PNJ sur la case où se tient déjà un PJ : `moveTokenToCell`
-  // n'interdit pas l'empilement. `exactTokenAtCell` rendait alors le PREMIER pion du tableau, et
-  // le tap partait en « case occupée » puis désélectionnait — alors que le joueur avait seulement
-  // retapé sa propre case. Il resélectionnait, l'invite se rallumait, le tap refusait encore :
-  // boucle sans issue devant toute la table. L'ordre du PNJ dans le tableau décidait du sort du
-  // joueur, ce qui est exactement le genre de dépendance qu'un test doit figer.
+test('R3-03 — une campagne chargée avec un PNJ sur la case d’un PJ se normalise aussi', async ({ browser }) => {
+  // ⭐ Même normalisation que le test précédent, mais entre un PNJ et un PJ : C-6 est explicite,
+  // la règle porte sur TOUS les pions et pas seulement les PJ entre eux. Avant le 10/09/2026, ce
+  // montage reproduisait un vrai défaut — rien n'empêchait le MJ de poser un PNJ sur la case d'un
+  // PJ, et l'ordre du tableau décidait ensuite du sort du joueur au tap suivant. Le défaut n'a
+  // plus d'objet : l'empilement ne peut plus exister, même par import d'une campagne ancienne.
   const empile = structuredClone(snapshot);
   empile.campaign.tokens.unshift(/** @type {any} */ ({
     id: 'garde', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 1, kind: 'npc', imageUrl: '',
@@ -268,11 +268,16 @@ test('R3-03 — un PNJ posé sur la même case n’empêche pas de prendre l’e
   await player.goto(`/player.html?session=${sessionId}`);
   await waitForApp(player);
 
-  // Le PNJ est en TÊTE du tableau : c'est lui que `exactTokenAtCell` désigne.
-  await tapLink(player); await tapLink(player);
-  await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({
-    token: { levelId: 'et1', cell: { a: 2, b: 2 } },
+  // « garde » < « hero » : c'est lui qui reste sur le plateau, « hero » part en réserve.
+  const etatChargement = await player.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return {
+      surLePlateau: store.getState().campaign?.tokens.map((t) => t.id),
+      enReserve: store.getReserve().map((t) => t.id),
+    };
   });
+  expect(etatChargement.surLePlateau).toEqual(['garde']);
+  expect(etatChargement.enReserve).toEqual(['hero']);
   await context.close();
 });
 

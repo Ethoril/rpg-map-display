@@ -202,3 +202,58 @@ test('UX-14 : annuler la pose laisse le pion en réserve', async ({ page }) => {
   expect(apres.plateau).toEqual([]);
   await expect(page.locator('#gm-reserve-drawer')).toBeVisible();
 });
+
+const FAMILIER = {
+  ...GOBELIN,
+  id: 'familier',
+  label: 'Familier',
+  kind: /** @type {const} */ ('pc'),
+  cell: { a: 4, b: 4 },
+  hp: undefined,
+  markers: [],
+};
+
+const MONTURE = {
+  ...GOBELIN,
+  id: 'monture',
+  label: 'Monture',
+  kind: /** @type {const} */ ('pc'),
+  cell: { a: 4, b: 4 },
+  hp: undefined,
+  markers: [],
+};
+
+test('UX-14 : un empilement au chargement se dit dans le tiroir de réserve, et se tait à la campagne suivante', async ({
+  page,
+}) => {
+  // « familier » < « monture » : le départage par identifiant croissant garde « familier » sur
+  // la case et envoie « monture » en réserve (`resolveStackedTokens`).
+  const sessionEmpilee = `reserve-empile-${Date.now()}`;
+  await installBrowserTransport(page, sessionEmpilee, {
+    ...SNAPSHOT,
+    campaign: { ...SNAPSHOT.campaign, tokens: [MONTURE, FAMILIER], reserve: [] },
+  });
+  await page.goto(`/gm.html?session=${sessionEmpilee}`);
+  await waitForApp(page);
+  await page.click('button[data-tab="token-maker"]');
+
+  // Le pion en trop est bien nommé, et la raison donnée sans jargon.
+  await expect(page.locator('#gm-reserve-drawer')).toBeVisible();
+  await expect(page.locator('#gm-reserve-stacking-notice')).toBeVisible();
+  await expect(page.locator('#gm-reserve-stacking-notice')).toContainText('Monture');
+  await expect(page.locator('#gm-reserve-stacking-notice')).toContainText('1');
+  await expect(page.locator('#gm-reserve-stacking-notice')).toContainText(
+    'une case ne porte plus qu\'un pion'
+  );
+
+  // Une campagne saine chargée par-dessus : l'avertissement de la précédente ne doit pas
+  // survivre — sinon c'est un contrôle qui ment sur l'état courant.
+  const sessionSaine = `reserve-saine-${Date.now()}`;
+  await installBrowserTransport(page, sessionSaine, SNAPSHOT);
+  await page.goto(`/gm.html?session=${sessionSaine}`);
+  await waitForApp(page);
+  await page.click('button[data-tab="token-maker"]');
+
+  await expect(page.locator('#gm-reserve-drawer')).toBeHidden();
+  await expect(page.locator('#gm-reserve-stacking-notice')).toBeHidden();
+});

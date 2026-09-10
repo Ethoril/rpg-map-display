@@ -282,6 +282,7 @@ export function createGMPanel(container, options = {}) {
             <p style="margin: 0.2rem 0 0.45rem 0; font-size: 0.72rem; color: #888;">
               Pions retirés du plateau, avec leur état. « Poser » arme la pose : tapez ensuite la carte.
             </p>
+            <p id="gm-reserve-stacking-notice" style="display: none; margin: 0 0 0.45rem 0; font-size: 0.72rem; color: #e0b040;"></p>
             <div id="gm-reserve-list" style="display: grid; gap: 0.35rem;"></div>
           </div>
         </div>
@@ -1135,6 +1136,7 @@ export function createGMPanel(container, options = {}) {
   const btnReserveToken = /** @type {HTMLButtonElement} */ (container.querySelector('#btn-reserve-token'));
   const reserveDrawer = /** @type {HTMLElement|null} */ (container.querySelector('#gm-reserve-drawer'));
   const reserveList = /** @type {HTMLElement|null} */ (container.querySelector('#gm-reserve-list'));
+  const reserveStackingNotice = /** @type {HTMLElement|null} */ (container.querySelector('#gm-reserve-stacking-notice'));
 
   /**
    * Les trois crans de santé, dans les mots du panneau (⛔ interdiction n°4 : un PNJ n'a jamais
@@ -1157,6 +1159,26 @@ export function createGMPanel(container, options = {}) {
     if (!reserveDrawer || !reserveList) return;
     const enReserve = store.getReserve();
     reserveDrawer.style.display = enReserve.length > 0 ? 'block' : 'none';
+
+    // ⭐ Le chargement peut avoir envoyé des pions en réserve dans le dos du mainteneur (une
+    // case, un pion — C-6) ; le `console.warn` de `resolveStackedTokens` est invisible sans les
+    // outils de développement ouverts, donc c'est ici, là où ces pions apparaissent, qu'on le
+    // dit. La ligne disparaît dès que le rapport est vide — sinon un avertissement d'une
+    // campagne précédente resterait affiché après coup.
+    if (reserveStackingNotice) {
+      const normalises = store.getStackingNormalizationReport();
+      if (normalises.length > 0) {
+        const noms = normalises.map((p) => p.label).join(', ');
+        reserveStackingNotice.textContent =
+          normalises.length === 1
+            ? `1 pion envoyé en réserve au chargement (${noms}) : une case ne porte plus qu'un pion.`
+            : `${normalises.length} pions envoyés en réserve au chargement (${noms}) : une case ne porte plus qu'un pion.`;
+        reserveStackingNotice.style.display = 'block';
+      } else {
+        reserveStackingNotice.style.display = 'none';
+      }
+    }
+
     if (enReserve.length === 0) {
       reserveList.replaceChildren();
       return;

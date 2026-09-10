@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { createCampaign, createLevel, createToken, validateCampaign } from '../js/core/schema.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import * as store from '../js/state/store.js';
+import { gridFor } from '../js/grid/index.js';
 
 /**
  * UX-14 — la réserve de pions.
@@ -242,5 +243,189 @@ test('UX-14 : ⛔ AUCUN balayage de pions ne voit la réserve, vérifié par rec
     balayes.some((t) => t.emitsLight !== null),
     false,
     'la seule source de lumière de la scène était le pion rangé'
+  );
+});
+
+/**
+ * C-6 ⭐ UNE CASE, UN PION, POUR TOUS LES PIONS — décision du mainteneur du 10/09/2026
+ * (`docs/QUESTIONS-EN-ATTENTE.md`). L'empilement devient impossible, entre tous les pions,
+ * joueurs comme PNJ. L'invariant vit dans une seule fonction du store (`findStackingConflict`),
+ * appelée par les cinq chemins qui posent ou déplacent un pion, et par la normalisation au
+ * chargement (`resolveStackedTokens`).
+ */
+
+test('C-6 : les cinq chemins refusent l’empilement, y compris `updateToken` qui ferait grossir un pion sur un voisin', () => {
+  store.resetStore();
+  const rdc = createLevel({ id: 'rdc', widthCells: 10, heightCells: 8 });
+  const et1 = createLevel({ id: 'et1', widthCells: 10, heightCells: 8 });
+  const a = createToken({ id: 'a', levelId: 'rdc', cell: { a: 1, b: 1 }, kind: 'pc' });
+  const b = createToken({ id: 'b', levelId: 'rdc', cell: { a: 2, b: 1 }, kind: 'npc' });
+  const c = createToken({ id: 'c', levelId: 'et1', cell: { a: 3, b: 3 }, kind: 'npc' });
+  const escalier = {
+    id: 'stairs',
+    kind: 'stairs',
+    label: 'Montée',
+    a: { levelId: 'rdc', at: { cellX: 1, cellY: 1 } },
+    b: { levelId: 'et1', at: { cellX: 3, cellY: 3 } },
+    bidirectional: true,
+    gmOnly: false,
+  };
+  store.loadCampaign(
+    createCampaign({ levels: [rdc, et1], tokens: [a, b, c], links: [/** @type {any} */ (escalier)] })
+  );
+
+  // 1. addToken : poser un pion neuf sur une case déjà occupée.
+  assert.throws(
+    () => store.addToken(createToken({ id: 'd', levelId: 'rdc', cell: { a: 1, b: 1 } })),
+    /occup/i
+  );
+  assert.equal(store.getState().campaign?.tokens.length, 3, 'le pion refusé ne doit pas apparaître');
+
+  // 2. moveTokenToCell : déplacer un pion sur la case d'un autre.
+  assert.throws(() => store.moveTokenToCell('b', { a: 1, b: 1 }), /occup/i);
+  assert.deepEqual(
+    store.getState().campaign?.tokens.find((t) => t.id === 'b')?.cell,
+    { a: 2, b: 1 },
+    'un déplacement refusé ne doit pas bouger le pion'
+  );
+
+  // 3. traverseLink : l'arrivée de l'escalier est occupée par « c ».
+  assert.throws(() => store.traverseLink('a', 'stairs'), /occup/i);
+  assert.equal(
+    store.getState().campaign?.tokens.find((t) => t.id === 'a')?.levelId,
+    'rdc',
+    'un franchissement refusé ne doit pas déplacer le pion'
+  );
+
+  // 4. placeTokenFromReserve : ressortir un pion rangé sur une case occupée — il reste en réserve.
+  store.reserveToken('b');
+  assert.throws(() => store.placeTokenFromReserve('b', 'rdc', { a: 1, b: 1 }), /occup/i);
+  assert.equal(store.getReserve().length, 1, 'le pion doit être resté en réserve');
+
+  // 5. updateToken : faire grossir « a » (1×1 → 2×2) le ferait recouvrir « b », remis sur le
+  //    plateau juste pour ce dernier cas.
+  assert.equal(store.placeTokenFromReserve('b', 'rdc', { a: 2, b: 1 }), true);
+  assert.throws(() => store.updateToken('a', { sizeCells: 2 }), /occup|recouvr/i);
+  assert.equal(
+    store.getState().campaign?.tokens.find((t) => t.id === 'a')?.sizeCells,
+    1,
+    'une mise à jour refusée ne doit pas changer la taille'
+  );
+});
+
+test('C-6 : l’emprise entière compte, pas la seule case d’ancrage — un pion 2×2 ne peut pas recouvrir un voisin 1×1 (carré)', () => {
+  store.resetStore();
+  const rdc = createLevel({ id: 'rdc', widthCells: 10, heightCells: 8 });
+  const voisin = createToken({ id: 'voisin', levelId: 'rdc', cell: { a: 3, b: 3 }, sizeCells: 1 });
+  store.loadCampaign(createCampaign({ levels: [rdc], tokens: [voisin] }));
+
+  // L'ancre (2,2) n'est PAS occupée ; mais l'emprise 2×2 posée là couvre (2,2)(3,2)(2,3)(3,3),
+  // et « voisin » est sur (3,3). Une règle qui ne regarderait que l'ancre laisserait passer.
+  assert.throws(
+    () =>
+      store.addToken(createToken({ id: 'gros', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 2 })),
+    /occup/i
+  );
+  assert.equal(store.getState().campaign?.tokens.length, 1, 'le pion refusé ne doit pas apparaître');
+});
+
+test('C-6 : l’emprise entière compte aussi en hexagonal, où elle est une rosette', () => {
+  store.resetStore();
+  const cave = createLevel({
+    id: 'cave',
+    widthCells: 12,
+    heightCells: 12,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+  });
+  const rosette = gridFor(cave).cellsOccupied({ a: 5, b: 5 }, 2);
+  // Un pion 1×1 posé sur la COURONNE de la rosette, jamais son centre — c'est justement la
+  // partie de l'emprise qu'une règle bornée à l'ancre laisserait passer.
+  const surLaCouronne = rosette.find((c) => c.a !== 5 || c.b !== 5);
+  assert.ok(surLaCouronne, 'une rosette de taille 2 doit avoir une couronne');
+
+  const voisin = createToken({
+    id: 'voisin',
+    levelId: 'cave',
+    cell: /** @type {any} */ (surLaCouronne),
+    sizeCells: 1,
+  });
+  store.loadCampaign(createCampaign({ levels: [cave], tokens: [voisin] }));
+
+  assert.throws(
+    () =>
+      store.addToken(createToken({ id: 'gros', levelId: 'cave', cell: { a: 5, b: 5 }, sizeCells: 2 })),
+    /occup/i
+  );
+});
+
+test('C-6 : une campagne enregistrée avec un empilement se charge SANS ÊTRE REFUSÉE — le plus petit identifiant reste, l’autre part en réserve, et c’est dit', () => {
+  store.resetStore();
+  const rdc = createLevel({ id: 'rdc', widthCells: 10, heightCells: 8 });
+  // « zzz-second » est inséré EN TÊTE du tableau, exprès : si la normalisation se fiait à
+  // l'ordre du tableau plutôt qu'à l'identifiant, elle garderait celui-ci et non « alpha ».
+  const zzzSecond = createToken({ id: 'zzz-second', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc' });
+  const alpha = createToken({ id: 'alpha', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc' });
+  const campagneHeritee = createCampaign({ levels: [rdc], tokens: [zzzSecond, alpha] });
+
+  /** @type {string[]} */
+  const avertissements = [];
+  const warnOrigine = console.warn;
+  console.warn = (/** @type {any[]} */ ...args) => {
+    avertissements.push(args.join(' '));
+  };
+  try {
+    assert.doesNotThrow(
+      () => store.loadCampaign(campagneHeritee),
+      'refuser une campagne existante serait une régression plus chère que le défaut corrigé'
+    );
+  } finally {
+    console.warn = warnOrigine;
+  }
+
+  const tokens = store.getState().campaign?.tokens ?? [];
+  assert.deepEqual(
+    tokens.map((t) => t.id),
+    ['alpha'],
+    'le plus petit identifiant reste sur le plateau, quel que soit l’ordre du tableau'
+  );
+
+  const reserve = store.getReserve();
+  assert.deepEqual(reserve.map((t) => t.id), ['zzz-second'], 'l’autre part en réserve, pas ailleurs');
+
+  assert.ok(
+    avertissements.some((m) => m.includes('zzz-second') && m.includes('alpha')),
+    `un avertissement doit nommer le pion déplacé et pourquoi. Reçu : ${JSON.stringify(avertissements)}`
+  );
+});
+
+test('C-6 : getStackingNormalizationReport() tient ce que le chargement a déplacé, et se remet à zéro au chargement suivant — le `console.warn` seul est invisible pour le mainteneur', () => {
+  store.resetStore();
+  const rdc = createLevel({ id: 'rdc', widthCells: 10, heightCells: 8 });
+  const monture = createToken({ id: 'monture', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc', label: 'Monture' });
+  const familier = createToken({ id: 'familier', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc', label: 'Familier' });
+
+  const avertirOriginal = console.warn;
+  console.warn = () => {};
+  try {
+    store.loadCampaign(createCampaign({ levels: [rdc], tokens: [monture, familier] }));
+  } finally {
+    console.warn = avertirOriginal;
+  }
+
+  assert.deepEqual(
+    store.getStackingNormalizationReport(),
+    [{ id: 'monture', label: 'Monture' }],
+    'le rapport nomme le pion déplacé, pas seulement son identifiant'
+  );
+
+  // Une campagne saine chargée par-dessus : l'avertissement de la précédente ne doit pas
+  // survivre — sinon un rechargement sain resterait signalé à tort.
+  const alpha = createToken({ id: 'alpha', levelId: 'rdc', cell: { a: 1, b: 1 }, kind: 'pc' });
+  store.loadCampaign(createCampaign({ levels: [rdc], tokens: [alpha] }));
+
+  assert.deepEqual(
+    store.getStackingNormalizationReport(),
+    [],
+    'une campagne saine remet le rapport à zéro'
   );
 });

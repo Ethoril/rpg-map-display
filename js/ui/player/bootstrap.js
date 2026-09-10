@@ -187,10 +187,13 @@ export function bootstrapPlayerView(options) {
     const exactMovablePc =
       exactTappedToken && isPlayerManipulableToken(exactTappedToken) ? exactTappedToken : null;
 
-    // ⚠ Passer d'un PJ à un autre reste possible même sur la case du pion sélectionné : deux PJ
-    // peuvent être empilés, et le second doit rester désignable au doigt. C'est pour ça que ce
-    // bloc est AVANT le franchissement et non après — le déplacer sous lui rendrait le second PJ
-    // insélectionnable tant que le premier l'est, `findHitToken` départageant par identifiant.
+    // ⚠ Depuis C-6 (10/09/2026, `docs/QUESTIONS-EN-ATTENTE.md`), l'empilement de pions est
+    // impossible : `exactTappedToken` ne peut donc plus désigner un AUTRE PJ que celui déjà
+    // sélectionné sur sa propre case, et cette branche est en pratique inatteignable. Elle reste
+    // écrite — et AVANT le franchissement — en garde défensive : `exactTokenAtCell` et
+    // `findHitToken` ne sont volontairement pas mis en accord (C-6 en fait la remarque), et si
+    // l'invariant venait un jour à être contourné ailleurs, mieux vaut resélectionner que
+    // franchir avec le mauvais pion sous le doigt.
     if (exactMovablePc && exactMovablePc.id !== selectedToken.id) {
       store.selectToken(exactMovablePc.id);
       return;
@@ -204,13 +207,14 @@ export function bootstrapPlayerView(options) {
     // demandé. Retaper sa propre case ne servait à rien jusqu'ici : le geste était libre.
     //
     // ⛔ Ce bloc doit rester AVANT le refus « case occupée » ci-dessous, et il y était après le
-    // 16 août 2026 seulement. Rien n'interdit au MJ de poser un PNJ — ou un pion 2×2 — sur la case
-    // où se tient déjà un PJ : `exactTokenAtCell` rend alors le PREMIER pion du tableau, et si
-    // c'est le PNJ, le tap partait en « case occupée » puis désélectionnait, alors que le joueur
-    // avait simplement retapé sa propre case. Il resélectionnait, l'invite de franchissement se
-    // rallumait, le tap refusait encore : boucle sans issue devant toute la table, arbitrée par
-    // l'ordre du tableau de pions. Or taper la case où l'on est déjà n'est jamais un déplacement
-    // vers une case occupée — la question de l'occupation ne s'y pose pas.
+    // 16 août 2026 seulement. Avant C-6 (10/09/2026), le MJ pouvait poser un PNJ — ou un pion
+    // 2×2 — sur la case où se tenait déjà un PJ, et `exactTokenAtCell` rendait alors le PREMIER
+    // pion du tableau : si c'était le PNJ, le tap partait en « case occupée » puis désélectionnait,
+    // alors que le joueur avait simplement retapé sa propre case, ouvrant une boucle sans issue
+    // arbitrée par l'ordre du tableau. Depuis C-6, un PNJ ne peut plus être posé sur la case d'un
+    // PJ — `moveTokenToCell`/`addToken` le refusent — donc `exactTappedToken` ne peut plus être
+    // que le pion déjà sélectionné ici. L'ordre reste correct à garder : taper la case où l'on
+    // est déjà n'est jamais un déplacement vers une case occupée — la question ne s'y pose pas.
     if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
       const liaison = store.findLinkAtCell(activeLevel.id, targetCell);
       if (

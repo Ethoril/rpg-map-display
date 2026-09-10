@@ -15,6 +15,8 @@ import {
   getSelectedTokenId,
   getReachableCells,
 } from './selection.js';
+import { gridFor } from '../grid/index.js';
+import { cellKey } from '../core/cellKey.js';
 
 /** @typedef {import('../core/types.js').Campaign} Campaign */
 /** @typedef {import('../core/types.js').Level} Level */
@@ -122,6 +124,16 @@ let currentSessionId = null;
 let lastPersistenceError = null;
 
 /**
+ * Ce que `resolveStackedTokens` a envoyé en réserve au dernier chargement — remis à zéro à
+ * CHAQUE appel (voir la fonction), donc jamais un reliquat d'une campagne précédente. C'est un
+ * fait de ce poste sur ce qu'il vient de lire, pas un état de campagne : rien ici ne se
+ * réseaute ni ne se persiste (CLAUDE.md, interdiction réseau).
+ *
+ * @type {{id: string, label: string}[]}
+ */
+let stackingNormalizationReport = [];
+
+/**
  * Configure l'identifiant de session actif pour la persistance automatique en LocalStorage.
  *
  * @param {string | null} sessionId
@@ -159,6 +171,123 @@ function assertValidCampaign(candidate, operation) {
   if (errors.length > 0) {
     throw new Error(`${operation} refusée : ${errors.join(' ; ')}`);
   }
+}
+
+/**
+ * ⭐ **UNE CASE, UN PION, POUR TOUS LES PIONS** — décision du mainteneur du 10/09/2026
+ * (C-6, `docs/QUESTIONS-EN-ATTENTE.md`). Seule porte d'entrée de l'invariant : les cinq chemins
+ * qui posent ou déplacent un pion (`addToken`, `moveTokenToCell`, `traverseLink`,
+ * `placeTokenFromReserve`, `updateToken`) l'appellent tous, et la normalisation au chargement
+ * (`resolveStackedTokens`) aussi.
+ *
+ * La règle porte sur **toute l'emprise** (`GridAdapter.cellsOccupied`), pas la seule case
+ * d'ancrage : c'est ce que la table voit, et c'est aussi ce qui rend cette fonction correcte en
+ * hexagonal, où l'emprise est une rosette et non un carré.
+ *
+ * ⛔ Ne relogue jamais le pion en conflit — elle se contente de le désigner. Un relogement
+ * automatique vers une case libre voisine serait « quelque chose qui bouge dans le dos de tout le
+ * monde » (CLAUDE.md, règle n°4) ; c'est à l'appelant de refuser.
+ *
+ * @param {Token[]} tokensOnBoard Pions à considérer (jamais la réserve, qui n'occupe aucune case)
+ * @param {Level} level Étage sur lequel `cell` est exprimée, pour son `GridAdapter`
+ * @param {string} levelId
+ * @param {Cell} cell Ancre du pion testé
+ * @param {number} sizeCells
+ * @param {string | null} excludeTokenId Pion à ignorer — lui-même, lors d'un déplacement ou d'un
+ *   redimensionnement
+ * @returns {Token | null} Le premier pion dont l'emprise croise celle testée, ou `null`
+ */
+function findStackingConflict(tokensOnBoard, level, levelId, cell, sizeCells, excludeTokenId) {
+  const grid = gridFor(level);
+  const claimed = new Set(grid.cellsOccupied(cell, sizeCells || 1).map(cellKey));
+
+  for (const other of tokensOnBoard) {
+    if (other.levelId !== levelId) continue;
+    if (excludeTokenId && other.id === excludeTokenId) continue;
+
+    const otherCells = grid.cellsOccupied(other.cell, other.sizeCells || 1);
+    if (otherCells.some((c) => claimed.has(cellKey(c)))) {
+      return other;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Normalise une campagne chargée qui contiendrait un empilement — jamais ne la refuse (précédent
+ * `visionBright`/`ambient.color` : refuser une campagne existante est une régression plus chère
+ * que le défaut corrigé). Appelée au chargement (`loadCampaign`, `restoreFromSnapshot`), après
+ * `normalizeCampaign` et avant la validation.
+ *
+ * ⭐ **Départage déterministe, en commentaire pour ne pas le perdre** : les pions sont traités par
+ * identifiant CROISSANT, et le premier arrivé sur une case garde sa place — c'est le même
+ * départage que `findHitToken` à distance nulle. Un pion dont l'emprise croise celle d'un pion
+ * déjà retenu part en réserve : c'est elle qui accueille « hors du plateau », donc l'y envoyer
+ * n'invente aucune position. Et ça se dit : un `console.warn` nomme chaque pion déplacé, et
+ * `getStackingNormalizationReport()` le tient pour le panneau MJ — un `console.warn` seul est
+ * invisible pour le mainteneur (CLAUDE.md, règle n°4 : rien ne se déplace dans le dos de
+ * personne).
+ *
+ * ⭐ **Remise à zéro systématique** : chaque appel écrase `stackingNormalizationReport`, y
+ * compris quand il n'y a rien à signaler. Sans quoi l'avertissement d'une campagne survivrait
+ * à la campagne suivante, saine, qui vient de se charger par-dessus.
+ *
+ * @param {Campaign} campaignObj Mutée en place (déjà une copie de travail à ce stade)
+ * @returns {Campaign}
+ */
+function resolveStackedTokens(campaignObj) {
+  if (!Array.isArray(campaignObj.tokens) || campaignObj.tokens.length === 0) {
+    stackingNormalizationReport = [];
+    return campaignObj;
+  }
+
+  /** @type {Token[]} */
+  const survivors = [];
+  /** @type {Set<string>} */
+  const evictedIds = new Set();
+
+  const byIdCroissant = [...campaignObj.tokens].sort((a, b) =>
+    String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0
+  );
+
+  for (const token of byIdCroissant) {
+    const level = campaignObj.levels.find((l) => l.id === token.levelId);
+    // Un `levelId` inconnu n'est pas notre affaire : `validateCampaign` le refusera juste après.
+    const conflict =
+      level && findStackingConflict(survivors, level, token.levelId, token.cell, token.sizeCells || 1, null);
+    if (conflict) {
+      evictedIds.add(token.id);
+      console.warn(
+        `Pion "${token.id}" envoyé en réserve au chargement : sa case était déjà occupée par ` +
+          `"${conflict.id}" (une case, un pion — C-6).`
+      );
+    } else {
+      survivors.push(token);
+    }
+  }
+
+  if (evictedIds.size === 0) {
+    stackingNormalizationReport = [];
+    return campaignObj;
+  }
+
+  const evicted = campaignObj.tokens.filter((t) => evictedIds.has(t.id));
+  campaignObj.tokens = campaignObj.tokens.filter((t) => !evictedIds.has(t.id));
+  campaignObj.reserve = [...(campaignObj.reserve ?? []), ...evicted];
+  stackingNormalizationReport = evicted.map((t) => ({ id: t.id, label: t.label }));
+  return campaignObj;
+}
+
+/**
+ * Ce que le dernier chargement de campagne a envoyé en réserve pour cause d'empilement — vide
+ * si le dernier chargement était sain. C'est le panneau MJ (tiroir de réserve) qui l'affiche :
+ * voir `resolveStackedTokens`.
+ *
+ * @returns {{id: string, label: string}[]}
+ */
+export function getStackingNormalizationReport() {
+  return [...stackingNormalizationReport];
 }
 
 /**
@@ -277,7 +406,7 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     // Normaliser avant de valider : un instantané hérité est converti, pas
     // refusé. La copie évite de muter l'objet de l'appelant — un payload réseau
     // ou un document gelé.
-    const normalise = normalizeCampaign(campaignCandidate);
+    const normalise = resolveStackedTokens(normalizeCampaign(campaignCandidate));
     const errors = validateCampaign(normalise);
     if (errors.length > 0) {
       throw new Error(`Snapshot invalide : ${errors.join(' ; ')}`);
@@ -384,7 +513,7 @@ export function loadCampaign(campaignData) {
   // Normaliser d'abord : un document hérité doit être converti, jamais refusé.
   // La normalisation rend une copie, donc `campaignData` reste intact — y compris
   // s'il est gelé.
-  const normalise = normalizeCampaign(campaignData);
+  const normalise = resolveStackedTokens(normalizeCampaign(campaignData));
 
   try {
     assertValidCampaign(normalise, 'Chargement de la campagne');
@@ -505,6 +634,26 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
   }
 
   const fromCell = { a: token.cell.a, b: token.cell.b };
+
+  // Une case, un pion (C-6) : la destination doit être libre sur TOUTE l'emprise du pion
+  // déplacé, pas seulement sa case d'ancrage.
+  const destLevel = candidate.levels.find((l) => l.id === token.levelId);
+  if (destLevel) {
+    const conflict = findStackingConflict(
+      candidate.tokens,
+      destLevel,
+      token.levelId,
+      { a: cell.a, b: cell.b },
+      token.sizeCells || 1,
+      tokenId
+    );
+    if (conflict) {
+      throw new Error(
+        `Déplacement du pion "${tokenId}" refusé : case occupée par "${conflict.id}"`
+      );
+    }
+  }
+
   token.cell = { a: cell.a, b: cell.b };
 
   if (moveData) {
@@ -537,6 +686,26 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
 export function addToken(tokenData) {
   if (!campaign) {
     throw new Error('Aucune campagne chargée');
+  }
+
+  // Une case, un pion (C-6) : refuser AVANT de cloner la campagne, sur l'état encore vivant —
+  // les autres refus de cette fonction (validation de schéma) se lisent sur le candidat, mais
+  // celui-ci porterait déjà le pion en trop si on le laissait passer jusque-là.
+  const level = campaign.levels.find((l) => l.id === tokenData.levelId);
+  if (level) {
+    const conflict = findStackingConflict(
+      campaign.tokens,
+      level,
+      tokenData.levelId,
+      tokenData.cell,
+      tokenData.sizeCells || 1,
+      null
+    );
+    if (conflict) {
+      throw new Error(
+        `Ajout du pion "${tokenData?.id || 'inconnu'}" refusé : case occupée par "${conflict.id}"`
+      );
+    }
   }
 
   const candidate = structuredClone(campaign);
@@ -702,6 +871,26 @@ export function traverseLink(tokenId, linkId, options = {}) {
       expected.cell?.b !== destination.cell.b)
   ) {
     throw new Error(`Destination contradictoire pour la liaison "${linkId}"`);
+  }
+
+  // Une case, un pion (C-6) : un escalier dont la case d'arrivée est occupée ne se franchit
+  // plus. Conséquence de jeu assumée — le refus est celui que l'interface sait déjà montrer,
+  // pas un silence.
+  const arriveeLevel = campaign.levels.find((l) => l.id === destination.levelId);
+  if (arriveeLevel) {
+    const conflict = findStackingConflict(
+      campaign.tokens,
+      arriveeLevel,
+      destination.levelId,
+      destination.cell,
+      pion.sizeCells || 1,
+      tokenId
+    );
+    if (conflict) {
+      throw new Error(
+        `Franchissement de la liaison "${linkId}" refusé : case d'arrivée occupée par "${conflict.id}"`
+      );
+    }
   }
 
   const candidate = structuredClone(campaign);
@@ -1164,6 +1353,30 @@ export function updateToken(tokenId, patch) {
     throw new Error(`Pion inconnu : "${tokenId}"`);
   }
 
+  // Une case, un pion (C-6) : `sizeCells` est dans `ALLOWED_TOKEN_PATCH_KEYS`, donc faire grossir
+  // un pion de 1×1 en 2×2 peut le faire recouvrir un voisin — c'est le seul champ de ce patch qui
+  // change l'emprise sans passer par `moveTokenToCell`, et c'est pour ça qu'il faut le contrôler
+  // ici plutôt que de compter sur les quatre autres chemins.
+  if ('sizeCells' in patch) {
+    const token = campaign.tokens[index];
+    const level = campaign.levels.find((l) => l.id === token.levelId);
+    if (level) {
+      const conflict = findStackingConflict(
+        campaign.tokens,
+        level,
+        token.levelId,
+        token.cell,
+        patch.sizeCells || 1,
+        tokenId
+      );
+      if (conflict) {
+        throw new Error(
+          `Mise à jour du pion "${tokenId}" refusée : la nouvelle taille recouvrirait "${conflict.id}"`
+        );
+      }
+    }
+  }
+
   const candidate = structuredClone(campaign);
   candidate.tokens[index] = {
     ...candidate.tokens[index],
@@ -1277,6 +1490,27 @@ export function placeTokenFromReserve(tokenId, levelId, cell) {
 
   const index = (campaign.reserve ?? []).findIndex((t) => t.id === tokenId);
   if (index < 0) return false;
+
+  const pionEnReserve = /** @type {Token} */ ((campaign.reserve ?? [])[index]);
+
+  // Une case, un pion (C-6) : le pion reste en réserve si sa destination est déjà occupée, comme
+  // une case hors carte — même transaction, même idiome.
+  const level = campaign.levels.find((l) => l.id === levelId);
+  if (level) {
+    const conflict = findStackingConflict(
+      campaign.tokens,
+      level,
+      levelId,
+      cell,
+      pionEnReserve.sizeCells || 1,
+      null
+    );
+    if (conflict) {
+      throw new Error(
+        `Pose du pion "${tokenId}" depuis la réserve refusée : case occupée par "${conflict.id}"`
+      );
+    }
+  }
 
   const candidate = structuredClone(campaign);
   const [pion] = (candidate.reserve ?? []).splice(index, 1);

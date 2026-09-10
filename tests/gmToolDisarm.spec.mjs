@@ -205,13 +205,17 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
      * Pose un pion et le sélectionne. L'identifiant est explicite : `addToken` refuse un doublon,
      * et le dernier cas de ce test repose un PJ après en avoir déjà posé un.
      *
+     * ⚠ La case est propre à chaque appel (C-6, `docs/QUESTIONS-EN-ATTENTE.md`) : une case, un
+     * pion, même pour deux pions qui ne se croisent jamais à l'écran dans ce test.
+     *
      * @param {string} id
      * @param {'pc'|'npc'} kind
      * @param {{current: number, max: number}|null} hp
+     * @param {{a: number, b: number}} [cell]
      */
-    const poserPion = (id, kind, hp) =>
+    const poserPion = (id, kind, hp, cell = { a: 8, b: 8 }) =>
       page.evaluate(
-        async ({ id: identifiant, kind: k, hp: points }) => {
+        async ({ id: identifiant, kind: k, hp: points, cell: c }) => {
           const [store, schema] = await Promise.all([
             import('../js/state/store.js'),
             import('../js/core/schema.js'),
@@ -222,13 +226,13 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
               label: k === 'pc' ? 'Aldric' : 'Gobelin',
               kind: k,
               levelId: 'level-disarm-1',
-              cell: { a: 8, b: 8 },
+              cell: c,
               hp: points,
             })
           );
           store.selectToken(identifiant);
         },
-        { id, kind, hp }
+        { id, kind, hp, cell }
       );
 
     const barre = page.locator('#gm-vitals-bar');
@@ -268,7 +272,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     await expect.poll(pionLu).toMatchObject({ current: 20 });
 
     // ── Un PNJ : des crans, et AUCUN chiffre ──────────────────────────────────────────────
-    await poserPion('pnj-vital', 'npc', { current: 5, max: 5 });
+    await poserPion('pnj-vital', 'npc', { current: 5, max: 5 }, { a: 9, b: 8 });
     await expect(groupePv).toBeHidden();
     await expect(groupeSante).toBeVisible();
     await expect(page.locator('#gm-vitals-health-unharmed')).toHaveAttribute('aria-pressed', 'true');
@@ -292,7 +296,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
 
     // Un pion sans points de vie : la barre reste et dit pourquoi elle est vide, plutôt que
     // d'offrir des contrôles qui ne mèneraient à rien.
-    await poserPion('pj-sans-pv', 'pc', null);
+    await poserPion('pj-sans-pv', 'pc', null, { a: 10, b: 8 });
     await expect(barre).toBeVisible();
     await expect(groupePv).toBeHidden();
     await expect(groupeSante).toBeHidden();
