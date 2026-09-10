@@ -4,10 +4,85 @@ import test from 'node:test';
 import { createLevel, createCampaign } from '../js/core/schema.js';
 import { gridFor } from '../js/grid/index.js';
 import { HexGrid } from '../js/grid/HexGrid.js';
+import { SquareGrid } from '../js/grid/SquareGrid.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { cellKey } from '../js/core/cellKey.js';
 
 const SQRT3 = Math.sqrt(3);
+
+// ── C-5 : mapFromCellPoint s'aligne sur le COIN, comme SquareGrid ──────────────────────
+
+test('C-5 Critère 1 : mapFromCellPoint({0,0}) rend le COIN (offsetX, offsetY) — même réponse en carré et en hexagonal', () => {
+  const offsetX = 30;
+  const offsetY = -17;
+
+  const levelSquare = createLevel({
+    grid: { type: 'square', offsetX, offsetY },
+    pxPerCell: 140,
+  });
+  const levelHex = createLevel({
+    grid: { type: 'hex', offsetX, offsetY },
+    pxPerCell: 140,
+  });
+
+  const gridSquare = new SquareGrid(levelSquare);
+  const gridHex = new HexGrid(levelHex);
+
+  // ⛔ Avant le correctif, HexGrid.mapFromCellPoint(0,0) rend (offsetX + 70, offsetY + 70) —
+  // le CENTRE de la case, pas son coin. C'est exactement C-5.
+  assert.deepEqual(gridSquare.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: offsetX, y: offsetY });
+  assert.deepEqual(gridHex.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: offsetX, y: offsetY });
+});
+
+test('C-5 Critère 2 : aller-retour cellPointFromMap(mapFromCellPoint(cp)) exact, en rangée paire et impaire', () => {
+  const levelHex = createLevel({
+    grid: { type: 'hex', offsetX: 5, offsetY: 11 },
+    pxPerCell: 140,
+    widthCells: 20,
+    heightCells: 20,
+  });
+  const grid = new HexGrid(levelHex);
+
+  // Points fractionnaires, rangées paire et impaire. La dette E-1 dit que cet aller-retour
+  // n'est pas exact quand l'erreur sur cellY fait basculer la parité de `floor` — mais ce
+  // cas-là exige un cellY quasi entier ; les points ci-dessous en sont loin, et le
+  // correctif (retrait des `+0.5` de centrage) est une soustraction de constante qui
+  // n'affecte PAS cette propriété : les deux formules restent l'inverse exacte l'une de
+  // l'autre, comme avant. ⚠ E-1 n'est donc ni ouverte ni fermée par ce changement.
+  const points = [
+    { cellX: 3.25, cellY: 4.5 },   // rangée paire (4)
+    { cellX: 3.25, cellY: 5.5 },   // rangée impaire (5)
+    { cellX: 0.1, cellY: 0.9 },    // rangée paire (0)
+    { cellX: 11.75, cellY: 8.3 },  // rangée paire (8)
+    { cellX: 11.75, cellY: 9.7 },  // rangée impaire (9)
+  ];
+
+  for (const cp of points) {
+    const mp = grid.mapFromCellPoint(cp);
+    const back = grid.cellPointFromMap(mp);
+    assert.ok(Math.abs(back.cellX - cp.cellX) < 1e-9, `cellX aller-retour pour ${JSON.stringify(cp)} (obtenu ${back.cellX})`);
+    assert.ok(Math.abs(back.cellY - cp.cellY) < 1e-9, `cellY aller-retour pour ${JSON.stringify(cp)} (obtenu ${back.cellY})`);
+  }
+});
+
+test('C-5 Critère 3 : non-régression du hit-test — le centre de chaque case rend bien cette case', () => {
+  const levelHex = createLevel({
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+    pxPerCell: 140,
+    widthCells: 6,
+    heightCells: 6,
+  });
+  const grid = new HexGrid(levelHex);
+
+  // `cellFromPoint` ne passe PAS par `mapFromCellPoint` (arrondi cubique indépendant, voir
+  // son commentaire) : le correctif ne doit rien y changer. Cette assertion le vérifie
+  // explicitement plutôt que de le supposer.
+  for (const cell of grid.allCells(6, 6)) {
+    const center = grid.pointFromCell(cell);
+    const hit = grid.cellFromPoint(center);
+    assert.deepEqual(hit, cell, `cellFromPoint(pointFromCell(${cell.a},${cell.b})) doit rendre la même case`);
+  }
+});
 
 test('G-04 Critère 1 : Coexistence d’un étage hex et carré dans la même campagne', () => {
   const levelSquare = createLevel({

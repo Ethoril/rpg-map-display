@@ -21,9 +21,12 @@
  * @property {(cp: CellPoint) => MapPoint} mapFromCellPoint
  *   Unité de case fractionnaire → pixels carte. Applique `pxPerCell` ET l'offset issu de
  *   `map_origin`. Sert au rendu des murs, portails et lumières importés.
- *   ⚠ Contrat ambigu, conservé pour ces seuls appelants (G-1) : `SquareGrid` y rend le
- *   **coin** haut-gauche de la case, `HexGrid` en rend le **centre**. Ne jamais en déduire
- *   une boîte englobante par différence de deux appels — voir `cellBounds`.
+ *   ⭐ Rend le COIN de la case — le même point sur les deux pavages (C-5,
+ *   `docs/QUESTIONS-EN-ATTENTE.md`) : les entiers dénotent l'origine de la grille, pas son
+ *   centre, en carré comme en hexagonal. C'est la convention de l'UVTT (murs, portes,
+ *   lampes en coordonnées de coin) ; **pour un centre, appeler `pointFromCell` /
+ *   `cellCenter`, jamais celle-ci.** Ne jamais déduire une boîte englobante par différence
+ *   de deux appels — voir `cellBounds`.
  *
  * @property {(p: MapPoint) => CellPoint} cellPointFromMap
  *   Réciproque. Sert à l'éditeur de murs du lot 2.

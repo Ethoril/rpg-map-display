@@ -149,3 +149,31 @@ test('HexGrid.cellBounds : la boîte couvre exactement la rosette de cellsOccupi
     }
   }
 });
+
+// ── Convention partagée de mapFromCellPoint (C-5) ──────────────────────────────────────
+
+test('C-5 : mapFromCellPoint({0,0}) rend l’ORIGINE DE LA GRILLE — la même réponse en carré et en hexagone', () => {
+  // ⭐ C'est tout le contrat tranché le 10/09/2026 : `mapFromCellPoint` est un contrat
+  // PARTAGÉ, donc une même question doit y recevoir la même réponse quel que soit le pavage.
+  // Avant correction, `HexGrid` rendait un CENTRE — (70, 70) au lieu de (0, 0) sur
+  // `marais-hex_16x16` à 140 px/case — et l'ancre des masques de brouillard et de lumière,
+  // qui est exactement cet appel, tombait une demi-case à côté du reste de la géométrie.
+  const commun = { pxPerCell: 140, widthCells: 16, heightCells: 16 };
+  const carre = new SquareGrid(createLevel({ ...commun, grid: { type: 'square', offsetX: 0, offsetY: 0 } }));
+  const hexa = new HexGrid(createLevel({ ...commun, grid: { type: 'hex', offsetX: 0, offsetY: 0 } }));
+
+  assert.deepEqual(carre.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: 0, y: 0 });
+  assert.deepEqual(hexa.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: 0, y: 0 });
+
+  // Et avec un offset non nul, l'origine suit l'offset — dans les deux pavages.
+  const decale = { pxPerCell: 100, widthCells: 8, heightCells: 8 };
+  const carreDecale = new SquareGrid(createLevel({ ...decale, grid: { type: 'square', offsetX: 15, offsetY: 25 } }));
+  const hexaDecale = new HexGrid(createLevel({ ...decale, grid: { type: 'hex', offsetX: 15, offsetY: 25 } }));
+
+  assert.deepEqual(carreDecale.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: 15, y: 25 });
+  assert.deepEqual(hexaDecale.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: 15, y: 25 });
+  assert.deepEqual(
+    hexaDecale.mapFromCellPoint({ cellX: 0, cellY: 0 }),
+    carreDecale.mapFromCellPoint({ cellX: 0, cellY: 0 })
+  );
+});

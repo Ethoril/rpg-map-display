@@ -551,9 +551,16 @@ export async function bootstrapGMApp(options = {}) {
     const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
 
     const size = Math.max(1, token.sizeCells || 1);
-    const origins = cells.map((cell) =>
-      grid.mapFromCellPoint({ cellX: cell.a + size / 2, cellY: cell.b + size / 2 })
-    );
+    // G-1 : chaque origine de balayage vient de la boîte DESSINÉE (`cellBounds`), jamais
+    // d'une arithmétique sur `mapFromCellPoint` — ce dernier rend un point du réseau de la
+    // grille, pas le centre d'une case (C-5). L'écart mesuré : rien en carré, mais jusqu'à
+    // une case entière (100 px en x, 36,6 px en y à 140 px/case) pour un pion de taille 2 en
+    // hexagonal. Sans ce détour, le trajet marché révèle le fog depuis un endroit où le pion
+    // n'est pas dessiné.
+    const origins = cells.map((cell) => {
+      const bounds = grid.cellBounds({ cellX: cell.a, cellY: cell.b }, size);
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    });
 
     const exploredFog = getExploredFog(level);
     if (!exploredFog) return 0;

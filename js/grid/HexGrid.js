@@ -87,7 +87,10 @@ export class HexGrid {
   }
 
   /**
-   * Unité de case fractionnaire (odd-r) → pixels carte.
+   * Unité de case fractionnaire (odd-r) → pixels carte. Rend le COIN de la case, comme
+   * `SquareGrid.mapFromCellPoint` — pas son centre (C-5, `docs/QUESTIONS-EN-ATTENTE.md`).
+   * Le `0.5 * (rowInt & 1)` n'est PAS du centrage : c'est le décalage odd-r qui aligne la
+   * colonne des rangées impaires, il reste.
    *
    * @param {CellPoint} cp
    * @returns {MapPoint}
@@ -95,8 +98,8 @@ export class HexGrid {
   mapFromCellPoint(cp) {
     const rowInt = Math.floor(cp.cellY);
     return {
-      x: this.offsetX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1) + 0.5),
-      y: this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2 + 0.5),
+      x: this.offsetX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1)),
+      y: this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2),
     };
   }
 
@@ -153,16 +156,17 @@ export class HexGrid {
   }
 
   /**
-   * Pixels carte → unité de case fractionnaire (odd-r).
+   * Pixels carte → unité de case fractionnaire (odd-r). Inverse exacte de `mapFromCellPoint`
+   * ci-dessus : même retrait du centrage, même décalage de rangée conservé.
    *
    * @param {MapPoint} p
    * @returns {CellPoint}
    */
   cellPointFromMap(p) {
-    const dy = (p.y - this.offsetY) / this.pxPerCell - 0.5;
+    const dy = (p.y - this.offsetY) / this.pxPerCell;
     const cellY = dy / SQRT3_OVER_2;
     const rowInt = Math.floor(cellY);
-    const dx = (p.x - this.offsetX) / this.pxPerCell - 0.5 - 0.5 * (rowInt & 1);
+    const dx = (p.x - this.offsetX) / this.pxPerCell - 0.5 * (rowInt & 1);
     return { cellX: dx, cellY };
   }
 

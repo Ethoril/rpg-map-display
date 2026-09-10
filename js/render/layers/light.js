@@ -80,11 +80,15 @@ export function collectLightSources(level, tokens, adaptateur) {
     const cases = cappedLightRange(emise?.range);
     if (cases <= 0) continue;
     const taille = Math.max(1, token.sizeCells || 1);
+    // G-1 : le centre de la torche portée vient de la boîte DESSINÉE (`cellBounds`), jamais
+    // d'une arithmétique sur `mapFromCellPoint` — ce dernier rend un point du réseau de la
+    // grille, pas le centre d'une case (C-5). L'écart mesuré : rien en carré, mais jusqu'à
+    // une case entière (100 px en x, 36,6 px en y à 140 px/case) pour un pion de taille 2 en
+    // hexagonal. Sans ce détour, la lumière portée éclaire depuis un endroit où le pion n'est
+    // pas dessiné.
+    const boiteToken = adaptateur.cellBounds({ cellX: token.cell.a, cellY: token.cell.b }, taille);
     sources.push({
-      center: adaptateur.mapFromCellPoint({
-        cellX: token.cell.a + taille / 2,
-        cellY: token.cell.b + taille / 2,
-      }),
+      center: { x: boiteToken.x + boiteToken.width / 2, y: boiteToken.y + boiteToken.height / 2 },
       radiusPx: porteeEnPixels(cases),
       intensity: Number.isFinite(emise?.intensity) ? Number(emise?.intensity) : 1,
       color: String(emise?.color ?? '#ffffff'),

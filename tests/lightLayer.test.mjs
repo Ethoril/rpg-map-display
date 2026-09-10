@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import { LightLayer, collectLightSources, buildLightSignature } from '../js/render/layers/light.js';
 import { createLevel, createToken } from '../js/core/schema.js';
+import { gridFor } from '../js/grid/index.js';
 import {
   FOG_MASK_PX_PER_CELL,
   LIGHT_GM_DARKNESS_RATIO,
@@ -194,10 +195,15 @@ function createMockCanvas(width, height) {
 /** @param {number} w @param {number} h */
 const fabrique = (w, h) => createMockCanvas(w, h);
 
-/** Adaptateur de pavage minimal : une case vaut 100 pixels carte. */
+/** Adaptateur de pavage minimal : une case vaut 100 pixels carte, en carré. */
 const ADAPTATEUR = {
   /** @param {{cellX: number, cellY: number}} p */
   mapFromCellPoint: (p) => ({ x: p.cellX * 100, y: p.cellY * 100 }),
+  /** @param {{cellX: number, cellY: number}} cp @param {number} sizeCells */
+  cellBounds: (cp, sizeCells) => {
+    const size = Math.max(1, sizeCells || 1);
+    return { x: cp.cellX * 100, y: cp.cellY * 100, width: size * 100, height: size * 100 };
+  },
 };
 
 /** @param {any} overrides */
@@ -334,6 +340,35 @@ test('5. Une torche éclaire depuis le MILIEU de son pion, pas depuis un coin', 
   // Portée nulle ou absente : pas une source.
   const eteint = createToken({ id: 'eteint', levelId: 'lvl-1', kind: 'npc', cell: { a: 1, b: 1 } });
   assert.equal(collectLightSources(level, [eteint], ADAPTATEUR).length, 0);
+});
+
+test('5b. ⭐ En HEXAGONAL, la torche portée d’un pion de taille 2 éclaire depuis son centre DESSINÉ', () => {
+  // Le carré ne distingue pas les deux formules (5) — c'est en hexagonal que l'écart se voit :
+  // jusqu'au correctif, `+ taille / 2` plaçait la source sur un point du RÉSEAU de la grille,
+  // pas au centre du pion, avec un décalage qui dépend de la parité de la rangée (C-5).
+  const level = createLevel({
+    id: 'hex-1', widthCells: 10, heightCells: 10, pxPerCell: 100,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+  });
+  const grid = gridFor(level);
+  const grand = createToken({
+    id: 'ogre', levelId: 'hex-1', kind: 'npc', cell: { a: 4, b: 4 }, sizeCells: 2,
+    emitsLight: { range: 5, intensity: 1, color: '#ffffff' },
+  });
+
+  const [source] = collectLightSources(level, [grand], grid);
+
+  // Centre DESSINÉ, celui que `tokens.js` peint (G-1) — lu sur `cellBounds`, indépendamment
+  // du code de `collectLightSources` qu'on éprouve ici.
+  const bounds = grid.cellBounds({ cellX: 4, cellY: 4 }, 2);
+  const centreDessine = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  assert.deepEqual(source.center, centreDessine);
+
+  // ⭐ Preuve par mutation (b) : rétablir `mapFromCellPoint({cellX: a + taille/2, cellY: b +
+  // taille/2})` placerait la source en (550, 433.01) au lieu de (450, 396.41) — une case
+  // entière de décalage en x (100 px), plus un tiers de case en y (36,6 px). Ce test doit
+  // rougir sur cette mutation.
+  assert.notDeepEqual(source.center, { x: 550, y: 433.0127018922194 });
 });
 
 test('6. ⭐ « Préparer » ne peint RIEN, « Jouer » peint — décision §4.5', () => {

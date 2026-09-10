@@ -350,6 +350,106 @@ test('Critère 1bis : la couleur de voile par défaut laisse la carte lisible de
   assert.equal(pixel[3], 255, 'Le voile ne perce pas de trou transparent dans la scène');
 });
 
+test('C-5 : sur une carte hexagonale, la zone révélée est centrée sur la case du pion, pas décalée d’une demi-case', () => {
+  const pxPerCell = 100;
+  const level = createLevel({
+    id: 'hex-rdc',
+    widthCells: 20,
+    heightCells: 10,
+    pxPerCell,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+    ambient: { level: 0, baked: false },
+  });
+  const grid = gridFor(level);
+  const cell = { a: 10, b: 4 };
+
+  const pc = createToken({ id: 'pion-pj', levelId: 'hex-rdc', kind: 'pc', cell, visionDim: 3 });
+
+  const { ctx } = createMockCanvas(2000, 1000);
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 2000, 1000);
+
+  createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+
+  // ⚠ Le centre de référence ci-dessous n'est PAS lu sur `grid.mapFromCellPoint`, ni sur
+  // `grid.cellBounds` (la méthode que le correctif utilise désormais) : un test qui tirerait
+  // son attendu de la méthode en cours d'exercice se corrigerait tout seul avec un bug qui s'y
+  // logerait (auto-référence, faux vert garanti). La formule est donc écrite en dur, à la main,
+  // à partir de la géométrie de l'hexagone pointe-en-haut (décalage odd-r) — c'est le centre
+  // DESSINÉ de la case, celui que `tokens.js` peint (G-1), PAS le point de réseau qu'aurait
+  // rendu `mapFromCellPoint(a+0.5, b+0.5)` (389,7 en y ici, contre 396,4 pour le centre dessiné).
+  const SQRT3_OVER_2 = Math.sqrt(3) / 2;
+  const rowInt = cell.b; // floor(b) === b, b entier
+  const fixedCenter = {
+    x: pxPerCell * (cell.a + 0.5 * (rowInt & 1) + 0.5),
+    y: pxPerCell * (cell.b * SQRT3_OVER_2 + 0.5),
+  };
+  const rangePx = 3 * pxPerCell; // visionDim=3, même rangée que l'origine (0,0) : delta pur en x
+
+  // Point A : le centre (corrigé) de la case du pion — toujours dans la portée, doit être révélé.
+  const centerPixel = ctx.getImageData(Math.round(fixedCenter.x), Math.round(fixedCenter.y)).data;
+  assert.equal(centerPixel[0], 100, 'le centre de la case du pion doit être révélé');
+
+  // Point B : sur l'axe x, entre le rayon que rendrait le centre CORRIGÉ (voilé à partir de
+  // là) et celui que rendrait l'ANCIEN centre bogué (encore révélé jusque bien plus loin, le
+  // bogue décalant le centre du balayage de `+0.5 case` en x ET en y). La marge exacte est
+  // calibrée par la mesure (le masque de brouillard travaille à basse résolution — 8 px/case,
+  // `FOG_MASK_PX_PER_CELL` — et sa remise à l'échelle n'est pas un cercle parfait au pixel
+  // près) : à `pxPerCell` 100, `visionDim` 3, le bord réel bascule vers 280-300 px avec le
+  // centre corrigé et vers 330-340 px avec le centre bogué. Voir la preuve par mutation (a) du
+  // rapport de cette tranche.
+  const beyondX = Math.round(fixedCenter.x + rangePx + 13);
+  const beyondY = Math.round(fixedCenter.y);
+  const beyondPixel = ctx.getImageData(beyondX, beyondY).data;
+  assert.ok(beyondPixel[0] < 100, 'un point juste au-delà de la portée attendue depuis le centre corrigé reste voilé');
+});
+
+test('G-1 : sur une carte hexagonale, un pion de TAILLE 2 balaie sa vision depuis son centre DESSINÉ, pas une case à côté', () => {
+  // Le pire cas mesuré : jusqu'au correctif, `mapFromCellPoint({cellX: a + taille/2, cellY: b
+  // + taille/2})` plaçait l'origine du sweep à 100 px en x ET 36,6 px en y du centre que
+  // `tokens.js` dessine (G-1) — une case entière de décalage à 100 px/case. Une grande
+  // créature voyait donc depuis un endroit où elle n'est pas.
+  const pxPerCell = 100;
+  const level = createLevel({
+    id: 'hex-taille2',
+    widthCells: 20,
+    heightCells: 10,
+    pxPerCell,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+    ambient: { level: 0, baked: false },
+  });
+  const grid = gridFor(level);
+  const cell = { a: 4, b: 4 };
+
+  const pc = createToken({
+    id: 'pion-grand', levelId: 'hex-taille2', kind: 'pc', cell, sizeCells: 2, visionDim: 3,
+  });
+
+  const { ctx } = createMockCanvas(1000, 600);
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 1000, 600);
+
+  createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+
+  // Centre DESSINÉ, celui que `tokens.js` peint — lu sur `cellBounds`, indépendamment du code
+  // de `fogLayer.js` qu'on éprouve ici (ce n'est pas la méthode en cours de correction).
+  const bounds = grid.cellBounds({ cellX: cell.a, cellY: cell.b }, 2);
+  const centreDessine = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  const rangePx = 3 * pxPerCell; // visionDim=3, même rangée que l'origine (0,0) : delta pur en x
+
+  // Point A : le centre dessiné est toujours révélé.
+  const centerPixel = ctx.getImageData(Math.round(centreDessine.x), Math.round(centreDessine.y)).data;
+  assert.equal(centerPixel[0], 100, 'le centre dessiné du pion doit être révélé');
+
+  // Point B : juste au-delà de la portée depuis le centre dessiné (voilé attendu), mais à
+  // 216 px de l'ANCIEN centre bogué (a+1, b+1) — bien dans son rayon de 300 px. Si le sweep
+  // repart encore de l'arithmétique, ce point reste révélé à tort.
+  const beyondX = Math.round(centreDessine.x + rangePx + 13);
+  const beyondY = Math.round(centreDessine.y);
+  const beyondPixel = ctx.getImageData(beyondX, beyondY).data;
+  assert.ok(beyondPixel[0] < 100, 'un point juste au-delà de la portée réelle depuis le centre dessiné reste voilé');
+});
+
 test('Critère 2 : PNJ, visionDim: 0 et pions d un autre étage ne contribuent pas', () => {
   const level = createLevel({
     id: 'rdc',

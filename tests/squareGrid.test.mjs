@@ -52,6 +52,28 @@ test('Roundtrip cellFromPoint(pointFromCell(c)) sur 100 cases y compris bords', 
   assert.equal(grid.cellFromPoint({ x: 10000, y: 10000 }), null, 'Devrait être null hors carte');
 });
 
+test('C-5 : SquareGrid.mapFromCellPoint rend le COIN haut-gauche, et la convention carrée ne bouge pas', () => {
+  const level = createLevel({
+    pxPerCell: 140,
+    widthCells: 16,
+    heightCells: 16,
+    grid: { type: 'square', offsetX: 15, offsetY: 25 },
+  });
+  const grid = gridFor(level);
+
+  // ⛔ Le pavage carré est le côté du contrat qui NE DOIT PAS bouger : les fichiers UVTT
+  // donnent murs, portes et lampes en coordonnées de coin, et c'est ce qui a emporté la
+  // décision du 10/09/2026 — c'est l'hexagone qui s'aligne, pas le carré. Le point (0,0)
+  // rend donc l'origine de la grille, et un entier rend le coin de sa case.
+  assert.deepEqual(grid.mapFromCellPoint({ cellX: 0, cellY: 0 }), { x: 15, y: 25 });
+  assert.deepEqual(grid.mapFromCellPoint({ cellX: 3, cellY: 4 }), { x: 15 + 3 * 140, y: 25 + 4 * 140 });
+
+  // Et ce coin n'est pas le centre : une demi-case les sépare, dans les deux axes.
+  const centre = grid.cellCenter({ a: 3, b: 4 });
+  assert.equal(centre.x - grid.mapFromCellPoint({ cellX: 3, cellY: 4 }).x, 70);
+  assert.equal(centre.y - grid.mapFromCellPoint({ cellX: 3, cellY: 4 }).y, 70);
+});
+
 test('Distances octiles sur 10 paires connues', () => {
   const level = createLevel();
   const grid = gridFor(level);

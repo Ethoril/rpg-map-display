@@ -127,15 +127,17 @@ export function findHitToken(grid, activeLevel, mapPos, zoom, tokens = [], optio
     if (filter && !filter(token)) continue;
 
     const size = token.sizeCells || 1;
-    const pTopLeft = grid.mapFromCellPoint({ cellX: token.cell.a, cellY: token.cell.b });
-    const pBottomRight = grid.mapFromCellPoint({ cellX: token.cell.a + size, cellY: token.cell.b + size });
-
-    const rect = {
-      x: Math.min(pTopLeft.x, pBottomRight.x),
-      y: Math.min(pTopLeft.y, pBottomRight.y),
-      w: Math.abs(pBottomRight.x - pTopLeft.x),
-      h: Math.abs(pBottomRight.y - pTopLeft.y),
-    };
+    // G-1 : la boîte de désignation est celle que `TokensLayer` DESSINE, prise par
+    // `cellBounds` — jamais par différence de deux `mapFromCellPoint`, que le contrat de
+    // `GridAdapter` interdit explicitement pour cette raison (C-5).
+    //
+    // ⛔ En hexagonal cette différence rendait une boîte fausse : largeur `size·px ± 0,5·px`
+    // selon la parité de rangée, et hauteur `size·px·√3/2` au lieu de la hauteur d'un
+    // hexagone. Le doigt désignait donc une zone qui n'était pas celle du pion à l'écran —
+    // et depuis le départage par distance porte/pion, cette boîte décide aussi de la
+    // distance comparée. Viser ce qu'on voit est la seule règle tenable.
+    const bounds = grid.cellBounds({ cellX: token.cell.a, cellY: token.cell.b }, size);
+    const rect = { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
 
     const dist = distancePointToRectangle(mapPos, rect);
     if (dist <= marginMap) {

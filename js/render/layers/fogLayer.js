@@ -379,10 +379,14 @@ export class FogLayer {
 
     for (const t of pcTokens) {
       const size = Math.max(1, t.sizeCells || 1);
-      const centerPoint = grid.mapFromCellPoint({
-        cellX: t.cell.a + size / 2,
-        cellY: t.cell.b + size / 2,
-      });
+      // G-1 : le centre du sweep vient de la boîte DESSINÉE (`cellBounds`), jamais d'une
+      // arithmétique sur `mapFromCellPoint` — ce dernier rend un point du réseau de la
+      // grille, pas le centre d'une case (C-5). L'écart mesuré entre les deux : rien en
+      // carré, mais jusqu'à une case entière (100 px en x, 36,6 px en y à 140 px/case) pour
+      // un pion de taille 2 en hexagonal. Sans ce détour, la vision d'une grande créature
+      // part d'un endroit où elle n'est pas dessinée.
+      const bounds = grid.cellBounds({ cellX: t.cell.a, cellY: t.cell.b }, size);
+      const centerPoint = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
 
       const los = sweep(centerPoint, segments, maxRangePx);
       if (Array.isArray(los) && los.length > 0) losPolygons.push(los);

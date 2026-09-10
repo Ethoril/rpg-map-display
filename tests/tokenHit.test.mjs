@@ -10,6 +10,7 @@ import {
   isPlayerManipulableToken,
 } from '../js/input/tokenHit.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
+import { gridFor } from '../js/grid/index.js';
 import { createLevel, createToken } from '../js/core/schema.js';
 import { TOKEN_HIT_MARGIN_SCREEN_PX, TOKEN_HIT_MAX_CELL_RATIO } from '../js/core/constants.js';
 
@@ -221,4 +222,53 @@ test('isPlayerManipulableToken — un PJ libre seulement', () => {
   assert.equal(isPlayerManipulableToken(makeToken({ id: 'pnj', kind: 'npc' })), false);
   assert.equal(isPlayerManipulableToken(makeToken({ id: 'interdit', playerMovable: false })), false);
   assert.equal(isPlayerManipulableToken(makeToken({ id: 'verrouille', locked: true })), false);
+});
+
+/**
+ * ⛔ **La boîte de désignation doit être celle qui est DESSINÉE, et rien ne le défendait.**
+ *
+ * Trouvé par mutation le 10/09/2026 : remettre la construction par différence de deux
+ * `mapFromCellPoint` laissait les 27 tests de ce terrain au vert. Or le contrat de
+ * `GridAdapter` interdit cette différence, et C-5 dit pourquoi : en hexagonal elle rend une
+ * boîte fausse.
+ *
+ * Mesuré à 100 px/case, pion 1×1 sur la case (10,4), pavage hexagonal :
+ *
+ * | | largeur | hauteur | plage y |
+ * |---|---|---|---|
+ * | boîte dessinée (`cellBounds`) | 100 | 115,5 | 338,7 → 454,1 |
+ * | ancienne boîte (différence) | **150** | **86,6** | 346,4 → 433,0 |
+ *
+ * Les deux sondes ci-dessous tombent chacune dans l'écart, en sens opposés : le doigt doit
+ * désigner ce que la table voit, et depuis le départage par distance porte/pion cette boîte
+ * décide aussi de la distance comparée.
+ */
+test('C-5 : en hexagonal, la boîte de désignation est celle que la couche DESSINE', () => {
+  const level = createLevel({
+    id: 'hex',
+    widthCells: 20,
+    heightCells: 10,
+    pxPerCell: 100,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+    imageUrl: 'maps/minimal.webp',
+  });
+  const grid = gridFor(level);
+  const pion = createToken({ id: 'p1', levelId: 'hex', kind: 'npc', cell: { a: 10, b: 4 } });
+
+  // Sonde A — DANS le bas de l'hexagone dessiné (y 445 < 454,1), HORS de l'ancienne boîte
+  // (qui s'arrêtait à 433,0). Le doigt est sur le pion : distance nulle.
+  const dedans = findHitToken(grid, level, { x: 1050, y: 445 }, 1, [pion], {});
+  assert.equal(dedans?.token?.id, 'p1', 'un point dans le bas du pion dessiné doit le désigner');
+  assert.ok(
+    (dedans?.dist ?? 1) <= 1e-6,
+    'et à distance NULLE, puisque le point est à l intérieur de la boîte dessinée'
+  );
+
+  // Sonde B — HORS du pion dessiné (x 1120 > 1100), mais DANS l'ancienne boîte (qui allait
+  // jusqu'à 1150). Le doigt n'est pas sur le pion : la distance ne peut pas être nulle.
+  const dehors = findHitToken(grid, level, { x: 1120, y: 400 }, 1, [pion], {});
+  assert.ok(
+    (dehors?.dist ?? 0) > 1e-6,
+    '⛔ un point à droite du pion dessiné ne doit PAS être à distance nulle : c est la largeur de 150 px de l ancienne boîte fausse'
+  );
 });
