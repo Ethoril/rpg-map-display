@@ -971,6 +971,17 @@ export async function bootstrapGMApp(options = {}) {
       // parce que c'est ici que vivent le cache de signature et l'autorité qui recalcule.
       if (event.type === VISION_REQUEST_EVENT) {
         scheduleVisionResend();
+        // Amendement C-8 (10/09/2026) : la demande signifie « je n'ai rien, envoie tout ce que
+        // tu as », pas « je n'ai rien pour MON étage ». `scheduleVisionResend` ne republie, via
+        // `syncVision`, que les étages porteurs d'un PJ — un étage exploré puis quitté n'a plus
+        // de signature qui bouge et ne serait donc jamais rediffusé par cette seule voie. On
+        // republie ici, directement, le masque exploré de CHAQUE étage détenu dans
+        // `exploredFogMap`, qui est l'autorité. ⚠ Publier trois à huit étages d'un coup est
+        // volontaire, pas une rafale à corriger : `scheduleFogPublish` throttle chaque étage
+        // séparément (1 Hz, un minuteur par `levelId`).
+        for (const [levelId, fog] of exploredFogMap) {
+          scheduleFogPublish(levelId, fog);
+        }
         return;
       }
 

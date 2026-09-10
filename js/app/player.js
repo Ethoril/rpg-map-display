@@ -866,12 +866,17 @@ export async function bootstrapPlayerApp(options = {}) {
    *  - au démarrage, y compris après un F5 ou un contexte d'onglet abandonné par le système ;
    *  - au retour au premier plan, car les événements publiés pendant que la tablette dormait
    *    ne sont pas rejoués — l'écoute reprend strictement après la dernière clé connue.
+   *
+   * ⚠ Amendement C-8 (10/09/2026) : plus de `levelId` dans le payload. La réponse du MJ ne se
+   * limite plus à l'étage affiché — il republie l'exploré de tous les étages qu'il détient
+   * (`QUESTIONS-EN-ATTENTE.md` C-8) — donc un champ que personne ne lit mentirait à chaque
+   * relecture.
    */
   function requestVisionResend() {
     if (!transport) return;
     transport.publish({
       type: VISION_REQUEST_EVENT,
-      payload: { levelId: store.getActiveLevel()?.id ?? null },
+      payload: {},
       at: Date.now(),
       by: 'players',
     });

@@ -597,51 +597,6 @@ S'appuie entièrement sur des briques déjà spécifiées : énumération de cas
 >
 > **Amendement L-10 (05/08/2026)** : La forme réelle déplaçable et pivotable (cercle et cône à 60°) remplace le surlignage des cases. Plus d'énumération de cases. Découpe stricte par les murs au `ctx.clip()` sur le polygone de sweep. `origin` passe en `MapPoint` carte et la pointe du cône est l'ancre fixe des rotations. Les joueurs peuvent manipuler les gabarits libres marqués `visibleToPlayers`.
 
-> **Amendement UX-15 (07/09/2026) — `level.show`, le geste qui emmène la table.** UX-10 a découplé
-> l'étage affiché des joueurs de celui du MJ : `level.select` est **ignoré par la tablette**, et le
-> sélecteur des joueurs (UX-12) n'offre que les étages **connus** — « un étage inconnu est ABSENT,
-> pas grisé ». Une carte fraîchement chargée n'ayant aucun brouillard révélé, la table n'avait donc
-> **aucun moyen d'y aller** et le MJ **aucun moyen de l'y emmener**, alors que la décision du
-> 16/08/2026 le supposait explicitement (« ils y viendront par un escalier, ou parce que le MJ les y
-> emmène avec la barre d'étage »). Constaté en séance le 07/09/2026, et tranché le même jour : le
-> mainteneur veut **une action explicite**, pas un couplage restauré.
->
-> `level.show` porte `{ levelId }` et fait cela, et **rien d'autre** :
->
-> - ⛔ **appliqué par la tablette, ignoré par le MJ** — exactement le miroir de `level.select`, que
->   la tablette ignore. Les deux filtres vivent dans l'application, avant le réducteur, parce que le
->   réducteur est partagé par les deux vues ;
-> - il **ne déplace aucun pion**, ne change pas l'étage du MJ, ne recadre aucune vue ;
-> - l'étage affiché des joueurs reste un **point de vue local**, retenu en stockage local et absent
->   du document de campagne : l'événement est une **commande ponctuelle**, pas de l'état persisté ;
-> - ⚠ le MJ n'apprend **pas** où la table se trouve. L'étage affiché des joueurs ne circule pas, donc
->   la barre ne peut annoncer que ce qu'elle a **publié**, jamais ce que la tablette montre.
-
-> **Amendement UX-16 (10/09/2026) — `level.delete`, retirer un étage.** `store.addLevel` existait
-> depuis toujours **sans jumeau** : aucun `removeLevel`, aucun événement, aucun bouton. Le seul
-> moyen de se débarrasser d'un étage était `scene.load`, qui remplace la campagne entière — donc
-> jette aussi les pions posés, le brouillard travaillé et la position de tout le monde. Deux imports
-> ratés laissaient deux étages morts dans la campagne, **pour toujours**, et dans le sélecteur que
-> le MJ ouvre à chaque changement de niveau. ⚠ Le défaut s'est aggravé de son propre succès : UX-01
-> a rendu l'ajout facile, et UX-15 a donné le geste qui emmène la table.
->
-> `level.delete` porte `{ levelId }` et **emporte ce que l'étage portait** : ses pions, son masque
-> exploré, et **toute liaison dont une extrémité vivait dessus** — une liaison pendante serait un
-> piège silencieux. Décision du mainteneur du 10/09 : un bouton dans la barre d'étage, avec
-> confirmation, utilisable **en séance**. ⛔ La variante « les pions partent en réserve » est
-> écartée explicitement.
->
-> - **Geste destructeur et sans annulation** : la confirmation dit ce qui va être perdu, en nombre.
-> - ⛔ **Le dernier étage ne se retire pas.** Une campagne sans aucun étage n'a pas de vue ; c'est le
->   miroir de la règle d'`addLevel`, qui ne sélectionne que s'il n'y avait pas d'étage actif —
->   l'initialisation, le seul cas où quelqu'un doit bien être choisi.
-> - ⚠ **C'est le seul endroit où quelque chose bouge sans que personne l'ait demandé**, et
->   l'exception est assumée : si l'étage retiré était celui qu'un écran affichait, cet écran retombe
->   sur un autre étage — le sien n'existe plus. La règle générale (« rien ne se déplace dans le dos
->   de personne ») n'est pas levée : c'est le geste explicite du MJ, confirmé, qui autorise ce
->   déplacement-là.
-> - **Rejeu inoffensif** : un étage déjà retiré rend `false` sans lever, comme `token.reserve`.
-
 Règle le principal arbitrage verbal pénible à table — « est-ce que le gobelin est dans la
 boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 
@@ -831,6 +786,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `level.select` | MJ, tablette | ponctuel |
 | `vision.update` | **Mac seul** | après chaque mouvement, throttlé |
 | `fog.update` | **Mac seul** | throttlé 1 Hz ou à la révélation |
+| `vision.request` | tablette | ponctuel — **sans payload** depuis l'amendement C-8 |
 | `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
 | `ping` | **MJ seul** (amendé le 12/08/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
 | `ambient.set` | MJ | throttlé |
@@ -847,6 +803,63 @@ réécrit par `saveSnapshot` à chaque mutation.
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 
 > **Amendement UX-05 (17/08/2026)** : `template.remove` porte `{ templateId: string }` et retire **un** gabarit. Il est demandé par le mainteneur et n'est donc pas une invention de la couche réseau (`CONVENTIONS.md` §4). Son absence rendait `template.clear` seul retrait possible : retirer le cône d'un sort résolu effaçait aussi la zone de ténèbres posée deux tours plus tôt. Rejeu inoffensif — un gabarit déjà retiré rend `false` sans lever. `template.move` **est** émis depuis L-10 malgré l'amendement ci-dessus, par le glisser de gabarit ; il ne porte que l'origine et la direction.
+
+> **Amendement UX-15 (07/09/2026) — `level.show`, le geste qui emmène la table.** UX-10 a découplé
+> l'étage affiché des joueurs de celui du MJ : `level.select` est **ignoré par la tablette**, et le
+> sélecteur des joueurs (UX-12) n'offre que les étages **connus** — « un étage inconnu est ABSENT,
+> pas grisé ». Une carte fraîchement chargée n'ayant aucun brouillard révélé, la table n'avait donc
+> **aucun moyen d'y aller** et le MJ **aucun moyen de l'y emmener**, alors que la décision du
+> 16/08/2026 le supposait explicitement (« ils y viendront par un escalier, ou parce que le MJ les y
+> emmène avec la barre d'étage »). Constaté en séance le 07/09/2026, et tranché le même jour : le
+> mainteneur veut **une action explicite**, pas un couplage restauré.
+>
+> `level.show` porte `{ levelId }` et fait cela, et **rien d'autre** :
+>
+> - ⛔ **appliqué par la tablette, ignoré par le MJ** — exactement le miroir de `level.select`, que
+>   la tablette ignore. Les deux filtres vivent dans l'application, avant le réducteur, parce que le
+>   réducteur est partagé par les deux vues ;
+> - il **ne déplace aucun pion**, ne change pas l'étage du MJ, ne recadre aucune vue ;
+> - l'étage affiché des joueurs reste un **point de vue local**, retenu en stockage local et absent
+>   du document de campagne : l'événement est une **commande ponctuelle**, pas de l'état persisté ;
+> - ⚠ le MJ n'apprend **pas** où la table se trouve. L'étage affiché des joueurs ne circule pas, donc
+>   la barre ne peut annoncer que ce qu'elle a **publié**, jamais ce que la tablette montre.
+
+> **Amendement UX-16 (10/09/2026) — `level.delete`, retirer un étage.** `store.addLevel` existait
+> depuis toujours **sans jumeau** : aucun `removeLevel`, aucun événement, aucun bouton. Le seul
+> moyen de se débarrasser d'un étage était `scene.load`, qui remplace la campagne entière — donc
+> jette aussi les pions posés, le brouillard travaillé et la position de tout le monde. Deux imports
+> ratés laissaient deux étages morts dans la campagne, **pour toujours**, et dans le sélecteur que
+> le MJ ouvre à chaque changement de niveau. ⚠ Le défaut s'est aggravé de son propre succès : UX-01
+> a rendu l'ajout facile, et UX-15 a donné le geste qui emmène la table.
+>
+> `level.delete` porte `{ levelId }` et **emporte ce que l'étage portait** : ses pions, son masque
+> exploré, et **toute liaison dont une extrémité vivait dessus** — une liaison pendante serait un
+> piège silencieux. Décision du mainteneur du 10/09 : un bouton dans la barre d'étage, avec
+> confirmation, utilisable **en séance**. ⛔ La variante « les pions partent en réserve » est
+> écartée explicitement.
+>
+> - **Geste destructeur et sans annulation** : la confirmation dit ce qui va être perdu, en nombre.
+> - ⛔ **Le dernier étage ne se retire pas.** Une campagne sans aucun étage n'a pas de vue ; c'est le
+>   miroir de la règle d'`addLevel`, qui ne sélectionne que s'il n'y avait pas d'étage actif —
+>   l'initialisation, le seul cas où quelqu'un doit bien être choisi.
+> - ⚠ **C'est le seul endroit où quelque chose bouge sans que personne l'ait demandé**, et
+>   l'exception est assumée : si l'étage retiré était celui qu'un écran affichait, cet écran retombe
+>   sur un autre étage — le sien n'existe plus. La règle générale (« rien ne se déplace dans le dos
+>   de personne ») n'est pas levée : c'est le geste explicite du MJ, confirmé, qui autorise ce
+>   déplacement-là.
+> - **Rejeu inoffensif** : un étage déjà retiré rend `false` sans lever, comme `token.reserve`.
+
+> **Amendement C-8 (10/09/2026) — `vision.request` réclame TOUT, pas un étage.** Une tablette
+> neuve — ou dont le cache vient d'être vidé, ce qui est arrivé le 09/09 pour le correctif du
+> canal — n'a ni carte mémoire ni stockage local : elle ne connaît donc AUCUN étage exploré, pas
+> seulement celui affiché. La demande cesse de porter `levelId` — un champ que plus personne ne
+> lit mentirait à chaque relecture, la même règle qui a fait retirer `visionBright`,
+> `ambient.color` et `settings.ambientLevel`. `vision.request` signifie désormais « je n'ai rien,
+> envoie tout ce que tu as » : le MJ y répond en recalculant la vision (`scheduleVisionResend`,
+> inchangé) **et** en republiant le masque exploré de **chaque étage qu'il détient**
+> (`exploredFogMap`), pas seulement ceux qui portent un PJ — sans quoi un étage exploré puis
+> quitté ne serait jamais rediffusé, faute de signature qui bouge. Décision du mainteneur du
+> 10/09/2026 (`QUESTIONS-EN-ATTENTE.md` C-8).
 
 > **Amendement UX-13 (18/08/2026)** : `level.replace` porte `{ levelId, patch }` et remplace le contenu d'un étage existant sur place (`imageUrl`, dimensions, pas de grille, géométrie vidée). Contrairement à `level.add`, il ne crée pas d'étage et s'applique immédiatement pour quiconque affichait déjà cet étage. Les pions de l'étage sont déplacés en réserve via autant d'événements `token.reserve` distincts, et le brouillard de l'étage est réinitialisé.
 
