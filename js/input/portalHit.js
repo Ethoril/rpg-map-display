@@ -1,6 +1,10 @@
 // @ts-check
 
-import { PORTAL_HIT_CELL_RATIO } from '../core/constants.js';
+import {
+  PORTAL_HIT_CELL_RATIO,
+  PORTAL_HIT_SCREEN_FLOOR_PX,
+  PORTAL_HIT_MAX_CELL_RATIO,
+} from '../core/constants.js';
 
 /**
  * Désignation d'une porte sous un tap. Partagé par la vue MJ et la vue joueurs : les deux
@@ -31,21 +35,40 @@ export function distancePointToSegment(pt, a, b) {
 }
 
 /**
- * Recherche la porte la plus proche du tap, dans une capsule de
- * `PORTAL_HIT_CELL_RATIO` case autour de son segment.
+ * Résultat de `findHitPortal` : la porte trouvée et sa distance, en unités CARTE — même
+ * repère que `dist` de `findHitToken`, pour que les deux soient comparables par un appelant qui
+ * arbitre entre un pion et une porte.
+ *
+ * @typedef {Object} PortalHitResult
+ * @property {import('../core/types.js').Portal} portal
+ * @property {number} dist Distance du point au segment de la porte, en unités carte.
+ */
+
+/**
+ * Recherche la porte la plus proche du tap, dans une capsule autour de son segment.
+ *
+ * La capsule est `PORTAL_HIT_CELL_RATIO` case, plancherée à `PORTAL_HIT_SCREEN_FLOOR_PX` en
+ * pixels écran (décision du mainteneur du 10/09/2026 — voir `constants.js`) et plafonnée à
+ * `PORTAL_HIT_MAX_CELL_RATIO` case pour ne jamais déborder au dézoom.
  *
  * @param {import('../grid/GridAdapter.js').GridAdapter} grid
  * @param {import('../core/types.js').Level} activeLevel
  * @param {{x: number, y: number}} mapPos
- * @returns {import('../core/types.js').Portal|null}
+ * @param {number} [zoom] Zoom courant de la caméra. Absent = 1 (comportement d'avant ce
+ *   chantier), pour ne pas casser un appelant qui n'a pas encore été mis à jour.
+ * @returns {PortalHitResult|null}
  */
-export function findHitPortal(grid, activeLevel, mapPos) {
+export function findHitPortal(grid, activeLevel, mapPos, zoom = 1) {
   if (!activeLevel || !activeLevel.portals || activeLevel.portals.length === 0) return null;
 
   const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
   const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
   const gridScale = Math.abs(origin1.x - origin0.x);
-  const maxDist = PORTAL_HIT_CELL_RATIO * gridScale;
+  const safeZoom = zoom > 0 ? zoom : 1;
+  const maxDist = Math.min(
+    Math.max(PORTAL_HIT_CELL_RATIO * gridScale, PORTAL_HIT_SCREEN_FLOOR_PX / safeZoom),
+    PORTAL_HIT_MAX_CELL_RATIO * gridScale
+  );
 
   /** @type {{portal: import('../core/types.js').Portal, dist: number}|null} */
   let best = null;
@@ -67,5 +90,5 @@ export function findHitPortal(grid, activeLevel, mapPos) {
     }
   }
 
-  return best ? best.portal : null;
+  return best ? { portal: best.portal, dist: best.dist } : null;
 }

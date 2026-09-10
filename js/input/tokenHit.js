@@ -79,6 +79,17 @@ export function isPlayerManipulableToken(token) {
  */
 
 /**
+ * Résultat de `findHitToken` : le pion trouvé et sa distance, en unités CARTE, pour être
+ * comparable à celle que rend `findHitPortal` — c'est ce qui permet à un appelant d'arbitrer
+ * entre un pion et une porte par la distance plutôt que par l'ordre de ses branches.
+ *
+ * @typedef {Object} TokenHitResult
+ * @property {import('../core/types.js').Token} token
+ * @property {number} dist Distance du point au rectangle du pion, en unités carte. 0 si le
+ *   point est à l'intérieur.
+ */
+
+/**
  * Recherche le pion le plus proche sous le tap/point en appliquant une marge en pixels écran,
  * plafonnée par une fraction de taille de case en unités carte.
  *
@@ -90,7 +101,7 @@ export function isPlayerManipulableToken(token) {
  * @param {number} zoom
  * @param {import('../core/types.js').Token[]} tokens
  * @param {FindHitTokenOptions} [options]
- * @returns {import('../core/types.js').Token|null}
+ * @returns {TokenHitResult|null}
  */
 export function findHitToken(grid, activeLevel, mapPos, zoom, tokens = [], options = {}) {
   if (!activeLevel || !mapPos || !tokens || tokens.length === 0) return null;
@@ -168,5 +179,5 @@ export function findHitToken(grid, activeLevel, mapPos, zoom, tokens = [], optio
     }
   }
 
-  return best ? best.token : null;
+  return best ? { token: best.token, dist: best.dist } : null;
 }

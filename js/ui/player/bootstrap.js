@@ -120,7 +120,7 @@ export function bootstrapPlayerView(options) {
       return;
     }
 
-    const tappedToken = findHitToken(
+    const tappedHit = findHitToken(
       grid,
       activeLevel,
       intention.mapPos,
@@ -128,6 +128,7 @@ export function bootstrapPlayerView(options) {
       campaign.tokens,
       { filter: (t) => !t.hidden, deprioritize: (t) => !isPlayerManipulableToken(t) }
     );
+    const tappedToken = tappedHit ? tappedHit.token : null;
 
     const tappedMovablePc = tappedToken && isPlayerManipulableToken(tappedToken) ? tappedToken : null;
 
@@ -138,39 +139,41 @@ export function bootstrapPlayerView(options) {
       filter: (t) => !t.hidden,
     });
 
-    // Arbitrage n°1 (brief O §5a), **borné à la marge** : un PNJ qu'on manque de peu ne bloque
-    // plus la porte derrière lui — sinon la tolérance élargirait de 24 px la zone morte autour de
-    // chaque PNJ, soit l'inverse de ce que ce chantier corrige. Mais un PNJ touché en plein
-    // continue de la bloquer : sans cette borne, un PNJ posté à moins de 0,25 case d'une porte
-    // ferait ouvrir la porte à chaque tap sur son corps, et la porte reprendrait la priorité
-    // inconditionnelle que le brief §3 lui reproche.
-    if (!tappedMovablePc && !exactTappedToken) {
-      const hitPortal = findHitPortal(grid, activeLevel, intention.mapPos);
-      if (hitPortal) {
-        /** @type {'open'|'closed'|null} */
-        let targetState = null;
-        if (hitPortal.state === 'closed') {
-          targetState = 'open';
-        } else if (hitPortal.state === 'open') {
-          targetState = 'closed';
-        }
-        if (targetState) {
-          store.setPortalState(activeLevel.id, hitPortal.id, targetState);
-          if (transport) {
-            transport.publish({
-              type: 'portal.toggle',
-              payload: {
-                levelId: activeLevel.id,
-                portalId: hitPortal.id,
-                state: targetState,
-              },
-              at: Date.now(),
-              by: 'players',
-            });
-          }
-        }
-        return;
+    // Arbitrage n°1 (brief distance) : le plus proche gagne, dans une seule et même unité —
+    // la CARTE, parce que c'est elle qui porte la géométrie ; l'écran n'est qu'une fenêtre posée
+    // dessus, et sa fraction de case varie avec le zoom (brief O §5a le disait déjà : à la vue
+    // « carte entière », 24 px d'écran couvrent presque une case entière en unités carte). Un
+    // pion touché en plein (`tappedHit.dist === 0`) est de fait toujours strictement plus proche
+    // qu'aucune porte à portée, donc la protection du chantier O — un pion sous le doigt bloque
+    // la porte derrière lui — en découle SANS cas particulier à écrire ici.
+    const hitPortal = findHitPortal(grid, activeLevel, intention.mapPos, camera.zoom);
+    const portalIsCloser =
+      hitPortal && (!tappedHit || hitPortal.dist < tappedHit.dist - 1e-6);
+    if (portalIsCloser) {
+      const portal = hitPortal.portal;
+      /** @type {'open'|'closed'|null} */
+      let targetState = null;
+      if (portal.state === 'closed') {
+        targetState = 'open';
+      } else if (portal.state === 'open') {
+        targetState = 'closed';
       }
+      if (targetState) {
+        store.setPortalState(activeLevel.id, portal.id, targetState);
+        if (transport) {
+          transport.publish({
+            type: 'portal.toggle',
+            payload: {
+              levelId: activeLevel.id,
+              portalId: portal.id,
+              state: targetState,
+            },
+            at: Date.now(),
+            by: 'players',
+          });
+        }
+      }
+      return;
     }
 
     if (!selectedToken) {

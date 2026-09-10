@@ -1456,7 +1456,7 @@ export async function bootstrapGMApp(options = {}) {
       // il reste sélectionnable (c'est le geste qui sert à le déverrouiller) mais ne vole pas la
       // désignation d'un voisin libre. ⛔ Ne pas y mettre la manipulabilité *joueur* : elle
       // déclasserait les PNJ, que le MJ manipule autant que les PJ.
-      const token = findHitToken(
+      const tokenHit = findHitToken(
         grid,
         state.activeLevel,
         intention.mapPos,
@@ -1464,35 +1464,44 @@ export async function bootstrapGMApp(options = {}) {
         state.campaign?.tokens ?? [],
         { deprioritize: (t) => !!t.locked }
       );
-      if (token) {
-        store.selectToken(token.id);
+
+      // Même arbitrage par distance que la vue joueurs (js/ui/player/bootstrap.js) : le plus
+      // proche gagne, comparé en unités CARTE — c'est elle qui porte la géométrie. Avant ce
+      // chantier, le pion gagnait toujours ici, sans même la borne d'exactitude qu'avait la vue
+      // joueurs ; un pion à portée de marge mais plus loin qu'une porte volait la désignation.
+      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos, camera.zoom);
+      const portalIsCloser =
+        hitPortal && (!tokenHit || hitPortal.dist < tokenHit.dist - 1e-6);
+
+      if (!portalIsCloser && tokenHit) {
+        store.selectToken(tokenHit.token.id);
         return;
       }
 
-      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos);
       if (hitPortal) {
+        const portal = hitPortal.portal;
         /** @type {'open'|'closed'|null} */
         let targetState = null;
-        if (hitPortal.state === 'closed') {
+        if (portal.state === 'closed') {
           targetState = 'open';
-        } else if (hitPortal.state === 'open') {
+        } else if (portal.state === 'open') {
           targetState = 'closed';
         }
         // Depuis `locked`, un tap ne fait rien **et le signale** (TRANCHE-L05-PORTES.md §7.6).
         // La seconde moitié de cette exigence manquait : le code sortait en silence, et un
         // geste sans effet ni explication ne se distingue pas d'une panne. C'est ce qui a fait
         // conclure que l'état verrouillé n'était pas implémenté, alors qu'il l'était.
-        if (!targetState && hitPortal.state === 'locked') {
-          lockedPortalFlash = { portalId: hitPortal.id, at: Date.now() };
+        if (!targetState && portal.state === 'locked') {
+          lockedPortalFlash = { portalId: portal.id, at: Date.now() };
           requestRender();
         }
         if (targetState) {
-          store.setPortalState(state.activeLevel.id, hitPortal.id, targetState);
+          store.setPortalState(state.activeLevel.id, portal.id, targetState);
           transport?.publish({
             type: 'portal.toggle',
             payload: {
               levelId: state.activeLevel.id,
-              portalId: hitPortal.id,
+              portalId: portal.id,
               state: targetState,
             },
             at: Date.now(),
@@ -1523,15 +1532,16 @@ export async function bootstrapGMApp(options = {}) {
       // ⚠ Ne pas « améliorer » cet ordre en départageant par distance ou par ce qui est
       // dessiné au-dessus : la règle doit rester lisible sans mesurer, sinon le MJ ne peut
       // pas prévoir ce que son doigt va faire.
-      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos);
+      const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos, camera.zoom);
       if (hitPortal) {
-        const targetState = hitPortal.state === 'locked' ? 'closed' : 'locked';
-        store.setPortalState(state.activeLevel.id, hitPortal.id, targetState);
+        const portal = hitPortal.portal;
+        const targetState = portal.state === 'locked' ? 'closed' : 'locked';
+        store.setPortalState(state.activeLevel.id, portal.id, targetState);
         transport?.publish({
           type: 'portal.toggle',
           payload: {
             levelId: state.activeLevel.id,
-            portalId: hitPortal.id,
+            portalId: portal.id,
             state: targetState,
           },
           at: Date.now(),
@@ -1681,7 +1691,7 @@ export async function bootstrapGMApp(options = {}) {
         state.campaign.tokens || [],
         { deprioritize: (t) => !!t.locked }
       );
-      return hit?.id ?? null;
+      return hit?.token.id ?? null;
     },
     canStartTemplateDrag: (_screenPos, mapPos) => {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;

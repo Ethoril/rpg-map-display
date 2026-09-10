@@ -388,12 +388,50 @@ export const STATUS_ICON_CACHE_LIMIT = 128;
  * l'erreur. Si la visée devient pénible, c'est cette constante qu'il faut remonter, et elle
  * est seule : les deux vues l'importent depuis `js/input/portalHit.js`.
  *
- * ⛔ Ne pas la convertir en pixels écran par analogie avec les badges. Un badge doit garder sa
- * taille à l'écran ; une porte est un objet de la carte, et une bande constante à l'écran
- * couvrirait **d'autant plus de cases que la carte est dézoomée** — soit exactement le défaut
- * qu'on corrige, amplifié.
+ * ⚠ **Ce plancher en unités carte reste celui qui compte à fort zoom.** À zoom 1, il vaut 35
+ * unités (0,25 case × 140 px/case) et c'est lui qui donne la capsule — le plancher écran
+ * ci-dessous, ramené en unités carte par `/ zoom`, ne redevient déterminant qu'au dézoom.
  */
 export const PORTAL_HIT_CELL_RATIO = 0.25;
+
+/**
+ * Plancher en pixels ÉCRAN de la capsule de désignation d'une porte — décision du mainteneur du
+ * 10/09/2026, à côté de `PORTAL_HIT_CELL_RATIO` ci-dessus, qui reste le plancher en unités carte.
+ *
+ * **Le fait mesuré qui l'a motivé.** Vue joueurs, étage 02 du village, cadrage « étage entier » :
+ * zoom 0,193. `PORTAL_HIT_CELL_RATIO` (0,25 case) y vaut **6,8 px écran** — un doigt ne fait pas
+ * 6 px. Balayage complet de l'erreur de visée avec le code réel, sur `portal-5` et son PJ
+ * voisin : la porte répond de **0 à 6,5 px**, puis **personne** de 6,5 à 8,5 px (un trou mort),
+ * puis le pion à partir de **8,5 px** — les deux zones ne se recouvrent jamais, le mainteneur ne
+ * peut viser ni l'une ni l'autre dans l'intervalle.
+ *
+ * 20 px : aligné sur `TOKEN_HIT_MARGIN_SCREEN_PX` (24), légèrement en-deçà pour que la porte
+ * reste, à distance égale, un peu moins gourmande que le pion qu'elle départage.
+ *
+ * ⛔ **Pourquoi une bande constante à l'écran ne rouvre pas le danger que ce fichier interdisait
+ * jusqu'ici.** Le motif d'origine reste vrai d'une conversion nue : une bande constante à l'écran
+ * couvre d'autant plus de cases que la carte est dézoomée. Il est levé ici par DEUX choses,
+ * aucune seule ne suffisant :
+ *
+ *  1. Le plafond `PORTAL_HIT_MAX_CELL_RATIO` ci-dessous empêche la capsule de déborder sans
+ *     borne quand on dézoome — c'est précisément ce qu'une conversion nue n'avait pas.
+ *  2. Le départage par distance entre porte et pion (`js/input/portalHit.js`,
+ *     `js/input/tokenHit.js`) : une porte élargie ne gagne un tap que si elle est *réellement*
+ *     plus proche que le pion candidat. Le danger que ce fichier redoutait était la priorité
+ *     **inconditionnelle** de la porte sur le pion, et cette priorité n'existe plus — voir
+ *     `js/ui/player/bootstrap.js` et `js/app/gm.js`.
+ */
+export const PORTAL_HIT_SCREEN_FLOOR_PX = 20;
+
+/**
+ * Plafond de la capsule de désignation d'une porte, en fraction de case carte — compagnon de
+ * `PORTAL_HIT_SCREEN_FLOOR_PX` ci-dessus, décision du mainteneur du 10/09/2026.
+ *
+ * Sans lui, le plancher écran grossirait sans borne au dézoom et finirait par couvrir plusieurs
+ * cases. 0,75 : même plafond que `TOKEN_HIT_MAX_CELL_RATIO`, pour que porte et pion se dézooment
+ * avec la même règle et qu'aucun des deux ne prenne l'avantage par une borne différente.
+ */
+export const PORTAL_HIT_MAX_CELL_RATIO = 0.75;
 
 /**
  * Type de l'événement qui congédie les autres sessions MJ. Nommé ici parce qu'il est écrit à

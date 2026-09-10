@@ -8,7 +8,11 @@ import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { gridFor } from '../js/grid/index.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import { findHitPortal } from '../js/input/portalHit.js';
-import { PORTAL_HIT_CELL_RATIO } from '../js/core/constants.js';
+import {
+  PORTAL_HIT_CELL_RATIO,
+  PORTAL_HIT_SCREEN_FLOOR_PX,
+  PORTAL_HIT_MAX_CELL_RATIO,
+} from '../js/core/constants.js';
 
 function makeValidPortalCampaign() {
   const level = createLevel({
@@ -173,13 +177,13 @@ test('6. Capsule de désignation d\'une porte, et la case du pion voisin qui lui
   // portal-1 est le segment horizontal du coin (2,2) au coin (3,2). En pixels carte, il court
   // donc le long de y = 2 px/case, entre x = 2 et x = 3 px/case.
   const onSegment = { x: 2.5 * px, y: 2 * px };
-  assert.equal(findHitPortal(grid, level, onSegment)?.id, 'portal-1');
+  assert.equal(findHitPortal(grid, level, onSegment)?.portal?.id, 'portal-1');
 
   // La tolérance est un ratio de case, pas une valeur en dur : le test la relit plutôt que de
   // la recopier, sinon il ne vérifierait que sa propre copie.
   const inside = PORTAL_HIT_CELL_RATIO * 0.8;
   const outside = PORTAL_HIT_CELL_RATIO * 1.2;
-  assert.equal(findHitPortal(grid, level, { x: 2.5 * px, y: (2 + inside) * px })?.id, 'portal-1');
+  assert.equal(findHitPortal(grid, level, { x: 2.5 * px, y: (2 + inside) * px })?.portal?.id, 'portal-1');
   assert.equal(findHitPortal(grid, level, { x: 2.5 * px, y: (2 + outside) * px }), null);
 
   // Le point qui motive le réglage, et il demande de la précision. Le centre exact de la case
@@ -207,8 +211,57 @@ test('6. Capsule de désignation d\'une porte, et la case du pion voisin qui lui
   });
   const tieGrid = gridFor(tie);
   const corner = { x: 4 * tie.pxPerCell, y: 4 * tie.pxPerCell };
-  assert.equal(findHitPortal(tieGrid, tie, corner)?.id, 'portal-a');
+  assert.equal(findHitPortal(tieGrid, tie, corner)?.portal?.id, 'portal-a');
 
   // Un étage sans porte ne désigne rien, et ne jette pas.
   assert.equal(findHitPortal(grid, createLevel({ id: 'vide' }), { x: 0, y: 0 }), null);
+});
+
+test('7. Capsule de désignation d\'une porte, à trois zooms — plancher écran et plafond carte', () => {
+  // Décision du mainteneur du 10/09/2026 : la capsule vaut
+  // `min(max(PORTAL_HIT_CELL_RATIO * échelle, PORTAL_HIT_SCREEN_FLOOR_PX / zoom), PORTAL_HIT_MAX_CELL_RATIO * échelle)`.
+  // Ce test relit les trois constantes plutôt que de recopier leurs chiffres, sinon il ne
+  // vérifierait que sa propre copie.
+  const campaign = makeValidPortalCampaign();
+  const level = campaign.levels[0];
+  const grid = gridFor(level);
+  const px = level.pxPerCell; // 140 : l'échelle de grille en unités carte par case.
+  const cellFloor = PORTAL_HIT_CELL_RATIO * px; // 35
+  const cellCap = PORTAL_HIT_MAX_CELL_RATIO * px; // 105
+
+  /**
+   * Sonde un point sur la normale à portal-1, à distance `d` unités carte de son segment.
+   * @param {number} d
+   * @param {number} [zoom]
+   */
+  function probe(d, zoom) {
+    return findHitPortal(grid, level, { x: 2.5 * px, y: 2 * px + d }, zoom);
+  }
+
+  // Au cadrage joueurs mesuré (zoom 0,193) : `PORTAL_HIT_CELL_RATIO` ne vaut plus que 6,8 px
+  // écran, sous ce que couvre un doigt. Le plancher écran domine et fixe la capsule à
+  // `PORTAL_HIT_SCREEN_FLOOR_PX / zoom` (~104 unités carte), largement sous le plafond.
+  const zoomCadrage = 0.193;
+  const screenFloorAtCadrage = PORTAL_HIT_SCREEN_FLOOR_PX / zoomCadrage;
+  assert.ok(screenFloorAtCadrage > cellFloor && screenFloorAtCadrage < cellCap);
+  assert.ok(probe(screenFloorAtCadrage * 0.99, zoomCadrage) !== null);
+  assert.equal(probe(screenFloorAtCadrage * 1.01, zoomCadrage), null);
+
+  // À zoom 1, le plancher écran (20 unités) est sous le plancher carte (35 unités) : c'est ce
+  // dernier qui fixe la capsule, comme avant ce chantier.
+  assert.ok(probe(cellFloor * 0.99, 1) !== null);
+  assert.equal(probe(cellFloor * 1.01, 1), null);
+
+  // À zoom très faible (0,1), le plancher écran (200 unités) dépasserait le plafond sans lui :
+  // la capsule est bornée à `PORTAL_HIT_MAX_CELL_RATIO` case (105 unités), strictement sous une
+  // case entière (140 unités), et ne déborde donc jamais dans la case voisine.
+  const zoomFaible = 0.1;
+  assert.ok(PORTAL_HIT_SCREEN_FLOOR_PX / zoomFaible > cellCap);
+  assert.ok(probe(cellCap * 0.99, zoomFaible) !== null);
+  assert.equal(probe(cellCap * 1.01, zoomFaible), null);
+  assert.ok(cellCap < px);
+
+  // Sans zoom passé, comportement d'avant ce chantier : équivalent à zoom 1.
+  assert.ok(probe(cellFloor * 0.99, undefined) !== null);
+  assert.equal(probe(cellFloor * 1.01, undefined), null);
 });

@@ -68,11 +68,11 @@ test('findHitToken — tap au centre vs dans la marge vs au-delà (constante dyn
 
   // 1. Tap au centre (550, 550) -> hit
   const hitCenter = findHitToken(grid, mockLevel, { x: 550, y: 550 }, zoom, tokens);
-  assert.equal(hitCenter?.id, 't1');
+  assert.equal(hitCenter?.token?.id, 't1');
 
   // 2. Tap dans la marge (600 + marginPx - 4, 550) -> hit
   const hitMargin = findHitToken(grid, mockLevel, { x: 600 + marginPx - 4, y: 550 }, zoom, tokens);
-  assert.equal(hitMargin?.id, 't1');
+  assert.equal(hitMargin?.token?.id, 't1');
 
   // 3. Tap au-delà de la marge (600 + marginPx + 4, 550) -> miss
   const missFar = findHitToken(grid, mockLevel, { x: 600 + marginPx + 4, y: 550 }, zoom, tokens);
@@ -99,7 +99,7 @@ test('findHitToken — le plafond en cases borne la marge au zoom lointain', () 
 
   // Juste en dessous du plafond : le pion est désigné.
   assert.equal(
-    findHitToken(grid, mockLevel, { x: 300 - (plafond - 5), y: 150 }, zoom, tokens)?.id,
+    findHitToken(grid, mockLevel, { x: 300 - (plafond - 5), y: 150 }, zoom, tokens)?.token?.id,
     'loin'
   );
 });
@@ -118,7 +118,7 @@ test('findHitToken — pion 1x1 vs grand pion 3x3 (mesure au rectangle discrimin
   // Avec la mesure au rectangle: Ogre (dist 0) gagne !
 
   const hitCorner = findHitToken(grid, mockLevel, { x: 310, y: 150 }, 1.0, tokens);
-  assert.equal(hitCorner?.id, 'ogre');
+  assert.equal(hitCorner?.token?.id, 'ogre');
 });
 
 test('findHitToken — PNJ sous le doigt (dist=0) l’emporte sur un PC manipulable dans la marge', () => {
@@ -135,7 +135,7 @@ test('findHitToken — PNJ sous le doigt (dist=0) l’emporte sur un PC manipula
   const hit = findHitToken(grid, mockLevel, { x: 205, y: 150 }, 1.0, tokens, {
     deprioritize: (t) => !isPlayerManipulableToken(t),
   });
-  assert.equal(hit?.id, 'pnj-under-finger');
+  assert.equal(hit?.token?.id, 'pnj-under-finger');
 });
 
 /**
@@ -158,9 +158,9 @@ function departageDansLaMarge(attendu, evince, deprioritize) {
   const zoom = 0.3;
 
   // Témoin : sans prédicat, l'identifiant tranche et c'est l'AUTRE qui gagne.
-  assert.equal(findHitToken(grid, mockLevel, pt, zoom, tokens)?.id, evince.id);
+  assert.equal(findHitToken(grid, mockLevel, pt, zoom, tokens)?.token?.id, evince.id);
 
-  return findHitToken(grid, mockLevel, pt, zoom, tokens, { deprioritize })?.id;
+  return findHitToken(grid, mockLevel, pt, zoom, tokens, { deprioritize })?.token?.id;
 }
 
 test('findHitToken — vue joueurs : à distance égale, le pion manipulable par le joueur passe devant', () => {
@@ -199,7 +199,7 @@ test('findHitToken — vue MJ : un PNJ n’est jamais déclassé face à un PJ',
   const hit = findHitToken(grid, mockLevel, { x: 250, y: 150 }, 0.3, tokens, {
     deprioritize: (t) => !!t.locked,
   });
-  assert.equal(hit?.id, 'a-pnj');
+  assert.equal(hit?.token?.id, 'a-pnj');
 });
 
 test('findHitToken — un pion `hidden` reste désignable par le MJ, jamais par les joueurs', () => {
@@ -209,7 +209,7 @@ test('findHitToken — un pion `hidden` reste désignable par le MJ, jamais par 
     makeToken({ id: 'pnj-cache', cell: { a: 5, b: 5 }, hidden: true, kind: 'npc' }),
   ];
 
-  assert.equal(findHitToken(grid, mockLevel, { x: 550, y: 550 }, 1.0, tokens)?.id, 'pnj-cache');
+  assert.equal(findHitToken(grid, mockLevel, { x: 550, y: 550 }, 1.0, tokens)?.token?.id, 'pnj-cache');
   assert.equal(
     findHitToken(grid, mockLevel, { x: 550, y: 550 }, 1.0, tokens, { filter: (t) => !t.hidden }),
     null
