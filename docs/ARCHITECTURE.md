@@ -170,7 +170,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   ├─ gestures.js            [1a] pan, pinch, tap, appui long
 │   │   ├─ portalHit.js           [2]  désignation d'une porte sous le tap (MJ et joueurs)
 │   │   ├─ templateHit.js         [2]  désignation d'un gabarit sous le tap (MJ et joueurs)
-│   │   └─ tokenHit.js            [O]  désignation d'un pion sous le tap et glisser (MJ et joueurs)
+│   │   ├─ tokenHit.js            [O]  désignation d'un pion sous le tap et glisser (MJ et joueurs)
+│   │   └─ lightHit.js          [C-2] désignation d une lampe sous le tap — ⛔ MJ SEUL,
+│   │                              les joueurs ne basculent pas une lampe (décision du 10/09/2026)
 │   │
 │   ├─ ui/
 │   │   ├─ versionBadge.js        [1a] affichage MJ (permanent) / joueurs (transitoire) + mise à jour forcée

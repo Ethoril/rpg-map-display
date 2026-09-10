@@ -1198,6 +1198,149 @@ export function setPortalState(levelId, portalId, state) {
 }
 
 /**
+ * Bascule l'état allumé/éteint d'une lampe — patron de `setPortalState`, porté par
+ * `light.toggle` (amendement C-2). État **absolu**, jamais « inverse-le » : c'est le seul
+ * écrivain de `Light.on`, ni `placeLight` ni `moveLight` n'y touchent.
+ *
+ * @param {string} levelId
+ * @param {string} lightId
+ * @param {boolean} on
+ * @returns {void}
+ */
+export function setLightState(levelId, lightId, on) {
+  if (typeof on !== 'boolean') {
+    throw new Error(`État de lampe invalide : "${on}"`);
+  }
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+  const light = (level.lights || []).find((li) => li.id === lightId);
+  if (!light) {
+    throw new Error(`Lampe inconnue : "${lightId}" sur l'étage "${levelId}"`);
+  }
+
+  light.on = on;
+
+  assertValidCampaign(candidate, `Bascule de la lampe "${lightId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
+/**
+ * Pose une lampe ou remplace la géométrie d'une lampe existante — idempotent par identifiant,
+ * patron de `placeTemplate`, porté par `light.place` (amendement C-2).
+ *
+ * ⛔ **Ne touche JAMAIS `on`** : sur une lampe qui existe déjà, l'état allumé/éteint courant est
+ * CONSERVÉ, quelle que soit la valeur portée par `lightData.on`. C'est la règle « un champ, un
+ * écrivain » de l'amendement — `light.toggle` est seul à écrire ce champ.
+ *
+ * @param {string} levelId
+ * @param {import('../core/types.js').Light} lightData
+ * @returns {void}
+ */
+export function placeLight(levelId, lightData) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!lightData || typeof lightData !== 'object' || typeof lightData.id !== 'string' || lightData.id.trim() === '') {
+    throw new Error('Données de lampe requises');
+  }
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+  if (!Array.isArray(level.lights)) {
+    level.lights = [];
+  }
+
+  const idx = level.lights.findIndex((li) => li.id === lightData.id);
+  if (idx >= 0) {
+    const currentOn = level.lights[idx].on;
+    level.lights[idx] = { ...structuredClone(lightData), on: currentOn };
+  } else {
+    level.lights.push(structuredClone(lightData));
+  }
+
+  assertValidCampaign(candidate, `Placement de la lampe "${lightData.id}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
+/**
+ * Déplace une lampe existante. ⛔ **`light.move` n'est pas émis dans la tranche 2** — le geste
+ * (un glisser) attend la tranche 3, mais le réducteur doit exister dès maintenant : le contrat
+ * réseau du §7 est complet avant le geste, précédent de `fog.reset`/`fog.paint`.
+ *
+ * Même règle que `placeLight` : ne touche pas `on`.
+ *
+ * @param {string} levelId
+ * @param {string} lightId
+ * @param {CellPoint} at
+ * @returns {void}
+ */
+export function moveLight(levelId, lightId, at) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!at || !Number.isFinite(at.cellX) || !Number.isFinite(at.cellY)) {
+    throw new Error('Position de lampe invalide');
+  }
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+  const light = (level.lights || []).find((li) => li.id === lightId);
+  if (!light) {
+    throw new Error(`Lampe inconnue : "${lightId}" sur l'étage "${levelId}"`);
+  }
+
+  light.at = { cellX: at.cellX, cellY: at.cellY };
+
+  assertValidCampaign(candidate, `Déplacement de la lampe "${lightId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
+/**
+ * Retire une lampe d'un étage, porté par `light.delete` (amendement C-2). Idempotent : une
+ * lampe déjà absente rend `false` sans lever — patron de `removeTemplate`.
+ *
+ * @param {string} levelId
+ * @param {string} lightId
+ * @returns {boolean} true si une lampe a été retirée
+ */
+export function removeLight(levelId, lightId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!lightId || typeof lightId !== 'string') return false;
+
+  const candidate = structuredClone(campaign);
+  const level = candidate.levels.find((l) => l.id === levelId);
+  if (!level || !Array.isArray(level.lights)) return false;
+
+  const idx = level.lights.findIndex((li) => li.id === lightId);
+  if (idx === -1) return false;
+
+  level.lights.splice(idx, 1);
+
+  assertValidCampaign(candidate, `Retrait de la lampe "${lightId}" sur l'étage "${levelId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
  * Ajoute une polyligne de mur sur un étage.
  *
  * @param {string} levelId

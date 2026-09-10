@@ -801,7 +801,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `level.delete` | **MJ seul** | ponctuel — `{ levelId }`, voir l amendement UX-16 |
 | `light.toggle` | **MJ seul** | ponctuel — `{ levelId, lightId, on }`, état **absolu**, voir l amendement C-2 |
 | `light.place` | **MJ seul** | ponctuel — `{ levelId, light }`, idempotent par identifiant, voir l amendement C-2 |
-| `light.move` | **MJ seul** | ponctuel — `{ levelId, lightId, at }`, voir l amendement C-2 |
+| `light.move` | **MJ seul** | **non émis dans la tranche 2** (réservé — le glisser attend la tranche 3) — ponctuel — `{ levelId, lightId, at }`, voir l amendement C-2 |
 | `light.delete` | **MJ seul** | ponctuel — `{ levelId, lightId }`, voir l amendement C-2 |
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.

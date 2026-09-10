@@ -45,7 +45,7 @@ import * as store from '../../state/store.js';
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -160,6 +160,8 @@ export function createGMPanel(container, options = {}) {
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Séance</span>
       <button id="gm-ping-arm" type="button" aria-pressed="false" title="Armer le ping, puis cliquer sur la carte : un marqueur apparaît 2 s sur les trois écrans" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #facc15; border: 1px solid #6b5a12; border-radius: 4px; cursor: pointer;">📍 Ping</button>
       <button id="gm-measure-arm" type="button" aria-pressed="false" title="Armer la mesure, puis cliquer deux points sur la carte" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; cursor: pointer;">📏 Mesurer</button>
+      <button id="gm-light-place-arm" type="button" aria-pressed="false" title="Armer la pose de lampe, puis taper une case : une lampe allumée y naît" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #fbbf24; border: 1px solid #78350f; border-radius: 4px; cursor: pointer;">💡 Poser</button>
+      <button id="gm-light-delete-arm" type="button" aria-pressed="false" title="Armer la suppression de lampe, puis taper une lampe pour la retirer" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 4px; cursor: pointer;">🗑️ Lampe</button>
       <span id="gm-ping-hint" style="font-size: 0.7rem; color: #888;"></span>
     </div>
 
@@ -426,7 +428,7 @@ export function createGMPanel(container, options = {}) {
   );
   const tabPanes = /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.gm-tab-pane'));
 
-  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'} */
+  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete'} */
   let activeToolName = 'none';
 
   /**
@@ -553,12 +555,41 @@ export function createGMPanel(container, options = {}) {
   }
 
   /**
+   * Reflète l'armement des deux outils de l'éditeur de lampes (C-2, tranche 2) sur leurs
+   * boutons — même patron que `updatePingButton`/`updateMeasureButton` : ce sont des gestes à
+   * un seul tap, sans brouillon, donc pas de composant dédié — l'armement seul est ici, la
+   * mutation vit dans `js/app/gm.js` (comme `wall-delete`).
+   */
+  function updateLightToolButtons() {
+    const placeBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-light-place-arm'));
+    const deleteBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-light-delete-arm'));
+    const hint = container.querySelector('#gm-ping-hint');
+    const placeArmed = activeToolName === 'light-place';
+    const deleteArmed = activeToolName === 'light-delete';
+    if (placeBtn) {
+      placeBtn.setAttribute('aria-pressed', placeArmed ? 'true' : 'false');
+      placeBtn.style.background = placeArmed ? '#fbbf24' : '#1a1a1a';
+      placeBtn.style.color = placeArmed ? '#1a1a1a' : '#fbbf24';
+    }
+    if (deleteBtn) {
+      deleteBtn.setAttribute('aria-pressed', deleteArmed ? 'true' : 'false');
+      deleteBtn.style.background = deleteArmed ? '#f87171' : '#1a1a1a';
+      deleteBtn.style.color = deleteArmed ? '#1a1a1a' : '#f87171';
+    }
+    if (hint) {
+      if (placeArmed) hint.textContent = 'Taper une case pour y poser une lampe';
+      else if (deleteArmed) hint.textContent = 'Taper une lampe pour la supprimer';
+      else if (activeToolName !== 'ping' && activeToolName !== 'measure') hint.textContent = '';
+    }
+  }
+
+  /**
    * Vrai pendant l'exécution de `setActiveTool`, pour détecter les rappels réentrants.
    * @type {boolean}
    */
   let settingActiveTool = false;
 
-  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'} toolName */
+  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete'} toolName */
   function setActiveTool(toolName) {
     if (activeToolName === toolName) return;
 
@@ -581,6 +612,7 @@ export function createGMPanel(container, options = {}) {
   function applyToolTransition(prevTool, toolName) {
     if (prevTool === 'ping' || toolName === 'ping') updatePingButton();
     if (prevTool === 'measure' || toolName === 'measure') updateMeasureButton();
+    if (prevTool.startsWith('light-') || toolName.startsWith('light-')) updateLightToolButtons();
 
     if (prevTool.startsWith('fog-') && !toolName.startsWith('fog-')) {
       fogTools?.disarm();
@@ -1899,6 +1931,22 @@ export function createGMPanel(container, options = {}) {
     { signal: listeners.signal }
   );
   updateMeasureButton();
+
+  // Même patron que le ping/la mesure ci-dessus : l'armement passe par `setActiveTool`, qui
+  // garantit à lui seul l'exclusivité mutuelle avec tout autre outil MJ (⛔ brief C-2 §2).
+  const lightPlaceArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-light-place-arm'));
+  lightPlaceArmBtn.addEventListener(
+    'click',
+    () => setActiveTool(activeToolName === 'light-place' ? 'none' : 'light-place'),
+    { signal: listeners.signal }
+  );
+  const lightDeleteArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-light-delete-arm'));
+  lightDeleteArmBtn.addEventListener(
+    'click',
+    () => setActiveTool(activeToolName === 'light-delete' ? 'none' : 'light-delete'),
+    { signal: listeners.signal }
+  );
+  updateLightToolButtons();
 
   updateLightBarFromStore();
 

@@ -22,6 +22,7 @@ import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
 import { findHitTemplate } from '../input/templateHit.js';
 import { findHitToken, exactTokenAtCell } from '../input/tokenHit.js';
+import { findHitLight } from '../input/lightHit.js';
 import { FrameProbe } from '../render/probe.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
@@ -30,6 +31,7 @@ import {
   VISION_MAX_RANGE_CELLS,
   SESSION_EVICT_GM_EVENT,
   VISION_REQUEST_EVENT,
+  LIGHT_DEFAULT,
 } from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
@@ -600,6 +602,12 @@ export async function bootstrapGMApp(options = {}) {
    * @type {{levelId: string, mapPos: {x: number, y: number}, at: number}|null}
    */
   let currentPing = null;
+  /**
+   * Compteur de lampes posées en séance (C-2, tranche 2) — même rôle que le compteur de
+   * gabarits de `templateTools.js` : rendre chaque identifiant généré unique sans dépendre
+   * seulement de l'horloge, que deux taps rapprochés pourraient faire coïncider.
+   */
+  let lightPlaceCounter = 0;
   /** @type {string|null} */
   let lastActiveLevelId = null;
   let restoredCamera = false;
@@ -1475,6 +1483,50 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
+      if (activeToolName === 'light-place') {
+        // ⭐ Poser (C-2, tranche 2) : le MJ tape une case → une lampe naît là, allumée, avec les
+        // valeurs de `LIGHT_DEFAULT` — une seule source décide de ce qu'est « une lampe par
+        // défaut » (constants.js), comme `TOKEN_TORCH_DEFAULT` pour la torche.
+        const grid = gridFor(activeLevel);
+        const cell = grid.cellFromPoint(intention.mapPos);
+        if (cell) {
+          const light = {
+            id: `light-${Date.now()}-${++lightPlaceCounter}`,
+            at: { cellX: cell.a, cellY: cell.b },
+            ...LIGHT_DEFAULT,
+          };
+          store.placeLight(activeLevel.id, light);
+          transport?.publish({
+            type: 'light.place',
+            payload: { levelId: activeLevel.id, light },
+            at: Date.now(),
+            by: 'gm',
+          });
+          requestRender();
+        }
+        return;
+      }
+
+      if (activeToolName === 'light-delete') {
+        // Supprimer (C-2, tranche 2) : le MJ tape une lampe → elle disparaît, sans confirmation
+        // — contrairement à un étage, une lampe se repose d'un tap (brief C-2 §4).
+        const grid = gridFor(activeLevel);
+        const hit = findHitLight(grid, activeLevel, intention.mapPos, camera.zoom);
+        if (hit) {
+          const removed = store.removeLight(activeLevel.id, hit.light.id);
+          if (removed) {
+            transport?.publish({
+              type: 'light.delete',
+              payload: { levelId: activeLevel.id, lightId: hit.light.id },
+              at: Date.now(),
+              by: 'gm',
+            });
+            requestRender();
+          }
+        }
+        return;
+      }
+
       const grid = gridFor(state.activeLevel);
       // Aucun `filter` : le MJ doit pouvoir désigner un PNJ caché. Seul `locked` est déclassé —
       // il reste sélectionnable (c'est le geste qui sert à le déverrouiller) mais ne vole pas la
@@ -1494,15 +1546,44 @@ export async function bootstrapGMApp(options = {}) {
       // chantier, le pion gagnait toujours ici, sans même la borne d'exactitude qu'avait la vue
       // joueurs ; un pion à portée de marge mais plus loin qu'une porte volait la désignation.
       const hitPortal = findHitPortal(grid, state.activeLevel, intention.mapPos, camera.zoom);
-      const portalIsCloser =
-        hitPortal && (!tokenHit || hitPortal.dist < tokenHit.dist - 1e-6);
 
-      if (!portalIsCloser && tokenHit) {
+      // ⭐ La lampe (C-2) est un TROISIÈME candidat dans CETTE MÊME comparaison — ⛔ ne pas la
+      // tester « avant » ou « après » les deux autres : c'est précisément l'ordre des branches
+      // qui rendait une porte inatteignable derrière un pion, corrigé aujourd'hui, et que le
+      // même défaut recréerait ici pour la lampe.
+      const hitLight = findHitLight(grid, state.activeLevel, intention.mapPos, camera.zoom);
+
+      /** @type {Array<{ kind: 'token'|'light'|'portal', dist: number }>} */
+      const candidates = [];
+      // Priorité au premier candidat de la liste à distance égale — c'est le biais qui existait
+      // déjà pour porte/pion (le pion gagnait une égalité stricte).
+      if (tokenHit) candidates.push({ kind: 'token', dist: tokenHit.dist });
+      if (hitLight) candidates.push({ kind: 'light', dist: hitLight.dist });
+      if (hitPortal) candidates.push({ kind: 'portal', dist: hitPortal.dist });
+      candidates.sort((a, b) => a.dist - b.dist);
+      const winner = candidates.length > 0 ? candidates[0].kind : null;
+
+      if (winner === 'token' && tokenHit) {
         store.selectToken(tokenHit.token.id);
         return;
       }
 
-      if (hitPortal) {
+      if (winner === 'light' && hitLight) {
+        const light = hitLight.light;
+        // Bascule (C-2) : l'état ABSOLU est publié, jamais « inverse-le » (comme
+        // `portal.toggle`) — c'est ce qui rend l'événement rejouable sans diverger.
+        const targetOn = !(light.on !== false);
+        store.setLightState(state.activeLevel.id, light.id, targetOn);
+        transport?.publish({
+          type: 'light.toggle',
+          payload: { levelId: state.activeLevel.id, lightId: light.id, on: targetOn },
+          at: Date.now(),
+          by: 'gm',
+        });
+        return;
+      }
+
+      if (winner === 'portal' && hitPortal) {
         const portal = hitPortal.portal;
         /** @type {'open'|'closed'|null} */
         let targetState = null;

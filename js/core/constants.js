@@ -575,6 +575,37 @@ export const TOKEN_HIT_MAX_CELL_RATIO = 0.75;
 export const TOKEN_TORCH_DEFAULT = { range: 6, intensity: 1, color: '#ffdca8' };
 
 /**
+ * Lampe par défaut, posée en séance par l'éditeur de lampes sur la case tapée (chantier C-2,
+ * tranche 2) — même rôle que `TOKEN_TORCH_DEFAULT` juste au-dessus : une seule source décide de
+ * ce qu'est « une lampe par défaut », pour que l'éditeur ne dérive jamais de son propre côté.
+ *
+ * `on: true` : une lampe qu'on vient de poser est allumée, cohérent avec la normalisation
+ * d'import (`js/core/schema.js`, amendement C-2) où une lampe déclarée par un UVTT est allumée
+ * par défaut. Couleur et portée reprises de `TOKEN_TORCH_DEFAULT` : même chaleur de lumière que
+ * la torche synthétique du chantier Z.
+ */
+export const LIGHT_DEFAULT = { range: 6, intensity: 1, color: '#ffdca8', shadows: true, on: true };
+
+/**
+ * Tolérance de désignation d'une LAMPE au doigt (`js/input/lightHit.js`) — chantier C-2, tranche
+ * 2, sur le motif corrigé le 10/09/2026 pour les portes juste au-dessus
+ * (`PORTAL_HIT_CELL_RATIO` / `PORTAL_HIT_SCREEN_FLOOR_PX` / `PORTAL_HIT_MAX_CELL_RATIO`) :
+ * `min( max(LIGHT_HIT_CELL_RATIO × échelle, LIGHT_HIT_SCREEN_FLOOR_PX / zoom), LIGHT_HIT_MAX_CELL_RATIO × échelle )`.
+ *
+ * **Le fait mesuré qui motive le plancher écran est le même que pour la porte** (voir
+ * `PORTAL_HIT_SCREEN_FLOOR_PX` ci-dessus) : vue joueurs, cadrage « étage entier » sur une carte
+ * 42×42, zoom 0,193 — une tolérance purement en unités carte y tombe à **6,8 px écran**, et un
+ * doigt n'en fait pas 6.
+ *
+ * ⚠ Le MJ n'est pas cadré aussi large que la tablette, mais une lampe est un **point** — une
+ * cible plus petite que l'arête d'une porte — donc le plancher écran y est encore plus justifié,
+ * pas moins.
+ */
+export const LIGHT_HIT_CELL_RATIO = 0.3;
+export const LIGHT_HIT_SCREEN_FLOOR_PX = 24;
+export const LIGHT_HIT_MAX_CELL_RATIO = 0.75;
+
+/**
  * Constantes du Chantier R — La châsse des pions.
  * Toutes les grandeurs d'affichage sont exprimées en pixels ÉCRAN (divisées par le zoom au dessin).
  */

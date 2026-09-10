@@ -89,8 +89,14 @@ export function buildVisionSignature(level, tokens, grid) {
   levelLights.sort((a, b) => String(a?.id).localeCompare(String(b?.id)));
   for (const light of levelLights) {
     if (!light) continue;
+    // ⛔ `on` DOIT figurer ici — même piège que `buildLightSignature`
+    // (`js/render/layers/light.js`), nommé par l'amendement C-2. Sans lui, basculer une lampe
+    // ne change ni la géométrie ni les couleurs qui composent le reste de cette signature : le
+    // garde-fou de `syncVisionForLevel` (js/app/gm.js) la jugerait identique et court-circuiterait
+    // TOUTE la passe — recomposition du champ lumineux et republication du masque de vision
+    // comprises — laissant la table voir une lampe encore allumée après qu'on l'a éteinte.
     parts.push(
-      `l:${light.id}:at=${light.at?.cellX},${light.at?.cellY}:range=${light.range}:intensity=${light.intensity}:color=${light.color}:shadows=${light.shadows}`
+      `l:${light.id}:at=${light.at?.cellX},${light.at?.cellY}:range=${light.range}:intensity=${light.intensity}:color=${light.color}:shadows=${light.shadows}:on=${light.on !== false}`
     );
   }
 

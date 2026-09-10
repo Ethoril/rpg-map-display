@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 
 const snapshot = {
   campaign: {
@@ -415,4 +416,323 @@ test('R… ⭐ VU SANS LUMIÈRE : la portée nocturne d’un PJ sort en gris, un
   expect(Math.abs(nonEclaire[0] - nonEclaire[2]), 'vision nocturne : R ≈ B').toBeLessThan(6);
 
   expect(erreurs).toEqual([]);
+});
+
+// C-2, tranche 2 — les GESTES : basculer, poser, supprimer.
+//
+// ⭐ Chaque test précharge sa campagne via `installBrowserTransport` (INSTANTANÉ de transport),
+// PAS via un `store.loadCampaign` après coup — c'est le piège documenté en tête de ce fichier
+// pour `portals.spec.mjs` : `__RPG_TEST_WIRE__`, qui journalise ce qui est publié, n'existe que
+// si le transport de test est injecté par `addInitScript` AVANT le premier script de la page.
+// Un chargement tardif via `store.loadCampaign` laisserait `__RPG_TEST_WIRE__` absent.
+
+test('C-2 : un tap MJ sur une lampe la bascule, et le champ lumineux se recompose (effet, pas seulement l\'état)', async ({ page }) => {
+  const sessionId = `light-toggle-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-toggle',
+    name: 'Toggle',
+    pxPerCell: 100,
+    widthCells: 10,
+    heightCells: 10,
+    ambient: { level: 0, baked: false },
+    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  // ⚠ Un PJ est nécessaire pour que la ligne de vue atteigne la case de la lampe — sans lui,
+  // `fogLayer` ne calcule aucune ligne de vue et le masque reste vide quel que soit l'état de la
+  // lampe. ⛔ `visionDim: 0` est tout aussi délibéré : la vision propre dans le noir
+  // (`nearPolygons`) s'AJOUTE SANS CONDITION au masque (`js/vision/fog.js`) — si elle couvrait
+  // déjà la case de la lampe, la case resterait visible que la lampe soit allumée ou pas, et
+  // l'assertion « le masque a changé » serait creuse. Loin du PJ, seule `(ligne de vue ∩
+  // éclairé)` peut rendre cette case visible : c'est le terme que la bascule doit faire bouger.
+  const pj = createToken({ id: 'pj1', levelId: 'level-toggle', cell: { a: 1, b: 1 }, kind: 'pc', visionDim: 0 });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-toggle', levels: [level], tokens: [pj] }),
+    activeLevelId: 'level-toggle',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  /** PNG du masque de vision publié le plus récemment. */
+  const dernierPng = () => page.evaluate(() => {
+    const publies = /** @type {any} */ (window).__RPG_TEST_WIRE__?.published ?? [];
+    return publies.filter((/** @type {any} */ e) => e.type === 'vision.update').at(-1)?.payload?.png;
+  });
+
+  // Attend que la passe d'autorité déclenchée par `loadCampaign` ait publié sa première vision,
+  // sans quoi `pngAvant` serait `undefined` et l'assertion « a changé » serait creuse.
+  await expect.poll(dernierPng).not.toBeUndefined();
+  const pngAvant = await dernierPng();
+  const onAvant = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].lights[0].on
+  );
+  expect(onAvant, 'fixture : la lampe part allumée').toBe(true);
+
+  // Tap en plein sur le centre de la case de la lampe (5,5) → (550, 550).
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 550, y: 550 },
+      mapPos: { x: 550, y: 550 },
+    });
+  });
+
+  const onApres = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].lights[0].on
+  );
+  expect(onApres, 'la lampe est éteinte').toBe(false);
+
+  const publieToggle = await page.evaluate(() =>
+    /** @type {any} */ (window).__RPG_TEST_WIRE__.published.some(
+      (/** @type {any} */ e) => e.type === 'light.toggle' && e.payload.on === false && e.payload.lightId === 'l1'
+    )
+  );
+  expect(publieToggle, 'light.toggle est publié avec l\'état ABSOLU').toBe(true);
+
+  // ⭐ L'assertion qui compte : l'EFFET, pas l'état lu seul. Une bascule que le moteur
+  // ignorerait (champ lumineux non recomposé) passerait au vert sur les deux assertions
+  // ci-dessus sans que rien n'ait changé à l'écran.
+  await expect.poll(dernierPng, 'éteindre la lampe change le masque de vision publié').not.toBe(pngAvant);
+});
+
+test('C-2 : l\'arbitrage à trois — le plus proche gagne, sans ordre de branche privilégié', async ({ page }) => {
+  const sessionId = `light-arbitrage-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-arbitrage',
+    name: 'Arbitrage',
+    pxPerCell: 100,
+    widthCells: 20,
+    heightCells: 20,
+    ambient: { level: 1, baked: false },
+    // Cas A (780, 750) : lampe à 10, porte à 15, pion à 20 — la lampe est la plus proche des
+    // TROIS et doit l'emporter.
+    lights: [
+      { id: 'l-close', at: { cellX: 7.4, cellY: 7.0 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      // Cas B (1000, 1000) : à portée d'un pion pile sous le doigt (dist 0) ET d'une lampe
+      // dans sa tolérance (dist 15) — le pion doit gagner malgré la lampe candidate.
+      { id: 'l-near-token', at: { cellX: 9.35, cellY: 9.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+    ],
+    portals: [
+      { id: 'door-far', a: { cellX: 7.65, cellY: 7 }, b: { cellX: 7.65, cellY: 8 }, state: 'closed', freestanding: false },
+    ],
+  });
+  const tokenFar = createToken({ id: 'npc-far', levelId: 'level-arbitrage', cell: { a: 8, b: 7 }, kind: 'npc' });
+  const tokenAtTap = createToken({ id: 'npc-under-tap', levelId: 'level-arbitrage', cell: { a: 10, b: 10 }, kind: 'npc' });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-arbitrage', levels: [level], tokens: [tokenFar, tokenAtTap] }),
+    activeLevelId: 'level-arbitrage',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  // Cas A : (780, 750) — la lampe (dist 10) bat la porte (dist 15) et le pion (dist 20).
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 780, y: 750 },
+      mapPos: { x: 780, y: 750 },
+    });
+  });
+
+  const apresCasA = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const level = store.getCampaign()?.levels[0];
+    return {
+      lightOn: level?.lights.find((/** @type {any} */ l) => l.id === 'l-close')?.on,
+      portalState: level?.portals[0].state,
+      selectedTokenId: store.getState().selectedTokenId,
+    };
+  });
+  expect(apresCasA.lightOn, 'la lampe la plus proche des trois est basculée').toBe(false);
+  expect(apresCasA.portalState, 'la porte, plus loin, ne bouge pas').toBe('closed');
+  expect(apresCasA.selectedTokenId, 'aucun pion n\'est sélectionné').toBeNull();
+
+  // Cas B : (1000, 1000) — pile sur le pion `npc-under-tap` (dist 0), avec une lampe
+  // `l-near-token` dans sa tolérance (dist 15). Le pion doit gagner.
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 1000, y: 1000 },
+      mapPos: { x: 1000, y: 1000 },
+    });
+  });
+
+  const apresCasB = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const level = store.getCampaign()?.levels[0];
+    return {
+      lightOn: level?.lights.find((/** @type {any} */ l) => l.id === 'l-near-token')?.on,
+      selectedTokenId: store.getState().selectedTokenId,
+    };
+  });
+  expect(apresCasB.selectedTokenId, 'le pion pile sous le doigt gagne').toBe('npc-under-tap');
+  expect(apresCasB.lightOn, 'et la lampe voisine, plus loin, n\'est PAS basculée').toBe(true);
+});
+
+test('C-2 : poser crée la lampe exactement à la case tapée', async ({ page }) => {
+  const sessionId = `light-place-${Date.now()}`;
+  const level = createLevel({ id: 'level-place', name: 'Place', pxPerCell: 100, widthCells: 10, heightCells: 10 });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-place', levels: [level] }),
+    activeLevelId: 'level-place',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.gmPanel.setActiveTool('light-place');
+  });
+
+  // Case tapée : (250, 250) → case (2, 2) (floor(250/100)).
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 250, y: 250 },
+      mapPos: { x: 250, y: 250 },
+    });
+  });
+
+  const apres = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const lights = store.getCampaign()?.levels[0].lights ?? [];
+    return lights.map((/** @type {any} */ l) => ({ id: l.id, at: l.at, on: l.on, range: l.range, color: l.color }));
+  });
+  expect(apres.length, 'une seule lampe a été créée').toBe(1);
+  // ⭐ Égalité avec la case VISÉE, pas seulement « différent de (0,0) ».
+  expect(apres[0].at).toEqual({ cellX: 2, cellY: 2 });
+  expect(apres[0].on, 'une lampe posée est allumée par défaut').toBe(true);
+
+  const publie = await page.evaluate(() =>
+    /** @type {any} */ (window).__RPG_TEST_WIRE__.published.find(
+      (/** @type {any} */ e) => e.type === 'light.place'
+    )
+  );
+  expect(publie?.payload?.levelId).toBe('level-place');
+  expect(publie?.payload?.light?.at).toEqual({ cellX: 2, cellY: 2 });
+});
+
+test('C-2 : supprimer retire la lampe, et le rejeu converge sans lever', async ({ page }) => {
+  const sessionId = `light-delete-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-delete', name: 'Delete', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    lights: [{ id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-delete', levels: [level] }),
+    activeLevelId: 'level-delete',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.gmPanel.setActiveTool('light-delete');
+  });
+
+  // Tap au centre de la case (3,3) → (350, 350).
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 350, y: 350 },
+      mapPos: { x: 350, y: 350 },
+    });
+  });
+
+  const apresSuppression = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].lights.length
+  );
+  expect(apresSuppression, 'la lampe a été retirée, sans confirmation').toBe(0);
+
+  const publie = await page.evaluate(() =>
+    /** @type {any} */ (window).__RPG_TEST_WIRE__.published.some(
+      (/** @type {any} */ e) => e.type === 'light.delete' && e.payload.lightId === 'l1'
+    )
+  );
+  expect(publie).toBe(true);
+
+  // Rejeu : `store.removeLight` sur une lampe déjà absente converge — `false`, sans lever.
+  const rejeu = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    try {
+      return { ok: true, removed: store.removeLight('level-delete', 'l1') };
+    } catch (e) {
+      return { ok: false, message: /** @type {Error} */ (e).message };
+    }
+  });
+  expect(rejeu).toEqual({ ok: true, removed: false });
+});
+
+test('C-2 : light.place sur une lampe éteinte qui existe déjà la laisse ÉTEINTE (un champ, un écrivain)', async ({ page }) => {
+  const sessionId = `light-place-preserve-on-${Date.now()}`;
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const onApresRepose = await page.evaluate(async () => {
+    const [store, schema] = await Promise.all([
+      import('../js/state/store.js'),
+      import('../js/core/schema.js'),
+    ]);
+    const level = schema.createLevel(/** @type {any} */ ({
+      id: 'level-preserve', name: 'Preserve', pxPerCell: 100, widthCells: 10, heightCells: 10,
+      lights: [{ id: 'l1', at: { cellX: 1, cellY: 1 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    }));
+    const campaign = schema.createCampaign({ levels: [level] });
+    store.loadCampaign(campaign);
+
+    // La lampe est éteinte par `light.toggle`...
+    store.setLightState('level-preserve', 'l1', false);
+
+    // ...puis « reposée » par `light.place`, au même identifiant, avec `on: true` dans les
+    // données — comme le ferait un MJ qui tape à nouveau la même case avec l'outil « Poser ».
+    store.placeLight('level-preserve', {
+      id: 'l1', at: { cellX: 1, cellY: 1 }, range: 6, intensity: 1, color: '#ffdca8', shadows: true, on: true,
+    });
+
+    return store.getCampaign()?.levels[0].lights.find((/** @type {any} */ l) => l.id === 'l1')?.on;
+  });
+
+  expect(onApresRepose, 'light.place ne touche jamais `on` sur une lampe existante').toBe(false);
+});
+
+test('C-2 : les joueurs n\'ont aucun chemin vers la bascule — un tap sur une lampe ne publie rien et ne change rien', async ({ page }) => {
+  const sessionId = `light-player-notouch-${Date.now()}`;
+  const playerPage = page;
+  await playerPage.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(playerPage);
+
+  await playerPage.evaluate(async () => {
+    const [store, schema] = await Promise.all([
+      import('../js/state/store.js'),
+      import('../js/core/schema.js'),
+    ]);
+    const level = schema.createLevel(/** @type {any} */ ({
+      id: 'level-player', name: 'Player', pxPerCell: 100, widthCells: 10, heightCells: 10,
+      lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    }));
+    const campaign = schema.createCampaign({ levels: [level] });
+    store.loadCampaign(campaign);
+  });
+
+  // Tap en plein sur le centre de la case de la lampe (5,5) → (550, 550), côté JOUEURS.
+  await playerPage.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 550, y: 550 },
+      mapPos: { x: 550, y: 550 },
+    });
+  });
+
+  const apres = await playerPage.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return {
+      on: store.getCampaign()?.levels[0].lights[0].on,
+      publieToggle: /** @type {any} */ (window).__RPG_TEST_WIRE__?.published?.some(
+        (/** @type {any} */ e) => e.type === 'light.toggle'
+      ) ?? false,
+    };
+  });
+  expect(apres.on, 'la lampe reste allumée : les joueurs ne peuvent pas la basculer').toBe(true);
+  expect(apres.publieToggle, 'aucun light.toggle ne part côté joueurs').toBe(false);
 });
