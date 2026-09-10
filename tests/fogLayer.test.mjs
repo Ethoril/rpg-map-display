@@ -773,7 +773,8 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
     nearPolygons: coucheVision.getNearPolygons(),
     litCanvas: champ.canvas,
     mapOrigin: coin0,
-    gridScale: Math.abs(coin1.x - coin0.x),
+    gridScaleX: Math.abs(coin1.x - coin0.x),
+    gridScaleY: Math.abs(coin1.x - coin0.x),
     createCanvas: (/** @type {number} */ w, /** @type {number} */ h) => createMockCanvas(w, h).canvas,
   });
   assert.equal(compose, true, 'la vision doit se composer');
@@ -799,7 +800,8 @@ test('Lumière R3 : ambiante binaire, sources occluses et torche mobile invalide
     nearPolygons: coucheVision.getNearPolygons(),
     litCanvas: createMockCanvas(masque, level.heightCells * FOG_MASK_PX_PER_CELL).canvas,
     mapOrigin: coin0,
-    gridScale: Math.abs(coin1.x - coin0.x),
+    gridScaleX: Math.abs(coin1.x - coin0.x),
+    gridScaleY: Math.abs(coin1.x - coin0.x),
     createCanvas: (/** @type {number} */ w, /** @type {number} */ h) => createMockCanvas(w, h).canvas,
   });
   const { ctx: ctxEteint } = createMockCanvas(120, 100);
@@ -965,6 +967,7 @@ test('Le cache de composition s’invalide quand le masque exploré change, mêm
       { x: origin0.x, y: origin0.y + 30 },
     ]],
     origin0,
+    10,
     10
   );
 

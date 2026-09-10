@@ -202,6 +202,15 @@ export async function encodeFogPng(canvas) {
   return base64Result;
 }
 
+// ⚠ **E-11 — décalage résiduel sur les masques hexagonaux déjà enregistrés.** Avant ce
+// correctif, `reveal`/`paintDisc`/`composeVisible` écrivaient le masque avec UNE échelle
+// appliquée aux deux axes ; sur une grille hexagonale (rangées à √3/2 case), l'axe Y était
+// donc faux. Un masque exploré importé ici depuis AVANT le correctif porte encore ce
+// décalage — jusqu'à une case entière en bas de carte (voir le tableau de mesures d'E-11,
+// `docs/QUESTIONS-EN-ATTENTE.md`). Les dimensions du PNG (largeur × hauteur en pixels de
+// masque) ne changent pas, donc rien n'est refusé ici : c'est un décalage qui s'estompe de
+// lui-même à mesure que la zone est réexplorée, pas une panne. ⛔ Aucune carte carrée n'est
+// concernée — les deux échelles y étaient déjà égales.
 /**
  * Décode un masque PNG mono-canal en base64 brut vers un canvas hors écran.
  * Reconstruit rigoureusement le canal alpha (0 pour vierge, 255 pour exploré).
@@ -406,6 +415,28 @@ export function getOrExtractMaskAlpha(canvas, widthCells, heightCells) {
 }
 
 /**
+ * Approxime un disque de rayon `radiusPx` par un polygone à 32 sommets, en pixels carte.
+ * Sert à `ExploredFog._strokeDisc` : un cercle tracé en pixels carte puis projeté axe par
+ * axe (échelles X et Y distinctes, E-11) devient une ellipse en espace masque, ce que
+ * `ctx.arc()` ne sait pas produire.
+ *
+ * @param {MapPoint} center
+ * @param {number} radiusPx
+ * @returns {MapPoint[]}
+ */
+function discPolygon(center, radiusPx) {
+  const r = Math.max(0, radiusPx);
+  const segments = 32;
+  /** @type {MapPoint[]} */
+  const pts = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    pts.push({ x: center.x + r * Math.cos(angle), y: center.y + r * Math.sin(angle) });
+  }
+  return pts;
+}
+
+/**
  * Teste si la case d'ancrage d'un pion {a, b} a son centre dans la zone vue du masque d'alpha.
  *
  * @param {import('../core/types.js').Cell|null} cell Case d'ancrage du pion
@@ -472,7 +503,10 @@ export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells) {
  * @param {MapPoint[][]} entrees.nearPolygons Sweeps des PJ à leur `visionDim`, en pixels carte
  * @param {any} entrees.litCanvas Champ lumineux à la résolution du masque, ou `null`
  * @param {MapPoint} entrees.mapOrigin Origine de la carte, en pixels carte
- * @param {number} entrees.gridScale Pixels carte par case
+ * @param {number} entrees.gridScaleX Pixels carte par case, axe X (colonnes)
+ * @param {number} entrees.gridScaleY Pixels carte par case, axe Y (rangées) — distinct de
+ *   `gridScaleX` en grille hexagonale, où les rangées ne sont espacées que de √3/2 case (E-11,
+ *   `docs/QUESTIONS-EN-ATTENTE.md`)
  * @param {((w: number, h: number) => any)} [entrees.createCanvas] Fabrique, pour les tests
  * @returns {boolean} `true` si le masque a été composé
  */
@@ -480,12 +514,16 @@ export function composeVisibleMask(cible, entrees) {
   const ctx = cible?.getContext?.('2d') ?? cible?._ctx ?? null;
   if (!ctx) return false;
 
-  const { losPolygons, nearPolygons, litCanvas, mapOrigin, gridScale, createCanvas } = entrees;
-  if (!mapOrigin || !Number.isFinite(gridScale)) return false;
+  const { losPolygons, nearPolygons, litCanvas, mapOrigin, gridScaleX, gridScaleY, createCanvas } = entrees;
+  if (!mapOrigin || !Number.isFinite(gridScaleX) || !Number.isFinite(gridScaleY)) return false;
 
   const largeur = cible.width;
   const hauteur = cible.height;
-  const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+  // ⛔ DEUX échelles, jamais une seule — E-11 : appliquer l'échelle X aux deux axes étirait
+  // le masque de 13,4 % en hauteur sur une carte hexagonale, et la vision courante se
+  // composait une case trop haut par rapport au pion qui la porte.
+  const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
+  const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
 
   /**
    * Trace une liste de polygones dans un contexte, en espace masque.
@@ -498,10 +536,10 @@ export function composeVisibleMask(cible, entrees) {
     for (const poly of polygones) {
       if (!Array.isArray(poly) || poly.length === 0) continue;
       const premier = poly[0];
-      destination.moveTo((premier.x - mapOrigin.x) * scale, (premier.y - mapOrigin.y) * scale);
+      destination.moveTo((premier.x - mapOrigin.x) * scaleX, (premier.y - mapOrigin.y) * scaleY);
       for (let i = 1; i < poly.length; i++) {
         const point = poly[i];
-        destination.lineTo((point.x - mapOrigin.x) * scale, (point.y - mapOrigin.y) * scale);
+        destination.lineTo((point.x - mapOrigin.x) * scaleX, (point.y - mapOrigin.y) * scaleY);
       }
       destination.closePath();
       trace = true;
@@ -633,10 +671,12 @@ export class ExploredFog {
    * @param {Segment[]} segments Obstacles en pixels carte
    * @param {number} rangePx Portée de vision en pixels carte
    * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
-   * @param {number} gridScale Échelle de la grille (pixels carte par case)
+   * @param {number} gridScaleX Échelle de la grille, axe X (pixels carte par case)
+   * @param {number} gridScaleY Échelle de la grille, axe Y (pixels carte par case) — distinct
+   *   de `gridScaleX` en grille hexagonale (E-11, `docs/QUESTIONS-EN-ATTENTE.md`)
    * @returns {number} Nombre de positions réellement balayées, pour observation extérieure
    */
-  revealPath(origins, segments, rangePx, mapOrigin, gridScale) {
+  revealPath(origins, segments, rangePx, mapOrigin, gridScaleX, gridScaleY) {
     if (!this.ctx || !Array.isArray(origins) || origins.length === 0) return 0;
 
     let balayees = 0;
@@ -644,7 +684,7 @@ export class ExploredFog {
       if (!origin) continue;
       const poly = sweep(origin, segments || [], rangePx);
       if (Array.isArray(poly) && poly.length > 0) {
-        this.reveal([poly], mapOrigin, gridScale);
+        this.reveal([poly], mapOrigin, gridScaleX, gridScaleY);
         balayees++;
       }
     }
@@ -656,12 +696,17 @@ export class ExploredFog {
    *
    * @param {MapPoint[][]} polygons Polygones de vision en pixels carte
    * @param {MapPoint} mapOrigin Origine de la carte en pixels carte (ex: mapFromCellPoint({cellX:0, cellY:0}))
-   * @param {number} gridScale Échelle de la grille (pixels carte par case)
+   * @param {number} gridScaleX Échelle de la grille, axe X (pixels carte par case)
+   * @param {number} gridScaleY Échelle de la grille, axe Y (pixels carte par case) — distinct
+   *   de `gridScaleX` en grille hexagonale : les rangées n'y sont espacées que de √3/2 case,
+   *   et une échelle unique appliquée aux deux axes étirait le masque de 13,4 % en hauteur
+   *   (E-11, `docs/QUESTIONS-EN-ATTENTE.md`).
    */
-  reveal(polygons, mapOrigin, gridScale) {
+  reveal(polygons, mapOrigin, gridScaleX, gridScaleY) {
     if (!this.ctx || !Array.isArray(polygons) || polygons.length === 0) return;
 
-    const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+    const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
+    const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
@@ -670,14 +715,14 @@ export class ExploredFog {
     for (const poly of polygons) {
       if (!Array.isArray(poly) || poly.length === 0) continue;
       const first = poly[0];
-      const fx = (first.x - mapOrigin.x) * scale;
-      const fy = (first.y - mapOrigin.y) * scale;
+      const fx = (first.x - mapOrigin.x) * scaleX;
+      const fy = (first.y - mapOrigin.y) * scaleY;
       this.ctx.moveTo(fx, fy);
 
       for (let i = 1; i < poly.length; i++) {
         const pt = poly[i];
-        const px = (pt.x - mapOrigin.x) * scale;
-        const py = (pt.y - mapOrigin.y) * scale;
+        const px = (pt.x - mapOrigin.x) * scaleX;
+        const py = (pt.y - mapOrigin.y) * scaleY;
         this.ctx.lineTo(px, py);
       }
       this.ctx.closePath();
@@ -714,7 +759,7 @@ export class ExploredFog {
    * courante n'a pas de mémoire. Confondre les deux ferait s'accumuler la vision d'une image à
    * l'autre, et la table verrait encore ce qu'elle a quitté.
    *
-   * @param {{ losPolygons: MapPoint[][], nearPolygons: MapPoint[][], litCanvas: any, mapOrigin: MapPoint, gridScale: number }} entrees Voir `composeVisibleMask`
+   * @param {{ losPolygons: MapPoint[][], nearPolygons: MapPoint[][], litCanvas: any, mapOrigin: MapPoint, gridScaleX: number, gridScaleY: number }} entrees Voir `composeVisibleMask`
    * @returns {boolean}
    */
   composeVisible(entrees) {
@@ -762,50 +807,75 @@ export class ExploredFog {
   /**
    * Peint un disque de vision dans le masque exploré.
    *
+   * ⛔ **Un cercle en pixels carte devient une ELLIPSE en espace masque** dès que
+   * `gridScaleX` et `gridScaleY` diffèrent (grille hexagonale, E-11) : `ctx.arc()` ne sait
+   * tracer qu'un cercle, à une échelle unique, donc le disque est approximé ici par un
+   * polygone — même technique que `reveal()` — dont chaque sommet est projeté axe par axe.
+   * En grille carrée les deux échelles sont égales et le polygone redonne un cercle. ⚠ Un
+   * cercle **inscrit**, cela dit, et non identique à l'ancien `arc()` : le polygone rentre de
+   * `1 − cos(π/32)`, soit **0,48 % du rayon**. Chiffré en pixels de masque, cela vaut 0,04 px
+   * pour un pinceau d'une case et 0,19 px pour cinq cases — toujours sous le pixel, donc sans
+   * effet visible. ⛔ Mais dire « aucun pixel ne bouge » serait faux, et c'est le genre
+   * d'affirmation que ce projet vérifie plutôt qu'il ne suppose.
+   *
    * @param {MapPoint} center Centre en pixels carte
    * @param {number} radiusPx Rayon du disque en pixels carte
    * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
-   * @param {number} gridScale Échelle de la grille (pixels carte par case)
+   * @param {number} gridScaleX Échelle de la grille, axe X (pixels carte par case)
+   * @param {number} gridScaleY Échelle de la grille, axe Y (pixels carte par case)
    */
-  paintDisc(center, radiusPx, mapOrigin, gridScale) {
+  paintDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY) {
     if (!this.ctx || !center || !mapOrigin) return;
-    const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
-    const mx = (center.x - mapOrigin.x) * scale;
-    const my = (center.y - mapOrigin.y) * scale;
-    const r = radiusPx * scale;
-
-    this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
-    this.ctx.beginPath();
-    this.ctx.arc(mx, my, Math.max(0, r), 0, Math.PI * 2);
-    this.ctx.fill();
-    this.ctx.restore();
+    this._strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, 'source-over');
     this._touch();
   }
 
   /**
    * Efface un disque du masque exploré (canal alpha remis à zéro).
-   * Utilise `destination-out` pour retirer l'exploration sans peindre de noir opaque.
+   * Utilise `destination-out` pour retirer l'exploration sans peindre de noir opaque. Même
+   * approximation par polygone que `paintDisc()` ci-dessus, pour la même raison (E-11).
    *
    * @param {MapPoint} center Centre en pixels carte
    * @param {number} radiusPx Rayon du disque en pixels carte
    * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
-   * @param {number} gridScale Échelle de la grille (pixels carte par case)
+   * @param {number} gridScaleX Échelle de la grille, axe X (pixels carte par case)
+   * @param {number} gridScaleY Échelle de la grille, axe Y (pixels carte par case)
    */
-  eraseDisc(center, radiusPx, mapOrigin, gridScale) {
+  eraseDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY) {
     if (!this.ctx || !center || !mapOrigin) return;
-    const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
-    const mx = (center.x - mapOrigin.x) * scale;
-    const my = (center.y - mapOrigin.y) * scale;
-    const r = radiusPx * scale;
+    this._strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, 'destination-out');
+    this._touch();
+  }
+
+  /**
+   * Remplit un disque (approximé par un polygone à 32 sommets, en pixels carte puis projeté
+   * axe par axe) dans le masque, avec le mode de composition donné. Partagé par `paintDisc`
+   * et `eraseDisc`, qui ne diffèrent que par ce mode.
+   *
+   * @param {MapPoint} center Centre en pixels carte
+   * @param {number} radiusPx Rayon du disque en pixels carte
+   * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
+   * @param {number} gridScaleX Échelle de la grille, axe X (pixels carte par case)
+   * @param {number} gridScaleY Échelle de la grille, axe Y (pixels carte par case)
+   * @param {string} compositeOperation
+   */
+  _strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, compositeOperation) {
+    const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
+    const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
+    const poly = discPolygon(center, radiusPx);
 
     this.ctx.save();
-    this.ctx.globalCompositeOperation = 'destination-out';
+    this.ctx.globalCompositeOperation = compositeOperation;
     this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
     this.ctx.beginPath();
-    this.ctx.arc(mx, my, Math.max(0, r), 0, Math.PI * 2);
+    const first = poly[0];
+    this.ctx.moveTo((first.x - mapOrigin.x) * scaleX, (first.y - mapOrigin.y) * scaleY);
+    for (let i = 1; i < poly.length; i++) {
+      const pt = poly[i];
+      this.ctx.lineTo((pt.x - mapOrigin.x) * scaleX, (pt.y - mapOrigin.y) * scaleY);
+    }
+    this.ctx.closePath();
     this.ctx.fill();
     this.ctx.restore();
-    this._touch();
   }
 }

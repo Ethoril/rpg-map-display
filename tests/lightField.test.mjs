@@ -240,7 +240,7 @@ test('1. Une source éclaire, et son centre est plus clair que son bord', () => 
 
   const ok = champ.compose(
     [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }],
-    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
   assert.equal(ok, true);
   assert.equal(champ.paintedCount, 1);
@@ -264,7 +264,7 @@ test('2. ⭐ L’OCCLUSION : un mur ampute le champ, et c’est le sweep qui le 
 
   champ.compose(
     [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }],
-    { ambientLevel: 0, segments: [mur], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0, segments: [mur], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
 
   const ctx = ctxDe();
@@ -291,10 +291,10 @@ test('3. ⭐ ADDITIF PLAFONNÉ : deux halos se somment, et rien ne dépasse 255'
     center: { x: 500, y: 500 }, radiusPx: 300, intensity: intensite, color: '#ffffff',
   });
 
-  champ.compose([source(0.3)], { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE });
+  champ.compose([source(0.3)], { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE });
   const seule = pixelAu(ctxDe(), 40, 40).red;
 
-  champ.compose([source(0.3), source(0.3)], { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE });
+  champ.compose([source(0.3), source(0.3)], { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE });
   const deux = pixelAu(ctxDe(), 40, 40).red;
 
   // ⭐ La mutation visée : passer `lighter` à `source-over` rendrait `deux === seule`, la
@@ -304,7 +304,7 @@ test('3. ⭐ ADDITIF PLAFONNÉ : deux halos se somment, et rien ne dépasse 255'
   // Et le plafond : quatre sources à pleine intensité ne débordent pas.
   champ.compose(
     [source(1), source(1), source(1), source(1)],
-    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
   const quatre = pixelAu(ctxDe(), 40, 40);
   assert.equal(quatre.red, 255, 'plafonné, jamais au-delà');
@@ -315,7 +315,7 @@ test('4. ⭐ L’AMBIANTE EST UN CONTINU, pas une bascule — décision §4.3', 
   const { createCanvas, ctxDe } = fabrique();
   const champ = new LightField(10, 10, createCanvas);
 
-  champ.compose([], { ambientLevel: 0.35, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE });
+  champ.compose([], { ambientLevel: 0.35, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE });
   const gris = pixelAu(ctxDe(), 5, 5);
 
   // 0,35 × 255 = 89,25. ⭐ C'est LA mutation qui compte : le moteur lisait l'ambiante comme
@@ -329,13 +329,13 @@ test('4. ⭐ L’AMBIANTE EST UN CONTINU, pas une bascule — décision §4.3', 
   // Et elle reste le plancher : une source par-dessus ajoute, elle ne remplace pas.
   champ.compose(
     [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 0.5, color: '#ffffff' }],
-    { ambientLevel: 0.35, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0.35, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
   const sousLaSource = pixelAu(ctxDe(), 40, 40).red;
   assert.ok(sousLaSource > gris.red, 'la source s’ajoute au plancher ambiant');
 
   // Ambiante nulle : le noir est vraiment noir, sinon les joueurs verraient partout.
-  champ.compose([], { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE });
+  champ.compose([], { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE });
   assert.equal(pixelAu(ctxDe(), 5, 5).alpha, 0, '⛔ ambiante à 0 : aucune lumière nulle part');
 });
 
@@ -345,7 +345,7 @@ test('5. La couleur de la source est honorée — décision §4.4a', () => {
 
   champ.compose(
     [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#FFE5BF' }],
-    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
   const centre = pixelAu(ctxDe(), 40, 40);
 
@@ -375,7 +375,7 @@ test('6. L’intensité module réellement, et 0 ne peint rien', () => {
   const source = (/** @type {number} */ i) => ({
     center: { x: 500, y: 500 }, radiusPx: 300, intensity: i, color: '#ffffff',
   });
-  const opts = { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE };
+  const opts = { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE };
 
   champ.compose([source(1)], opts);
   const pleine = pixelAu(ctxDe(), 40, 40).red;
@@ -412,7 +412,7 @@ test('7. ⚠ Une couleur illisible rend du BLANC, jamais du noir', () => {
   const champ = new LightField(10, 10, createCanvas);
   champ.compose(
     [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: /** @type {any} */ ('pouet') }],
-    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
   assert.ok(pixelAu(ctxDe(), 40, 40).red > 200, 'une couleur illisible éclaire quand même');
 });
@@ -437,7 +437,7 @@ test('9. La révision rend la mutation observable — sans quoi tout cache reste
 
   champ.compose(
     [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }],
-    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
   );
   assert.ok(champ.revision > depart, 'composer doit incrémenter la révision');
   assert.equal(champ.canvas.__lightRevision, champ.revision);
@@ -446,7 +446,7 @@ test('9. La révision rend la mutation observable — sans quoi tout cache reste
   // que la référence resterait bloqué sur le premier champ composé — c'est le défaut exact que
   // `ExploredFog._touch()` avait été écrit pour rendre impossible.
   const avant = champ.canvas;
-  champ.compose([], { ambientLevel: 1, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE });
+  champ.compose([], { ambientLevel: 1, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE });
   assert.equal(champ.canvas, avant, 'le canvas ne doit pas être remplacé');
   assert.notEqual(champ.canvas.__lightRevision, depart);
 });
@@ -458,11 +458,12 @@ test('10. Dimensions du masque, et refus des entrées qui ne veulent rien dire',
   assert.equal(champ.maskHeight, 42 * FOG_MASK_PX_PER_CELL);
   assert.equal(champ.maskWidth, 336, 'le village étage 00 fait bien 336 px de masque');
 
-  const opts = { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE };
+  const opts = { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE };
   // Une composition sans origine ni échelle ne compose PAS : elle ne se rabat pas sur 0, ce
   // qui empilerait toutes les sources dans le coin supérieur gauche sans rien dire.
   assert.equal(champ.compose([], { ...opts, mapOrigin: /** @type {any} */ (null) }), false);
-  assert.equal(champ.compose([], { ...opts, gridScale: /** @type {any} */ (NaN) }), false);
+  assert.equal(champ.compose([], { ...opts, gridScaleX: /** @type {any} */ (NaN) }), false);
+  assert.equal(champ.compose([], { ...opts, gridScaleY: /** @type {any} */ (NaN) }), false);
   assert.equal(champ.compose([], opts), true);
 
   // Sources absurdes : ignorées une par une, jamais une composition avortée.
@@ -480,7 +481,7 @@ test('11. Un champ sans contexte de dessin ne prétend pas avoir composé', () =
   assert.equal(
     champ.compose(
       [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#fff' }],
-      { ambientLevel: 1, segments: [], mapOrigin: ORIGIN, gridScale: GRID_SCALE }
+      { ambientLevel: 1, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
     ),
     false,
     '⛔ rendre `true` ferait croire à un champ composé qui n’existe pas'

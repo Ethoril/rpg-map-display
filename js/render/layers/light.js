@@ -350,9 +350,15 @@ export class LightLayer {
     const sources = pleineLumiere ? [] : collectLightSources(level, tokens || [], adaptateur);
     this.lastSourceCount = sources.length;
 
+    // ⛔ DEUX échelles, jamais une seule — E-11 : en grille hexagonale, l'axe Y (rangées,
+    // espacées de √3/2 case) n'a pas la même échelle que l'axe X (colonnes). Une échelle
+    // unique étirait le champ composé de 13,4 % en hauteur, et une lampe se retrouvait
+    // peinte une case trop haut par rapport au pion qu'elle éclaire.
     const origine = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const uneCase = adaptateur.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const echelle = Math.hypot(uneCase.x - origine.x, uneCase.y - origine.y);
+    const uneCaseX = adaptateur.mapFromCellPoint({ cellX: 1, cellY: 0 });
+    const uneCaseY = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 1 });
+    const echelleX = Math.abs(uneCaseX.x - origine.x);
+    const echelleY = Math.abs(uneCaseY.y - origine.y);
 
     // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé. ⛔ Et pas du tout
     // sur une carte cuite, qui n'a aucune source à occlure.
@@ -363,7 +369,8 @@ export class LightLayer {
       ambientLevel: Number(level.ambient?.level) || 0,
       segments,
       mapOrigin: origine,
-      gridScale: echelle,
+      gridScaleX: echelleX,
+      gridScaleY: echelleY,
     });
     return true;
   }

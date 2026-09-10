@@ -276,7 +276,7 @@ test('Critère 7 : revealPath révèle tout le couloir, y compris un milieu hors
   for (let a = 1; a <= 28; a++) origins.push(centre(a, 5));
 
   const fog = new ExploredFog(30, 10, (w, h) => createMockCanvas(w, h).canvas);
-  const balayees = fog.revealPath(origins, [], porteePx, mapOrigin, level.pxPerCell);
+  const balayees = fog.revealPath(origins, [], porteePx, mapOrigin, level.pxPerCell, level.pxPerCell);
   assert.equal(balayees, 28, 'Chaque case du chemin doit donner lieu à un balayage');
 
   /** @param {number} a @param {number} b */
@@ -302,7 +302,7 @@ test('Critère 7, contre-épreuve : ne révéler que l arrivée laisse le milieu
 
   const fog = new ExploredFog(30, 10, (w, h) => createMockCanvas(w, h).canvas);
   // Le défaut qu'on veut interdire : un seul balayage, à la case d'arrivée.
-  fog.revealPath([grid.mapFromCellPoint({ cellX: 28.5, cellY: 5.5 })], [], porteePx, mapOrigin, level.pxPerCell);
+  fog.revealPath([grid.mapFromCellPoint({ cellX: 28.5, cellY: 5.5 })], [], porteePx, mapOrigin, level.pxPerCell, level.pxPerCell);
 
   const x = Math.round(14.5 * FOG_MASK_PX_PER_CELL);
   const y = Math.round(5.5 * FOG_MASK_PX_PER_CELL);
@@ -433,7 +433,7 @@ test('Critère 12 : Une case derrière un angle de mur reste non explorée sans 
 
   const polygons = fogLayer.getVisiblePolygons();
   const exploredFog = new ExploredFog(10, 10, (w, h) => createMockCanvas(w, h).canvas);
-  exploredFog.reveal(polygons, { x: 0, y: 0 }, 10);
+  exploredFog.reveal(polygons, { x: 0, y: 0 }, 10, 10);
 
   const pxDerriere = exploredFog.ctx.getImageData(56, 20, 1, 1).data;
   assert.equal(pxDerriere[3], 0, 'La case derrière le mur ne doit pas fuir dans le masque exploré (alpha=0)');
@@ -496,7 +496,7 @@ test('Critère 8 : le balayage d un chemin ne déclenche aucun getImageData, et 
   for (let a = 1; a <= 10; a++) origins.push(grid.mapFromCellPoint({ cellX: a + 0.5, cellY: 5.5 }));
 
   masqueCtx.getImageDataCalls = 0;
-  fog.revealPath(origins, [], 3 * level.pxPerCell, mapOrigin, level.pxPerCell);
+  fog.revealPath(origins, [], 3 * level.pxPerCell, mapOrigin, level.pxPerCell, level.pxPerCell);
   assert.equal(
     masqueCtx.getImageDataCalls,
     0,
@@ -525,6 +525,7 @@ test('Le fog exploré est cumulatif et ne se vide pas sur mouvement de pion', ()
       ],
     ],
     { x: 0, y: 0 },
+    10,
     10
   );
 
@@ -538,6 +539,7 @@ test('Le fog exploré est cumulatif et ne se vide pas sur mouvement de pion', ()
       ],
     ],
     { x: 0, y: 0 },
+    10,
     10
   );
 

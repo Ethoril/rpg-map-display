@@ -16,8 +16,9 @@ import { sweep } from './sweep.js';
 // champ.**
 //
 // ⚠ Comme `fog.js`, ce module ne connaît pas la grille : les centres et les rayons lui
-// arrivent **déjà en pixels carte**, et il reçoit `mapOrigin` et `gridScale` pour se ramener
-// à l'espace du masque. Le calcul des positions appartient à la couche de rendu.
+// arrivent **déjà en pixels carte**, et il reçoit `mapOrigin` et `gridScaleX`/`gridScaleY`
+// pour se ramener à l'espace du masque. Le calcul des positions appartient à la couche de
+// rendu.
 
 /**
  * Une source prête à composer.
@@ -153,15 +154,23 @@ export class LightField {
    * @param {number} [options.ambientLevel] Ambiante de l'étage, 0 → 1
    * @param {Segment[]} [options.segments] Obstacles, en pixels carte
    * @param {MapPoint} options.mapOrigin Origine de la carte, en pixels carte
-   * @param {number} options.gridScale Pixels carte par case
+   * @param {number} options.gridScaleX Pixels carte par case, axe X (colonnes)
+   * @param {number} options.gridScaleY Pixels carte par case, axe Y (rangées) — distinct de
+   *   `gridScaleX` en grille hexagonale, où les rangées ne sont espacées que de √3/2 case
+   *   (voir `js/vision/fog.js`, même correctif E-11)
    * @returns {boolean} `true` si le champ a été recomposé
    */
   compose(sources, options) {
     if (!this.ctx) return false;
-    const { ambientLevel = 0, segments = [], mapOrigin, gridScale } = options;
-    if (!mapOrigin || !Number.isFinite(gridScale)) return false;
+    const { ambientLevel = 0, segments = [], mapOrigin, gridScaleX, gridScaleY } = options;
+    if (!mapOrigin || !Number.isFinite(gridScaleX) || !Number.isFinite(gridScaleY)) return false;
 
-    const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+    // ⛔ DEUX échelles, jamais une seule — E-11. Une grille hexagonale espace ses rangées de
+    // √3/2 case : une échelle unique appliquée aux deux axes étire le contenu du masque de
+    // 13,4 % en hauteur, et le champ lumineux se retrouve peint une case trop haut par rapport
+    // au pion qu'il éclaire.
+    const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
+    const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
     const ctx = this.ctx;
 
     ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
@@ -193,9 +202,16 @@ export class LightField {
       const polygone = sweep(source.center, segments, rayonPx);
       if (!Array.isArray(polygone) || polygone.length === 0) continue;
 
-      const centreX = (source.center.x - mapOrigin.x) * scale;
-      const centreY = (source.center.y - mapOrigin.y) * scale;
-      const rayonMasque = Math.max(1, rayonPx * scale);
+      const centreX = (source.center.x - mapOrigin.x) * scaleX;
+      const centreY = (source.center.y - mapOrigin.y) * scaleY;
+      // ⚠ Le dégradé radial du Canvas est nécessairement circulaire — il n'existe pas de
+      // dégradé elliptique natif. Sous l'échelle anisotrope d'une grille hexagonale, la
+      // FORME occluse (le polygone du sweep juste en dessous) reste exacte : chacun de ses
+      // sommets est projeté axe par axe. Seul le dégradé lui-même, à l'intérieur, est une
+      // approximation — la moyenne géométrique des deux échelles, pour ne privilégier ni
+      // l'une ni l'autre. C'est cosmétique : la position et l'étendue de la source restent
+      // justes, ce que E-11 exige ; seule la rondeur du halo en pâtit légèrement.
+      const rayonMasque = Math.max(1, rayonPx * Math.sqrt(scaleX * scaleY));
       const { red, green, blue } = parseLightColor(source.color);
 
       const degrade = ctx.createRadialGradient(centreX, centreY, 0, centreX, centreY, rayonMasque);
@@ -205,10 +221,10 @@ export class LightField {
 
       ctx.beginPath();
       const premier = polygone[0];
-      ctx.moveTo((premier.x - mapOrigin.x) * scale, (premier.y - mapOrigin.y) * scale);
+      ctx.moveTo((premier.x - mapOrigin.x) * scaleX, (premier.y - mapOrigin.y) * scaleY);
       for (let i = 1; i < polygone.length; i++) {
         const point = polygone[i];
-        ctx.lineTo((point.x - mapOrigin.x) * scale, (point.y - mapOrigin.y) * scale);
+        ctx.lineTo((point.x - mapOrigin.x) * scaleX, (point.y - mapOrigin.y) * scaleY);
       }
       ctx.closePath();
       ctx.fill();

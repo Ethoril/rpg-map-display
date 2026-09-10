@@ -356,7 +356,13 @@ test('R… ⭐ VU SANS LUMIÈRE : la portée nocturne d’un PJ sort en gris, un
 
       const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
       const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-      const gridScale = Math.abs(origin1.x - origin0.x);
+      const originY1 = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+      // ⚠ E-11 : deux echelles, une par axe. Ici la grille est CARREE — createLevel sans
+      // propriete grid, donc de type square : les deux echelles sont egales, d ou le meme
+      // calcul deux fois. ⛔ Pas de backtick dans ce commentaire : il vit DANS un template
+      // literal injecte par addScriptTag, et un backtick y refermerait la chaine.
+      const gridScaleX = Math.abs(origin1.x - origin0.x);
+      const gridScaleY = Math.abs(originY1.y - origin0.y);
 
       const visibleFog = new ExploredFog(level.widthCells, level.heightCells);
       visibleFog.composeVisible({
@@ -364,7 +370,9 @@ test('R… ⭐ VU SANS LUMIÈRE : la portée nocturne d’un PJ sort en gris, un
         nearPolygons: fogLayer.getNearPolygons(),
         litCanvas: lightLayer.getFieldCanvas(),
         mapOrigin: origin0,
-        gridScale,
+        gridScaleX,
+
+        gridScaleY,
       });
 
       // Scène RÉELLE, à une couleur franche connue et UNIFORME sur toute la carte —
@@ -480,7 +488,13 @@ test('R… ⭐ SEUIL DE COULEUR : à MI-RAYON d’un halo, la couleur est déjà
 
       const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
       const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-      const gridScale = Math.abs(origin1.x - origin0.x);
+      const originY1 = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+      // ⚠ E-11 : deux echelles, une par axe. Ici la grille est CARREE — createLevel sans
+      // propriete grid, donc de type square : les deux echelles sont egales, d ou le meme
+      // calcul deux fois. ⛔ Pas de backtick dans ce commentaire : il vit DANS un template
+      // literal injecte par addScriptTag, et un backtick y refermerait la chaine.
+      const gridScaleX = Math.abs(origin1.x - origin0.x);
+      const gridScaleY = Math.abs(originY1.y - origin0.y);
 
       const visibleFog = new ExploredFog(level.widthCells, level.heightCells);
       visibleFog.composeVisible({
@@ -488,7 +502,9 @@ test('R… ⭐ SEUIL DE COULEUR : à MI-RAYON d’un halo, la couleur est déjà
         nearPolygons: fogLayer.getNearPolygons(),
         litCanvas: lightLayer.getFieldCanvas(),
         mapOrigin: origin0,
-        gridScale,
+        gridScaleX,
+
+        gridScaleY,
       });
 
       const scene = document.createElement('canvas');

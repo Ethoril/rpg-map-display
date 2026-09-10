@@ -789,7 +789,47 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
 | E-8 | La marge de `DRAG_HOLD_MS` n'est que de **10,8 ms** — appui p95 mesuré à 139,2 ms pour un seuil à 150 | `js/core/constants.js` | C'est ce chiffre qu'il faudra reprendre si la zone morte 150–500 ms est un jour découplée |
 | E-9 | Une publication RTDB qui échoue est **invisible** : `publish()` est en « tire et oublie » (`.catch(_reportError)`), **aucun appelant n’enregistre `onError`** — l’erreur part en `console.error` puis en `throw` hors pile — et la bibliothèque de scènes annonce « ✓ chargée » sans attendre la résolution | `js/transport/FirebaseTransport.js:1447`, `js/ui/gm/sceneLibrary.js:132` | C’est ce qui a laissé le défaut du canal (corrigé le 07/09/2026) passer inaperçu plusieurs séances. Le corriger demande soit un `publish` qui rende une promesse — il traverse `Transport.js`, `LocalSocketTransport` et le harnais de test — soit un `onError` branché sur une surface d’erreur du panneau MJ. **À trancher** |
 | E-10 | Le filtre qui fait **ignorer** `level.show` au MJ reste vert sous mutation : le bouton publie toujours l étage actif du MJ, et `level.select` synchronise déjà les postes MJ entre eux — un second MJ est donc toujours déjà sur cet étage | `js/app/gm.js` | Garde **défensif**, pas un trou de couverture : il tient si un émetteur publie un jour un autre étage. Même profil qu E-3. ⛔ Ne pas le retirer au motif qu il est vert sous mutation |
-| E-11 | ⛔ **Le masque de brouillard est ISOTROPE, la grille hexagonale non.** `maskHeight = heightCells x FOG_MASK_PX_PER_CELL`, mais les rangees hexagonales ne sont espacees que de **√3/2 case** ; or `reveal` et `paintDisc` convertissent les deux axes avec une **echelle unique**. Le voile hexagonal est donc comprime verticalement d'autant : quelques pixels en rangee 0, **une case entiere en rangee 4** | `js/vision/fog.js`, `js/render/layers/fogLayer.js` | Trouve le 10/09/2026 en corrigeant la convention C-5, et **independant d'elle** : le passage au coin ne le touche pas. Le corriger demande une echelle par axe dans tout le chemin du masque — le chemin le plus expose du projet, ou une erreur montre aux joueurs ce qu'ils ne devraient pas voir. ⚠ Sans effet sur les cartes carrees, qui sont tout le corpus de jeu reel |
+| E-11 | ✅ **CORRIGÉE le 11/09/2026 — une échelle PAR AXE.** Le masque de brouillard était isotrope alors que la grille hexagonale ne l'est pas : `reveal`, `paintDisc` et `composeVisible` projetaient les deux axes avec une **échelle unique**, alors que les rangées hexagonales ne sont espacées que de **√3/2 case** | `js/vision/fog.js`, `js/vision/lightField.js` | ⛔ **Elle n'était PAS dormante, et je l'avais classée telle.** Cette entrée disait « sans effet sur les cartes carrées, qui sont tout le corpus de jeu réel » — le mainteneur l'a rencontrée **le soir même** sur `marais-hex_16x16` : un personnage laissé dans le noir y voyait **en couleur** au lieu des niveaux de gris. Le raisonnement était juste sur le corpus et faux sur l'usage — il venait précisément de commencer à jouer en hexagonal |
+| E-12 | ⚠ **Trouvée en corrigeant E-11, non corrigée.** La largeur de carte sur laquelle le masque est réétiré vient de `mapFromCellPoint({ cellX: widthCells, cellY: heightCells })`, et ce point **porte le décalage odd-r** `0,5 × (rangée & 1)`. Sur une carte hexagonale à nombre de rangées **impair**, la largeur sort donc d'une demi-case trop grande et tout le masque est étiré horizontalement | `js/render/layers/fogLayer.js:475`, `js/render/layers/light.js:710` | **Mesuré** sur 16 colonnes à 140 px/case : 15 rangées → largeur 2 310 px au lieu de 2 240, soit +3,13 %, donc **0,47 case** de dérive à la colonne 15 ; 16 rangées → **exactement zéro**. ⛔ Le cas du mainteneur n'est PAS touché : `marais-hex_16x16` a 16 rangées, un nombre pair. Et aucune carte carrée ne l'est, le décalage odd-r y étant nul. Le correctif tient en une ligne par site — dériver la largeur de `widthCells × échelleX` plutôt que d'un coin — mais il demande son propre test à rangées impaires, et je ne l'ai pas ouvert la nuit où E-11 est passée |
+
+> ### ⭐ E-11 — ce que la mesure a montré, et pourquoi le symptôme était la COULEUR
+>
+> Le contenu n'occupait que **86,6 %** de la hauteur du masque, donc tout remontait quand la
+> couche réétirait ce masque sur la carte. Relevé sur sa carte exacte, 16×16 à 140 px/case :
+>
+> | rangée | écart entre le pion et la zone peinte |
+> |---|---|
+> | 0 | 0,07 case |
+> | 4 | 0,53 case |
+> | 8 | **1,00 case** |
+> | 15 | **1,81 case** |
+>
+> Le personnage se tenait donc **hors** de la zone désaturée, peinte une à deux cases plus haut.
+> ⚠ Et ce n'est pas propre au gris : le **voile de brouillard** et le **champ lumineux** sortent du
+> même masque, donc ils étaient décalés d'autant. Sur un marais de nuit sans mur, un voile décalé
+> d'une case ne saute pas aux yeux ; le gris, lui, l'a révélé.
+>
+> ⭐ **Et la cible était déjà écrite ailleurs dans le code** : `isCellVisibleInMask` — la fonction dont
+> la vue joueurs se sert pour décider si un pion est dessiné — place la case (a,b) au pixel
+> ((a+0,5)×8, (b+0,5)×8). Le masque est donc un espace de cases **uniforme**, et c'est exactement
+> ce que la projection par axe rétablit.
+>
+> ⚠ **Conséquence assumée** : un disque tracé en pixels carte devient une **ellipse** en espace
+> masque dès que les deux échelles diffèrent, ce que `ctx.arc()` ne sait pas produire. Les disques
+> sont donc approximés par un polygone de 32 sommets projeté sommet par sommet. Sur une grille
+> carrée le polygone redonne un cercle — **inscrit**, donc rentrant de `1 − cos(π/32)` = 0,48 %
+> du rayon, soit 0,04 px de masque pour un pinceau d'une case et 0,19 px pour cinq. C'est sous
+> le pixel, donc sans effet visible ; ⛔ mais ce n'est pas « pas un pixel ne bouge », et la
+> première rédaction de cette entrée l'affirmait.
+>
+> ⚠ **Et les masques déjà ENREGISTRÉS pour un étage hexagonal** ont été écrits avec l'ancienne
+> échelle : ils resteront décalés jusqu'à ce que la zone soit réexplorée. Les dimensions du PNG ne
+> changent pas, donc rien ne se refuse au chargement — c'est un résidu, pas une panne. ⛔ Aucune
+> carte carrée n'est concernée.
+>
+> **Prouvé par mutation** : rétablir l'échelle unique sur les trois sites fait rougir le test
+> hexagonal **et lui seul** — le test de non-régression carrée reste vert. Les deux moitiés de la
+> promesse sont donc défendues.
 
 ---
 

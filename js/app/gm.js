@@ -372,9 +372,12 @@ export async function bootstrapGMApp(options = {}) {
       extractSegments: extractBlockedSegments,
     });
 
+    // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
     const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
     const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const gridScale = Math.abs(origin1.x - origin0.x);
+    const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+    const gridScaleX = Math.abs(origin1.x - origin0.x);
+    const gridScaleY = Math.abs(origin1B.y - origin0.y);
 
     // La règle du mode tactique, assemblée une seule fois et servie deux fois : au masque
     // exploré, qui la mémorise, et à la vision publiée, qui ne mémorise rien.
@@ -389,7 +392,8 @@ export async function bootstrapGMApp(options = {}) {
       nearPolygons: fogLayer.getNearPolygons(),
       litCanvas: lumiere.getFieldCanvas(),
       mapOrigin: origin0,
-      gridScale,
+      gridScaleX,
+      gridScaleY,
     };
 
     let visibleFog = visibleFogMap.get(level.id);
@@ -548,9 +552,12 @@ export async function bootstrapGMApp(options = {}) {
     if (rangeCells <= 0) return 0;
 
     const grid = gridFor(level);
+    // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
     const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
     const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const gridScale = Math.abs(origin1.x - origin0.x);
+    const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+    const gridScaleX = Math.abs(origin1.x - origin0.x);
+    const gridScaleY = Math.abs(origin1B.y - origin0.y);
     const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
     const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
 
@@ -574,7 +581,8 @@ export async function bootstrapGMApp(options = {}) {
       extractBlockedSegments(level, grid),
       rangePx,
       origin0,
-      gridScale
+      gridScaleX,
+      gridScaleY
     );
     if (balayees > 0) {
       // Amendement A1 & A2 : trajet marché par pion, vider l'undo pour cet étage
@@ -1253,21 +1261,24 @@ export async function bootstrapGMApp(options = {}) {
       if (!fog) return;
 
       const grid = gridFor(activeLevel);
+      // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
       const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
       const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-      const gridScale = Math.abs(origin1.x - origin0.x);
+      const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+      const gridScaleX = Math.abs(origin1.x - origin0.x);
+      const gridScaleY = Math.abs(origin1B.y - origin0.y);
 
       const radiusCells = gmPanel?.fogTools?.getBrushRadiusCells() ?? 1;
-      const radiusPx = radiusCells * gridScale;
+      const radiusPx = radiusCells * gridScaleX;
 
       if (intention.phase === 'start') {
         gmPanel?.fogTools?.pushUndoState();
       }
 
       if (activeTool === 'fog-reveal') {
-        fog.paintDisc(intention.mapPos, radiusPx, origin0, gridScale);
+        fog.paintDisc(intention.mapPos, radiusPx, origin0, gridScaleX, gridScaleY);
       } else if (activeTool === 'fog-hide') {
-        fog.eraseDisc(intention.mapPos, radiusPx, origin0, gridScale);
+        fog.eraseDisc(intention.mapPos, radiusPx, origin0, gridScaleX, gridScaleY);
       }
 
       // Amendment A3: requestRender() à chaque coup de pinceau (start/move/end)

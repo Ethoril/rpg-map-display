@@ -122,10 +122,18 @@ test('C-5 : sur carte hexagonale, le masque exploré est ancré sur l’origine 
       const centre = grid.cellCenter({ a: 12, b: 3 });
       const origine = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
       const uneCase = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+      const uneRangee = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
       const echelle = Math.abs(uneCase.x - origine.x);
+      // ⭐ E-11 : les rangees hexagonales ne sont PAS espacees d'une case. L'echelle du masque
+      // se prend donc par axe, et toujours a l'adaptateur — jamais √3/2 ecrit ici.
+      const echelleY = Math.abs(uneRangee.y - origine.y);
 
       const fog = new ExploredFog(level.widthCells, level.heightCells);
-      fog.paintDisc(centre, 3 * level.pxPerCell, origine, echelle);
+      // ⛔ **Un rayon qui tient dans le masque**, sinon ce test ne mesure plus ce qu'il croit.
+      // Il valait 3 cases : en projection par axe (E-11) cela fait 27,7 px de masque de rayon
+      // vertical pour un demi-masque de 24 — le disque etait ROGNE en bas, et le centre de la
+      // boite englobante remontait de 4,1 px. Le defaut etait dans la fixture, pas dans l'ancre.
+      fog.paintDisc(centre, level.pxPerCell, origine, echelle, echelleY);
 
       // Boîte englobante de ce qui a été peint, en pixels de masque.
       const data = fog.ctx.getImageData(0, 0, fog.maskWidth, fog.maskHeight).data;
@@ -143,14 +151,19 @@ test('C-5 : sur carte hexagonale, le masque exploré est ancré sur l’origine 
 
       window.__ancreHex = {
         peint: { x: (minX + maxX + 1) / 2, y: (minY + maxY + 1) / 2 },
+        // ⭐ Remonte la boite brute : si elle touche un bord, le centre mesure un rognage et
+        // non une ancre. C'est le piege qui a fait rougir ce test — il se signale desormais.
+        boite: { minX, maxX, minY, maxY },
+        masque: { largeur: fog.maskWidth, hauteur: fog.maskHeight },
         // Là où ce point de carte DOIT tomber dans le masque : l'étape D pose le masque à
         // l'origine de la scène, donc pixel de masque 0 = pixel de carte 0, à l'échelle
         // FOG_MASK_PX_PER_CELL par case.
         attendu: {
           x: centre.x * FOG_MASK_PX_PER_CELL / echelle,
-          y: centre.y * FOG_MASK_PX_PER_CELL / echelle,
+          y: centre.y * FOG_MASK_PX_PER_CELL / echelleY,
         },
         echelle,
+        echelleY,
       };
     `,
   });
@@ -159,6 +172,16 @@ test('C-5 : sur carte hexagonale, le masque exploré est ancré sur l’origine 
   const ancre = await page.evaluate(() => /** @type {any} */ (window).__ancreHex);
 
   expect(ancre.echelle).toBe(40);
+  // ⛔ Sans cette ligne, le test passerait aussi sur une grille carree et ne prouverait plus
+  // rien de l'anisotropie : c'est elle qui rend les deux attendus ci-dessous distincts (E-11).
+  expect(ancre.echelleY).toBeLessThan(ancre.echelle);
+  // ⛔ La zone peinte doit etre strictement interieure au masque : une boite qui touche un
+  // bord est rognee, et son centre ne dit plus rien de l'ancrage (voir le commentaire du
+  // rayon, cote page). Ce garde-fou fait echouer la FIXTURE plutot que l'ancre.
+  expect(ancre.boite.minX).toBeGreaterThan(0);
+  expect(ancre.boite.minY).toBeGreaterThan(0);
+  expect(ancre.boite.maxX).toBeLessThan(ancre.masque.largeur - 1);
+  expect(ancre.boite.maxY).toBeLessThan(ancre.masque.hauteur - 1);
   // ⭐ Un pixel de masque de tolérance : la convention centre décalait de 4 pixels de masque
   // (une demi-case = 8/2) dans CHAQUE axe.
   expect(Math.abs(ancre.peint.x - ancre.attendu.x)).toBeLessThan(1);
@@ -182,11 +205,18 @@ test('C-5 : sur carte hexagonale, la zone révélée autour d’un pion est cent
 
       // ⚠ Le pion est placé LOIN de l'origine et en rangée 0. Loin, parce que le décalage
       // d'ancre se lit à l'écran multiplié par la distance à l'origine — c'est l'étape D qui
-      // étire le masque sur la largeur de carte, elle-même issue de mapFromCellPoint. En
-      // rangée 0, parce que le masque compte 8 pixels par case dans les DEUX axes alors que
-      // les rangées hexagonales ne sont espacées que de √3/2 case : le voile hexagonal est
-      // donc verticalement comprimé de ce facteur, défaut préexistant et hors de ce chantier,
-      // qui vaut ~5 px en rangée 0 et une case entière en rangée 4.
+      // étire le masque sur la largeur de carte, elle-même issue de mapFromCellPoint.
+      //
+      // ⭐ La rangée 0 était choisie pour ESQUIVER la compression verticale du masque, décrite
+      // ici comme un défaut préexistant et hors chantier. ✅ Ce défaut est CORRIGÉ : c'était
+      // E-11, et le masque se projette désormais avec une échelle PAR AXE. La rangée 0 reste,
+      // parce que rien n'oblige ce test à changer de sujet.
+      //
+      // ⛔ Et une limite à connaître : les sondes ci-dessous sont toutes RELATIVES à
+      // cellCenter, donc une translation commune du masque et du pion s'y annule. Ce test ne
+      // défend PAS à lui seul l'ancrage — remettre le centrage d'une demi-case dans
+      // mapFromCellPoint le laisse vert. C'est le test qui précède qui mord là-dessus, en
+      // comparant la zone peinte à une position ABSOLUE dans le masque.
       const level = createLevel({
         id: 'marais', widthCells: 20, heightCells: 6, pxPerCell: 40,
         ambient: { level: 0, baked: false },

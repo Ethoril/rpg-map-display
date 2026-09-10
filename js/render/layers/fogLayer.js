@@ -581,18 +581,24 @@ export class FogLayer {
         // carte (`MapPoint`), tracés ici tels quels ils seraient 17,5× trop grands à
         // 140 px/case. Même conversion que `ExploredFog.reveal()` : l'origine de
         // l'étage et l'échelle de la grille ramènent chaque point à l'espace du masque.
+        //
+        // ⛔ DEUX échelles, jamais une seule — E-11 : en grille hexagonale, l'axe Y (rangées,
+        // espacées de √3/2 case) n'a pas la même échelle que l'axe X (colonnes).
         const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
         const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-        const gridScale = Math.abs(origin1.x - origin0.x);
-        const scale = FOG_MASK_PX_PER_CELL / Math.max(1, gridScale);
+        const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+        const gridScaleX = Math.abs(origin1.x - origin0.x);
+        const gridScaleY = Math.abs(origin1B.y - origin0.y);
+        const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
+        const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
 
         for (const poly of this._cachedPolygons) {
           if (!poly || poly.length === 0) continue;
           const first = poly[0];
-          offCtx.moveTo((first.x - origin0.x) * scale, (first.y - origin0.y) * scale);
+          offCtx.moveTo((first.x - origin0.x) * scaleX, (first.y - origin0.y) * scaleY);
           for (let i = 1; i < poly.length; i++) {
             const pt = poly[i];
-            offCtx.lineTo((pt.x - origin0.x) * scale, (pt.y - origin0.y) * scale);
+            offCtx.lineTo((pt.x - origin0.x) * scaleX, (pt.y - origin0.y) * scaleY);
           }
           offCtx.closePath();
         }

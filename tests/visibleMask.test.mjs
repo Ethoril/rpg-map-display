@@ -173,7 +173,7 @@ test('1. ⭐ LA RÈGLE : une zone dans la ligne de vue mais NON éclairée n’e
     nearPolygons: [],                                 // aucune vision propre
     litCanvas: champEclairant(0, 0, 40, MASQUE),      // moitié gauche éclairée seulement
     mapOrigin: ORIGIN,
-    gridScale: GRID_SCALE,
+    gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE,
     createCanvas: fabrique,
   });
 
@@ -192,7 +192,7 @@ test('2. ⭐ La vision propre dans le noir S’AJOUTE, elle ne se fait pas rogne
     nearPolygons: [carre(500, 400, 800, 600)],   // le PJ est dans le noir, à droite
     litCanvas: champEclairant(0, 0, 40, MASQUE), // et la lumière est à gauche
     mapOrigin: ORIGIN,
-    gridScale: GRID_SCALE,
+    gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE,
     createCanvas: fabrique,
   });
 
@@ -211,7 +211,7 @@ test('3. ⛔ UN MUR TIENT : une zone éclairée hors ligne de vue reste invisibl
     nearPolygons: [],
     litCanvas: champEclairant(0, 0, MASQUE, MASQUE), // mais TOUT est éclairé
     mapOrigin: ORIGIN,
-    gridScale: GRID_SCALE,
+    gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE,
     createCanvas: fabrique,
   });
 
@@ -234,7 +234,7 @@ test('4. ⭐ Le halo derrière un angle n’est plus révélé — la §12 q.9 t
     // La lampe éclaire une pièce entière, bien plus haute que la bande.
     litCanvas: champEclairant(40, 0, 70, MASQUE),
     mapOrigin: ORIGIN,
-    gridScale: GRID_SCALE,
+    gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE,
     createCanvas: fabrique,
   });
 
@@ -253,7 +253,7 @@ test('5. ⚠ Sans champ lumineux, le repli est la ligne de vue ENTIÈRE, jamais 
     nearPolygons: [],
     litCanvas: null,
     mapOrigin: ORIGIN,
-    gridScale: GRID_SCALE,
+    gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE,
     createCanvas: fabrique,
   });
 
@@ -265,7 +265,7 @@ test('6. Le masque est VIDÉ à chaque composition — pas de vision fantôme', 
   // Le canvas est réutilisé d'une image à l'autre. Sans le vidage, une zone vue à l'image
   // précédente resterait vue après que le PJ s'en est éloigné : une fuite qui s'accumule.
   const cible = createMockCanvas(MASQUE, MASQUE);
-  const opts = { nearPolygons: [], litCanvas: null, mapOrigin: ORIGIN, gridScale: GRID_SCALE, createCanvas: fabrique };
+  const opts = { nearPolygons: [], litCanvas: null, mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE, createCanvas: fabrique };
 
   composeVisibleMask(cible, { ...opts, losPolygons: [carre(0, 0, 1000, 1000)] });
   assert.equal(vuA(cible, 40, 40), true);
@@ -277,10 +277,10 @@ test('6. Le masque est VIDÉ à chaque composition — pas de vision fantôme', 
 
 test('7. Entrées absurdes : aucun masque plein par accident', () => {
   const cible = createMockCanvas(MASQUE, MASQUE);
-  const base = { losPolygons: [carre(0, 0, 1000, 1000)], nearPolygons: [], litCanvas: null, gridScale: GRID_SCALE, createCanvas: fabrique };
+  const base = { losPolygons: [carre(0, 0, 1000, 1000)], nearPolygons: [], litCanvas: null, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE, createCanvas: fabrique };
 
   assert.equal(composeVisibleMask(cible, { ...base, mapOrigin: /** @type {any} */ (null) }), false);
-  assert.equal(composeVisibleMask(cible, { ...base, mapOrigin: ORIGIN, gridScale: NaN }), false);
+  assert.equal(composeVisibleMask(cible, { ...base, mapOrigin: ORIGIN, gridScaleX: NaN, gridScaleY: NaN }), false);
   assert.equal(composeVisibleMask(/** @type {any} */ (null), { ...base, mapOrigin: ORIGIN }), false);
 
   // Aucun PJ, aucune lumière : rien n'est vu. ⛔ Surtout pas tout.
