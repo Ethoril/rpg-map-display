@@ -624,3 +624,39 @@ acquise, plus une proposition.
 ⚠ **`LIGHT_COLOR_VISION_GAIN = 4` est une HYPOTHÈSE, pas une mesure** — posée le 10/09/2026 en
 même temps que le défaut, jamais encore jugée à l'œil sur ce gain précis. Réglable en un seul
 endroit (`core/constants.js`), à côté du plancher.
+
+### ⛔ 9.5 Et le correctif du seuil a produit le défaut INVERSE — la cause n'était pas la lumière
+
+Le soir même du 10/09, le mainteneur rapporte l'inverse exact : « **un perso laissé dans le noir**
+**voit en couleur, et non pas en niveaux de gris** ». Testé sur `marais-hex_16x16`, en mode nuit,
+sur une carte qui **n'a aucune lumière**, et depuis la **tablette joueurs**.
+
+⭐ **Le premier réflexe — rebaisser `LIGHT_COLOR_VISION_GAIN` — aurait été faux.** Sur une carte
+sans lumière, le champ est vide : aucun gain ne peut faire revenir la couleur. Le symptôme
+désignait donc autre chose que l'éclairage, et c'est la carte **hexagonale** qui était l'indice.
+
+Cause mesurée, et c'est la dette **E-11** : le masque de brouillard était projeté avec **une seule
+échelle pour les deux axes**, alors que les rangées hexagonales ne sont espacées que de √3/2 case.
+Le contenu n'occupait que **86,6 %** de la hauteur du masque, et tout remontait :
+
+| rangée | écart entre le pion et la zone peinte |
+|---|---|
+| 0 | 0,07 case |
+| 4 | 0,53 case |
+| 8 | **1,00 case** |
+| 15 | **1,81 case** |
+
+Le personnage se tenait donc **hors** de la zone désaturée, peinte une à deux cases plus haut.
+⚠ Et ce n'est pas propre au gris : **le voile de brouillard et le champ lumineux sortent du même
+masque**, donc ils étaient décalés d'autant. Sur un marais de nuit sans mur, un voile décalé
+d'une case ne saute pas aux yeux ; le gris, lui, l'a révélé. ✅ Corrigé le 11/09/2026 — le masque
+se projette désormais avec une échelle **par axe** (`js/vision/fog.js`, `js/vision/lightField.js`).
+
+⛔ **La leçon, et elle vaut pour tout ce chantier** : un défaut de COULEUR peut être un défaut de
+GÉOMÉTRIE. Avant de toucher une constante d'éclairage, vérifier que la zone concernée est bien là
+où on la croit — ici, deux lignes de mesure suffisaient à écarter le gain.
+
+⚠ **Résidu assumé** : les masques déjà **enregistrés** pour un étage hexagonal ont été écrits avec
+l'ancienne échelle. Ils resteront décalés jusqu'à ce que la zone soit réexplorée. Les dimensions
+du PNG ne changent pas, donc rien ne se refuse au chargement. ⛔ Aucune carte carrée n'est
+concernée.

@@ -1840,10 +1840,26 @@ tablette** (A-2) et trois critères **sur lecture du mainteneur** (A-3), le dév
 depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jour et il est tenu.
 ⛔ Le décompte fait foi au §11 du CdC : il n'y reste plus une seule case vide.
 
-⚠ **« Complet » ne veut pas dire « fini »** : `QUESTIONS-EN-ATTENTE.md` porte encore des chantiers
-cadrés (bibliothèque de cartes, images de séance, déplacer une lampe au glisser) et douze dettes
-techniques consignées, dont onze encore ouvertes — E-11 est corrigée depuis le 11/09. Ce qui est
-complet, c'est la liste des critères d'acceptation du §11.
+⚠ **« Complet » ne veut pas dire « fini »** : `QUESTIONS-EN-ATTENTE.md` porte encore deux chantiers
+cadrés — la **bibliothèque de cartes** (C-1) et les **images de séance** (C-3) — et douze dettes
+techniques consignées, dont onze encore ouvertes. Ce qui est complet, c'est la liste des critères
+d'acceptation du §11.
+
+> ### ✅ Le chantier C-2 des lumières est COMPLET le 11/09/2026 — quatre tranches
+>
+> Allumer/éteindre au tap, poser, supprimer, et **déplacer au glisser**. Les quatre événements du
+> §7 sont émis **et reçus**.
+>
+> ⛔ **Et c'est en livrant la dernière tranche qu'un défaut des deux premières est apparu** :
+> `light.toggle`, `light.place` et `light.delete` étaient publiés et **appliqués par personne**
+> — le `default` de `applyNetworkEvent` les laissait tomber en silence. Le MJ éteignait une lampe,
+> le brouillard se corrigeait (il vient du MJ) mais **le halo restait allumé sur la tablette**, qui
+> recalcule son propre champ lumineux. Sur 34 types publiés, ces trois-là étaient les seuls sans
+> destinataire. Corrigé, et deux tests unitaires le défendent désormais.
+>
+> ⭐ **La leçon vaut plus que le défaut** : tous les tests de lumière étaient à **une seule page**,
+> côté MJ. Le corpus ne pouvait structurellement pas voir le trou. Pour tout chantier qui publie un
+> événement, il faut un test qui le fait **recevoir**.
 
 > ### ⭐ Mise à jour du 11/09/2026 — E-11 est CORRIGÉE, et elle n'était pas dormante
 >
