@@ -156,7 +156,7 @@ export function createGMPanel(container, options = {}) {
     <!--
       Barre des gestes de séance — Lot 4, le ping (CdC §5.5) et la mesure (G-03).
     -->
-    <div class="gm-session-tools-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #2a2a20; border-bottom: 1px solid #444;">
+    <div class="gm-session-tools-bar" style="display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 0.4rem 0.6rem; padding: 0.5rem 0.75rem; background: #2a2a20; border-bottom: 1px solid #444;">
       <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Séance</span>
       <button id="gm-ping-arm" type="button" aria-pressed="false" title="Armer le ping, puis cliquer sur la carte : un marqueur apparaît 2 s sur les trois écrans" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #facc15; border: 1px solid #6b5a12; border-radius: 4px; cursor: pointer;">📍 Ping</button>
       <button id="gm-measure-arm" type="button" aria-pressed="false" title="Armer la mesure, puis cliquer deux points sur la carte" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; cursor: pointer;">📏 Mesurer</button>
