@@ -152,8 +152,12 @@ test('FirebaseTransport exige une configuration valide à la construction', () =
 test('FirebaseTransport valide les arguments de connect et le statut de connexion', async () => {
     const transport = new FirebaseTransport(validConfig);
 
-    // Tentatives d'opérations avant connect
-    assert.throws(() => transport.publish({ type: 'token.move', payload: {}, at: Date.now(), by: 'gm' }), /Transport non connecté/);
+    // Tentatives d'opérations avant connect. `publish` ne lève plus : elle rend `{ok:false}`
+    // comme pour tout autre échec (E-9).
+    transport.onError(() => {});
+    const horsLigne = await transport.publish({ type: 'token.move', payload: {}, at: Date.now(), by: 'gm' });
+    if (horsLigne.ok) assert.fail('publier hors connexion doit rendre ok:false');
+    assert.match(horsLigne.error.message, /Transport non connecté/);
     await assert.rejects(async () => await transport.snapshot(), /Transport non connecté/);
     await assert.rejects(async () => await transport.saveSnapshot({}), /Transport non connecté/);
 
@@ -201,15 +205,17 @@ test('la garde transport refuse blob: et les images embarquées non bornées, à
     // La garde est bien placée sur les deux frontières, avant tout appel SDK.
     transport._db = /** @type {any} */ ({});
     transport._sessionId = 'session-test';
-    assert.throws(
-        () => transport.publish({
-            type: 'level.add',
-            payload: { level: { imageUrl: enorme } },
-            at: Date.now(),
-            by: 'gm',
-        }),
-        /image embarquée non bornée/
-    );
+    transport.onError(() => {});
+    const refus = await transport.publish({
+        type: 'level.add',
+        payload: { level: { imageUrl: enorme } },
+        at: Date.now(),
+        by: 'gm',
+    });
+    // La garde ne lève plus : elle rend `{ok:false}` comme tout autre échec de publication,
+    // pour que le contrat de `publish` n'ait qu'un seul visage (E-9).
+    if (refus.ok) assert.fail('la garde d’image non bornée aurait dû refuser la publication');
+    assert.match(refus.error.message, /image embarquée non bornée/);
     await assert.rejects(
         transport.saveSnapshot({ tokens: [{ imageUrl: 'blob:https://example.invalid/id' }] }),
         /URL transitoire interdite/
@@ -354,6 +360,78 @@ test('la garde de taille avertit avant 1 Mio et refuse un document v3 surdimensi
         }),
         /Document Firestore v3 refusé avant écriture.*plafond/s
     );
+});
+
+/**
+ * Prépare un transport publiable sans réseau : seul `_pushEvent` touche le SDK, et c'est lui
+ * que chaque test ci-dessous remplace pour décider de l'issue de l'écriture.
+ *
+ * @returns {FirebaseTransport}
+ */
+function transportPubliable() {
+    const transport = new FirebaseTransport(validConfig);
+    transport._db = /** @type {any} */ ({});
+    transport._sessionId = 'session-publication';
+    transport._clientId = 'client-publication';
+    transport._role = 'gm';
+    // Sans handler, `_reportError` relance l'erreur hors pile et tue le processus de test.
+    transport.onError(() => {});
+    return transport;
+}
+
+/** @type {import('../js/core/types.js').NetEvent} */
+const EVENEMENT_TEST = { type: 'token.move', payload: { id: 'pion-1' }, at: 1_700_000_000_000, by: 'gm' };
+
+test('publish rend {ok:true} quand l’écriture aboutit, et l’enveloppe part vraiment', async () => {
+    const transport = transportPubliable();
+    /** @type {any[]} */
+    const ecrits = [];
+    transport._pushEvent = async (complet) => {
+        ecrits.push(complet);
+    };
+
+    const resultat = await transport.publish(EVENEMENT_TEST);
+
+    assert.deepEqual(resultat, { ok: true });
+    // L'issue annoncée n'a de valeur que si elle correspond à une écriture réelle.
+    assert.equal(ecrits.length, 1);
+    assert.equal(ecrits[0].type, 'token.move');
+    assert.equal(ecrits[0].clientId, 'client-publication');
+});
+
+test('publish rend {ok:false, error} quand l’écriture échoue, et NE REJETTE PAS', async () => {
+    const transport = transportPubliable();
+    transport._pushEvent = () => Promise.reject(new Error('PERMISSION_DENIED'));
+
+    // Le cœur du contrat : si `publish` rejetait, ce drapeau passerait à vrai et les 46 appels
+    // sans `.catch` du projet fabriqueraient autant de rejets non rattrapés.
+    let aRejete = false;
+    const resultat = await transport.publish(EVENEMENT_TEST).catch((err) => {
+        aRejete = true;
+        return /** @type {any} */ ({ ok: false, error: err });
+    });
+
+    assert.equal(aRejete, false, 'publish doit se résoudre, jamais rejeter');
+    if (resultat.ok) assert.fail('un échec d’écriture doit rendre ok:false');
+    assert.match(resultat.error.message, /publication de "token.move".*PERMISSION_DENIED/s);
+});
+
+test('un échec de publication atteint aussi les handlers onError déjà enregistrés', async () => {
+    const transport = new FirebaseTransport(validConfig);
+    transport._db = /** @type {any} */ ({});
+    transport._sessionId = 'session-publication';
+    transport._clientId = 'client-publication';
+    transport._role = 'gm';
+    /** @type {unknown[]} */
+    const signalees = [];
+    transport.onError((err) => signalees.push(err));
+    transport._pushEvent = () => Promise.reject(new Error('PERMISSION_DENIED'));
+
+    const resultat = await transport.publish(EVENEMENT_TEST);
+
+    if (resultat.ok) assert.fail('un échec d’écriture doit rendre ok:false');
+    assert.equal(signalees.length, 1);
+    assert.equal(/** @type {Error} */ (signalees[0]).message, resultat.error.message);
 });
 
 test('isOwnEvent identifie un écho sans casser les anciens NetEvent', () => {

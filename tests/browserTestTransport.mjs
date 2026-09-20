@@ -79,7 +79,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           });
         }
 
-        publish(/** @type {any} */ event) {
+        async publish(/** @type {any} */ event) {
           const complet = {
             ...event,
             eventId: crypto.randomUUID(),
@@ -87,6 +87,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           };
           wire.published.push(complet);
           this.channel?.postMessage(complet);
+          return { ok: true };
         }
 
         subscribe(/** @type {(event: any) => void} */ listener) {

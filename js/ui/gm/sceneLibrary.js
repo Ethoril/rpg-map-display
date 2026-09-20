@@ -129,9 +129,15 @@ export async function createSceneLibrary(container, options = {}) {
       // `scene.load` est le type du cahier des charges §7 ; rien n'est inventé.
       // Le payload ne porte que l'état non recalculable (CONVENTIONS §4) : ni
       // étage actif dérivé, ni cases atteignables, ni pion sélectionné résolu.
+      //
+      // ⭐ On ATTEND le résultat : annoncer « ✓ chargée » alors que rien n'est parti a déjà laissé
+      // passer un défaut de canal pendant plusieurs séances (E-9). `publish` ne rejette jamais,
+      // elle rend `{ok}` — d'où la lecture explicite plutôt qu'un `try`.
       if (transport) {
+        /** @type {import('../../transport/Transport.js').PublishResult} */
+        let resultat = { ok: true };
         if (mode === 'load') {
-          transport.publish({
+          resultat = await transport.publish({
             type: 'scene.load',
             payload: {
               campaign: store.getCampaign(),
@@ -143,13 +149,25 @@ export async function createSceneLibrary(container, options = {}) {
           });
         } else {
           for (const level of sceneData.levels) {
-            transport.publish({
+            const etage = await transport.publish({
               type: 'level.add',
               payload: { level },
               at: Date.now(),
               by: 'gm',
             });
+            // Le premier échec suffit à disqualifier l'annonce : les étages suivants partent
+            // quand même, parce qu'interrompre laisserait la table dans un état plus partiel
+            // encore que celui qu'on signale.
+            if (!etage.ok && resultat.ok) resultat = etage;
           }
+        }
+
+        if (!resultat.ok) {
+          setStatus(
+            'error',
+            `⚠ « ${mapEntry.name} » chargée ici, mais NON transmise à la table — ${resultat.error.message}`
+          );
+          return;
         }
       }
 

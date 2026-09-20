@@ -1010,6 +1010,7 @@ export class FirebaseTransport {
    * @private
    * @param {unknown} err
    * @param {string} contexte
+   * @returns {Error} l'erreur normalisée, telle qu'elle a été signalée
    */
   _reportError(err, contexte) {
     const detail =
@@ -1027,7 +1028,7 @@ export class FirebaseTransport {
       setTimeout(() => {
         throw reported;
       }, 0);
-      return;
+      return reported;
     }
     for (const handler of this._errorHandlers) {
       try {
@@ -1036,6 +1037,7 @@ export class FirebaseTransport {
         console.error('Erreur dans un handler onError :', interne);
       }
     }
+    return reported;
   }
 
   // --- Interface Transport --------------------------------------------------
@@ -1426,28 +1428,57 @@ export class FirebaseTransport {
     return result.committed ? deletedCount : 0;
   }
 
-  publish(/** @type {NetEvent} */ event) {
-    if (!event || typeof event !== 'object' || !event.type) {
-      throw new Error('Événement invalide pour publication');
-    }
-    if (!this._db || !this._sessionId) {
-      throw new Error('Transport non connecté');
-    }
-    assertNoTransientAssetUrls(event, `événement "${event.type}"`);
+  /**
+   * Écrit l'événement encodé dans la file de la session. Seul point de contact entre `publish`
+   * et le SDK : c'est lui qu'un test remplace pour éprouver les deux issues sans réseau — d'où
+   * l'absence de `@private`, qui rendrait ce remplacement inexprimable sous `@ts-check`.
+   *
+   * @param {NetEvent & {eventId?: string, clientId?: string|null}} complet enveloppe déjà constituée
+   * @returns {Promise<unknown>}
+   */
+  _pushEvent(complet) {
+    const db = /** @type {import('firebase/database').Database} */ (this._db);
+    const eventsRef = ref(db, `session/${this._sessionId}/events`);
+    return Promise.resolve(push(eventsRef, encodeEventForRtdb(complet)));
+  }
 
-    const complet = {
-      type: event.type,
-      payload: event.payload || {},
-      at: typeof event.at === 'number' ? event.at : Date.now(),
-      by: event.by || this._role,
-      eventId: `${this._clientId}:${Date.now()}:${identifiantAleatoire()}`,
-      clientId: this._clientId,
-    };
+  /**
+   * Publie un événement sur le canal.
+   *
+   * ⛔ La promesse rendue NE REJETTE JAMAIS — elle se résout sur `{ok: true}` ou
+   * `{ok: false, error}`. Cf. `PublishResult` dans Transport.js : les appelants publient très
+   * majoritairement sans `await`, et un rejet leur fabriquerait des « unhandled rejection » que
+   * personne n'attrape. Un événement refusé par une garde rend donc `{ok: false}` lui aussi, au
+   * lieu de lever de façon synchrone : le contrat n'a qu'un seul visage.
+   *
+   * @param {NetEvent} event
+   * @returns {Promise<import('./Transport.js').PublishResult>}
+   */
+  async publish(event) {
+    const contexte = `publication de "${/** @type {any} */ (event)?.type || 'événement sans type'}"`;
+    try {
+      if (!event || typeof event !== 'object' || !event.type) {
+        throw new Error('Événement invalide pour publication');
+      }
+      if (!this._db || !this._sessionId) {
+        throw new Error('Transport non connecté');
+      }
+      assertNoTransientAssetUrls(event, `événement "${event.type}"`);
 
-    const eventsRef = ref(this._db, `session/${this._sessionId}/events`);
-    Promise.resolve(push(eventsRef, encodeEventForRtdb(complet)))
-      .then(() => this._scheduleAutomaticRetention())
-      .catch((err) => this._reportError(err, `publication de "${complet.type}"`));
+      await this._pushEvent({
+        type: event.type,
+        payload: event.payload || {},
+        at: typeof event.at === 'number' ? event.at : Date.now(),
+        by: event.by || this._role,
+        eventId: `${this._clientId}:${Date.now()}:${identifiantAleatoire()}`,
+        clientId: this._clientId,
+      });
+    } catch (err) {
+      return { ok: false, error: this._reportError(err, contexte) };
+    }
+
+    this._scheduleAutomaticRetention();
+    return { ok: true };
   }
 
   /**

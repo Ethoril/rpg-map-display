@@ -924,6 +924,12 @@ export async function bootstrapGMApp(options = {}) {
     transport = null;
   }
 
+  // Une publication qui échoue doit se voir à la table, pas seulement dans la console : le badge
+  // réseau du MJ est la seule surface d'erreur permanente de cette vue. `connectSession` ne
+  // branche `onError` que sur le transport Firebase qu'il fabrique lui-même ; un transport injecté
+  // n'était relié à rien. (E-9)
+  transport?.onError?.((error) => networkStatus.update('error', error));
+
   const transportExtended = /** @type {any} */ (transport);
   let applyingRemote = false;
   /** @type {ReturnType<typeof setTimeout>|null} */

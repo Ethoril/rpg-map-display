@@ -448,7 +448,9 @@ export function createImportPanel(container, options = {}) {
   }
 
   if (btnValidateImage) {
-    btnValidateImage.addEventListener('click', () => {
+    // `async` sans risque : ce gestionnaire ne reçoit pas l'événement, ne l'inspecte pas et
+    // n'annule aucun comportement par défaut — rien ici ne dépend de la pile d'appel.
+    btnValidateImage.addEventListener('click', async () => {
       if (
         !loadedCalibImage ||
         !loadedNormalizedUrl ||
@@ -490,13 +492,27 @@ export function createImportPanel(container, options = {}) {
       try {
         store.addLevel(level);
 
+        // ⭐ On ATTEND le résultat : « chargé et publié » ne doit jamais s'afficher si rien n'est
+        // parti (E-9). Le `catch` ci-dessous ne rattrape plus rien ici — `publish` ne lève plus,
+        // elle rend `{ok}` —, et c'est ce panneau qui fabrique les URL `blob:`/`data:` que la
+        // garde du transport refuse : l'échec y est tout sauf théorique.
         if (transport) {
-          transport.publish({
+          const resultat = await transport.publish({
             type: 'level.add',
             payload: { level },
             at: Date.now(),
             by: 'gm',
           });
+          if (!resultat.ok) {
+            const echec = document.createElement('strong');
+            echec.textContent = `⚠ Étage "${level.name}" chargé ici, mais NON publié.`;
+            setImportStatus(imageStatus, '#e07070', [
+              echec,
+              document.createElement('br'),
+              statusText(resultat.error.message),
+            ]);
+            return;
+          }
         }
 
         const title = document.createElement('strong');
@@ -520,7 +536,9 @@ export function createImportPanel(container, options = {}) {
   }
 
   if (btnReplaceImage) {
-    btnReplaceImage.addEventListener('click', () => {
+    // Même remarque que pour `btnValidateImage` : aucun usage de l'événement, donc `async` ne
+    // change rien au comportement du clic.
+    btnReplaceImage.addEventListener('click', async () => {
       if (
         !loadedCalibImage ||
         !loadedNormalizedUrl ||
@@ -563,24 +581,44 @@ export function createImportPanel(container, options = {}) {
       try {
         const reservedTokenIds = store.replaceLevelMap(activeLevelId, patch);
 
+        // ⭐ Même règle qu'au-dessus : « remplacé et publié » se mérite (E-9).
+        /** @type {import('../../transport/Transport.js').PublishResult} */
+        let resultat = { ok: true };
         if (transport) {
-          transport.publish({
+          resultat = await transport.publish({
             type: 'level.replace',
             payload: { levelId: activeLevelId, patch },
             at: Date.now(),
             by: 'gm',
           });
           for (const tokenId of reservedTokenIds) {
-            transport.publish({
+            const range = await transport.publish({
               type: 'token.reserve',
               payload: { tokenId },
               at: Date.now(),
               by: 'gm',
             });
+            // Le premier échec suffit à disqualifier l'annonce : les suivants partent quand
+            // même, parce qu'interrompre laisserait la table dans un état plus partiel encore
+            // que celui qu'on signale.
+            if (!range.ok && resultat.ok) resultat = range;
           }
         }
 
+        // Le remplacement local a eu lieu : le brouillard doit suivre l'état d'ici, que la
+        // publication ait abouti ou non.
         options.onClearFog?.();
+
+        if (!resultat.ok) {
+          const echec = document.createElement('strong');
+          echec.textContent = '⚠ Étage courant remplacé ici, mais NON publié.';
+          setImportStatus(imageStatus, '#e07070', [
+            echec,
+            document.createElement('br'),
+            statusText(resultat.error.message),
+          ]);
+          return;
+        }
 
         const title = document.createElement('strong');
         title.textContent = '✓ Étage courant remplacé et publié.';

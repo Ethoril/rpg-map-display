@@ -411,3 +411,124 @@ test('UX-13 critère 1 : sans étage actif, « Ajouter » est possible mais « R
   await btnAdd.click();
   await expect(btnReplace, 'un étage actif rend « Remplacer » atteignable').toBeEnabled();
 });
+
+/**
+ * E-9 — le panneau d'import ne doit plus annoncer « publié » quand rien n'est parti.
+ *
+ * ⭐ C'est le site le plus exposé : `assertNoTransientAssetUrls` refuse les URL `blob:` et
+ * `data:`, et c'est précisément ce panneau qui en fabrique. Le `try/catch` de ces deux
+ * gestionnaires rattrapait autrefois le `throw` de `publish` ; depuis que `publish` rend
+ * `{ok:false}` au lieu de lever, seul un examen du résultat empêche le faux succès.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string[]|null} [typesEnEchec] types refusés ; `null` les refuse tous
+ */
+async function faireEchouerLesPublications(page, typesEnEchec = null) {
+  // Script injecté APRÈS installBrowserTransport : le transport existe déjà, on n'intercepte que
+  // l'issue de ses publications — le reste du canal est intact.
+  await page.addInitScript((types) => {
+    const transport = /** @type {any} */ (window).__RPG_APP_OPTIONS__.transport;
+    const publierVraiment = transport.publish.bind(transport);
+    /** @param {any} event */
+    transport.publish = async (event) => {
+      if (types && !types.includes(event.type)) return publierVraiment(event);
+      return { ok: false, error: new Error('URL transitoire interdite (transport de test)') };
+    };
+  }, typesEnEchec);
+}
+
+test('E-9 : « Ajouter un étage » n’annonce pas « publié » quand la publication échoue', async ({
+  page,
+}) => {
+  const sessionId = `e9-add-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, makeSnapshot());
+  await faireEchouerLesPublications(page);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.click('#gm-mode-prep');
+  await page.click('.gm-tab-btn[data-tab="import-image"]');
+  await page.fill('#image-url-input', 'maps/minimal.webp');
+  await expect(page.locator('#btn-validate-image-import')).toBeEnabled();
+  await page.click('#btn-validate-image-import');
+
+  const statut = page.locator('#image-status');
+  await expect(statut).toContainText('NON publié');
+  await expect(statut).toContainText('URL transitoire interdite');
+  // Le faux succès est exactement ce que cette dette corrige.
+  await expect(statut).not.toContainText('et publié.');
+
+  // L'étage est bien arrivé dans le store du MJ : le message dit la vérité des deux côtés.
+  const levelCount = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getCampaign()?.levels.length ?? 0;
+  });
+  expect(levelCount).toBe(3);
+});
+
+test('E-9 : « Remplacer l’étage courant » n’annonce pas « publié » quand la publication échoue', async ({
+  page,
+}) => {
+  const sessionId = `e9-replace-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, makeSnapshot());
+  await faireEchouerLesPublications(page);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.click('#gm-mode-prep');
+  await page.click('.gm-tab-btn[data-tab="import-image"]');
+  await page.fill('#image-url-input', 'maps/minimal.webp');
+  await expect(page.locator('#btn-replace-image-import')).toBeEnabled();
+  await page.fill('#img-cells-wide', '10');
+  await page.fill('#img-cells-tall', '8');
+  await page.fill('#img-px-per-cell', '140');
+  await page.click('#btn-replace-image-import');
+
+  const statut = page.locator('#image-status');
+  await expect(statut).toContainText('NON publié');
+  await expect(statut).toContainText('URL transitoire interdite');
+  await expect(statut).not.toContainText('remplacé et publié');
+
+  // Le remplacement local a bien eu lieu, réserve comprise — c'est ce que le message annonce.
+  const etat = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return {
+      imageUrl: store.getCampaign()?.levels.find((l) => l.id === 'rdc')?.imageUrl ?? null,
+      reserve: store.getReserve().length,
+    };
+  });
+  expect(etat.imageUrl).toBe('maps/minimal.webp');
+  expect(etat.reserve).toBeGreaterThan(0);
+});
+
+test('E-9 : un seul « token.reserve » perdu suffit à retirer l’annonce « publié »', async ({
+  page,
+}) => {
+  const sessionId = `e9-reserve-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, makeSnapshot());
+  // ⭐ Ici `level.replace` PART bel et bien : seule la mise en réserve échoue. Sans la règle du
+  // premier échec dans la boucle, le panneau annoncerait « publié » alors que la table garde des
+  // pions sur une carte qu'ils n'occupent plus.
+  await faireEchouerLesPublications(page, ['token.reserve']);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.click('#gm-mode-prep');
+  await page.click('.gm-tab-btn[data-tab="import-image"]');
+  await page.fill('#image-url-input', 'maps/minimal.webp');
+  await expect(page.locator('#btn-replace-image-import')).toBeEnabled();
+  await page.fill('#img-cells-wide', '10');
+  await page.fill('#img-cells-tall', '8');
+  await page.fill('#img-px-per-cell', '140');
+  await page.click('#btn-replace-image-import');
+
+  const statut = page.locator('#image-status');
+  await expect(statut).toContainText('NON publié');
+  await expect(statut).not.toContainText('remplacé et publié');
+
+  // Et le `level.replace`, lui, a bien transité : c'est bien la boucle qui disqualifie.
+  const publies = await page.evaluate(
+    () => /** @type {any} */ (window).__RPG_TEST_WIRE__.published.map((/** @type {any} */ e) => e.type)
+  );
+  expect(publies).toContain('level.replace');
+});

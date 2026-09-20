@@ -58,11 +58,61 @@ const FAKE_SCENE = {
   settings: {},
 };
 
+const MESSAGE_ECHEC = 'canal indisponible (transport de test)';
+
+/**
+ * Injecte un transport dont chaque publication réussit — ou échoue de bout en bout, comme le
+ * ferait Firebase sur un refus de règles : `{ok:false}` rendu à l'appelant ET signalé aux
+ * handlers `onError`, exactement les deux canaux du vrai transport.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {boolean} echoue
+ */
+async function installerTransport(page, echoue) {
+  await page.addInitScript((doitEchouer) => {
+    class TransportDeTest {
+      constructor() {
+        /** @type {Set<(err: unknown) => void>} */
+        this.handlers = new Set();
+        /** @type {any[]} */
+        this.publies = [];
+      }
+      async connect() {}
+      /** @param {any} event */
+      async publish(event) {
+        this.publies.push(event);
+        if (!doitEchouer) return { ok: true };
+        const error = new Error('canal indisponible (transport de test)');
+        for (const handler of this.handlers) handler(error);
+        return { ok: false, error };
+      }
+      subscribe() {
+        return () => {};
+      }
+      async snapshot() {
+        return {};
+      }
+      async saveSnapshot() {}
+      /** @param {(err: unknown) => void} handler */
+      onError(handler) {
+        this.handlers.add(handler);
+        return () => this.handlers.delete(handler);
+      }
+      isOwnEvent() {
+        return false;
+      }
+      disconnect() {}
+    }
+    /** @type {any} */ (window).__RPG_APP_OPTIONS__ = { transport: new TransportDeTest() };
+  }, echoue);
+}
+
 /**
  * Monte la vue MJ en interceptant le catalogue et la scène.
  *
  * @param {import('@playwright/test').Page} page
- * @param {{catalog?: any, scene?: any, catalogStatus?: number, sceneStatus?: number}} [fixtures]
+ * @param {{catalog?: any, scene?: any, catalogStatus?: number, sceneStatus?: number,
+ *   transport?: 'aucun'|'ok'|'echec'}} [fixtures]
  * @returns {Promise<string[]>} erreurs de page collectées
  */
 async function setupWithCatalog(page, fixtures = {}) {
@@ -71,7 +121,12 @@ async function setupWithCatalog(page, fixtures = {}) {
     scene = FAKE_SCENE,
     catalogStatus = 200,
     sceneStatus = 200,
+    transport = 'aucun',
   } = fixtures;
+
+  if (transport !== 'aucun') {
+    await installerTransport(page, transport === 'echec');
+  }
 
   /** @type {string[]} */
   const errors = [];
@@ -161,6 +216,48 @@ test.describe('U-04 — Bibliothèque de cartes MJ', () => {
       return store.getActiveLevel() !== null;
     });
     expect(hasLevel).toBe(false);
+  });
+
+  test('E-9 — une publication qui échoue interdit l’annonce « ✓ chargée »', async ({ page }) => {
+    await setupWithCatalog(page, { transport: 'echec' });
+
+    await page.click('.scene-card-load');
+
+    const statut = page.locator('.scene-library-status');
+    await expect(statut).toContainText('NON transmise à la table');
+    await expect(statut).toContainText(MESSAGE_ECHEC);
+    // Le faux succès est précisément ce qui a laissé passer le défaut de canal.
+    await expect(statut).not.toContainText('✓');
+
+    // Le store, lui, a bien été chargé côté MJ : le message dit la vérité des deux côtés.
+    const chargee = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return store.getActiveLevel()?.id ?? null;
+    });
+    expect(chargee).toBe('minimal-level');
+  });
+
+  test('E-9 — une publication qui réussit annonce toujours « ✓ chargée »', async ({ page }) => {
+    await setupWithCatalog(page, { transport: 'ok' });
+
+    await page.click('.scene-card-load');
+
+    await expect(page.locator('.scene-library-status')).toContainText('✓');
+    await expect(page.locator('.scene-library-status')).toContainText('chargée');
+  });
+
+  test('E-9 — un échec de publication se voit sur le badge réseau du MJ', async ({ page }) => {
+    await setupWithCatalog(page, { transport: 'echec' });
+
+    // Avant la publication, le badge annonce une session saine.
+    await expect(page.locator('#network-status-gm')).not.toContainText('Erreur réseau');
+
+    await page.click('.scene-card-load');
+
+    // L'effet observable est le message réellement affiché à la table, pas un drapeau interne.
+    await expect(page.locator('#network-status-gm')).toContainText(
+      `Erreur réseau — ${MESSAGE_ECHEC}`
+    );
   });
 
   test('un catalogue corrompu laisse la bibliothèque indisponible et visible en erreur', async ({

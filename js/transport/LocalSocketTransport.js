@@ -18,7 +18,7 @@ export class LocalSocketTransport {
 
     /**
      * @param {NetEvent} _event
-     * @returns {void}
+     * @returns {Promise<import('./Transport.js').PublishResult>} jamais rendu : le stub lève
      */
     publish(_event) {
         throw new Error('LocalSocketTransport non implémenté');
