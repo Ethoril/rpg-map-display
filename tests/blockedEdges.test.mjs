@@ -468,3 +468,34 @@ test('R-06 : Équivalence stricte index spatial vs force brute (9 formes carré/
     );
   }
 });
+
+test('E-7 : computeBlockedEdges lève si level ou grid est nul', () => {
+  const level = createLevel({
+    id: 'lvl-e7-nuls',
+    grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+    widthCells: 5,
+    heightCells: 5,
+    pxPerCell: 140,
+    walls: [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 5 }]],
+  });
+  const grid = gridFor(level);
+
+  // Même défaut que R-04a : un ensemble vide voudrait dire « aucune arête bloquée », donc des murs
+  // devenus franchissables sans un mot. Le motif porte le message du contrat et nomme l'argument
+  // manquant — un motif large accepterait un « cannot read properties of null » venu d'ailleurs.
+  assert.throws(
+    () => computeBlockedEdges(/** @type {any} */ (null), grid),
+    /level est requis pour computeBlockedEdges/,
+    'un level nul doit lever, jamais rendre un ensemble vide'
+  );
+  assert.throws(
+    () => computeBlockedEdges(level, /** @type {any} */ (null)),
+    /grid \(GridAdapter\) est requis pour computeBlockedEdges/,
+    'un grid nul doit lever, jamais rendre un ensemble vide'
+  );
+
+  // Et avec les deux arguments, cet étage bloque bien quelque chose : sans cette seconde moitié,
+  // les levées pourraient venir d'un étage sans aucune arête à bloquer.
+  invalidateBlockedEdgesCache(level.id);
+  assert.ok(computeBlockedEdges(level, grid).size > 0);
+});

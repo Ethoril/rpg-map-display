@@ -18,6 +18,8 @@
  * @property {number} features.portals - Nombre de portails
  * @property {number} features.lights - Nombre de lumières
  * @property {boolean} features.bakedLighting - Éclairage cuit activé
+ * @property {boolean} [features.animated] - Au moins un étage a un fond animé.
+ *   Optionnel : absent dans les catalogues publiés avant son introduction, ce qui vaut `false`.
  */
 
 /**
@@ -138,6 +140,11 @@ export function validateCatalog(obj) {
       }
       if (typeof feat.bakedLighting !== 'boolean') {
         errors.push(`${prefix}.features : bakedLighting invalide`);
+      }
+      // `animated` est optionnel : les catalogues publiés avant son introduction n'en ont pas,
+      // et leur absence vaut `false`. On ne contrôle donc le type que s'il est présent.
+      if (feat.animated !== undefined && typeof feat.animated !== 'boolean') {
+        errors.push(`${prefix}.features : animated invalide`);
       }
     }
   }

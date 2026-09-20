@@ -257,7 +257,10 @@ export function extractBlockedSegments(level, grid) {
  * @returns {Set<string>} Set de clés d'arêtes canoniques (obtenues via `edgeKey`)
  */
 export function computeBlockedEdges(level, grid) {
-  if (!level || !grid) return new Set();
+  // Rendre un ensemble vide signifierait « aucune arête bloquée », donc **tous les murs
+  // franchissables en silence**. Un argument manquant est une erreur de programmation : on lève.
+  if (!level) throw new Error('level est requis pour computeBlockedEdges');
+  if (!grid) throw new Error('grid (GridAdapter) est requis pour computeBlockedEdges');
 
   const levelId = level.id || 'default';
   const signature = getGeometrySignature(level);

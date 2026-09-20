@@ -145,3 +145,66 @@ test('V-01 validateCatalog : accepte sourceUrl et sourceHash sous forme de table
   assert.deepEqual(errors, [], 'Catalogue multi-étages valide ne doit pas produire d\'erreurs');
 });
 
+// E-4 : le générateur écrit `features.animated`, le contrat l'ignorait. Il est optionnel en
+// lecture — les catalogues déjà publiés n'en ont pas et leur absence vaut `false`.
+test('E-4 validateCatalog : features.animated est accepté et la valeur survit', () => {
+  const catalogue = {
+    version: 1,
+    maps: [
+      {
+        id: 'cascade',
+        name: 'Cascade',
+        sourceUrl: 'maps/cascade.uvtt',
+        sceneUrl: 'maps/generated/cascade.scene.json',
+        imageUrl: 'maps/generated/cascade.webp',
+        sourceHash: 'sha256-abc',
+        levelCount: 1,
+        features: { walls: 12, portals: 2, lights: 3, bakedLighting: false, animated: true },
+      },
+    ],
+  };
+
+  assert.deepEqual(validateCatalog(catalogue), []);
+  // La valeur n'est pas seulement tolérée : elle traverse la validation sans être effacée.
+  assert.equal(catalogue.maps[0].features.animated, true);
+
+  // Et un type faux est bien refusé, sinon « accepté » ne prouverait qu'une absence de contrôle.
+  const faux = {
+    version: 1,
+    maps: [
+      {
+        ...catalogue.maps[0],
+        features: { ...catalogue.maps[0].features, animated: 'oui' },
+      },
+    ],
+  };
+  assert.ok(
+    validateCatalog(faux).some((e) => e.includes('animated')),
+    'un animated non-booléen doit être signalé'
+  );
+});
+
+test('E-4 validateCatalog : un catalogue sans features.animated reste accepté', () => {
+  const ancien = {
+    version: 1,
+    maps: [
+      {
+        id: 'manoir',
+        name: 'Manoir',
+        sourceUrl: 'maps/manoir.uvtt',
+        sceneUrl: 'maps/generated/manoir.scene.json',
+        imageUrl: 'maps/generated/manoir.webp',
+        sourceHash: 'sha256-def',
+        levelCount: 1,
+        features: { walls: 131, portals: 40, lights: 0, bakedLighting: true },
+      },
+    ],
+  };
+
+  assert.deepEqual(
+    validateCatalog(ancien),
+    [],
+    'un catalogue publié avant `animated` doit rester valide'
+  );
+});
+
