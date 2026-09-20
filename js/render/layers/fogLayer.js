@@ -468,12 +468,18 @@ export class FogLayer {
       this.updateVision(grid, level, tokens, options);
     }
 
-    const bottomRight = grid.mapFromCellPoint({
-      cellX: level.widthCells,
-      cellY: level.heightCells,
-    });
-    const mapWidth = Math.ceil(bottomRight.x);
-    const mapHeight = Math.ceil(bottomRight.y);
+    // ⛔ ORIGINE + échelle PAR AXE, jamais le coin bas-droit — E-12 : `mapFromCellPoint`
+    // porte le décalage odd-r de la rangée (`0.5 * (cellY & 1)`), qui n'a rien à voir avec
+    // la largeur de la carte. Interrogé en `cellY = heightCells`, il ajoutait une demi-case
+    // sur toute carte hexagonale à nombre de rangées IMPAIR : le masque entier y était
+    // étiré en largeur.
+    const mapOrigin = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+    const oneColumn = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+    const oneRow = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
+    const mapScaleX = Math.abs(oneColumn.x - mapOrigin.x);
+    const mapScaleY = Math.abs(oneRow.y - mapOrigin.y);
+    const mapWidth = Math.ceil(mapOrigin.x + level.widthCells * mapScaleX);
+    const mapHeight = Math.ceil(mapOrigin.y + level.heightCells * mapScaleY);
 
     if (mapWidth <= 0 || mapHeight <= 0) return;
 

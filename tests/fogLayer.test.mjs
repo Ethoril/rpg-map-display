@@ -31,6 +31,11 @@ function createMockCanvas(width = 200, height = 200) {
     fillStyle: '#000000',
     globalCompositeOperation: 'source-over',
     _path: path,
+    // Journal des `drawImage` REÇUS, avec leurs arguments de destination tels quels : c'est
+    // le seul moyen d'éprouver l'agrandissement final (étape D) sur son EFFET — la taille
+    // réellement demandée au contexte — plutôt que sur une variable interne de la couche.
+    /** @type {Array<{dx: number, dy: number, dw: number, dh: number}>} */
+    drawImageCalls: [],
 
     save() {},
     restore() {},
@@ -122,6 +127,7 @@ function createMockCanvas(width = 200, height = 200) {
     // projet, et le second de cette seule journée.
     /** @param {any} image @param {number} [dx] @param {number} [dy] @param {number} [dw] @param {number} [dh] */
     drawImage(image, dx = 0, dy = 0, dw, dh) {
+      ctx.drawImageCalls.push({ dx, dy, dw: dw ?? NaN, dh: dh ?? NaN });
       if (!image || !image._ctx) return;
       const srcCtx = image._ctx;
       const srcPixels = srcCtx.pixels;
@@ -1035,4 +1041,71 @@ test('⭐ Z-05 — plus aucun PJ : les TROIS jeux de polygones retombent à vide
   assert.deepEqual(couche.getLosPolygons(), [], '⛔ la ligne de vue ne doit RIEN garder');
   assert.deepEqual(couche.getNearPolygons(), [], '⛔ ni la portée nocturne');
   assert.deepEqual(couche.getVisiblePolygons(), [], '⛔ ni le repli');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E-12 — l'agrandissement final du masque (étape D) ne doit pas porter le décalage odd-r.
+//
+// ⚠ Ces trois tests éprouvent l'EFFET : la largeur de destination réellement passée à
+// `drawImage`, relevée dans le journal du mock. Aucun n'interroge une variable de la couche.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Rend un étage sur un contexte factice et rend le DERNIER `drawImage` reçu — celui de
+ * l'étape D, le seul agrandissement vers l'espace carte.
+ * @param {{widthCells: number, heightCells: number, pxPerCell: number, grid?: any}} forme
+ */
+function dernierEtirementDuVoile(forme) {
+  const level = createLevel({
+    id: 'e12',
+    widthCells: forme.widthCells,
+    heightCells: forme.heightCells,
+    pxPerCell: forme.pxPerCell,
+    ambient: { level: 0, baked: false },
+    ...(forme.grid ? { grid: forme.grid } : {}),
+  });
+  const grid = gridFor(level);
+
+  // Le contexte peut rester minuscule : ce qu'on relève, ce sont les arguments reçus, pas
+  // les pixels écrits — un voile de 2240 px rasterisé pour rien ne coûterait que du temps.
+  const { ctx } = createMockCanvas(4, 4);
+  createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [], defaultOptions());
+
+  const dernier = ctx.drawImageCalls[ctx.drawImageCalls.length - 1];
+  assert.ok(dernier, 'la couche doit déposer son voile sur la scène');
+  return dernier;
+}
+
+test('E-12 : carte HEXAGONALE à rangées IMPAIRES — le voile est étiré à la largeur de la carte, pas une demi-case de plus', () => {
+  const etirement = dernierEtirementDuVoile({
+    widthCells: 16,
+    heightCells: 15,
+    pxPerCell: 140,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+  });
+
+  // ⛔ Avant le correctif, la largeur venait de `mapFromCellPoint({cellX: 16, cellY: 15})`,
+  // qui ajoute le décalage odd-r de la rangée 15 : 140 × 16,5 = 2310 au lieu de 2240.
+  assert.equal(etirement.dw, 16 * 140, 'le voile doit couvrir exactement 16 cases de large');
+  assert.notEqual(etirement.dw, 2310, 'la demi-case du décalage odd-r n’est pas une largeur de carte');
+  assert.equal(etirement.dh, Math.ceil(15 * 140 * (Math.sqrt(3) / 2)), 'l’axe Y, lui, ne change pas');
+});
+
+test('E-12 : carte HEXAGONALE à rangées PAIRES — la largeur reste celle d’avant le correctif', () => {
+  const etirement = dernierEtirementDuVoile({
+    widthCells: 16,
+    heightCells: 16,
+    pxPerCell: 140,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
+  });
+
+  assert.equal(etirement.dw, 16 * 140, 'rangées paires : le décalage odd-r valait déjà 0');
+  assert.equal(etirement.dh, Math.ceil(16 * 140 * (Math.sqrt(3) / 2)));
+});
+
+test('E-12 : carte CARRÉE à rangées impaires — inchangée', () => {
+  const etirement = dernierEtirementDuVoile({ widthCells: 16, heightCells: 15, pxPerCell: 140 });
+
+  assert.equal(etirement.dw, 16 * 140);
+  assert.equal(etirement.dh, 15 * 140);
 });
