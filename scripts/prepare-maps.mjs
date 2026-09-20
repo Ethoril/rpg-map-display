@@ -958,6 +958,13 @@ export function isReusable(known, recipe, mapsDir) {
   const scenePath = path.join(mapsDir, 'generated', path.basename(known.catalogEntry.sceneUrl));
   if (!fs.existsSync(scenePath)) return false;
 
+  // Même raison que pour l'image et la vidéo : une vignette effacée à la main doit provoquer
+  // une refabrication, pas un catalogue qui la référence dans le vide.
+  if (known.catalogEntry.thumbUrl) {
+    const thumbPath = path.join(mapsDir, 'generated', path.basename(known.catalogEntry.thumbUrl));
+    if (!fs.existsSync(thumbPath)) return false;
+  }
+
   try {
     const sceneObj = JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
     if (Array.isArray(sceneObj.levels)) {
@@ -984,6 +991,37 @@ export function isReusable(known, recipe, mapsDir) {
 }
 
 /**
+ * Largeur d'une vignette de carte, en pixels. La hauteur suit le rapport de l'image.
+ *
+ * 320 px : assez pour reconnaître une carte d'un coup d'œil dans une liste, assez peu pour
+ * qu'une carte de 8192 px de large tienne en quelques kilo-octets.
+ */
+export const THUMB_WIDTH_PX = 320;
+
+/**
+ * Fabrique la vignette d'un étage à côté de son image rééchantillonnée.
+ *
+ * ⚠ Les avertissements du rééchantillonnage sont **délibérément écartés** ici : ils portent
+ * sur l'image de la carte, qui vient d'être fabriquée juste au-dessus et les a déjà remontés.
+ * Les répéter au nom de la vignette ferait croire à un second défaut.
+ *
+ * @param {string} generatedDir
+ * @param {string} levelId
+ * @param {number} imageWidth largeur de l'image déjà rééchantillonnée, en pixels
+ * @returns {Promise<string>} URL relative de la vignette
+ */
+async function prepareThumb(generatedDir, levelId, imageWidth) {
+  const fileName = `${levelId}.thumb.webp`;
+  await resample(path.join(generatedDir, `${levelId}.webp`), THUMB_WIDTH_PX, {
+    // Une « case » vaut ici l'image entière : la sortie fait donc exactement `THUMB_WIDTH_PX`
+    // de large, hauteur au prorata, sans rejouer le calcul d'échelle hors de `resample`.
+    sourcePxPerCell: imageWidth,
+    outputPath: path.join(generatedDir, fileName),
+  });
+  return `maps/generated/${fileName}`;
+}
+
+/**
  * Relève les artefacts de `generated/` que le nouveau catalogue ne référence
  * plus.
  *
@@ -1003,6 +1041,9 @@ export function findOrphanArtifacts(mapsDir, catalogEntries) {
   for (const entry of catalogEntries) {
     referenced.add(path.basename(entry.sceneUrl));
     referenced.add(path.basename(entry.imageUrl));
+    // La vignette est un artefact comme les autres : sans cette ligne, chaque passe la
+    // déclarerait orpheline aussitôt fabriquée.
+    if (entry.thumbUrl) referenced.add(path.basename(entry.thumbUrl));
     // Pour les scènes multi-étages, chaque image d'étage est aussi référencée
     const scenePath = path.join(generatedDir, path.basename(entry.sceneUrl));
     if (fs.existsSync(scenePath)) {
@@ -1045,14 +1086,25 @@ export function findOrphanArtifacts(mapsDir, catalogEntries) {
  * @param {unknown} catalog
  */
 function publishCatalog(catalogPath, catalog) {
-  const tempCatalogPath = `${catalogPath}.tmp`;
-  fs.writeFileSync(tempCatalogPath, JSON.stringify(catalog, null, 2), 'utf-8');
+  ecrireJsonAtomique(catalogPath, catalog);
+}
+
+/**
+ * Écrit un JSON par `.tmp` puis `rename`, seule façon de ne jamais laisser un fichier
+ * à moitié écrit derrière soi.
+ *
+ * @param {string} filePath
+ * @param {unknown} data
+ */
+function ecrireJsonAtomique(filePath, data) {
+  const temp = `${filePath}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(data, null, 2), 'utf-8');
   try {
-    fs.renameSync(tempCatalogPath, catalogPath);
+    fs.renameSync(temp, filePath);
   } catch (err) {
-    // Ne pas laisser un .tmp derrière soi : il serait pris pour un catalogue
-    // en attente à la préparation suivante.
-    fs.rmSync(tempCatalogPath, { force: true });
+    // Ne pas laisser un .tmp derrière soi : il serait pris pour un fichier en attente
+    // à la préparation suivante.
+    fs.rmSync(temp, { force: true });
     throw err;
   }
 }
@@ -1127,6 +1179,278 @@ function readSceneManifest(mapsDir, availableFiles) {
   }
 
   return scenes;
+}
+
+// ── Tranche C-1 : renommer et supprimer une carte ────────────────────────────────────────
+//
+// Ces trois fonctions vivent ici, dans le pipeline pur, et non dans `prepare-server.mjs` :
+// c'est ce qui les rend éprouvables sur un `maps/` temporaire par `node --test`, sans lever
+// de serveur ni approcher le `maps/` du dépôt.
+
+/** Plafond de longueur d'un nom de carte. Un nom est une étiquette, pas une description. */
+export const MAX_SCENE_NAME_LENGTH = 120;
+
+/**
+ * Les scènes telles que la chaîne les voit : celles du manifeste, plus **une scène par
+ * source non assignée**. C'est la même liste que celle que `prepareMaps` va préparer.
+ *
+ * @param {string} mapsDir
+ */
+export function listScenes(mapsDir) {
+  if (!fs.existsSync(mapsDir)) return [];
+  const files = filterSidecarImages(fs.readdirSync(mapsDir)).filter(isSupportedSource).sort();
+  return readSceneManifest(mapsDir, files);
+}
+
+/**
+ * Un identifiant de scène doit pouvoir servir de nom de fichier, tel quel.
+ *
+ * **Refuser plutôt qu'assainir**, comme `assertTokenId` : `path.basename('../../evil')`
+ * rendrait `evil` et agirait sur une carte que l'appelant n'a pas nommée.
+ *
+ * @param {string} id
+ */
+function assertSceneId(id) {
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error('Identifiant de carte manquant');
+  }
+  if (id !== path.basename(id) || id.startsWith('.') || path.isAbsolute(id)) {
+    throw new Error(
+      `Identifiant de carte « ${id} » refusé : il sert de nom de fichier sous maps/, ` +
+        `donc ni séparateur, ni chemin relatif, ni point en tête.`
+    );
+  }
+}
+
+/**
+ * Résout un chemin **et prouve qu'il reste sous `maps/`**.
+ *
+ * ⛔ Les segments viennent d'identifiants fournis par la page ou lus dans `scenes.json` :
+ * un identifiant d'étage tordu suffirait à désigner un fichier du dépôt hors de `maps/`.
+ * Aucun chemin n'est supprimé sans être passé par ici.
+ *
+ * @param {string} mapsDir
+ * @param {string} relatif
+ * @returns {string} chemin absolu
+ */
+function cheminSousMaps(mapsDir, relatif) {
+  const racine = path.resolve(mapsDir);
+  const resolu = path.resolve(racine, relatif);
+  if (resolu !== racine && !resolu.startsWith(racine + path.sep)) {
+    throw new Error(`Chemin hors de maps/ refusé : ${relatif}`);
+  }
+  return resolu;
+}
+
+/**
+ * Renomme une carte dans `maps/scenes.json`.
+ *
+ * ⭐ **Une scène peut ne pas figurer au manifeste** — celles qu'une source isolée crée
+ * automatiquement. Renommer l'une d'elles **crée son entrée**, avec ses étages, plutôt que
+ * d'échouer : c'est le cas courant, pas le cas limite.
+ *
+ * ⛔ **Ne republie rien.** Écrire le manifeste est tout ce que ce geste fait ; le catalogue
+ * et les scènes générées portent encore l'ancien nom jusqu'à la prochaine publication. Un
+ * renommage qui relancerait le pipeline serait une surprise coûteuse, et rien ne doit se
+ * déclencher dans le dos de personne.
+ *
+ * @param {string} mapsDir
+ * @param {string} id
+ * @param {string} name
+ * @returns {{ id: string, name: string, creee: boolean }}
+ */
+export function renameScene(mapsDir, id, name) {
+  assertSceneId(id);
+  const nom = typeof name === 'string' ? name.trim() : '';
+  if (!nom) throw new Error('Le nom d’une carte ne peut pas être vide');
+  if (nom.length > MAX_SCENE_NAME_LENGTH) {
+    throw new Error(
+      `Nom trop long : ${nom.length} caractères pour un plafond de ${MAX_SCENE_NAME_LENGTH}`
+    );
+  }
+
+  const scene = listScenes(mapsDir).find((s) => s.id === id);
+  if (!scene) throw new Error(`Aucune carte « ${id} » dans maps/`);
+
+  const manifestPath = cheminSousMaps(mapsDir, 'scenes.json');
+  /** @type {{ version?: number, scenes: any[] }} */
+  let data = { version: 1, scenes: [] };
+  if (fs.existsSync(manifestPath)) {
+    try {
+      data = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    } catch (err) {
+      // Ne pas écraser un manifeste que le mainteneur peut réparer à la main.
+      throw new Error(
+        `maps/scenes.json illisible : ${err instanceof Error ? err.message : String(err)} — ` +
+          `rien n'a été écrit.`
+      );
+    }
+    if (!data || !Array.isArray(data.scenes)) {
+      throw new Error('maps/scenes.json : tableau « scenes » attendu — rien n’a été écrit.');
+    }
+  }
+
+  const existante = data.scenes.find((/** @type {any} */ s) => s && s.id === id);undefined
+  const creee = !existante;
+  if (existante) {
+    existante.name = nom;
+  } else {
+    data.scenes.push({
+      id,
+      name: nom,
+      levels: scene.levels.map((l) => ({
+        id: l.id,
+        name: l.name,
+        source: l.source,
+        order: l.order,
+      })),
+    });
+  }
+
+  ecrireJsonAtomique(manifestPath, data);
+  return { id, name: nom, creee };
+}
+
+/**
+ * @typedef {object} MapDeletionPlan
+ * @property {string} id
+ * @property {string} name
+ * @property {{ path: string, bytes: number }[]} files chemins relatifs à `maps/`, existants seuls
+ * @property {number} totalBytes
+ * @property {boolean} dansCatalogue
+ * @property {boolean} dansRecettes
+ * @property {boolean} dansManifeste
+ */
+
+/**
+ * Inventorie **sans rien supprimer** ce qu'emporterait la suppression d'une carte.
+ *
+ * ⚠ La suppression est sans annulation : l'inventaire existe pour que la confirmation dise
+ * ce qui va être perdu, fichier par fichier et en octets.
+ *
+ * ⭐ **La source part aussi**, et c'est voulu : `prepareMaps` scanne `maps/*`, donc une source
+ * conservée ferait **recréer la scène** à la publication suivante. Supprimer sans la source
+ * n'aurait servi à rien, et ne rendrait pas la place.
+ *
+ * @param {string} mapsDir
+ * @param {string} id
+ * @returns {MapDeletionPlan}
+ */
+export function planMapDeletion(mapsDir, id) {
+  assertSceneId(id);
+  const scene = listScenes(mapsDir).find((s) => s.id === id);
+  if (!scene) throw new Error(`Aucune carte « ${id} » dans maps/`);
+
+  /** @type {string[]} */
+  const relatifs = [];
+  for (const level of scene.levels) {
+    for (const ext of ['.webp', '.thumb.webp', '.webm', '.mp4']) {
+      relatifs.push(`generated/${level.id}${ext}`);
+    }
+    relatifs.push(level.source);
+    // ⚠ Les jumelles de la source partent avec elle : vidéo de fond et affiche. Les laisser
+    // serait pire que de tout garder — l'affiche `<base>.poster.webp` n'est plus filtrée par
+    // `filterSidecarImages` une fois son `.dd2vtt` disparu, donc la publication suivante la
+    // prendrait pour une carte-décor et ferait revenir la carte sous une autre forme.
+    if (isVttSource(level.source)) {
+      const base = level.source.slice(0, -path.extname(level.source).length);
+      for (const ext of VIDEO_EXTENSIONS) relatifs.push(`${base}${ext}`);
+      relatifs.push(`${base}${POSTER_SUFFIX}`);
+    }
+  }
+  relatifs.push(`generated/${id}.scene.json`);
+  relatifs.push(`${id}.links.json`);
+
+  /** @type {{ path: string, bytes: number }[]} */
+  const files = [];
+  const vus = new Set();
+  for (const relatif of relatifs) {
+    if (vus.has(relatif)) continue;
+    vus.add(relatif);
+    // Le contrôle passe **avant** le test d'existence : un chemin qui s'échappe doit être
+    // refusé même s'il ne désigne rien aujourd'hui.
+    const absolu = cheminSousMaps(mapsDir, relatif);
+    if (!fs.existsSync(absolu)) continue;
+    files.push({ path: relatif, bytes: fs.statSync(absolu).size });undefined
+  }
+
+  const catalogue = lireCatalogue(mapsDir);
+  const manifestPath = path.join(mapsDir, 'scenes.json');
+  let dansManifeste = false;
+  if (fs.existsSync(manifestPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      dansManifeste =
+        Array.isArray(data?.scenes) && data.scenes.some((/** @type {any} */ s) => s?.id === id);
+    } catch {
+      /* manifeste illisible : `deleteMap` le dira, l'inventaire n'a rien à en tirer */
+    }
+  }
+
+  return {
+    id,
+    name: scene.name,
+    files,
+    totalBytes: files.reduce((somme, f) => somme + f.bytes, 0),
+    dansCatalogue: Boolean(catalogue?.maps?.some((/** @type {any} */ m) => m?.id === id)),
+    dansRecettes: Object.prototype.hasOwnProperty.call(readRecipes(mapsDir), id),
+    dansManifeste,
+  };
+}
+
+/**
+ * Lit `maps/catalog.json`, ou `null` s'il est absent ou illisible.
+ *
+ * @param {string} mapsDir
+ * @returns {any}
+ */
+function lireCatalogue(mapsDir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Supprime une carte : ses artefacts, ses entrées, et **ses sources**.
+ *
+ * L'ordre n'est pas indifférent : ce qui **référence** part d'abord — catalogue, recettes,
+ * manifeste —, les fichiers ensuite. Un plantage en cours laisse alors des fichiers que plus
+ * rien ne nomme, ce que `findOrphanArtifacts` signale ; l'ordre inverse laisserait un
+ * catalogue pointant dans le vide, et l'application ne s'en relèverait pas seule.
+ *
+ * @param {string} mapsDir
+ * @param {string} id
+ * @returns {MapDeletionPlan}
+ */
+export function deleteMap(mapsDir, id) {
+  const plan = planMapDeletion(mapsDir, id);
+
+  if (plan.dansCatalogue) {
+    const catalogue = lireCatalogue(mapsDir);
+    catalogue.maps = catalogue.maps.filter((/** @type {any} */ m) => m?.id !== id);
+    publishCatalog(path.join(mapsDir, 'catalog.json'), catalogue);
+  }
+
+  if (plan.dansRecettes) {
+    const recettes = readRecipes(mapsDir);
+    delete recettes[id];
+    ecrireJsonAtomique(recipesPath(mapsDir), recettes);
+  }
+
+  if (plan.dansManifeste) {
+    const manifestPath = cheminSousMaps(mapsDir, 'scenes.json');
+    const data = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    data.scenes = data.scenes.filter((/** @type {any} */ s) => s?.id !== id);
+    ecrireJsonAtomique(manifestPath, data);
+  }
+
+  for (const fichier of plan.files) {
+    fs.rmSync(cheminSousMaps(mapsDir, fichier.path), { force: true });
+  }
+
+  return plan;
 }
 
 /**
@@ -1243,6 +1567,8 @@ export async function prepareMaps(options = {}) {
       }
 
       const preparedLevels = [];
+      /** Largeur de l'image produite, par étage : la vignette en a besoin sans redécoder. */
+      const largeursImage = new Map();
       const parseWarningsAcc = [];
       let sceneWalls = 0;
       let scenePortals = 0;
@@ -1262,6 +1588,7 @@ export async function prepareMaps(options = {}) {
           });
           parseWarningsAcc.push(...decor.warnings);
           preparedLevels.push(decor.level);
+          largeursImage.set(decor.level.id, decor.width);
           continue;
         }
 
@@ -1314,6 +1641,7 @@ export async function prepareMaps(options = {}) {
         level.grid.offsetY = originY * resampleResult.pxPerCell;
 
         preparedLevels.push(level);
+        largeursImage.set(level.id, resampleResult.width);
 
         sceneWalls += level.walls.length;
         scenePortals += level.portals.length;
@@ -1323,6 +1651,14 @@ export async function prepareMaps(options = {}) {
 
       // Trier les étages par `order` croissant
       preparedLevels.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      // Vignette : celle du **premier** étage, décidé par ce tri — le même que celui dont
+      // l'image sert déjà d'`imageUrl` au catalogue.
+      const thumbUrl = await prepareThumb(
+        generatedDir,
+        preparedLevels[0].id,
+        largeursImage.get(preparedLevels[0].id)
+      );
 
       const campaign = createCampaign({
         campaignId: `campaign-${sceneJob.id}`,
@@ -1351,6 +1687,7 @@ export async function prepareMaps(options = {}) {
         sourceUrl: sceneJob.levels.length === 1 ? `maps/${sceneJob.levels[0].source}` : sceneJob.levels.map((l) => `maps/${l.source}`),
         sceneUrl: `maps/generated/${sceneFileName}`,
         imageUrl: `maps/generated/${preparedLevels[0].id}.webp`,
+        thumbUrl,
         sourceHash: sourceHashValue,
         levelCount: preparedLevels.length,
         features: {

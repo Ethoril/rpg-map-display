@@ -49,6 +49,10 @@
                padding: .6rem; border-radius: 4px; min-height: 3rem; font-size: .85rem; margin-top: 1rem; }
     #tokens-liste img { width: 40px; height: 40px; object-fit: cover; border-radius: 50%; display: block; }
     #tokens-liste td { vertical-align: middle; }
+    #cartes-liste img { width: 160px; height: auto; display: block; border: 1px solid currentColor; }
+    #cartes-liste td { vertical-align: top; }
+    #cartes-liste button { min-height: 32px; padding: .3rem .55rem; margin: 0 .25rem 0 0; }
+    #cartes-liste .inventaire { font-size: .8rem; white-space: pre-wrap; margin: .4rem 0 0; }
     #tokens-liste button { min-height: 32px; padding: .3rem .55rem; margin: 0 .25rem 0 0; }
     #token-form { border: 1px solid; border-color: color-mix(in srgb, currentColor 30%, transparent);
                   border-radius: 4px; padding: .75rem; }
@@ -143,6 +147,16 @@
     <div id="token-maker-mount" style="background: #181818; padding: 1.25rem; border-radius: 8px; border: 1px solid #333; margin-bottom: 1.5rem;"></div>
 
     <table id="tokens-liste"><tbody></tbody></table>
+
+    <h2>6. Bibliothèque de cartes</h2>
+    <p class="aide">
+      Renommer écrit <code>maps/scenes.json</code> et <strong>rien d'autre</strong> : le
+      catalogue garde l'ancien nom jusqu'au prochain clic sur « Publier le catalogue ».
+      Supprimer emporte les artefacts, les entrées <em>et la source</em> — sans quoi la
+      publication suivante recréerait la carte. C'est sans annulation : l'inventaire complet
+      est affiché avant la confirmation.
+    </p>
+    <table id="cartes-liste"><tbody></tbody></table>
   </div>
 
   <pre id="journal">Chargement…</pre>

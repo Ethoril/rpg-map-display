@@ -65,6 +65,11 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
       body: JSON.stringify({ tokens: [], errors: [] }),
     })
   );
+  // La bibliothèque de cartes est interrogée au démarrage comme celle des pions : sans cette
+  // route, l'outil resterait masqué et les assertions suivantes n'auraient plus de sujet.
+  await page.route('**/api/maps', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ maps: [] }) })
+  );
   // La section des liaisons interroge une scène au démarrage. Sans cette route elle échouerait
   // dans le journal — sans conséquence ici, mais un journal en erreur masque les vrais messages.
   await page.route('**/api/scene?*', (route) =>
@@ -222,6 +227,11 @@ test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalo
       contentType: 'application/json',
       body: JSON.stringify({ tokens: [], errors: [] }),
     })
+  );
+  // La bibliothèque de cartes est interrogée au démarrage comme celle des pions : sans cette
+  // route, l'outil resterait masqué et les assertions suivantes n'auraient plus de sujet.
+  await page.route('**/api/maps', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ maps: [] }) })
   );
   await page.route('**/maps/catalog.json', (route) =>
     route.fulfill({

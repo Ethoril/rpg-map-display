@@ -208,3 +208,57 @@ test('E-4 validateCatalog : un catalogue sans features.animated reste accepté',
   );
 });
 
+
+// ── Tranche C-1 : la vignette ────────────────────────────────────────────────────────────
+//
+// ⚠ `thumbUrl` est **optionnel en lecture**. Les catalogues déjà publiés n'en portent pas, et
+// un validateur qui l'exigerait rendrait illisible tout ce qui existe — panne totale de la
+// bibliothèque de cartes pour un champ d'agrément.
+
+test('C-1 validateCatalog : un catalogue SANS thumbUrl reste valide', () => {
+  const sansVignette = {
+    version: 1,
+    maps: [
+      {
+        id: 'ancienne',
+        name: 'Carte publiée avant les vignettes',
+        sourceUrl: 'maps/ancienne.uvtt',
+        sceneUrl: 'maps/generated/ancienne.scene.json',
+        imageUrl: 'maps/generated/ancienne.webp',
+        sourceHash: 'sha256-abc123',
+        levelCount: 1,
+        features: { walls: 0, portals: 0, lights: 0, bakedLighting: false },
+      },
+    ],
+  };
+
+  assert.deepEqual(validateCatalog(sansVignette), []);
+});
+
+test('C-1 validateCatalog : une thumbUrl présente est tenue au contrat des autres URL', () => {
+  /** @param {unknown} thumbUrl */
+  const avecVignette = (thumbUrl) => ({
+    version: 1,
+    maps: [
+      {
+        id: 'neuve',
+        name: 'Carte avec vignette',
+        sourceUrl: 'maps/neuve.uvtt',
+        sceneUrl: 'maps/generated/neuve.scene.json',
+        imageUrl: 'maps/generated/neuve.webp',
+        thumbUrl,
+        sourceHash: 'sha256-abc123',
+        levelCount: 1,
+        features: { walls: 0, portals: 0, lights: 0, bakedLighting: false },
+      },
+    ],
+  });
+
+  assert.deepEqual(validateCatalog(avecVignette('maps/generated/neuve.thumb.webp')), []);
+
+  const errors = validateCatalog(avecVignette('data:image/webp;base64,AAAA'));
+  assert.ok(
+    errors.some((e) => e.includes('thumbUrl') && e.includes('data:')),
+    `une vignette en data: doit être refusée, erreurs : ${JSON.stringify(errors)}`
+  );
+});

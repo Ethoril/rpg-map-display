@@ -32,6 +32,26 @@ test('R0 — noms de sources et pions distants rendus comme texte dans l’outil
       }),
     });
   });
+  // La page interroge aussi la bibliothèque de cartes au démarrage : sans cette route, le
+  // serveur des tests répond 404 et l'outil reste masqué — le test passerait au vert sans
+  // avoir rien rendu.
+  await page.route('**/api/maps', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        maps: [
+          {
+            id: hostile,
+            name: hostile,
+            levelCount: 1,
+            sources: [hostile],
+            publiee: false,
+            thumbUrl: null,
+          },
+        ],
+      }),
+    });
+  });
   await page.route('**/api/tokens', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -59,5 +79,6 @@ test('R0 — noms de sources et pions distants rendus comme texte dans l’outil
   await expect(page.locator('#source option')).toHaveText(new RegExp(hostile));
   await expect(page.locator('#details')).toContainText(hostile);
   await expect(page.locator('#tokens-liste')).toContainText(hostile);
+  await expect(page.locator('#cartes-liste')).toContainText(hostile);
   await expect(page.locator('[data-r0-xss="prepare"]')).toHaveCount(0);
 });

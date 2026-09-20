@@ -26,6 +26,10 @@ import {
   isSupportedSource,
   filterSidecarImages,
   displayNameFromSlug,
+  listScenes,
+  renameScene,
+  planMapDeletion,
+  deleteMap,
 } from './prepare-maps.mjs';
 import { MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
 import { parseUvtt } from '../js/import/uvtt.js';
@@ -220,6 +224,74 @@ function apiSources() {
       quality: WEBP_QUALITY,
     },
   };
+}
+
+// --- Bibliothèque de cartes (tranche C-1) ------------------------------------------
+//
+// Les pions avaient un CRUD complet, les cartes rien : renommer se faisait en éditant
+// `maps/scenes.json` à la main, supprimer en effaçant des fichiers un à un. Toute la
+// logique vit dans `prepare-maps.mjs` — ces trois routes ne font que la relier à la page.
+
+/**
+ * GET /api/maps — les cartes telles que la chaîne les voit, publiées ou non.
+ *
+ * ⚠ Pas le catalogue : une source déposée mais jamais publiée n'y figure pas, et c'est
+ * pourtant une carte que le mainteneur doit pouvoir renommer ou supprimer. Le catalogue ne
+ * sert ici qu'à retrouver la vignette et à dire ce qui est publié.
+ */
+function apiMaps() {
+  /** @type {any} */
+  let catalogue = null;
+  try {
+    catalogue = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  } catch {
+    /* catalogue absent ou illisible : rien n'est encore publié, ce n'est pas une erreur */
+  }
+
+  const maps = listScenes(mapsDir).map((scene) => {
+    const entree = catalogue?.maps?.find((/** @type {any} */ m) => m?.id === scene.id) ?? null;
+    return {
+      id: scene.id,
+      // Le nom du manifeste, jamais celui du catalogue : c'est celui qui sera publié, donc
+      // celui qu'un renommage doit faire apparaître tout de suite.
+      name: scene.name,
+      levelCount: scene.levels.length,
+      sources: scene.levels.map((l) => l.source),
+      publiee: Boolean(entree),
+      thumbUrl: entree?.thumbUrl ?? null,
+    };
+  });
+
+  return { maps };
+}
+
+/**
+ * POST /api/scenes/rename — écrit `maps/scenes.json`, et rien d'autre.
+ *
+ * @param {any} body
+ */
+function apiSceneRename(body) {
+  const resultat = renameScene(mapsDir, String(body?.id ?? ''), String(body?.name ?? ''));
+  return { ...resultat, maps: apiMaps().maps };
+}
+
+/**
+ * GET /api/maps/deletion-plan?id=… — l'inventaire, sans rien supprimer.
+ *
+ * @param {string} id
+ */
+function apiMapDeletionPlan(id) {
+  return planMapDeletion(mapsDir, id);
+}
+
+/**
+ * POST /api/maps/delete — supprime pour de bon.
+ *
+ * @param {any} body
+ */
+function apiMapDelete(body) {
+  const plan = deleteMap(mapsDir, String(body?.id ?? ''));
+  return { ...plan, maps: apiMaps().maps };
 }
 
 /**
@@ -538,6 +610,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && route === '/api/scene') {
       return sendJson(res, 200, apiScene(url.searchParams.get('id') ?? ''));
+    }
+    if (req.method === 'GET' && route === '/api/maps') {
+      return sendJson(res, 200, apiMaps());
+    }
+    if (req.method === 'GET' && route === '/api/maps/deletion-plan') {
+      return sendJson(res, 200, apiMapDeletionPlan(url.searchParams.get('id') ?? ''));
+    }
+    if (req.method === 'POST' && route === '/api/maps/delete') {
+      return sendJson(res, 200, apiMapDelete(await readJsonBody(req)));
+    }
+    if (req.method === 'POST' && route === '/api/scenes/rename') {
+      return sendJson(res, 200, apiSceneRename(await readJsonBody(req)));
     }
     if (req.method === 'POST' && route === '/api/scene/links') {
       return sendJson(res, 200, apiSceneLinksSave(await readJsonBody(req)));

@@ -11,6 +11,8 @@
  * @property {string} sourceUrl - URL relative du fichier UVTT source
  * @property {string} sceneUrl - URL relative du JSON de scène
  * @property {string} imageUrl - URL relative de l'image (WebP, PNG, etc.)
+ * @property {string} [thumbUrl] - URL relative de la vignette du premier étage, 320 px de large.
+ *   **Optionnel** : les catalogues publiés avant la tranche C-1 n'en portent pas.
  * @property {string} sourceHash - Hash SHA256 de la source : "sha256-xxx"
  * @property {number} levelCount - Nombre d'étages dans cette scène
  * @property {object} features
@@ -113,6 +115,13 @@ export function validateCatalog(obj) {
     checkUrl('sourceUrl');
     checkUrl('sceneUrl');
     checkUrl('imageUrl');
+
+    // ⚠ La vignette est **optionnelle en lecture** : un catalogue publié avant qu'elle
+    // n'existe est parfaitement valide, et le refuser rendrait illisible tout ce qui a été
+    // publié jusqu'ici. Présente, elle est tenue au même contrat que les autres URL.
+    if (map.thumbUrl !== undefined && map.thumbUrl !== null) {
+      checkUrl('thumbUrl');
+    }
 
     if (map.sourceHash) {
       const hashes = Array.isArray(map.sourceHash) ? map.sourceHash : [map.sourceHash];

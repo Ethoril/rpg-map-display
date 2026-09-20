@@ -289,6 +289,148 @@ function afficherTokens(tokens) {
   }
 }
 
+// --- Bibliothèque de cartes (tranche C-1) ------------------------------------------
+
+const cartesListe = /** @type {HTMLElement} */ (document.querySelector('#cartes-liste tbody'));
+
+/** @param {number} octets */
+function kio(octets) {
+  return octets >= 1048576 ? mio(octets) : `${(octets / 1024).toFixed(0)} Kio`;
+}
+
+/**
+ * Le texte de l'inventaire de suppression, fichier par fichier.
+ *
+ * ⚠ Il est écrit une seule fois et sert **aux deux** usages — l'affichage dans la ligne et
+ * la demande de confirmation. Deux textes distincts finiraient par diverger, et sur un geste
+ * sans annulation c'est le pire endroit pour annoncer autre chose que ce qu'on détruit.
+ *
+ * @param {any} plan réponse de /api/maps/deletion-plan
+ * @returns {string[]}
+ */
+function inventaireSuppression(plan) {
+  const lignes = [
+    `Supprimer définitivement la carte « ${plan.name} » (${plan.id}) ?`,
+    '',
+    `${plan.files.length} fichier(s), ${kio(plan.totalBytes)} :`,
+    ...plan.files.map((/** @type {any} */ f) => `  maps/${f.path} — ${kio(f.bytes)}`),
+  ];
+  const entrees = [
+    plan.dansCatalogue ? 'catalog.json' : null,
+    plan.dansManifeste ? 'scenes.json' : null,
+    plan.dansRecettes ? 'le cache de recettes' : null,
+  ].filter(Boolean);
+  if (entrees.length > 0) {
+    lignes.push('', `Son entrée sera retirée de : ${entrees.join(', ')}.`);
+  }
+  lignes.push(
+    '',
+    // La source part avec le reste, et le dire n'est pas optionnel : c'est le seul fichier
+    // que le mainteneur a lui-même déposé dans maps/.
+    'La ou les sources partent aussi : les garder ferait recréer la carte à la prochaine publication.',
+    'Cette action est irréversible.'
+  );
+  return lignes;
+}
+
+/** @param {any[]} maps réponse de /api/maps */
+function afficherCartes(maps) {
+  cartesListe.replaceChildren();
+  if (maps.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.textContent = 'Aucune carte dans maps/. Y déposer un .dd2vtt, .df2vtt, .uvtt ou une image.';
+    td.style.opacity = '.7';
+    tr.appendChild(td);
+    cartesListe.appendChild(tr);
+    return;
+  }
+
+  for (const m of maps) {
+    const tr = document.createElement('tr');
+
+    const tdVignette = document.createElement('td');
+    if (m.thumbUrl) {
+      const img = document.createElement('img');
+      // Le paramètre casse le cache du navigateur : une carte republiée garde le même nom de
+      // vignette, et l'image d'avant resterait affichée.
+      img.src = `/${m.thumbUrl}?v=${Date.now()}`;
+      img.alt = `Vignette de ${m.name}`;
+      tdVignette.appendChild(img);
+    } else {
+      tdVignette.textContent = m.publiee ? '(publiée avant les vignettes)' : '(non publiée)';
+      tdVignette.style.opacity = '.7';
+    }
+
+    const tdInfo = document.createElement('td');
+    const nom = document.createElement('strong');
+    nom.textContent = m.name;
+    const meta = document.createElement('span');
+    meta.style.cssText = 'opacity:.7;font-size:.85em';
+    meta.textContent =
+      `${m.id} · ${m.levelCount} étage(s) · ${m.publiee ? 'publiée' : 'jamais publiée'} · ` +
+      `${m.sources.join(', ')}`;
+    tdInfo.append(nom, document.createElement('br'), meta);
+
+    const tdActions = document.createElement('td');
+    tdActions.style.whiteSpace = 'nowrap';
+
+    const bRenommer = document.createElement('button');
+    bRenommer.textContent = 'Renommer';
+    bRenommer.addEventListener('click', () => {
+      const saisi = window.prompt(`Nouveau nom pour « ${m.name} » ?`, m.name);
+      if (saisi === null) return;
+      pendant(bRenommer, async () => {
+        const r = await api('/api/scenes/rename', { id: m.id, name: saisi });
+        afficherCartes(r.maps);
+        dire(
+          `✓ Carte « ${r.name} » renommée dans maps/scenes.json` +
+            `${r.creee ? ' (son entrée y a été créée : elle n’en avait pas)' : ''}.\n` +
+            `⚠ Rien n'a été republié : le catalogue et la scène générée portent encore ` +
+            `l'ancien nom jusqu'au prochain clic sur « Publier le catalogue ».`
+        );
+      });
+    });
+
+    const bSupprimer = document.createElement('button');
+    bSupprimer.textContent = 'Supprimer';
+    bSupprimer.addEventListener('click', () =>
+      pendant(bSupprimer, async () => {
+        // L'inventaire d'abord, la question ensuite : personne ne confirme une suppression
+        // dont il ne sait pas ce qu'elle emporte.
+        const plan = await api(`/api/maps/deletion-plan?id=${encodeURIComponent(m.id)}`);
+        const lignes = inventaireSuppression(plan);
+
+        const affiche = document.createElement('p');
+        affiche.className = 'inventaire';
+        affiche.textContent = lignes.join('\n');
+        tdInfo.appendChild(affiche);
+        dire(lignes.join('\n'));
+
+        if (!window.confirm(lignes.join('\n'))) {
+          dire('Suppression annulée. Rien n’a été touché.');
+          return;
+        }
+
+        const r = await api('/api/maps/delete', { id: m.id });
+        afficherCartes(r.maps);
+        dire(
+          `✓ Carte « ${r.name} » supprimée : ${r.files.length} fichier(s), ${kio(r.totalBytes)} ` +
+            `rendus à l'arbre de travail.\n` +
+            // Dire la vérité sur git : la place n'est rendue que dans l'arbre de travail.
+            `⚠ Les fichiers déjà commités restent dans l'historique git — la suppression ` +
+            `arrête leur croissance, elle ne réécrit pas le passé.`
+        );
+      })
+    );
+
+    tdActions.append(bRenommer, bSupprimer);
+    tr.append(tdVignette, tdInfo, tdActions);
+    cartesListe.appendChild(tr);
+  }
+}
+
 // --- V-02 Éditeur de liaisons & Vue carte interactif -------------------------------
 
 const selLinkScene = /** @type {HTMLSelectElement} */ (document.getElementById('link-scene-select'));
@@ -650,6 +792,9 @@ if (tokenMakerMount) {
 
     outil.classList.remove('cache');
     afficherDetails();
+
+    const cartes = await api('/api/maps');
+    afficherCartes(cartes.maps);
 
     const biblio = await api('/api/tokens');
     afficherTokens(biblio.tokens);

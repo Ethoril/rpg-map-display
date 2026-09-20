@@ -11,7 +11,14 @@ import {
   planSources,
   isSupportedSource,
   SUPPORTED_EXTENSIONS,
+  listScenes,
+  renameScene,
+  planMapDeletion,
+  deleteMap,
+  findOrphanArtifacts,
 } from '../scripts/prepare-maps.mjs';
+import { imageDimensions } from '../scripts/resample.mjs';
+import { validateCatalog } from '../js/import/catalog.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -511,5 +518,315 @@ test('Chantier V : validation stricte des liaisons — refus des liaisons vers u
     /Liaison "stairs-invalid" : étage inconnu "attic"/,
     'La préparation doit échouer si une liaison contient un étage inconnu'
   );
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════
+// Tranche C-1 — renommer, supprimer, et la vignette
+//
+// ⚠ Chaque cas travaille dans son `maps/` temporaire. La suppression efface des fichiers pour
+// de vrai : la lancer sur le `maps/` du dépôt serait irréparable. Les assertions portent donc
+// toutes sur ce qui est, ou n'est plus, **sur le disque** — jamais sur un appel de fonction.
+// ═════════════════════════════════════════════════════════════════════════════════════════
+
+test('C-1 renommage : une scène absente du manifeste y gagne son entrée, avec ses étages', (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'ferme-isolee');
+  const manifestPath = path.join(mapsDir, 'scenes.json');
+  assert.ok(!fs.existsSync(manifestPath), 'pas de manifeste au départ : c’est tout l’intérêt');
+
+  const res = renameScene(mapsDir, 'ferme-isolee', 'La ferme du pendu');
+  assert.equal(res.creee, true);
+
+  const manifeste = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  assert.equal(manifeste.scenes.length, 1);
+  assert.equal(manifeste.scenes[0].id, 'ferme-isolee');
+  assert.equal(manifeste.scenes[0].name, 'La ferme du pendu');
+  // Sans ses étages, l'entrée créée serait ignorée par `readSceneManifest` et la source
+  // repartirait en scène automatique : le renommage n'aurait tenu qu'un instant.
+  assert.deepEqual(
+    manifeste.scenes[0].levels.map((/** @type {any} */ l) => l.source),
+    ['ferme-isolee.uvtt']
+  );
+  assert.equal(listScenes(mapsDir)[0].name, 'La ferme du pendu');
+
+  assert.ok(!fs.existsSync(`${manifestPath}.tmp`), 'aucun .tmp ne doit subsister');
+});
+
+test('C-1 renommage : une scène DÉJÀ au manifeste change de nom sans perdre ses étages', (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'donjon_00');
+  addMap(mapsDir, 'donjon_01');
+  addMap(mapsDir, 'auberge');
+  fs.writeFileSync(
+    path.join(mapsDir, 'scenes.json'),
+    JSON.stringify({
+      version: 1,
+      scenes: [
+        {
+          id: 'donjon',
+          name: 'Donjon',
+          levels: [
+            { source: 'donjon_00.uvtt', id: 'bas', name: 'Bas', order: 0 },
+            { source: 'donjon_01.uvtt', id: 'haut', name: 'Haut', order: 1 },
+          ],
+        },
+      ],
+    }),
+    'utf-8'
+  );
+
+  const res = renameScene(mapsDir, 'donjon', 'Donjon des sept portes');
+  assert.equal(res.creee, false);
+
+  const manifeste = JSON.parse(fs.readFileSync(path.join(mapsDir, 'scenes.json'), 'utf-8'));
+  assert.equal(manifeste.scenes.length, 1, 'aucune entrée parasite pour la source isolée');
+  assert.equal(manifeste.scenes[0].name, 'Donjon des sept portes');
+  assert.equal(manifeste.scenes[0].levels.length, 2, 'les étages sont conservés tels quels');
+});
+
+test('C-1 renommage : un nom vide est refusé, et rien n’est écrit', (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+
+  assert.throws(() => renameScene(mapsDir, 'minimal', '   '), /vide/);
+  assert.throws(() => renameScene(mapsDir, 'minimal', 'x'.repeat(121)), /trop long/);
+  assert.ok(
+    !fs.existsSync(path.join(mapsDir, 'scenes.json')),
+    'un refus ne doit laisser aucun manifeste derrière lui'
+  );
+
+  assert.throws(() => renameScene(mapsDir, 'inconnue', 'Peu importe'), /Aucune carte/);
+});
+
+test('C-1 renommage : le catalogue et la scène générée ne bougent pas — rien n’est republié', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+  await prepareMaps({ mapsDir });
+
+  const catalogAvant = fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8');
+  const sceneAvant = fs.readFileSync(
+    path.join(mapsDir, 'generated', 'minimal.scene.json'),
+    'utf-8'
+  );
+
+  renameScene(mapsDir, 'minimal', 'Un tout autre nom');
+
+  assert.equal(
+    fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'),
+    catalogAvant,
+    'le renommage ne republie pas : le catalogue reste intact octet pour octet'
+  );
+  assert.equal(
+    fs.readFileSync(path.join(mapsDir, 'generated', 'minimal.scene.json'), 'utf-8'),
+    sceneAvant
+  );
+});
+
+test('C-1 inventaire de suppression : liste les bons chemins et ne supprime rien', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+  await prepareMaps({ mapsDir });
+  fs.writeFileSync(path.join(mapsDir, 'minimal.links.json'), '[]', 'utf-8');
+
+  const plan = planMapDeletion(mapsDir, 'minimal');
+  const chemins = plan.files.map((f) => f.path).sort();
+  assert.deepEqual(chemins, [
+    'generated/minimal.scene.json',
+    'generated/minimal.thumb.webp',
+    'generated/minimal.webp',
+    'minimal.links.json',
+    'minimal.uvtt',
+  ]);
+
+  assert.equal(plan.dansCatalogue, true);
+  assert.equal(plan.dansRecettes, true);
+  assert.equal(plan.dansManifeste, false);
+
+  // Le total est celui des fichiers réels, pas une somme annoncée au jugé.
+  const totalReel = chemins.reduce((s, rel) => s + fs.statSync(path.join(mapsDir, rel)).size, 0);
+  assert.equal(plan.totalBytes, totalReel);
+  assert.ok(plan.totalBytes > 0);
+
+  // ⭐ Le cœur du cas : après l'inventaire, tout est encore là.
+  for (const rel of chemins) {
+    assert.ok(fs.existsSync(path.join(mapsDir, rel)), `${rel} doit survivre à l'inventaire`);
+  }
+});
+
+test('C-1 suppression : les fichiers ont réellement disparu du disque, entrées comprises', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+  addMap(mapsDir, 'gardee');
+  await prepareMaps({ mapsDir });
+  renameScene(mapsDir, 'minimal', 'À supprimer');
+
+  const plan = deleteMap(mapsDir, 'minimal');
+  assert.ok(plan.files.length >= 4);
+
+  for (const rel of [
+    'minimal.uvtt',
+    'generated/minimal.webp',
+    'generated/minimal.thumb.webp',
+    'generated/minimal.scene.json',
+  ]) {
+    assert.ok(!fs.existsSync(path.join(mapsDir, rel)), `${rel} doit avoir disparu du disque`);
+  }
+
+  const catalogue = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  assert.deepEqual(
+    catalogue.maps.map((/** @type {any} */ m) => m.id),
+    ['gardee'],
+    'seule la carte supprimée quitte le catalogue'
+  );
+
+  const recettes = JSON.parse(
+    fs.readFileSync(path.join(mapsDir, 'generated', '.recipes.json'), 'utf-8')
+  );
+  assert.deepEqual(Object.keys(recettes), ['gardee']);
+
+  const manifeste = JSON.parse(fs.readFileSync(path.join(mapsDir, 'scenes.json'), 'utf-8'));
+  assert.deepEqual(manifeste.scenes, []);
+
+  // La carte voisine est intacte, elle.
+  assert.ok(fs.existsSync(path.join(mapsDir, 'gardee.uvtt')));
+  assert.ok(fs.existsSync(path.join(mapsDir, 'generated', 'gardee.webp')));
+
+  // ⭐ Et la suppression tient : une nouvelle publication ne recrée pas la carte, ce qu'elle
+  // ferait si la source était restée dans maps/.
+  const res = await prepareMaps({ mapsDir });
+  assert.equal(res.mapsCount, 1);
+});
+
+test('C-1 suppression : la vidéo jumelle et l’affiche partent avec leur source', (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'anime');
+  // Contenu sans importance : c'est leur **présence** qui décide de leur sort. Une affiche
+  // laissée derrière son `.dd2vtt` cesserait d'être filtrée par `filterSidecarImages` et
+  // repartirait en carte-décor à la publication suivante — la carte reviendrait.
+  fs.writeFileSync(path.join(mapsDir, 'anime.webm'), 'video');
+  fs.writeFileSync(path.join(mapsDir, 'anime.poster.webp'), 'affiche');
+
+  const plan = planMapDeletion(mapsDir, 'anime');
+  const chemins = plan.files.map((f) => f.path).sort();
+  assert.deepEqual(chemins, ['anime.poster.webp', 'anime.uvtt', 'anime.webm']);
+
+  deleteMap(mapsDir, 'anime');
+  assert.deepEqual(fs.readdirSync(mapsDir), [], 'maps/ doit être vide : rien ne doit revenir');
+  assert.deepEqual(listScenes(mapsDir), []);
+});
+
+test('C-1 suppression : un identifiant qui s’échappe de maps/ est refusé, et le fichier visé survit', (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+  const temoin = `temoin-${path.basename(mapsDir)}`;
+  const dehors = path.join(mapsDir, '..', `${temoin}.txt`);
+  fs.writeFileSync(dehors, 'à ne pas perdre', 'utf-8');
+  t.after(() => fs.rmSync(dehors, { force: true }));
+
+  for (const id of ['../temoin', '../../etc/passwd', 'sous/dossier', '.recipes']) {
+    assert.throws(() => planMapDeletion(mapsDir, id), /refusé|Aucune carte/, `id : ${id}`);
+    assert.throws(() => deleteMap(mapsDir, id), /refusé|Aucune carte/, `id : ${id}`);
+    assert.throws(() => renameScene(mapsDir, id, 'Peu importe'), /refusé|Aucune carte/);
+  }
+
+  // ⛔ Le cas qui compte vraiment : un identifiant d'ÉTAGE tordu, venu du manifeste, dont les
+  // artefacts se calculent en `<levelId>.webp`. Il passe le contrôle de l'identifiant de scène
+  // et n'est arrêté que par le contrôle de chaque chemin.
+  fs.writeFileSync(
+    path.join(mapsDir, 'scenes.json'),
+    JSON.stringify({
+      version: 1,
+      scenes: [
+        {
+          id: 'piegee',
+          name: 'Piégée',
+          // Deux crans de `..` : le premier n'annule que le `generated/` du chemin d'artefact,
+          // le second seul sort de `maps/`. Écrit ainsi après un premier jet qui ne sortait
+          // pas et « prouvait » un refus qui n'avait pas lieu d'être.
+          levels: [{ source: 'minimal.uvtt', id: `../../${temoin}`, name: 'Étage', order: 0 }],
+        },
+      ],
+    }),
+    'utf-8'
+  );
+
+  assert.throws(() => planMapDeletion(mapsDir, 'piegee'), /hors de maps/);
+  assert.throws(() => deleteMap(mapsDir, 'piegee'), /hors de maps/);
+  assert.ok(fs.existsSync(dehors), 'le fichier hors de maps/ doit être intact');
+});
+
+test('C-1 vignette : fabriquée à la publication, 320 px de large, et publiée au catalogue', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+
+  await prepareMaps({ mapsDir });
+
+  const thumbPath = path.join(mapsDir, 'generated', 'minimal.thumb.webp');
+  assert.ok(fs.existsSync(thumbPath), 'la vignette doit exister sur le disque');
+
+  const vignette = await imageDimensions(thumbPath);
+  const pleine = await imageDimensions(path.join(mapsDir, 'generated', 'minimal.webp'));
+  assert.equal(vignette.width, 320);
+  // Hauteur proportionnelle : une vignette étirée serait pire qu'absente.
+  assert.equal(vignette.height, Math.round((pleine.height * 320) / pleine.width));
+  assert.ok(vignette.width < pleine.width, 'la vignette est bien plus petite que la carte');
+
+  const catalogue = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  assert.equal(catalogue.maps[0].thumbUrl, 'maps/generated/minimal.thumb.webp');
+  assert.deepEqual(validateCatalog(catalogue), []);
+
+  // Elle n'est pas signalée orpheline : sinon chaque publication se plaindrait de ce qu'elle
+  // vient de fabriquer, et on apprendrait à ne plus lire les avertissements.
+  assert.deepEqual(
+    findOrphanArtifacts(mapsDir, catalogue.maps).filter((w) => w.includes('thumb')),
+    []
+  );
+});
+
+test('C-1 vignette : celle d’une scène multi-étages est celle du PREMIER étage', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'tour_00');
+  addMap(mapsDir, 'tour_01');
+  fs.writeFileSync(
+    path.join(mapsDir, 'scenes.json'),
+    JSON.stringify({
+      version: 1,
+      scenes: [
+        {
+          id: 'tour',
+          name: 'Tour',
+          levels: [
+            // Volontairement dans le désordre : c'est `order` qui décide, pas l'ordre du tableau.
+            { source: 'tour_01.uvtt', id: 'sommet', name: 'Sommet', order: 1 },
+            { source: 'tour_00.uvtt', id: 'pied', name: 'Pied', order: 0 },
+          ],
+        },
+      ],
+    }),
+    'utf-8'
+  );
+
+  await prepareMaps({ mapsDir });
+
+  const catalogue = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  assert.equal(catalogue.maps[0].thumbUrl, 'maps/generated/pied.thumb.webp');
+  assert.ok(fs.existsSync(path.join(mapsDir, 'generated', 'pied.thumb.webp')));
+
+  // Et la suppression emporte la vignette avec le reste de la scène.
+  deleteMap(mapsDir, 'tour');
+  assert.ok(!fs.existsSync(path.join(mapsDir, 'generated', 'pied.thumb.webp')));
+});
+
+test('C-1 vignette : une vignette effacée à la main force la refabrication', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+  await prepareMaps({ mapsDir });
+
+  const thumbPath = path.join(mapsDir, 'generated', 'minimal.thumb.webp');
+  fs.rmSync(thumbPath);
+
+  const res = await prepareMaps({ mapsDir });
+  assert.equal(res.preparedCount, 1, 'le cache ne doit pas déclarer la carte à jour');
+  assert.ok(fs.existsSync(thumbPath), 'la vignette est refabriquée');
 });
 
