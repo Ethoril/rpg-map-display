@@ -183,6 +183,9 @@ Aucun n'est commencé. Chacun demande un arbitrage avant d'écrire la première 
 >
 > ⚠ Et la dérive à corriger avant d'écrire quoi que ce soit dessus : `features.animated` est écrit
 > par le générateur, **absent du typedef et du validateur** du catalogue (dette E-4).
+>
+> ⭐ **Ordre retenu le 20/09/2026 : C-1 passe devant C-3.** C'est le seul chantier dont tous les
+> points sont tranchés — rien n'y attend plus le mainteneur.
 
 **L'existant est asymétrique.** Les **pions** ont déjà un CRUD complet côté outil de préparation :
 `/api/tokens/save`, `/api/tokens/delete`, édition par repopulation du formulaire, image bornée à
@@ -355,6 +358,20 @@ deux vues, événement réseau idempotent, mutation validée avant remplacement,
 > réseau local** (l'adresse locale n'est pas dans les domaines autorisés Firebase — le blocage
 > déjà consigné).
 
+> ## ✅ TRANCHÉ le 20/09/2026 — les trois points qui restaient
+>
+> - **La bibliothèque est de la DONNÉE DE CAMPAGNE**, pas de l'état de séance : la liste survit au
+>   F5 et d'une partie à l'autre. La décision du 10/09 de ne stocker que des liens collés la rend
+>   quasi gratuite — quelques centaines d'octets — et le grossissement redouté ne peut pas se
+>   produire par cette route.
+> - **Une seule image affichée à la fois.** La bibliothèque et le choix vivent dans le panneau MJ ;
+>   la vue joueurs garde son overlay transitoire et rien d'autre, conformément au Zero-UI.
+> - **Aucun plafond de taille dur, mais un avertissement MJ.** ⛔ Le plafond est écarté sur un fait
+>   technique, pas par confort : l'image vit derrière une URL tierce, et le navigateur ne peut pas
+>   connaître son poids avant de l'avoir chargée — CORS interdit la lecture des en-têtes. Un refus
+>   « au-delà de N Mo » serait donc contournable et mensonger. L'avertissement, lui, porte sur ce
+>   qui s'observe vraiment : un chargement qui traîne, ou une image énorme une fois arrivée.
+
 **L'existant est minimal.** Un `Handout` a **trois champs** : `id`, `name`, `imageUrl`. Il y a **un
 seul emplacement actif**, pas de liste, pas d'historique, aucun regroupement par session ni par
 campagne. L'`id` est fabriqué à chaque révélation et **n'adresse rien**.
@@ -367,7 +384,10 @@ image de pion collés depuis Drive restent cassés.
 ⭐ **Le vrai manque est un chemin d'envoi de fichier.** `maps/tokens/` en a un ; il n'existe aucun
 équivalent pour les handouts. C'est exactement pourquoi le mainteneur colle encore des liens Drive.
 
-**À trancher** :
+⛔ **Répondu le 20/09/2026 — voir le verdict en tête de section.** La liste est conservée pour la
+trace du raisonnement, pas comme une question ouverte.
+
+**Ce qui était à trancher** :
 - Où vivent les fichiers ? Un `maps/handouts/` avec un `/api/handouts/save` sur le modèle des pions,
   ou un stockage Firebase ? ⚠ Le premier suppose l'outil local ; le second sort de « zéro build » et
   demande une décision de coût.
@@ -838,15 +858,36 @@ question ne se ferme pas par un arbitrage : **elle disparaît avec le code qui l
 
 ### D-2 Le vrai nom dans l'historique public
 
+> ## ✅ TRANCHÉ le 20/09/2026 — on laisse l'historique tel quel
+>
+> ⛔ **Décision du mainteneur.** Le fait qui a pesé : réécrire ne garantit pas l'effacement. GitHub
+> garde les anciens objets accessibles par leur empreinte tant qu'un nettoyage n'a pas été demandé
+> à son support, et tout clone ou fork existant les conserve. Le bénéfice serait partiel pour un
+> coût certain — tous les SHA changent, et les deux machines doivent recôner. ⛔ Ne pas rouvrir de
+> ma propre initiative.
+
 L'identité git est corrigée pour l'avenir. ⚠ Le vrai nom du mainteneur reste dans l'historique public
 de trois dépôts. Réécrire l'historique est une décision qui lui appartient, et elle n'a pas été prise.
 
 ### D-3 Vision dans le noir — la table de référence
 
+> ## ✅ TRANCHÉ le 20/09/2026 — je propose une table, le mainteneur l'ajuste à la table
+>
+> Le lot 3 étant fermé, plus rien n'interdit de régler un PJ. La table de départ se dérive des
+> portées usuelles, en unité de case, et se corrige à l'usage. ⚠ **L'arbitrage porte sur la
+> méthode, pas sur les valeurs** : la table n'est pas écrite à ce jour.
+
 Le besoin d'une table est confirmé et le champ existe depuis le lot 1a. ⚠ Ne pas régler un PJ à 0
 avant le lot 3.
 
 ### D-4 `tests/manuel` — rapatriement à décider
+
+> ## ✅ TRANCHÉ le 20/09/2026 — rapatrier les jugements, laisser les mesures dehors
+>
+> Le tri se fait scénario par scénario, sur le critère déjà en vigueur : **un jugement reproductible
+> entre dans `verify`, une mesure non** — elle dépend de la machine, donc elle serait instable,
+> donc désactivée un jour. ⚠ **Le tri n'est pas fait** : il reste à ouvrir `tests/manuel` et à
+> classer chaque scénario.
 
 `verify` ne couvre pas le geste réel ; `pnpm run test:manuel` existe pour ça. La cause est corrigée
 depuis le 04/08, mais le rapatriement des scénarios dans la porte n'est pas décidé.
@@ -863,14 +904,14 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
 | E-2 | La clé d'arête `min * cellCount + max` dépasse 2⁵³ au-delà de ~9 741 × 9 741 cases | `js/import/blockedEdges.js` | `allCells()` allouerait 10⁸ objets bien avant. Aucun test ne défend la borne |
 | E-3 | Une mutation reste verte : faire juger le verdict R2-03 par un second appel `resumeDecodageFroid(brut, 0)` tout en affichant le net correct | `js/app/diag.js` | Aucun scénario de navigateur ne peut la distinguer, les deux durées d'un Chromium sans charge tombant du même côté du seuil. Ce n'est pas une régression plausible |
 | E-4 | `features.animated` écrit par le générateur, absent du typedef et du validateur du catalogue | `js/import/catalog.js` | À corriger avant d'écrire un CRUD de cartes (C-1) |
-| E-5 | Le typedef `SceneLibraryEntry` n'est référencé par rien | `js/core/types.js:220` | Vestige d'une conception antérieure. À implémenter avec C-1 ou à supprimer |
-| E-6 | `ambient.color` importé, validé, persisté, **lu par aucun rendu** | `js/core/schema.js` | Voir B-1 |
-| E-7 | `if (!level \|\| !grid) return new Set()` — un adaptateur nul rend « aucun mur ne bloque », en silence | `js/import/blockedEdges.js:253` | Même forme que le défaut corrigé en R-04a, mais changer le comportement peut casser des appelants qui passent `null` pendant le chargement |
+| E-5 | ✅ **TRANCHÉ le 20/09/2026 — à IMPLÉMENTER dans C-1**, pas à supprimer : le `thumbUrl` porte la vignette de la bibliothèque de cartes. Le typedef `SceneLibraryEntry` n'est référencé par rien | `js/core/types.js:220` | Vestige d'une conception antérieure. À implémenter avec C-1 ou à supprimer |
+| E-6 | ✅ **TRANCHÉ le 20/09/2026 — à SUPPRIMER**, comme `settings.ambientLevel` le 12/08 et pour la même raison. ⚠ L'import doit continuer à **accepter** le champ dans un fichier UVTT sans le stocker. `ambient.color` importé, validé, persisté, **lu par aucun rendu** | `js/core/schema.js` | Voir B-1 |
+| E-7 | ✅ **TRANCHÉ le 20/09/2026 — rendre l'échec BRUYANT.** ⚠ Relever d'abord **tous** les appelants qui passent `null` pendant le chargement et distinguer ce cas légitime de l'erreur, sous peine de fabriquer un plantage au démarrage. `if (!level \|\| !grid) return new Set()` — un adaptateur nul rend « aucun mur ne bloque », en silence | `js/import/blockedEdges.js:253` | Même forme que le défaut corrigé en R-04a, mais changer le comportement peut casser des appelants qui passent `null` pendant le chargement |
 | E-8 | La marge de `DRAG_HOLD_MS` n'est que de **10,8 ms** — appui p95 mesuré à 139,2 ms pour un seuil à 150 | `js/core/constants.js` | C'est ce chiffre qu'il faudra reprendre si la zone morte 150–500 ms est un jour découplée |
-| E-9 | Une publication RTDB qui échoue est **invisible** : `publish()` est en « tire et oublie » (`.catch(_reportError)`), **aucun appelant n’enregistre `onError`** — l’erreur part en `console.error` puis en `throw` hors pile — et la bibliothèque de scènes annonce « ✓ chargée » sans attendre la résolution | `js/transport/FirebaseTransport.js:1447`, `js/ui/gm/sceneLibrary.js:132` | C’est ce qui a laissé le défaut du canal (corrigé le 07/09/2026) passer inaperçu plusieurs séances. Le corriger demande soit un `publish` qui rende une promesse — il traverse `Transport.js`, `LocalSocketTransport` et le harnais de test — soit un `onError` branché sur une surface d’erreur du panneau MJ. **À trancher** |
+| E-9 | ✅ **TRANCHÉ le 20/09/2026 — LES DEUX** : `publish()` rend une promesse **et** le panneau MJ gagne une surface d'erreur. Une publication RTDB qui échoue est **invisible** : `publish()` est en « tire et oublie » (`.catch(_reportError)`), **aucun appelant n’enregistre `onError`** — l’erreur part en `console.error` puis en `throw` hors pile — et la bibliothèque de scènes annonce « ✓ chargée » sans attendre la résolution | `js/transport/FirebaseTransport.js:1447`, `js/ui/gm/sceneLibrary.js:132` | C’est ce qui a laissé le défaut du canal (corrigé le 07/09/2026) passer inaperçu plusieurs séances. Le corriger demande soit un `publish` qui rende une promesse — il traverse `Transport.js`, `LocalSocketTransport` et le harnais de test — soit un `onError` branché sur une surface d’erreur du panneau MJ. **À trancher** |
 | E-10 | Le filtre qui fait **ignorer** `level.show` au MJ reste vert sous mutation : le bouton publie toujours l étage actif du MJ, et `level.select` synchronise déjà les postes MJ entre eux — un second MJ est donc toujours déjà sur cet étage | `js/app/gm.js` | Garde **défensif**, pas un trou de couverture : il tient si un émetteur publie un jour un autre étage. Même profil qu E-3. ⛔ Ne pas le retirer au motif qu il est vert sous mutation |
 | E-11 | ✅ **CORRIGÉE le 11/09/2026 — une échelle PAR AXE.** Le masque de brouillard était isotrope alors que la grille hexagonale ne l'est pas : `reveal`, `paintDisc` et `composeVisible` projetaient les deux axes avec une **échelle unique**, alors que les rangées hexagonales ne sont espacées que de **√3/2 case** | `js/vision/fog.js`, `js/vision/lightField.js` | ⛔ **Elle n'était PAS dormante, et je l'avais classée telle.** Cette entrée disait « sans effet sur les cartes carrées, qui sont tout le corpus de jeu réel » — le mainteneur l'a rencontrée **le soir même** sur `marais-hex_16x16` : un personnage laissé dans le noir y voyait **en couleur** au lieu des niveaux de gris. Le raisonnement était juste sur le corpus et faux sur l'usage — il venait précisément de commencer à jouer en hexagonal |
-| E-12 | ⚠ **Trouvée en corrigeant E-11, non corrigée.** La largeur de carte sur laquelle le masque est réétiré vient de `mapFromCellPoint({ cellX: widthCells, cellY: heightCells })`, et ce point **porte le décalage odd-r** `0,5 × (rangée & 1)`. Sur une carte hexagonale à nombre de rangées **impair**, la largeur sort donc d'une demi-case trop grande et tout le masque est étiré horizontalement | `js/render/layers/fogLayer.js:475`, `js/render/layers/light.js:710` | **Mesuré** sur 16 colonnes à 140 px/case : 15 rangées → largeur 2 310 px au lieu de 2 240, soit +3,13 %, donc **0,47 case** de dérive à la colonne 15 ; 16 rangées → **exactement zéro**. ⛔ Le cas du mainteneur n'est PAS touché : `marais-hex_16x16` a 16 rangées, un nombre pair. Et aucune carte carrée ne l'est, le décalage odd-r y étant nul. Le correctif tient en une ligne par site — dériver la largeur de `widthCells × échelleX` plutôt que d'un coin — mais il demande son propre test à rangées impaires, et je ne l'ai pas ouvert la nuit où E-11 est passée |
+| E-12 | ✅ **TRANCHÉ le 20/09/2026 — à corriger MAINTENANT**, avec son propre test à rangées impaires. ⚠ **Trouvée en corrigeant E-11, non corrigée à ce jour.** La largeur de carte sur laquelle le masque est réétiré vient de `mapFromCellPoint({ cellX: widthCells, cellY: heightCells })`, et ce point **porte le décalage odd-r** `0,5 × (rangée & 1)`. Sur une carte hexagonale à nombre de rangées **impair**, la largeur sort donc d'une demi-case trop grande et tout le masque est étiré horizontalement | `js/render/layers/fogLayer.js:475`, `js/render/layers/light.js:710` | **Mesuré** sur 16 colonnes à 140 px/case : 15 rangées → largeur 2 310 px au lieu de 2 240, soit +3,13 %, donc **0,47 case** de dérive à la colonne 15 ; 16 rangées → **exactement zéro**. ⛔ Le cas du mainteneur n'est PAS touché : `marais-hex_16x16` a 16 rangées, un nombre pair. Et aucune carte carrée ne l'est, le décalage odd-r y étant nul. Le correctif tient en une ligne par site — dériver la largeur de `widthCells × échelleX` plutôt que d'un coin — mais il demande son propre test à rangées impaires, et je ne l'ai pas ouvert la nuit où E-11 est passée |
 
 > ### ⭐ E-11 — ce que la mesure a montré, et pourquoi le symptôme était la COULEUR
 >
