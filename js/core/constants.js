@@ -698,6 +698,36 @@ export const CHASSE_TIER_REDUCED_SCREEN_PX = 24;
 export const CHASSE_BAND_MAX_RADIUS_RATIO =
   (2 * CHASSE_BAND_SCREEN_PX) / CHASSE_TIER_FULL_SCREEN_PX;
 
+/**
+ * Seuils de l'**avertissement** posé sur une image de séance à son ajout — chantier C-3, tranche A.
+ *
+ * ⛔ **Pourquoi il n'y a pas, et ne peut pas y avoir, de plafond de POIDS.** L'image vit derrière
+ * une URL tierce (Drive, un hébergement du mainteneur). Le navigateur ne connaît son poids qu'une
+ * fois l'image chargée : `Content-Length` est une en-tête de réponse cross-origin, et CORS interdit
+ * de la lire sans un `Access-Control-Expose-Headers` que le serveur tiers n'enverra pas. Un refus
+ * « au-delà de N Mo » serait donc, au choix, impossible à évaluer avant d'avoir déjà tout téléchargé
+ * — donc contournable, donc mensonger. **Ce qui s'observe vraiment, côté MJ, est ce qui est mesuré
+ * ici** : le temps qu'a mis l'image à arriver, et ses dimensions réelles une fois décodée.
+ *
+ * ⚠ Ces seuils ne refusent **rien** : ni l'ajout, ni la révélation. Décision prise — l'image du MJ
+ * lui appartient, l'outil l'informe et n'arbitre pas. C'est aussi ici que quelqu'un voudra plus tard
+ * écrire le plafond dur : qu'il relise le paragraphe ci-dessus d'abord.
+ *
+ * `HANDOUT_SLOW_LOAD_MS = 2000` — ⚠ **jugement, pas mesure**, et l'ancrage est celui du chantier N :
+ * le redécodage d'un fond de carte coûtait ~490 ms sur le Mac et **1 118 ms sur la tablette**, soit
+ * un facteur 2,3 entre le poste du MJ et l'écran de la table. Une image qui met déjà plus de deux
+ * secondes à arriver *chez le MJ*, sur sa liaison et sa machine, fera donc patienter la table bien
+ * au-delà — et un handout se révèle au milieu d'une phrase, pas entre deux séances.
+ *
+ * `HANDOUT_LARGE_DIMENSION_PX = 4096` — la plus grande des deux dimensions. **Dérivé, pas choisi** :
+ * c'est `MAX_TEXTURE_FALLBACK` ci-dessus, l'hypothèse prudente du projet sur ce qu'une tablette
+ * modeste encaisse. L'arithmétique la confirme des deux côtés — 4096 × 4096 pixels décodés en RGBA
+ * pèsent 67 Mo en mémoire sur la Tab S9 FE, et la TV castée affiche 1920 px de large : au-delà de ce
+ * seuil, on transporte et on décode des pixels que personne ne verra jamais.
+ */
+export const HANDOUT_SLOW_LOAD_MS = 2000;
+export const HANDOUT_LARGE_DIMENSION_PX = MAX_TEXTURE_FALLBACK;
+
 export const TOKEN_BORDER_SCREEN_PX = 3;
 export const TOKEN_SELECTION_RING_SCREEN_PX = 3;
 export const TOKEN_SELECTION_OFFSET_SCREEN_PX = 4;

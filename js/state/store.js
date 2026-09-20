@@ -8,6 +8,7 @@ import {
   normalizeLevel,
   isPersistableAssetUrl,
   assertPersistableAssetUrl,
+  identifiantAleatoire,
 } from '../core/schema.js';
 import {
   setSelectionState,
@@ -23,6 +24,7 @@ import { cellKey } from '../core/cellKey.js';
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Cell} Cell */
 /** @typedef {import('../core/types.js').Handout} Handout */
+/** @typedef {import('../core/types.js').HandoutLibraryEntry} HandoutLibraryEntry */
 /** @typedef {import('../core/types.js').CellPoint} CellPoint */
 
 /** @type {Campaign | null} */
@@ -1975,6 +1977,96 @@ export function setActiveHandout(handout) {
   });
 
   notifySubscribers();
+}
+
+/**
+ * Copie figée de la bibliothèque d'images de séance (C-3, tranche A).
+ *
+ * ⚠ Une campagne d'avant C-3 ne porte pas le champ, et une absence vaut **bibliothèque vide** :
+ * c'est ici que cette tolérance est rendue, pour qu'aucun appelant n'ait à la refaire.
+ *
+ * @returns {HandoutLibraryEntry[]}
+ */
+export function getHandoutLibrary() {
+  if (!campaign || !Array.isArray(campaign.handoutLibrary)) return [];
+  return deepFreeze(structuredClone(campaign.handoutLibrary));
+}
+
+/**
+ * Ajoute une image de séance à la bibliothèque, **sans la révéler**.
+ *
+ * L'identifiant est fabriqué **une fois, ici**, et ne bouge plus : c'est lui que porteront toutes
+ * les révélations de cette entrée. Avant C-3, un identifiant était refabriqué à chaque révélation,
+ * donc n'adressait rien — et retirer l'entrée affichée n'était pas reconnaissable.
+ *
+ * @param {{name?: string, imageUrl: string}} entryData
+ * @returns {HandoutLibraryEntry} L'entrée ajoutée, telle qu'enregistrée.
+ */
+export function addHandoutToLibrary(entryData) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!entryData || typeof entryData !== 'object' || !entryData.imageUrl) {
+    throw new Error('Handout invalide : imageUrl requise');
+  }
+  assertPersistableAssetUrl(entryData.imageUrl, 'imageUrl');
+
+  /** @type {HandoutLibraryEntry} */
+  const entry = {
+    id: `handout-${identifiantAleatoire()}`,
+    name: String(entryData.name || '').trim() || 'Sans titre',
+    imageUrl: String(entryData.imageUrl),
+    addedAt: Date.now(),
+  };
+
+  const candidate = structuredClone(campaign);
+  if (!Array.isArray(candidate.handoutLibrary)) {
+    candidate.handoutLibrary = [];
+  }
+  candidate.handoutLibrary.push(entry);
+
+  assertValidCampaign(candidate, `Ajout du handout "${entry.name}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return entry;
+}
+
+/**
+ * Retire une entrée de la bibliothèque.
+ *
+ * ⭐ **Si c'est l'entrée affichée, elle cesse aussi d'être affichée.** Sans cela, la TV garderait
+ * une image que le MJ croit supprimée — et il n'aurait plus aucune entrée sur laquelle cliquer pour
+ * la masquer. C'est porté ici, dans la mutation, plutôt que dans l'interface : un second chemin
+ * vers ce retrait (réseau, restauration) hériterait de la garde au lieu de l'oublier.
+ *
+ * ⚠ L'interface reste chargée de publier `handout.hide` : le store n'a pas de transport, et ce
+ * fichier ne réseaute rien (CLAUDE.md).
+ *
+ * @param {string} handoutId
+ * @returns {boolean} true si une entrée a été retirée.
+ */
+export function removeHandoutFromLibrary(handoutId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!handoutId || typeof handoutId !== 'string') {
+    throw new Error('Identifiant de handout requis');
+  }
+
+  const index = (campaign.handoutLibrary || []).findIndex((h) => h.id === handoutId);
+  if (index < 0) return false;
+
+  const candidate = structuredClone(campaign);
+  (candidate.handoutLibrary || []).splice(index, 1);
+  assertValidCampaign(candidate, `Retrait du handout "${handoutId}"`);
+  replaceCampaign(candidate);
+
+  if (activeHandout && activeHandout.id === handoutId) {
+    activeHandout = null;
+  }
+
+  notifySubscribers();
+  return true;
 }
 
 /** @type {Map<string, string>} */

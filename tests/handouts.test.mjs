@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import * as store from '../js/state/store.js';
 import { applyNetworkEvent, createSnapshotPayload } from '../js/app/networkEvents.js';
-import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
+import { createCampaign, createLevel, createToken, validateCampaign } from '../js/core/schema.js';
 
 /** @typedef {import('../js/core/types.js').NetEvent} NetEvent */
 
@@ -303,6 +303,145 @@ test('8. applyNetworkEvent token.delete converge, et son rejeu n’est pas une a
     false
   );
   assert.deepStrictEqual(store.getCampaign(), avant);
+});
+
+// ── Chantier C-3, tranche A — la bibliothèque d'images de séance ─────────────────────────
+
+/**
+ * Campagne d'un étage, sans aucun pion : le décor minimal des scénarios de bibliothèque.
+ * @param {string} campaignId
+ */
+function campagneVide(campaignId) {
+  return createCampaign({
+    campaignId,
+    name: 'Campagne handouts',
+    levels: [createLevel({ id: 'l1', name: 'Niveau 1' })],
+    tokens: [],
+  });
+}
+
+test('9. Une campagne enregistrée SANS bibliothèque charge, et rend une bibliothèque vide', () => {
+  const heritee = campagneVide('c-h9');
+  // Le champ n'existait pas avant C-3 : on retire celui que `createCampaign` pose aujourd'hui,
+  // pour tenir en main exactement ce qui dort sur le disque du mainteneur.
+  delete heritee.handoutLibrary;
+  assert.equal('handoutLibrary' in heritee, false);
+
+  // Le validateur ne doit pas produire une seule erreur à cause de cette absence.
+  assert.deepEqual(validateCampaign(heritee), []);
+
+  // Et le chargement passe, au lieu de refuser la campagne en bloc.
+  store.loadCampaign(heritee);
+  assert.deepEqual(store.getHandoutLibrary(), []);
+});
+
+test('10. Ajouter une entrée la persiste, et son identifiant l\'adresse encore après un F5', () => {
+  store.setSessionId('sess-handout-lib');
+  store.loadCampaign(campagneVide('c-h10'));
+
+  const ajoutee = store.addHandoutToLibrary({
+    name: 'Lettre du roi',
+    imageUrl: './maps/minimal.webp',
+  });
+  assert.ok(ajoutee.id);
+  assert.ok(Number.isFinite(ajoutee.addedAt));
+
+  // Révélation depuis l'entrée : c'est l'identifiant de la bibliothèque qui part, pas un
+  // identifiant refabriqué pour l'occasion.
+  const reveler = () => {
+    const entree = store.getHandoutLibrary()[0];
+    store.setActiveHandout({ id: entree.id, name: entree.name, imageUrl: entree.imageUrl });
+    return store.getActiveHandout();
+  };
+
+  const premiere = reveler();
+  store.setActiveHandout(null);
+  const seconde = reveler();
+  assert.equal(premiere?.id, seconde?.id);
+  // L'identifiant ADRESSE l'entrée : c'est ce qui manquait avant C-3.
+  assert.ok(store.getHandoutLibrary().some((e) => e.id === seconde?.id));
+
+  // F5 : le store est vidé, puis relu depuis le stockage local. ⚠ La session est détachée
+  // AVANT, sinon `resetStore` sauvegarde son propre vide par-dessus l'enregistrement — ce qu'un
+  // vrai rechargement de page ne fait pas, puisqu'il repart d'un module neuf.
+  store.setSessionId(null);
+  store.resetStore();
+  assert.deepEqual(store.getHandoutLibrary(), []);
+  assert.equal(store.loadFromLocalStorage('sess-handout-lib'), true);
+
+  const relue = store.getHandoutLibrary();
+  assert.equal(relue.length, 1);
+  assert.equal(relue[0].id, ajoutee.id, 'l\'identifiant doit survivre à la persistance');
+  assert.equal(relue[0].name, 'Lettre du roi');
+  assert.equal(relue[0].imageUrl, './maps/minimal.webp');
+  assert.equal(relue[0].addedAt, ajoutee.addedAt);
+
+  // Et il adresse toujours l'entrée relue, donc une révélation d'avant le F5 reste reconnue.
+  assert.ok(relue.some((e) => e.id === premiere?.id));
+
+  store.setSessionId(null);
+});
+
+test('11. Révéler une entrée alors qu\'une autre est affichée remplace l\'affichage', () => {
+  store.loadCampaign(campagneVide('c-h11'));
+  const a = store.addHandoutToLibrary({ name: 'Plan A', imageUrl: './maps/minimal.webp' });
+  const b = store.addHandoutToLibrary({ name: 'Plan B', imageUrl: './maps/minimal.json' });
+
+  store.setActiveHandout({ id: a.id, name: a.name, imageUrl: a.imageUrl });
+  store.setActiveHandout({ id: b.id, name: b.name, imageUrl: b.imageUrl });
+
+  // Un seul emplacement, donc jamais deux images : c'est B, et A n'est plus affichée.
+  assert.equal(store.getActiveHandout()?.id, b.id);
+  assert.equal(store.getActiveHandout()?.imageUrl, './maps/minimal.json');
+  // La bibliothèque, elle, garde les deux : révéler n'est pas retirer.
+  assert.equal(store.getHandoutLibrary().length, 2);
+});
+
+test('12. Retirer l\'entrée affichée la fait cesser d\'être affichée ; retirer une autre n\'y touche pas', () => {
+  store.loadCampaign(campagneVide('c-h12'));
+  const a = store.addHandoutToLibrary({ name: 'Plan A', imageUrl: './maps/minimal.webp' });
+  const b = store.addHandoutToLibrary({ name: 'Plan B', imageUrl: './maps/minimal.json' });
+
+  store.setActiveHandout({ id: b.id, name: b.name, imageUrl: b.imageUrl });
+
+  // Retirer une AUTRE entrée ne doit rien changer à ce qui est à l'écran.
+  assert.equal(store.removeHandoutFromLibrary(a.id), true);
+  assert.equal(store.getActiveHandout()?.id, b.id);
+
+  // Retirer celle qui est affichée la retire aussi de l'écran, sinon la TV garderait une image
+  // que le MJ croit supprimée — et plus aucune entrée ne permettrait de la masquer.
+  assert.equal(store.removeHandoutFromLibrary(b.id), true);
+  assert.equal(store.getActiveHandout(), null);
+  assert.deepEqual(store.getHandoutLibrary(), []);
+
+  // Identifiant inconnu : rien retiré, rien masqué, aucune exception.
+  assert.equal(store.removeHandoutFromLibrary('handout-inexistant'), false);
+});
+
+test('13. Le validateur refuse une bibliothèque mal formée, et nomme l\'entrée fautive', () => {
+  /** @param {any} handoutLibrary */
+  const erreurs = (handoutLibrary) => {
+    const c = campagneVide('c-h13');
+    c.handoutLibrary = handoutLibrary;
+    return validateCampaign(c);
+  };
+
+  assert.deepEqual(erreurs([]), []);
+  assert.ok(erreurs('pas-un-tableau').some((e) => /handoutLibrary doit être un tableau/.test(e)));
+
+  const baseValide = { id: 'h1', name: 'A', imageUrl: './maps/minimal.webp', addedAt: 1 };
+  assert.deepEqual(erreurs([baseValide]), []);
+
+  // ⛔ Une image de séance ne s'embarque pas dans le document de campagne.
+  assert.ok(
+    erreurs([{ ...baseValide, imageUrl: 'data:image/png;base64,AAAA' }]).some((e) =>
+      /imageUrl non persistable/.test(e)
+    )
+  );
+  assert.ok(erreurs([{ ...baseValide, addedAt: 'hier' }]).some((e) => /addedAt invalide/.test(e)));
+  assert.ok(erreurs([{ ...baseValide, id: '' }]).some((e) => /id requis/.test(e)));
+  // Deux entrées de même identifiant : on révélerait l'une en croyant retirer l'autre.
+  assert.ok(erreurs([baseValide, { ...baseValide }]).some((e) => /id dupliqué/.test(e)));
 });
 
 

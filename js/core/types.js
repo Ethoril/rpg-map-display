@@ -244,6 +244,15 @@
  *   Optionnel dans le typedef, et il doit le rester : les campagnes enregistrées avant UX-14 ne
  *   le portent pas, et leur absence vaut réserve vide.
  * @property {Template[]} templates
+ * @property {HandoutLibraryEntry[]} [handoutLibrary] Bibliothèque d'images de séance (C-3).
+ *
+ *   ⭐ C'est de la **donnée de campagne**, et non de l'état de séance : la liste survit au F5 et
+ *   d'une partie à l'autre, là où `activeHandout` — l'image affichée *maintenant* — vit dans
+ *   l'état de session.
+ *
+ *   Optionnel dans le typedef, et il doit le rester : les campagnes enregistrées avant C-3 ne le
+ *   portent pas, et leur absence vaut **bibliothèque vide**, jamais un refus (même traitement que
+ *   `reserve` ci-dessus, que `ambient.color` et que `visionBright`).
  * @property {CampaignSettings} settings
  */
 
@@ -272,10 +281,30 @@
  */
 
 /**
+ * Image de séance **actuellement révélée** aux joueurs. Une seule à la fois.
+ *
+ * Son `id` est celui de l'entrée de bibliothèque dont elle vient (`HandoutLibraryEntry`) : c'est
+ * ce qui permet de savoir, au retrait d'une entrée, si c'est *celle-là* qui est à l'écran.
  * @typedef {Object} Handout
  * @property {string} id
  * @property {string} name
  * @property {string} imageUrl
+ */
+
+/**
+ * Entrée de la **bibliothèque d'images de séance** — chantier C-3, tranche A.
+ *
+ * ⛔ Le dépôt n'héberge aucune image de séance : ce n'est qu'un lien, collé par le MJ, vers une
+ * image qui vit chez lui. Une entrée pèse quelques centaines d'octets, et la supprimer ici ne
+ * supprime rien chez personne.
+ *
+ * ⭐ L'`id` est **stable** : fabriqué une fois à l'ajout, il ne change plus. C'est ce qui manquait
+ * avant C-3, où un identifiant était refabriqué à chaque révélation et n'adressait donc rien.
+ * @typedef {Object} HandoutLibraryEntry
+ * @property {string} id
+ * @property {string} name
+ * @property {string} imageUrl
+ * @property {number} addedAt Horodatage d'ajout (ms epoch), pour l'ordre d'affichage.
  */
 
 /**
