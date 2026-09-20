@@ -873,21 +873,62 @@ de trois dépôts. Réécrire l'historique est une décision qui lui appartient,
 
 > ## ✅ TRANCHÉ le 20/09/2026 — je propose une table, le mainteneur l'ajuste à la table
 >
-> Le lot 3 étant fermé, plus rien n'interdit de régler un PJ. La table de départ se dérive des
-> portées usuelles, en unité de case, et se corrige à l'usage. ⚠ **L'arbitrage porte sur la
-> méthode, pas sur les valeurs** : la table n'est pas écrite à ce jour.
+> Le champ est `visionDim` (`js/core/types.js:170`) : **portée de vision DANS LE NOIR, en cases**.
+> Le lot 3 étant fermé, plus rien n'interdit de régler un PJ.
+>
+> ### La table proposée — ⏳ EN ATTENTE de l'ajustement du mainteneur
+>
+> | Profil | `visionDim` | Équivalent usuel |
+> |---|---|---|
+> | Humain, et tout PNJ sans capacité nocturne | **0** | ne voit rien hors des zones éclairées |
+> | Vision nocturne courte | **6** | 30 pieds / 9 m |
+> | Vision nocturne standard — nain, elfe, demi-elfe | **12** | 60 pieds / 18 m |
+> | Vision nocturne étendue — drow, duergar, créature des profondeurs | **20** | 120 pieds en voudrait 24 ⛔ |
+>
+> ### ⚠ Deux faits relevés en l'écrivant, et qui demandent son verdict
+>
+> **1. Le plafond est à 20 cases et il rogne EN SILENCE.**
+> `VISION_MAX_RANGE_CELLS = 20` (`js/core/constants.js:60`), appliqué par
+> `Math.min(token.visionDim ?? 0, VISION_MAX_RANGE_CELLS)` (`js/app/gm.js:551`). Un pion réglé à
+> 24 voit donc comme un pion réglé à 20, sans un mot. Soit on relève le plafond, soit la table
+> s'arrête à 20 — mais la dernière ligne ci-dessus ne peut pas rester ambiguë.
+>
+> **2. Le défaut du schéma contredit la première ligne de la table.**
+> `createToken` pose `visionDim: overrides.visionDim ?? 12` (`js/core/schema.js:571`) : **tout**
+> pion créé sans valeur explicite voit à 12 cases dans le noir, y compris un PNJ humain qui,
+> d'après la table, devrait être à 0. ⭐ C'est le point qui change quelque chose à la table de jeu,
+> pas la table elle-même. Trois issues possibles, à trancher : garder 12 par commodité, passer le
+> défaut à 0 et régler les races nocturnes une par une, ou faire dépendre le défaut de `kind`
+> (PJ / PNJ). ⛔ Je n'ai rien changé : modifier ce défaut déplacerait la vision de tous les pions
+> des campagnes existantes, et « rien ne se déplace dans le dos de personne ».
 
 Le besoin d'une table est confirmé et le champ existe depuis le lot 1a. ⚠ Ne pas régler un PJ à 0
 avant le lot 3.
 
 ### D-4 `tests/manuel` — rapatriement à décider
 
-> ## ✅ TRANCHÉ le 20/09/2026 — rapatrier les jugements, laisser les mesures dehors
+> ## ✅ TRANCHÉ le 20/09/2026, puis RÉSOLU SANS TRAVAIL le même jour — c'était déjà fait
 >
-> Le tri se fait scénario par scénario, sur le critère déjà en vigueur : **un jugement reproductible
-> entre dans `verify`, une mesure non** — elle dépend de la machine, donc elle serait instable,
-> donc désactivée un jour. ⚠ **Le tri n'est pas fait** : il reste à ouvrir `tests/manuel` et à
-> classer chaque scénario.
+> L'arbitrage retenu était : rapatrier dans `verify` les scénarios qui rendent un **jugement**,
+> laisser dehors ceux qui prennent une **mesure**. En ouvrant `tests/manuel` pour faire le tri, le
+> tri s'est révélé **sans objet**.
+>
+> ⛔ **Le fait, vérifié le 20/09/2026** : `test:manuel` et `test:gestes` sont **la même commande**
+> — `playwright test --project=manuel` (`package.json:20-21`) — et `verify` lance déjà
+> `test:gestes` (`package.json:11`). Le projet `manuel` de `playwright.config.mjs:59-61` ne
+> contient qu'un fichier, `tests/manuel/gmToolDisarmGeste.spec.mjs`, soit **3 tests**, et ils
+> passent donc à chaque porte.
+>
+> **Ce qui reste hors porte est `tests/mesures/`**, exclu du projet `chromium`
+> (`playwright.config.mjs:55`) et lancé par son propre projet. ⭐ Et c'est **conforme à la règle**,
+> pas un oubli : une mesure dépend de la machine, donc elle serait instable, donc désactivée un
+> jour. Elle n'a rien à faire dans un jugement reproductible.
+>
+> ⚠ **Ce qui a produit la confusion est un alias en double** : deux scripts `package.json` portant
+> le même contenu sous deux noms, dont l'un — `test:manuel` — laissait croire à un territoire non
+> couvert. L'alias est conservé (habitude du mainteneur), mais `CLAUDE.md` a été corrigé le même
+> jour : il affirmait que `verify` ne couvre pas le geste réel, ce qui est **faux depuis que
+> `test:gestes` est entré dans la porte**.
 
 `verify` ne couvre pas le geste réel ; `pnpm run test:manuel` existe pour ça. La cause est corrigée
 depuis le 04/08, mais le rapatriement des scénarios dans la porte n'est pas décidé.
@@ -905,7 +946,7 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
 | E-3 | Une mutation reste verte : faire juger le verdict R2-03 par un second appel `resumeDecodageFroid(brut, 0)` tout en affichant le net correct | `js/app/diag.js` | Aucun scénario de navigateur ne peut la distinguer, les deux durées d'un Chromium sans charge tombant du même côté du seuil. Ce n'est pas une régression plausible |
 | E-4 | `features.animated` écrit par le générateur, absent du typedef et du validateur du catalogue | `js/import/catalog.js` | À corriger avant d'écrire un CRUD de cartes (C-1) |
 | E-5 | ✅ **TRANCHÉ le 20/09/2026 — à IMPLÉMENTER dans C-1**, pas à supprimer : le `thumbUrl` porte la vignette de la bibliothèque de cartes. Le typedef `SceneLibraryEntry` n'est référencé par rien | `js/core/types.js:220` | Vestige d'une conception antérieure. À implémenter avec C-1 ou à supprimer |
-| E-6 | ✅ **TRANCHÉ le 20/09/2026 — à SUPPRIMER**, comme `settings.ambientLevel` le 12/08 et pour la même raison. ⚠ L'import doit continuer à **accepter** le champ dans un fichier UVTT sans le stocker. `ambient.color` importé, validé, persisté, **lu par aucun rendu** | `js/core/schema.js` | Voir B-1 |
+| E-6 | ✅ **DÉJÀ CORRIGÉE le 17/08/2026 par UX-07** (`840d68c`) — cette ligne était **périmée**, et elle a été soumise au mainteneur le 20/09 comme une décision ouverte. Il a répondu « à supprimer » : c'est ce qui avait été fait un mois plus tôt. ⛔ Le champ n'est plus ni écrit par l'import, ni validé, ni normalisé, ni persisté ; il est **toléré en lecture** sur les campagnes enregistrées, jamais refusé. Vérifié le 20/09 : aucune occurrence de `ambient.color` dans `js/` hors commentaires | `js/core/types.js:92`, `js/core/schema.js:932`, `js/import/uvtt.js:422` | ⭐ **La leçon est sur le document, pas sur le code** : une dette reste inscrite après sa correction si le correctif ne vient pas la rayer. Avant de soumettre une ligne de ce tableau à un arbitrage, la vérifier dans le code |
 | E-7 | ✅ **TRANCHÉ le 20/09/2026 — rendre l'échec BRUYANT.** ⚠ Relever d'abord **tous** les appelants qui passent `null` pendant le chargement et distinguer ce cas légitime de l'erreur, sous peine de fabriquer un plantage au démarrage. `if (!level \|\| !grid) return new Set()` — un adaptateur nul rend « aucun mur ne bloque », en silence | `js/import/blockedEdges.js:253` | Même forme que le défaut corrigé en R-04a, mais changer le comportement peut casser des appelants qui passent `null` pendant le chargement |
 | E-8 | La marge de `DRAG_HOLD_MS` n'est que de **10,8 ms** — appui p95 mesuré à 139,2 ms pour un seuil à 150 | `js/core/constants.js` | C'est ce chiffre qu'il faudra reprendre si la zone morte 150–500 ms est un jour découplée |
 | E-9 | ✅ **TRANCHÉ le 20/09/2026 — LES DEUX** : `publish()` rend une promesse **et** le panneau MJ gagne une surface d'erreur. Une publication RTDB qui échoue est **invisible** : `publish()` est en « tire et oublie » (`.catch(_reportError)`), **aucun appelant n’enregistre `onError`** — l’erreur part en `console.error` puis en `throw` hors pile — et la bibliothèque de scènes annonce « ✓ chargée » sans attendre la résolution | `js/transport/FirebaseTransport.js:1447`, `js/ui/gm/sceneLibrary.js:132` | C’est ce qui a laissé le défaut du canal (corrigé le 07/09/2026) passer inaperçu plusieurs séances. Le corriger demande soit un `publish` qui rende une promesse — il traverse `Transport.js`, `LocalSocketTransport` et le harnais de test — soit un `onError` branché sur une surface d’erreur du panneau MJ. **À trancher** |
@@ -953,6 +994,7 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
 > promesse sont donc défendues.
 
 ---
+| E-13 | ⚠ **Trouvée le 20/09/2026 en cartographiant E-12, même famille.** Le **cadrage caméra** dérive lui aussi les dimensions de la carte d'un coin qui porte le décalage odd-r : `fitActiveLevel` centre le pan sur `bottomRight / 2` et règle le zoom sur `bottomRight`, tous deux issus de `mapFromCellPoint({ cellX: widthCells, cellY: heightCells })` | `js/app/gm.js:663`, `js/app/gm.js:693`, `js/app/player.js:462`, `js/app/player.js:492` | Sur une carte hexagonale à nombre de rangées **impair**, le cadrage d'ouverture est 3,13 % trop large et le centre décalé d'un quart de case. ⛔ **Sans effet sur une grille carrée ni sur un nombre de rangées pair** — même démonstration que E-12. Le correctif est le même : dériver de `origine + nbCases × échelle` par axe. ⚠ Tenu HORS du correctif E-12 délibérément : E-12 touche le rendu du masque, celui-ci touche la caméra, et mélanger les deux aurait élargi le rayon d'explosion d'un correctif à une ligne |
 
 ## F. Leçons de méthode, pour ne pas les repayer
 

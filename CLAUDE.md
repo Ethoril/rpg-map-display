@@ -41,8 +41,9 @@ Ces trois documents normatifs priment sur toute habitude venue d'un autre projet
 pnpm run verify
 ```
 
-typecheck → `check-deps` → 454 unitaires → e2e Playwright → gestes. ⚠ `pnpm run test:manuel` est
-**hors porte** : `verify` ne couvre pas le geste réel.
+typecheck → `check-deps` → 454 unitaires → e2e Playwright → gestes. ⭐ **Les gestes SONT dans la
+porte** : `test:gestes` et `test:manuel` sont la même commande, et `verify` lance la première.
+⚠ Ce qui reste dehors est `tests/mesures/` — et c'est voulu, voir ci-dessous.
 
 **Ce qui entre dans la porte** : un jugement reproductible. **Ce qui n'y entre pas** : une mesure —
 elle dépend de la machine, donc elle serait instable, donc désactivée un jour. Les invariants
