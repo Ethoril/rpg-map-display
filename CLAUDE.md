@@ -41,7 +41,7 @@ Ces trois documents normatifs priment sur toute habitude venue d'un autre projet
 pnpm run verify
 ```
 
-typecheck → `check-deps` → 454 unitaires → e2e Playwright → gestes. ⭐ **Les gestes SONT dans la
+typecheck → `check-deps` → ~580 unitaires → e2e Playwright → gestes. ⭐ **Les gestes SONT dans la
 porte** : `test:gestes` et `test:manuel` sont la même commande, et `verify` lance la première.
 ⚠ Ce qui reste dehors est `tests/mesures/` — et c'est voulu, voir ci-dessous.
 

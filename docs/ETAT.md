@@ -1840,10 +1840,48 @@ tablette** (A-2) et trois critères **sur lecture du mainteneur** (A-3), le dév
 depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jour et il est tenu.
 ⛔ Le décompte fait foi au §11 du CdC : il n'y reste plus une seule case vide.
 
-⚠ **« Complet » ne veut pas dire « fini »** : `QUESTIONS-EN-ATTENTE.md` porte encore deux chantiers
-cadrés — la **bibliothèque de cartes** (C-1) et les **images de séance** (C-3) — et douze dettes
-techniques consignées, dont onze encore ouvertes. Ce qui est complet, c'est la liste des critères
+⚠ **« Complet » ne veut pas dire « fini »** : ce qui est complet, c'est la liste des critères
 d'acceptation du §11.
+
+> ### ⭐ Séance du 20/09/2026 — onze arbitrages, puis six dettes fermées et deux chantiers ouverts
+>
+> Le mainteneur a tranché en séance de choix multiples tout ce qui restait ouvert. **Trois de ses
+> onze réponses se sont révélées sans objet une fois vérifiées dans le code** — et c'est le
+> résultat le plus utile de la journée :
+>
+> - **E-6 était déjà corrigée** depuis le 17/08 (UX-07). La ligne du tableau des dettes ne l'avait
+>   pas appris, et elle a donc été soumise comme une décision ouverte.
+> - **D-4 était déjà satisfaite** : `test:gestes` et `test:manuel` sont la même commande, et
+>   `verify` lance déjà la première. ⛔ `CLAUDE.md` affirmait le contraire — corrigé.
+> - **E-12 avait une petite sœur**, E-13, trouvée en la cartographiant.
+>
+> ⭐ **La leçon porte sur le document, pas sur le code** : une dette reste inscrite après sa
+> correction si le correctif ne vient pas la rayer. Vérifier une ligne du tableau E dans le code
+> **avant** de la soumettre à un arbitrage.
+>
+> **Livré le même jour** : E-4, E-5, E-7, E-9, E-12, E-13, plus la **tranche A de C-1** (renommer,
+> supprimer avec artefacts et source, vignette) et la **tranche A de C-3** (bibliothèque d'images
+> en donnée de campagne, avertissement de taille sans plafond dur).
+>
+> ⭐ **Deux défauts vivants ont été trouvés en corrigeant, pas en cherchant**, et ce sont les deux
+> plus chers du lot :
+>
+> 1. **E-13 n'était pas un défaut de cadrage mais d'ALIGNEMENT.** Le coin bas-droit étirait aussi
+>    `backgroundLayer.render`, donc l'image de décor : sur une carte hexagonale à rangées impaires,
+>    les murs dessinés ne tombaient pas sur les arêtes de la grille. La formule était dupliquée
+>    **six** fois ; elle vit désormais dans `GridAdapter.mapExtent()`, et c'est précisément sa
+>    duplication qui avait permis de n'en corriger que deux avec E-12.
+> 2. **E-9 se serait recréée en se corrigeant.** Faire passer les gardes de `publish` du `throw`
+>    synchrone au résultat rendu privait `importPanel` de son seul filet : il aurait annoncé
+>    « chargé et **publié** » alors que rien ne partait — au pire endroit, puisque c'est ce panneau
+>    qui fabrique les URL `blob:`/`data:` que la garde refuse.
+>
+> ⏳ **Ce qui reste** : la tranche B de C-1 (vignette dans le panneau MJ), la suite de C-3, et
+> **deux points qui attendent le mainteneur**, tous deux relevés en proposant la table D-3 —
+> `VISION_MAX_RANGE_CELLS = 20` rogne en silence, et `createToken` donne 12 cases de vision
+> nocturne à **tout** pion créé sans valeur, y compris un PNJ humain qui devrait être à 0.
+> ⛔ Rien n'a été changé sur ce dernier point : il déplacerait la vision de tous les pions des
+> campagnes existantes.
 
 > ### ✅ Le chantier C-2 des lumières est COMPLET le 11/09/2026 — quatre tranches
 >
