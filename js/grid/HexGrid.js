@@ -104,6 +104,23 @@ export class HexGrid {
   }
 
   /**
+   * Étendue de la carte en pixels, depuis l'origine de l'espace carte — voir le contrat dans
+   * `GridAdapter.js`.
+   *
+   * ⭐ **L'axe Y n'a pas la même échelle que l'axe X** : les rangées hexagonales ne sont espacées
+   * que de √3/2 case. Et la largeur ne porte **aucun** décalage odd-r — c'est tout l'objet de
+   * cette méthode.
+   *
+   * @returns {{width: number, height: number}}
+   */
+  mapExtent() {
+    return {
+      width: this.offsetX + this.widthCells * this.pxPerCell,
+      height: this.offsetY + this.heightCells * this.pxPerCell * SQRT3_OVER_2,
+    };
+  }
+
+  /**
    * Cellule → CENTRE de la case, en pixels carte (odd-r). Alias explicite de
    * `pointFromCell` pour l'API sans ambiguïté de G-1 (`docs/QUESTIONS-EN-ATTENTE.md` C-5).
    *

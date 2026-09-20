@@ -473,13 +473,9 @@ export class FogLayer {
     // la largeur de la carte. Interrogé en `cellY = heightCells`, il ajoutait une demi-case
     // sur toute carte hexagonale à nombre de rangées IMPAIR : le masque entier y était
     // étiré en largeur.
-    const mapOrigin = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const oneColumn = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const oneRow = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
-    const mapScaleX = Math.abs(oneColumn.x - mapOrigin.x);
-    const mapScaleY = Math.abs(oneRow.y - mapOrigin.y);
-    const mapWidth = Math.ceil(mapOrigin.x + level.widthCells * mapScaleX);
-    const mapHeight = Math.ceil(mapOrigin.y + level.heightCells * mapScaleY);
+    const etendue = grid.mapExtent();
+    const mapWidth = Math.ceil(etendue.width);
+    const mapHeight = Math.ceil(etendue.height);
 
     if (mapWidth <= 0 || mapHeight <= 0) return;
 

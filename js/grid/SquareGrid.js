@@ -71,6 +71,19 @@ export class SquareGrid {
   }
 
   /**
+   * Étendue de la carte en pixels, depuis l'origine de l'espace carte — voir le contrat dans
+   * `GridAdapter.js`. En pavage carré, une case fait `pxPerCell` sur les deux axes.
+   *
+   * @returns {{width: number, height: number}}
+   */
+  mapExtent() {
+    return {
+      width: this.offsetX + this.widthCells * this.pxPerCell,
+      height: this.offsetY + this.heightCells * this.pxPerCell,
+    };
+  }
+
+  /**
    * Cellule → CENTRE de la case, en pixels carte. Alias explicite de `pointFromCell`
    * pour l'API sans ambiguïté de G-1 (`docs/QUESTIONS-EN-ATTENTE.md` C-5).
    *

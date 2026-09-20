@@ -459,13 +459,14 @@ export async function bootstrapPlayerApp(options = {}) {
       return;
     }
     const grid = gridFor(activeLevel);
-    const bottomRight = grid.mapFromCellPoint({
-      cellX: activeLevel.widthCells,
-      cellY: activeLevel.heightCells,
-    });
-    camera.setPan(bottomRight.x / 2, bottomRight.y / 2);
+    // ⛔ `mapExtent()`, jamais le coin bas-droit — E-13 : `mapFromCellPoint` porte le décalage
+    // odd-r de la rangée, qui n'a rien à voir avec la taille de la carte. Sur une carte
+    // hexagonale à nombre de rangées IMPAIR, il rendait une demi-case de trop, et c'est le
+    // DÉCOR lui-même qui s'en trouvait étiré, désaligné de la grille.
+    const etendue = grid.mapExtent();
+    camera.setPan(etendue.width / 2, etendue.height / 2);
     camera.setZoom(
-      Math.min(stage.width / Math.max(1, bottomRight.x), stage.height / Math.max(1, bottomRight.y))
+      Math.min(stage.width / Math.max(1, etendue.width), stage.height / Math.max(1, etendue.height))
     );
   }
 
@@ -489,10 +490,11 @@ export async function bootstrapPlayerApp(options = {}) {
     if (!activeLevel) return;
 
     const grid = gridFor(activeLevel);
-    const bottomRight = grid.mapFromCellPoint({
-      cellX: activeLevel.widthCells,
-      cellY: activeLevel.heightCells,
-    });
+    // ⛔ `mapExtent()`, jamais le coin bas-droit — E-13 : `mapFromCellPoint` porte le décalage
+    // odd-r de la rangée, qui n'a rien à voir avec la taille de la carte. Sur une carte
+    // hexagonale à nombre de rangées IMPAIR, il rendait une demi-case de trop, et c'est le
+    // DÉCOR lui-même qui s'en trouvait étiré, désaligné de la grille.
+    const etendue = grid.mapExtent();
     void backgroundLayer.load(activeLevel.imageUrl);
 
     stage.context.save();
@@ -500,7 +502,7 @@ export async function bootstrapPlayerApp(options = {}) {
     camera.applyToContext(stage.context);
     // ⛔ **Après** `applyToContext`, jamais avant : cette méthode **borne `camera.zoom` en
     // le mutant**. Voir le commentaire jumeau dans `gm.js`.
-    videoBackdrop.place(camera, bottomRight.x, bottomRight.y, stage.width, stage.height);
+    videoBackdrop.place(camera, etendue.width, etendue.height, stage.width, stage.height);
     let animationActive = false;
     layerDurations.background = 0;
     layerDurations.grid = 0;
@@ -514,7 +516,7 @@ export async function bootstrapPlayerApp(options = {}) {
     renderLayerStack({
       background: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        backgroundLayer.render(stage.context, bottomRight.x, bottomRight.y, {
+        backgroundLayer.render(stage.context, etendue.width, etendue.height, {
           role: 'players',
           suppressed: videoBackdrop.active,
         });

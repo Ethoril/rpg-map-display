@@ -390,3 +390,49 @@ test('R-02 : Grille HexGrid odd-r — Bornes rectangulaires 12x12 et aller-retou
     }
   }
 });
+
+// ── E-13 : `mapExtent` ne porte AUCUN décalage odd-r ────────────────────────────────────
+
+test('E-13 : mapExtent ignore le décalage odd-r — rangées IMPAIRES et PAIRES rendent la même largeur', () => {
+  // ⛔ Le défaut mesuré : `mapFromCellPoint({cellX: 16, cellY: 15})` rendait 2 310 px au lieu de
+  // 2 240, parce que la rangée 15 est impaire et porte `0,5 × pxPerCell`. Six sites recopiaient
+  // cette erreur — le masque de brouillard, le champ lumineux, le cadrage caméra des deux vues,
+  // et surtout l'étirement de l'IMAGE DE FOND, qui s'en trouvait désalignée de la grille.
+  const impair = new HexGrid(
+    createLevel({ grid: { type: 'hex', offsetX: 0, offsetY: 0 }, widthCells: 16, heightCells: 15, pxPerCell: 140 })
+  );
+  const pair = new HexGrid(
+    createLevel({ grid: { type: 'hex', offsetX: 0, offsetY: 0 }, widthCells: 16, heightCells: 16, pxPerCell: 140 })
+  );
+
+  assert.equal(impair.mapExtent().width, 2240, '16 colonnes à 140 px font 2 240 px, quelle que soit la parité');
+  assert.equal(pair.mapExtent().width, 2240);
+
+  // Et le piège inverse : la hauteur, elle, DOIT dépendre du nombre de rangées, sinon ce test
+  // passerait aussi sur un `mapExtent` qui rendrait une constante.
+  assert.ok(Math.abs(impair.mapExtent().height - 15 * 140 * (SQRT3 / 2)) < 1e-9);
+  assert.ok(Math.abs(pair.mapExtent().height - 16 * 140 * (SQRT3 / 2)) < 1e-9);
+  assert.notEqual(impair.mapExtent().height, pair.mapExtent().height);
+});
+
+test('E-13 : mapExtent inclut l’offset de la grille, comme le faisait le coin bas-droit', () => {
+  // Non-régression : les six appelants dessinent depuis l'origine de l'espace carte (0,0), donc
+  // l'étendue doit englober l'offset. Le retirer décalerait tout le décor.
+  const grille = new HexGrid(
+    createLevel({ grid: { type: 'hex', offsetX: 37, offsetY: -11 }, widthCells: 16, heightCells: 15, pxPerCell: 140 })
+  );
+  assert.equal(grille.mapExtent().width, 37 + 2240);
+  assert.ok(Math.abs(grille.mapExtent().height - (-11 + 15 * 140 * (SQRT3 / 2))) < 1e-9);
+});
+
+test('E-13 : en grille CARRÉE, mapExtent rend exactement ce que rendait le coin bas-droit', () => {
+  // La preuve du no-op sur le pavage qui porte tout le corpus de jeu réel : l'ancienne formule
+  // et la nouvelle doivent coïncider, parité comprise.
+  for (const heightCells of [15, 16]) {
+    const level = createLevel({ grid: { type: 'square', offsetX: 23, offsetY: 5 }, widthCells: 16, heightCells, pxPerCell: 140 });
+    const grille = new SquareGrid(level);
+    const ancien = grille.mapFromCellPoint({ cellX: level.widthCells, cellY: level.heightCells });
+    assert.equal(grille.mapExtent().width, ancien.x, `largeur inchangée à ${heightCells} rangées`);
+    assert.equal(grille.mapExtent().height, ancien.y, `hauteur inchangée à ${heightCells} rangées`);
+  }
+});

@@ -708,13 +708,9 @@ export class LightLayer {
     // la largeur de la carte. Interrogé en `cellY = heightCells`, il ajoutait une demi-case
     // sur toute carte hexagonale à nombre de rangées IMPAIR : le champ lumineux entier y
     // était étiré en largeur.
-    const origineCarte = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const uneColonne = adaptateur.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const uneRangee = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 1 });
-    const echelleX = Math.abs(uneColonne.x - origineCarte.x);
-    const echelleY = Math.abs(uneRangee.y - origineCarte.y);
-    const largeurCarte = Math.ceil(origineCarte.x + level.widthCells * echelleX);
-    const hauteurCarte = Math.ceil(origineCarte.y + level.heightCells * echelleY);
+    const etendue = adaptateur.mapExtent();
+    const largeurCarte = Math.ceil(etendue.width);
+    const hauteurCarte = Math.ceil(etendue.height);
     if (largeurCarte <= 0 || hauteurCarte <= 0) return false;
 
     // ⭐ Le MJ est assombri DEUX FOIS MOINS que la table — le rapport que le fog applique déjà

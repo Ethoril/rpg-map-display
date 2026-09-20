@@ -28,6 +28,18 @@
  *   `cellCenter`, jamais celle-ci.** Ne jamais déduire une boîte englobante par différence
  *   de deux appels — voir `cellBounds`.
  *
+ * @property {() => {width: number, height: number}} mapExtent
+ *   Étendue de la carte en pixels, **mesurée depuis l'origine de l'espace carte (0,0)** —
+ *   l'offset de la grille y est donc inclus. C'est la taille vers laquelle on agrandit un
+ *   masque, et celle sur laquelle on cadre la caméra.
+ *
+ *   ⛔ **Ne JAMAIS la reconstituer par `mapFromCellPoint({cellX: widthCells, cellY: heightCells})`.**
+ *   Ce point porte le décalage odd-r `0,5 × (rangée & 1)`, qui dit où commence une rangée
+ *   impaire et n'a rien à voir avec la largeur de la carte : sur une carte hexagonale à nombre
+ *   de rangées **impair**, il rend une demi-case de trop. C'est exactement ce qui a produit les
+ *   dettes **E-12** (masque de brouillard et champ lumineux étirés) et **E-13** (cadrage caméra),
+ *   à six endroits qui recopiaient tous la même erreur.
+ *
  * @property {(p: MapPoint) => CellPoint} cellPointFromMap
  *   Réciproque. Sert à l'éditeur de murs du lot 2.
  *

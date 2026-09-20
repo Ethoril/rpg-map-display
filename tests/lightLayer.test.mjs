@@ -208,11 +208,29 @@ const ADAPTATEUR = {
     const size = Math.max(1, sizeCells || 1);
     return { x: cp.cellX * 100, y: cp.cellY * 100, width: size * 100, height: size * 100 };
   },
+  // Un vrai `GridAdapter` tient ses dimensions du niveau qui l'a construit. Ce faux-ci est
+  // partagé par tout le fichier, donc `etage()` les lui repose à chaque niveau fabriqué.
+  widthCells: 10,
+  heightCells: 10,
+  /** @returns {{width: number, height: number}} */
+  mapExtent() {
+    return { width: this.widthCells * 100, height: this.heightCells * 100 };
+  },
 };
 
-/** @param {any} overrides */
+/**
+ * ⛔ **Repose les dimensions sur `ADAPTATEUR` — ne pas retirer.** Écrire ici un `mapExtent`
+ * constant, ou le recopier à la main dans le faux adaptateur, ferait exactement le faux vert
+ * que ce projet a déjà payé : le test passerait pendant qu'en production la carte serait
+ * mesurée autrement. Un seul endroit fabrique le niveau, donc un seul fixe les deux.
+ *
+ * @param {any} overrides
+ */
 function etage(overrides = {}) {
-  return createLevel({ id: 'lvl-1', widthCells: 10, heightCells: 10, ...overrides });
+  const level = createLevel({ id: 'lvl-1', widthCells: 10, heightCells: 10, ...overrides });
+  ADAPTATEUR.widthCells = level.widthCells;
+  ADAPTATEUR.heightCells = level.heightCells;
+  return level;
 }
 
 /** Le champ interne de la couche. Il existe des que `update` a tourne ; le cas nul est
