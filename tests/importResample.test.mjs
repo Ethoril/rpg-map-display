@@ -2,10 +2,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { resample, MAX_PREPARED_TEXTURE_PX } from '../scripts/resample.mjs';
 import { main as importUvttMain } from '../scripts/import-uvtt.mjs';
 import { validateCampaign } from '../js/core/schema.js';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Dossier de sortie temporaire, supprimé à la fin du test — modèle de
+ * `tests/prepare-maps.test.mjs`. ⛔ Sans lui, l'import écrivait dans le `maps/` du dépôt et
+ * `git status` après `pnpm run verify` ne voulait plus rien dire (dette E-14).
+ * @param {import('node:test').TestContext} t
+ * @returns {string}
+ */
+function makeTempOutDir(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rpg-import-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 test('resample réduit vers la cible quand la source est plus dense', async () => {
   const minimalPath = path.resolve('fixtures/synthetic/minimal.uvtt');
@@ -65,17 +82,20 @@ test('resample plafonne à MAX_PREPARED_TEXTURE_PX sans jamais agrandir', async 
   assert.equal(result.warnings.length, 2);
 });
 
-test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON valide', async () => {
+test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON valide', async (t) => {
   const fixturePath = path.resolve('fixtures/synthetic/minimal.uvtt');
+  const outDir = makeTempOutDir(t);
 
   // Exécution programmatique de la fonction principale d'import
   const originalArgv = process.argv;
   process.argv = ['node', 'scripts/import-uvtt.mjs', fixturePath, '140'];
 
   try {
-    const res = await importUvttMain();
+    const res = await importUvttMain({ outDir });
     assert.ok(res);
 
+    assert.equal(res.webpPath, path.join(outDir, 'minimal.webp'));
+    assert.equal(res.jsonPath, path.join(outDir, 'minimal.json'));
     assert.ok(fs.existsSync(res.webpPath));
     assert.ok(fs.existsSync(res.jsonPath));
 
@@ -85,6 +105,8 @@ test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON 
     const errors = validateCampaign(campaign);
     assert.deepEqual(errors, []);
 
+    // ⛔ L'URL ne suit PAS le dossier de sortie : c'est une URL de publication servie par le
+    // site, et la scène doit rester identique à celle d'un import normal.
     assert.equal(campaign.levels[0].imageUrl, 'maps/minimal.webp');
     // 140 demandé, 64 obtenu : le garde-fou tient jusqu'au document de scène,
     // et `pxPerCell` décrit l'image réellement écrite, pas celle demandée.
@@ -92,6 +114,36 @@ test('import-uvtt.mjs parse fixture synthétique et génère WebP + scène JSON 
   } finally {
     process.argv = originalArgv;
   }
+});
+
+// ⭐ E-14 : la régression à interdire n'est pas « le test échoue », c'est « la porte salit
+// l'arbre ». Le nom de sonde est délibérément absent de `maps/` : si le script se remet à écrire
+// dans le dossier du dépôt, deux fichiers y apparaissent et ce cas vire au rouge.
+test('E-14 : avec un dossier de sortie, le script n’écrit RIEN dans maps/', async (t) => {
+  const outDir = makeTempOutDir(t);
+  const mapsDir = path.join(rootDir, 'maps');
+  const sondePath = path.join(outDir, 'sonde-e14.uvtt');
+  fs.copyFileSync(path.join(rootDir, 'fixtures', 'synthetic', 'minimal.uvtt'), sondePath);
+
+  const avant = fs.readdirSync(mapsDir).sort();
+
+  const originalArgv = process.argv;
+  process.argv = ['node', 'scripts/import-uvtt.mjs', sondePath, '140'];
+  try {
+    const res = await importUvttMain({ outDir });
+    assert.ok(fs.existsSync(res.webpPath));
+    assert.ok(fs.existsSync(res.jsonPath));
+  } finally {
+    process.argv = originalArgv;
+  }
+
+  for (const nom of ['sonde-e14.webp', 'sonde-e14.json']) {
+    assert.ok(
+      !fs.existsSync(path.join(mapsDir, nom)),
+      `${nom} ne doit jamais apparaître dans maps/ : le dossier de sortie a été ignoré`
+    );
+  }
+  assert.deepEqual(fs.readdirSync(mapsDir).sort(), avant, 'maps/ doit être inchangé');
 });
 
 test('parseUvttColor convertit les 4 formes de couleur avec avertissements appropriés', async () => {

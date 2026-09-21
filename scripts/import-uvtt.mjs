@@ -13,8 +13,12 @@ const rootDir = path.resolve(__dirname, '..');
 /**
  * CLI principal d'import UVTT.
  * Usage : node scripts/import-uvtt.mjs <uvttPath> [targetPxPerCell]
+ *
+ * @param {{ outDir?: string }} [options] `outDir` vise un autre dossier d'écriture que `maps/`.
+ *   ⛔ L'URL inscrite dans le document de scène reste `maps/<nom>.webp` quoi qu'il arrive : c'est
+ *   une URL de publication servie par le site, pas un chemin disque.
  */
-export async function main() {
+export async function main(options = {}) {
   const args = process.argv.slice(2);
   if (args.length < 1) {
     console.error('Usage : node scripts/import-uvtt.mjs <uvttPath> [targetPxPerCell]');
@@ -35,7 +39,7 @@ export async function main() {
   const { level, imageBase64, warnings: parseWarnings } = parseUvtt(uvttData);
 
   const baseName = path.basename(uvttPath, path.extname(uvttPath));
-  const mapsDir = path.join(rootDir, 'maps');
+  const mapsDir = options.outDir ? path.resolve(options.outDir) : path.join(rootDir, 'maps');
   if (!fs.existsSync(mapsDir)) {
     fs.mkdirSync(mapsDir, { recursive: true });
   }
@@ -83,8 +87,8 @@ export async function main() {
   }
 
   console.log(`Import réussi pour "${baseName}" :`);
-  console.log(` - Image WebP : maps/${webpFileName} (${resampleResult.width}x${resampleResult.height}px, ${resampleResult.pxPerCell}px/case)`);
-  console.log(` - Document de scène : maps/${jsonFileName}`);
+  console.log(` - Image WebP : ${path.relative(rootDir, webpPath)} (${resampleResult.width}x${resampleResult.height}px, ${resampleResult.pxPerCell}px/case)`);
+  console.log(` - Document de scène : ${path.relative(rootDir, jsonPath)}`);
 
   return { campaign, webpPath, jsonPath, warnings: allWarnings };
 }
