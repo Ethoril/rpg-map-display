@@ -520,7 +520,8 @@
           "range": 5,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-2",
@@ -531,7 +532,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-3",
@@ -542,7 +544,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-4",
@@ -553,7 +556,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-5",
@@ -564,7 +568,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-6",
@@ -575,7 +580,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-7",
@@ -586,7 +592,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-8",
@@ -597,7 +604,8 @@
           "range": 5,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-9",
@@ -608,7 +616,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-10",
@@ -619,7 +628,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-11",
@@ -630,7 +640,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-12",
@@ -641,7 +652,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-13",
@@ -652,7 +664,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-14",
@@ -663,7 +676,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-15",
@@ -674,7 +688,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-16",
@@ -685,7 +700,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFAD00",
-          "shadows": true
+          "shadows": true,
+          "on": true
         }
       ],
       "ambient": {
@@ -698,5 +714,6 @@
   "tokens": [],
   "reserve": [],
   "templates": [],
+  "handoutLibrary": [],
   "settings": {}
 }

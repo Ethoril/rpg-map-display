@@ -232,7 +232,8 @@
           "range": 5,
           "intensity": 1,
           "color": "#FFE6BF",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-2",
@@ -243,7 +244,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFEBBF",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-3",
@@ -254,7 +256,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFEBBF",
-          "shadows": true
+          "shadows": true,
+          "on": true
         },
         {
           "id": "light-4",
@@ -265,7 +268,8 @@
           "range": 4,
           "intensity": 1,
           "color": "#FFEBBF",
-          "shadows": true
+          "shadows": true,
+          "on": true
         }
       ],
       "ambient": {
@@ -278,5 +282,6 @@
   "tokens": [],
   "reserve": [],
   "templates": [],
+  "handoutLibrary": [],
   "settings": {}
 }

@@ -11,6 +11,33 @@
       ],
       "sceneUrl": "maps/generated/test_village_complet.scene.json",
       "imageUrl": "maps/generated/test_village_complet_00.webp",
+      "thumbUrl": "maps/generated/test_village_complet_00.thumb.webp",
+      "levels": [
+        {
+          "levelId": "test_village_complet_00",
+          "name": "Rez-de-chaussée",
+          "thumbUrl": "maps/generated/test_village_complet_00.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1786281934161
+        },
+        {
+          "levelId": "test_village_complet_01",
+          "name": "1er étage",
+          "thumbUrl": "maps/generated/test_village_complet_01.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1786281934270
+        },
+        {
+          "levelId": "test_village_complet_02",
+          "name": "2e étage",
+          "thumbUrl": "maps/generated/test_village_complet_02.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1786281934372
+        }
+      ],
       "sourceHash": [
         "sha256-490ae7239ad9fa0f7f6248d015161927500c0b4294f00083acf415e08f999c55",
         "sha256-f31db0f11d85057cca4c46629ec18a39ee523a6d519970be9586fda956a7f29b",
@@ -31,6 +58,17 @@
       "sourceUrl": "maps/ferme-isolee_38x28_hex.jpg",
       "sceneUrl": "maps/generated/ferme-isolee.scene.json",
       "imageUrl": "maps/generated/ferme-isolee.webp",
+      "thumbUrl": "maps/generated/ferme-isolee.thumb.webp",
+      "levels": [
+        {
+          "levelId": "ferme-isolee",
+          "name": "Carte_Combat _Ferme_isolée",
+          "thumbUrl": "maps/generated/ferme-isolee.thumb.webp",
+          "gridType": "hex",
+          "source": "image",
+          "updatedAt": 1787750525822
+        }
+      ],
       "sourceHash": "sha256-1378518b7d1c629164725f3b5f49b6cabd7228e941274526fa686d821f268421",
       "levelCount": 1,
       "features": {
@@ -47,6 +85,17 @@
       "sourceUrl": "maps/manoir-rdc.uvtt",
       "sceneUrl": "maps/generated/manoir-rdc.scene.json",
       "imageUrl": "maps/generated/manoir-rdc.webp",
+      "thumbUrl": "maps/generated/manoir-rdc.thumb.webp",
+      "levels": [
+        {
+          "levelId": "manoir-rdc",
+          "name": "Manoir — RDC",
+          "thumbUrl": "maps/generated/manoir-rdc.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1784982066985
+        }
+      ],
       "sourceHash": "sha256-223ecc42a8c27214e125c8aaca8138243d6decca2e204463998193b5c1b5a23a",
       "levelCount": 1,
       "features": {
@@ -63,6 +112,17 @@
       "sourceUrl": "maps/marais-hex_16x16.jpg",
       "sceneUrl": "maps/generated/marais-hex_16x16.scene.json",
       "imageUrl": "maps/generated/marais-hex_16x16.webp",
+      "thumbUrl": "maps/generated/marais-hex_16x16.thumb.webp",
+      "levels": [
+        {
+          "levelId": "marais-hex_16x16",
+          "name": "Marais — HEX — 16x16",
+          "thumbUrl": "maps/generated/marais-hex_16x16.thumb.webp",
+          "gridType": "hex",
+          "source": "image",
+          "updatedAt": 1694506710000
+        }
+      ],
       "sourceHash": "sha256-d1b3c9463a7840f4b71628a9c4b9b1da00c8ff9b656e7cd898a8e4ead7c17c9a",
       "levelCount": 1,
       "features": {
@@ -79,6 +139,17 @@
       "sourceUrl": "maps/testbig150.dd2vtt",
       "sceneUrl": "maps/generated/testbig150.scene.json",
       "imageUrl": "maps/generated/testbig150.webp",
+      "thumbUrl": "maps/generated/testbig150.thumb.webp",
+      "levels": [
+        {
+          "levelId": "testbig150",
+          "name": "Testbig150",
+          "thumbUrl": "maps/generated/testbig150.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1785434474770
+        }
+      ],
       "sourceHash": "sha256-47fea547f3690aaa9f5bcf6b4ce3c8b07e219eaa53402552a829ea88ebc34d28",
       "levelCount": 1,
       "features": {
@@ -95,6 +166,17 @@
       "sourceUrl": "maps/testnoncuite.dd2vtt",
       "sceneUrl": "maps/generated/testnoncuite.scene.json",
       "imageUrl": "maps/generated/testnoncuite.webp",
+      "thumbUrl": "maps/generated/testnoncuite.thumb.webp",
+      "levels": [
+        {
+          "levelId": "testnoncuite",
+          "name": "Testnoncuite",
+          "thumbUrl": "maps/generated/testnoncuite.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1787828875862
+        }
+      ],
       "sourceHash": "sha256-385b5aebc5e7a5689b35c6045b3354dd9fa9ca5ee17742bedd0400a52869d483",
       "levelCount": 1,
       "features": {
@@ -111,6 +193,17 @@
       "sourceUrl": "maps/testnoncuitenuit.dd2vtt",
       "sceneUrl": "maps/generated/testnoncuitenuit.scene.json",
       "imageUrl": "maps/generated/testnoncuitenuit.webp",
+      "thumbUrl": "maps/generated/testnoncuitenuit.thumb.webp",
+      "levels": [
+        {
+          "levelId": "testnoncuitenuit",
+          "name": "Testnoncuitenuit",
+          "thumbUrl": "maps/generated/testnoncuitenuit.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1787829485870
+        }
+      ],
       "sourceHash": "sha256-3bd4dc445cb4a8075622e6459e570ad6f8110292529fb6741debb33ce761f0e4",
       "levelCount": 1,
       "features": {
@@ -127,6 +220,17 @@
       "sourceUrl": "maps/testvideo-3.dd2vtt",
       "sceneUrl": "maps/generated/testvideo-3.scene.json",
       "imageUrl": "maps/generated/testvideo-3.webp",
+      "thumbUrl": "maps/generated/testvideo-3.thumb.webp",
+      "levels": [
+        {
+          "levelId": "testvideo-3",
+          "name": "Testvideo — 3",
+          "thumbUrl": "maps/generated/testvideo-3.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1786428184720
+        }
+      ],
       "sourceHash": "sha256-dc54ea70259cd81515d36237d1f01140875d2f719a86f7ada17c69e9ef31ef94",
       "levelCount": 1,
       "features": {
