@@ -1,5 +1,6 @@
 // @ts-check
 import { createLevel } from '../core/schema.js';
+import { VISION_MAX_RANGE_CELLS } from '../core/constants.js';
 
 /**
  * @typedef {import('../core/types.js').Level} Level
@@ -366,7 +367,11 @@ export function parseUvtt(jsonInput) {
       }
       const rawRange = l.range ?? 5;
       const rawIntensity = l.intensity ?? 1;
-      const range = Number.isFinite(rawRange) ? Math.min(Math.max(rawRange, 0), 20) : 5;
+      // ⛔ La borne vient de `VISION_MAX_RANGE_CELLS`, jamais d'un 20 écrit ici. Elle valait 20
+      // EN DUR jusqu'au 21/09/2026 : le jour où le mainteneur a porté le plafond du moteur à 40,
+      // l'import a continué de rogner à 20 et la marge nouvelle est restée inatteignable pour les
+      // cartes importées — c'est-à-dire pour la quasi-totalité des lumières du projet.
+      const range = Number.isFinite(rawRange) ? Math.min(Math.max(rawRange, 0), VISION_MAX_RANGE_CELLS) : 5;
       const intensity = Number.isFinite(rawIntensity) ? Math.min(Math.max(rawIntensity, 0), 1) : 1;
       if (range !== rawRange || intensity !== rawIntensity) lumieresNormalisees++;
       if (l.shadows === false) lumieresSansOmbres++;
@@ -395,7 +400,7 @@ export function parseUvtt(jsonInput) {
     if (lumieresNormalisees > 0) {
       warnings.push(
         `${lumieresNormalisees} lumière(s) normalisée(s) vers les bornes du moteur ` +
-          '(portée 0..20 cases, intensité 0..1).'
+          `(portée 0..${VISION_MAX_RANGE_CELLS} cases, intensité 0..1).`
       );
     }
     // ⭐ Ce que le moteur n'honore PAS se dit. Relevé du 26/08/2026 : les 303 sources des trois

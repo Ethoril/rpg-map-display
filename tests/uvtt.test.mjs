@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseUvtt } from '../js/import/uvtt.js';
+import { VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
 
 test('parseUvtt sur minimal.uvtt (unités de case et absence d’effet de pixels)', () => {
   const minimalPath = path.resolve('fixtures/synthetic/minimal.uvtt');
@@ -364,4 +365,42 @@ test('⭐ C-2 — une lampe importée d’un UVTT est ALLUMÉE : le format n’a
   const res = parseUvtt(JSON.stringify(uvtt));
   assert.equal(res.lights.length, 1);
   assert.equal(res.lights[0].on, true);
+});
+
+test('D-3 : la borne des portées importées SUIT le plafond du moteur, elle n’est plus écrite en dur', () => {
+  // ⛔ Elle valait `20` EN DUR. Le jour où le mainteneur a porté `VISION_MAX_RANGE_CELLS` à 40
+  // (21/09/2026), le moteur a su rendre des halos jusqu'à 40 cases mais l'import a continué de
+  // rogner à 20 : la marge nouvelle restait inatteignable pour les cartes importées, c'est-à-dire
+  // pour la quasi-totalité des lumières du projet. Ce test défend l'ACCORD entre les deux, pas
+  // une valeur — il survivra donc au prochain changement de plafond.
+  const sousLePlafond = VISION_MAX_RANGE_CELLS - 5;
+  const auDessus = VISION_MAX_RANGE_CELLS + 7;
+
+  const doc = JSON.stringify({
+    format: 0.3,
+    resolution: { map_origin: { x: 0, y: 0 }, map_size: { x: 10, y: 10 }, pixels_per_grid: 100 },
+    line_of_sight: [],
+    portals: [],
+    lights: [
+      { position: { x: 1, y: 1 }, range: sousLePlafond, intensity: 1, color: 'ffffffff' },
+      { position: { x: 2, y: 2 }, range: auDessus, intensity: 1, color: 'ffffffff' },
+    ],
+  });
+
+  const res = parseUvtt(doc);
+
+  // Une portée SOUS le plafond traverse intacte — sans cette moitié, un import qui rognerait
+  // tout à une constante passerait aussi.
+  assert.equal(res.lights[0].range, sousLePlafond, 'une portée sous le plafond n’est pas touchée');
+  // Au-dessus, elle est ramenée AU PLAFOND DU MOTEUR, pas à un 20 oublié là.
+  assert.equal(res.lights[1].range, VISION_MAX_RANGE_CELLS, 'une portée au-dessus est ramenée au plafond du moteur');
+
+  // Et le rognage se DIT, avec le bon chiffre : un avertissement qui annoncerait « 0..20 » alors
+  // que le moteur accepte 40 serait un mensonge de plus, pas une aide.
+  const avertissement = res.warnings.find((w) => w.includes('normalisée'));
+  assert.ok(avertissement, 'le rognage doit être signalé');
+  assert.ok(
+    avertissement.includes(`0..${VISION_MAX_RANGE_CELLS}`),
+    `l’avertissement doit citer le plafond réel, obtenu : ${avertissement}`
+  );
 });
