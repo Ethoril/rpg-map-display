@@ -169,6 +169,14 @@ export function publishedMapAssets() {
   for (const entry of publishedMapEntries()) {
     if (entry.sceneUrl) assets.add(entry.sceneUrl);
     if (entry.imageUrl) assets.add(entry.imageUrl);
+    // ⛔ La VIGNETTE aussi, et celle de chaque étage. Oubliées ici le 21/09/2026 : le catalogue
+    // partait avec ses `thumbUrl`, les images ne partaient pas, et le panneau MJ affichait huit
+    // images cassées sur un site par ailleurs vert. Un fichier référencé par le catalogue qui ne
+    // serait pas publié est un défaut de cette fonction, jamais du catalogue.
+    if (entry.thumbUrl) assets.add(entry.thumbUrl);
+    for (const niveau of entry.levels ?? []) {
+      if (niveau.thumbUrl) assets.add(niveau.thumbUrl);
+    }
 
     const scenePath = path.join(rootDir, entry.sceneUrl);
     if (!fs.existsSync(scenePath)) {

@@ -125,3 +125,45 @@ test('R1-06 : le paquet Pages suit exactement la liste blanche et est détermini
     );
   }
 });
+
+
+test('R1-06b : TOUT ce que le catalogue publié référence est réellement dans le paquet', () => {
+  // ⛔ **Ce test existe parce que celui d'au-dessus ne pouvait pas voir l'oubli.** `expectedManifest`
+  // construit sa liste attendue à partir de `publishedMapAssets()` : si cette fonction oublie un
+  // fichier, l'attendu l'oublie aussi et les deux coïncident. C'est une tautologie, pas une
+  // couverture — et elle a laissé passer les vignettes le 21/09/2026, huit images cassées sur un
+  // site par ailleurs vert.
+  //
+  // ⭐ Celui-ci part du CATALOGUE, l'autre source, et n'a donc pas ce point aveugle.
+  const catalogue = JSON.parse(
+    fs.readFileSync(path.join(rootDir, 'maps/catalog.json'), 'utf8')
+  );
+  const publies = new Set(publishedMapAssets());
+
+  /** @type {string[]} */
+  const manquants = [];
+  /** @param {unknown} url @param {string} origine */
+  const exiger = (url, origine) => {
+    if (typeof url !== 'string' || url === '') return;
+    if (/^(?:https?:)?\/\//i.test(url) || url.startsWith('data:')) return;
+    if (!publies.has(url)) manquants.push(`${origine} → ${url}`);
+  };
+
+  let vignettesVues = 0;
+  for (const entry of catalogue.maps ?? []) {
+    exiger(entry.sceneUrl, `${entry.id}.sceneUrl`);
+    exiger(entry.imageUrl, `${entry.id}.imageUrl`);
+    exiger(entry.thumbUrl, `${entry.id}.thumbUrl`);
+    if (entry.thumbUrl) vignettesVues++;
+    for (const niveau of entry.levels ?? []) {
+      exiger(niveau.thumbUrl, `${entry.id}.levels[${niveau.levelId}].thumbUrl`);
+      if (niveau.thumbUrl) vignettesVues++;
+    }
+  }
+
+  assert.deepEqual(manquants, [], `référencés par le catalogue mais absents du paquet :\n  ${manquants.join('\n  ')}`);
+
+  // ⛔ Sans cette ligne, le test passerait aussi sur un catalogue SANS aucune vignette — donc sur
+  // le défaut d'origine, où la tranche A avait livré le code sans jamais republier.
+  assert.ok(vignettesVues > 0, 'le catalogue publié doit porter des vignettes ; relancer maps:prepare');
+});
