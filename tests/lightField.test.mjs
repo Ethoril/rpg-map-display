@@ -425,7 +425,7 @@ test('8. La portée est plafonnée comme celle de la vision', () => {
   assert.equal(cappedLightRange(undefined), 0);
   // ⭐ Le plafond n'est pas décoratif : sans lui, un sweep sur carte dense passait de 2 ms à
   // 347 ms (tranche L-02). Aucune source du corpus ne l'atteint — la plus longue porte à 10.
-  assert.equal(VISION_MAX_RANGE_CELLS, 20);
+  assert.equal(VISION_MAX_RANGE_CELLS, 40);
 });
 
 test('9. La révision rend la mutation observable — sans quoi tout cache resterait figé', () => {

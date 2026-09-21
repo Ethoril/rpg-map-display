@@ -256,8 +256,8 @@ function pointInPoly(x, y, points) {
   return inside;
 }
 
-test('Constante VISION_MAX_RANGE_CELLS vaut 20', () => {
-  assert.equal(VISION_MAX_RANGE_CELLS, 20);
+test('Constante VISION_MAX_RANGE_CELLS vaut 40', () => {
+  assert.equal(VISION_MAX_RANGE_CELLS, 40);
 });
 
 test('Critère 1 & 1bis : Le voile s applique aux zones non vues et laisse le fond intact en vision directe', () => {
@@ -525,32 +525,42 @@ test('Critère 3 : Une porte ouverte étend la vision', () => {
   assert.equal(pixelDerriereOuvert[0], 100, 'Porte ouverte : la vision s étend derrière la porte');
 });
 
-test('Critère 4 : Un pion à visionDim = 50 est plafonné à 20 sans erreur', () => {
-  const level = createLevel({
-    id: 'rdc',
-    widthCells: 60,
-    heightCells: 60,
-    pxPerCell: 10,
-  });
-  const grid = gridFor(level);
-  const pc = createToken({ id: 'pj50', levelId: 'rdc', kind: 'pc', cell: { a: 30, b: 30 }, visionDim: 50 });
+test('Critère 4 : un pion réglé AU-DELÀ du plafond est rogné à VISION_MAX_RANGE_CELLS, sans erreur', () => {
+  // ⚠ **Ce test gravait « 20 » dans ses distances**, et il est tombé le jour où le mainteneur a
+  // porté le plafond à 40 (21/09/2026). Il se dérive désormais de la constante : c'est le
+  // COMPORTEMENT « au-delà du plafond, on ne voit plus » qui est défendu, pas sa valeur du jour.
+  const plafond = VISION_MAX_RANGE_CELLS;
+  const pxPerCell = 6;
+  const cotéCells = 2 * (plafond + 10);
+  const cotéPx = cotéCells * pxPerCell;
 
-  const { ctx } = createMockCanvas(600, 600);
+  const level = createLevel({ id: 'rdc', widthCells: cotéCells, heightCells: cotéCells, pxPerCell });
+  const grid = gridFor(level);
+  const centreCell = cotéCells / 2;
+  const pc = createToken({
+    id: 'pjLoin', levelId: 'rdc', kind: 'pc',
+    cell: { a: centreCell, b: centreCell },
+    visionDim: plafond + 10,
+  });
+
+  const { ctx } = createMockCanvas(cotéPx, cotéPx);
   ctx.fillStyle = 'rgb(100, 100, 100)';
-  ctx.fillRect(0, 0, 600, 600);
+  ctx.fillRect(0, 0, cotéPx, cotéPx);
 
   const fogLayer = createTestFogLayer();
   assert.doesNotThrow(() => {
     fogLayer.render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
   });
 
-  // À 15 cases (150 px) du centre (305, 305) -> visible (100)
-  const pixelProche = ctx.getImageData(400, 305).data;
-  assert.equal(pixelProche[0], 100, 'Point dans le rayon plafonné (15 cases) est visible');
+  const centrePx = centreCell * pxPerCell + pxPerCell / 2;
 
-  // À 25 cases (250 px) du centre (305, 305) -> hors vision plafonnée -> voilé (< 100)
-  const pixelLointain = ctx.getImageData(580, 305).data;
-  assert.ok(pixelLointain[0] < 100, 'Point au-delà du plafond 20 cases est voilé');
+  // Bien EN DEÇÀ du plafond : visible.
+  const proche = ctx.getImageData(centrePx + (plafond - 10) * pxPerCell, centrePx).data;
+  assert.equal(proche[0], 100, `à ${plafond - 10} cases, dans le rayon rogné, le point est visible`);
+
+  // Au-DELÀ : voilé, alors que le pion demandait `plafond + 10`.
+  const lointain = ctx.getImageData(centrePx + (plafond + 5) * pxPerCell, centrePx).data;
+  assert.ok(lointain[0] < 100, `à ${plafond + 5} cases, au-delà du plafond de ${plafond}, le point est voilé`);
 });
 
 test('Critère 5 : Mémoïsation et sensibilité de la signature aux mutations', () => {

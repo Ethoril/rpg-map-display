@@ -54,10 +54,27 @@ export const VIEW_PUBLISH_HZ = 10;
 export const GM_SESSION_STORAGE_KEY = 'rpg-gm-session-id';
 
 /**
- * Plafond de la portée de vision des pions en cases (décision mainteneur 31/07/2026).
- * Borne technique pour meuler le coût de balayage du sweep sans altérer l'expérience.
+ * Plafond de la portée de vision des pions en cases.
+ *
+ * ⚠ **Il borne DEUX choses, pas une** — c'est ce qui rend son réglage moins anodin qu'il n'en a
+ * l'air : la portée nocturne propre d'un PJ (`visionDim`), **et** le rayon du balayage de ligne
+ * de vue en zone éclairée (`fogLayer.js`, `maxRangePx`). C'est donc l'horizon de vue absolu d'un
+ * personnage, de nuit comme en plein jour. Il plafonne aussi le rayon d'une lumière
+ * (`vision/lightField.js`).
+ *
+ * ⭐ **Passé de 20 à 40 le 21/09/2026, décision du mainteneur** : « on avait mis à 20 pour des
+ * histoires de performance qui ne sont pas vraiment un sujet pour finir ». À 1,5 m la case, 20
+ * cases arrêtaient la vue à 30 m — court pour du combat en extérieur, où la carte est dégagée et
+ * où rien ne justifie que l'horizon tombe si près.
+ *
+ * ⚠ **Le coût ne se paie que si on s'en sert.** Le balayage de vision coûte en nombre de segments,
+ * pas en rayon : l'élargir ne change presque rien tant qu'aucun pion ni aucune lampe ne dépasse
+ * 20. En revanche le champ lumineux coûte en surface, donc une lampe réglée à 40 coûte QUATRE
+ * FOIS une lampe réglée à 20. ⛔ Aucune mesure n'a été prise sur la tablette à ce nouveau
+ * plafond : la référence connue est 5,62 ms par image pour 300 ms de budget (26/08/2026), donc la
+ * marge est large, mais elle n'est pas vérifiée pour ce cas.
  */
-export const VISION_MAX_RANGE_CELLS = 20;
+export const VISION_MAX_RANGE_CELLS = 40;
 
 /**
  * Plafond de la charge base64 d'un masque de fog encodé, avant publication au réseau.

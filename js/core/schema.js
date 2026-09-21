@@ -571,7 +571,12 @@ export function createToken(overrides = {}) {
     borderColor: overrides.borderColor ?? '#00ff00',
     label: overrides.label ?? 'Héro',
     hidden: overrides.hidden ?? false,
-    visionDim: overrides.visionDim ?? 12,
+    // ⭐ **1, et non 12, depuis le 21/09/2026** (décision du mainteneur, D-3). Un pion créé sans
+    // valeur explicite ne voit plus qu'UNE case dans le noir : juste de quoi ne pas être aveugle,
+    // pas de quoi rendre l'obscurité inoffensive. À 12, tout PJ y voyait à 18 m quelle que soit sa
+    // race, et les lampes du chantier C-2 ne servaient plus à grand-chose.
+    // ⚠ Ne déplace RIEN dans les campagnes existantes : leurs pions portent une valeur explicite.
+    visionDim: overrides.visionDim ?? 1,
     emitsLight: overrides.emitsLight ?? null,
     speedCells: overrides.speedCells ?? 6,
     playerMovable: overrides.playerMovable ?? kind === 'pc',

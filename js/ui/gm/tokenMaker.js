@@ -79,7 +79,7 @@ export function createTokenMaker(container, options = {}) {
              qu'un seul rayon, et il n'y en aura qu'un. Le champ restant dit donc ce qu'il est —
              la portée DANS LE NOIR. Dans une zone éclairée, un pion voit jusqu'à sa ligne de vue. -->
         <label for="token-vision-dim" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision dans le noir :</label>
-        <input type="number" id="token-vision-dim" min="0" max="60" value="10" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <input type="number" id="token-vision-dim" min="0" max="40" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <label for="token-max-hp" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">PV max :</label>
         <input type="number" id="token-max-hp" min="1" max="999" placeholder="—" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
@@ -474,7 +474,10 @@ export function createTokenMaker(container, options = {}) {
     const explicitId = idInput?.value.trim();
     const label = labelInput.value.trim() || 'Pion';
     const tokenId = explicitId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || identifiantAleatoire();
-    const visionDim = Math.max(0, parseInt(visionDimInput?.value, 10) || 10);
+    // ⛔ `|| 10` avalait le ZÉRO : un pion qu'on voulait aveugle dans le noir ressortait à 10,
+    // en silence. C'est exactement le réglage que D-3 rend utile, donc il doit passer.
+    const visionSaisie = parseInt(visionDimInput?.value ?? '', 10);
+    const visionDim = Number.isFinite(visionSaisie) ? Math.max(0, visionSaisie) : 1;
     const rawMaxHp = maxHpInput?.value.trim();
     const maxHp = rawMaxHp && rawMaxHp !== '' ? Math.max(1, parseInt(rawMaxHp, 10) || 1) : null;
     const explicitCanonicalUrl = canonicalUrlInput.value.trim();
@@ -554,7 +557,7 @@ export function createTokenMaker(container, options = {}) {
     colorInput.value = t.borderColor || '#e74c3c';
     sizeCellsInput.value = String(t.sizeCells ?? 1);
     speedCellsInput.value = String(t.speedCells ?? 3);
-    if (visionDimInput) visionDimInput.value = String(t.visionDim ?? 10);
+    if (visionDimInput) visionDimInput.value = String(t.visionDim ?? 1);
     if (maxHpInput) maxHpInput.value = typeof t.maxHp === 'number' && t.maxHp >= 1 ? String(t.maxHp) : '';
     if (canonicalUrlInput) {
       canonicalUrlInput.value = isPersistableAssetUrl(t.imageUrl) ? t.imageUrl : '';
@@ -588,7 +591,7 @@ export function createTokenMaker(container, options = {}) {
     colorInput.value = '#e74c3c';
     sizeCellsInput.value = '1';
     speedCellsInput.value = '3';
-    if (visionDimInput) visionDimInput.value = '10';
+    if (visionDimInput) visionDimInput.value = '1';
     if (maxHpInput) maxHpInput.value = '';
     if (canonicalUrlInput) canonicalUrlInput.value = '';
     loadedImage = null;

@@ -904,6 +904,42 @@ de trois dépôts. Réécrire l'historique est une décision qui lui appartient,
 
 ### D-3 Vision dans le noir — la table de référence
 
+> ## ✅ FERMÉE le 21/09/2026 — les deux points ont leur verdict, et ils sont APPLIQUÉS
+>
+> **1. Le défaut passe de 12 à 1 case** (`js/core/schema.js`). « Mets le défaut à 1 » : un pion créé
+> sans valeur explicite voit désormais une case dans le noir — juste de quoi ne pas être aveugle.
+> À 12, tout PJ y voyait à 18 m quelle que soit sa race, et les lampes du chantier C-2 ne
+> servaient plus à grand-chose. ⚠ Ne déplace rien dans les campagnes existantes : leurs pions
+> portent une valeur explicite.
+>
+> **2. Le plafond passe de 20 à 40 cases** (`js/core/constants.js`). « On avait mis à 20 pour des
+> histoires de performance qui ne sont pas vraiment un sujet pour finir. » ⚠ Il borne **deux**
+> choses : la portée nocturne **et** le rayon du balayage de ligne de vue en zone éclairée. C'était
+> donc un horizon de vue absolu de 30 m, de nuit comme en plein jour — court pour du combat en
+> extérieur. Il plafonne aussi le rayon d'une lumière.
+>
+> ⛔ **Aucune mesure n'a été prise sur la tablette à ce nouveau plafond**, et la décision a été
+> prise sans. Le raisonnement qui la rend peu risquée : le balayage de vision coûte en **nombre de
+> segments**, pas en rayon, donc l'élargir ne change presque rien tant que rien ne dépasse 20 ; en
+> revanche le champ lumineux coûte en **surface**, donc une lampe réglée à 40 coûtera quatre fois
+> une lampe réglée à 20. La référence connue est 5,62 ms par image pour 300 ms de budget
+> (26/08/2026) : la marge est large, mais elle n'est pas vérifiée pour ce cas.
+>
+> ### ⭐ Un troisième défaut, trouvé en appliquant les deux premiers
+>
+> **Deux défauts se contredisaient, et ce n'était pas celui que j'avais signalé qui comptait.**
+> `createToken` posait 12, mais le formulaire du générateur de pions — celui que le mainteneur
+> utilise réellement — posait **10** (`js/ui/gm/tokenMaker.js`), en quatre endroits.
+>
+> ⛔ Et surtout : `Math.max(0, parseInt(v, 10) || 10)` **avalait le zéro**. Un pion qu'on voulait
+> aveugle dans le noir ressortait à 10 cases, en silence — précisément le réglage que la décision
+> ci-dessus rend utile. Corrigé, avec son test. Le `max` du champ est passé de 60 à 40, pour que
+> le formulaire cesse de proposer une valeur que le moteur rogne.
+>
+> ⚠ **Ce qui reste, et qui n'a pas été demandé** : au-delà de 40, le rognage est toujours
+> SILENCIEUX côté moteur. Le formulaire ne peut plus l'atteindre, mais un import ou une édition
+> directe le peut.
+
 > ## ✅ TRANCHÉ le 20/09/2026 — je propose une table, le mainteneur l'ajuste à la table
 >
 > Le champ est `visionDim` (`js/core/types.js:170`) : **portée de vision DANS LE NOIR, en cases**.

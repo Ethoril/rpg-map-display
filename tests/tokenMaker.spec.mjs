@@ -186,6 +186,41 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(dimensions.height).toBe(200);
   });
 
+  test('D-3 : la vision dans le noir saisie à ZÉRO passe, et le défaut du formulaire est 1', async ({ page }) => {
+    // ⛔ `Math.max(0, parseInt(v, 10) || 10)` avalait le zéro : un pion qu'on voulait AVEUGLE dans
+    // le noir ressortait à 10 cases, en silence. C'est exactement le réglage que la décision D-3
+    // du 21/09/2026 rend utile — le défaut passe de 12 à 1 pour que l'obscurité coûte quelque
+    // chose — donc un zéro explicite doit atteindre le pion.
+    await setupTokenMaker(page);
+
+    // Le formulaire s'ouvre sur 1, pas sur 10.
+    expect(await page.inputValue('#token-maker-root #token-vision-dim')).toBe('1');
+    // Et il ne propose plus une valeur que le moteur rognerait : le plafond est à 40.
+    expect(await page.getAttribute('#token-maker-root #token-vision-dim', 'max')).toBe('40');
+
+    await page.setInputFiles('#token-maker-root #token-file-input', {
+      name: 'aveugle.png',
+      mimeType: 'image/png',
+      buffer: TEST_PNG_BUFFER,
+    });
+    await page.fill('#token-maker-root #token-label', 'Aveugle');
+    await page.fill('#token-maker-root #token-vision-dim', '0');
+    await page.click('#token-maker-root #btn-generate-token');
+
+    const zero = await page.evaluate(
+      () => /** @type {any} */ (window).__tokenMakerInstance.getCurrentToken().visionDim
+    );
+    expect(zero).toBe(0);
+
+    // Et le contrôle symétrique : une saisie ordinaire n'est pas écrasée par le défaut.
+    await page.fill('#token-maker-root #token-vision-dim', '7');
+    await page.click('#token-maker-root #btn-generate-token');
+    const sept = await page.evaluate(
+      () => /** @type {any} */ (window).__tokenMakerInstance.getCurrentToken().visionDim
+    );
+    expect(sept).toBe(7);
+  });
+
   test('Désactive la génération sans étage actif et refuse une URL temporaire', async ({ page }) => {
     await setupTokenMaker(page);
 

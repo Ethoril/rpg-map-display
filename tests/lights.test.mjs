@@ -228,7 +228,7 @@ test('⭐ Chantier Z — `visionBright` est retiré du modèle, mais une campagn
   // 1. La fabrique ne le pose plus.
   const neuf = createToken({ id: 'pj', levelId: 'rdc' });
   assert.equal('visionBright' in neuf, false, 'un pion neuf ne porte plus le champ');
-  assert.equal(neuf.visionDim, 12, 'le rayon unique garde sa valeur par défaut');
+  assert.equal(neuf.visionDim, 1, 'le rayon unique garde sa valeur par défaut (1 depuis D-3, 21/09/2026)');
 
   // 2. Une campagne ANCIENNE, qui en porte un, est acceptée telle quelle.
   const ancienne = createCampaign({
