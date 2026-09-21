@@ -254,4 +254,91 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(token.levelId).toBe('level-actif');
     expect(token.imageUrl).toBe('maps/tokens/hero.webp');
   });
+
+  test('Convertit un lien de partage Google Drive collé dans l’URL canonique', async ({ page }) => {
+    await setupTokenMaker(page);
+
+    await page.setInputFiles('#token-maker-root #token-file-input', {
+      name: 'drive.png',
+      mimeType: 'image/png',
+      buffer: TEST_PNG_BUFFER,
+    });
+
+    await page.fill(
+      '#token-maker-root #token-canonical-url',
+      'https://drive.google.com/file/d/1AbCdEfGhIjKlMnO/view?usp=sharing'
+    );
+
+    // Le champ reflète la conversion : le MJ voit l'URL réellement enregistrée.
+    await expect(page.locator('#token-maker-root #token-canonical-url')).toHaveValue(
+      'https://drive.google.com/thumbnail?id=1AbCdEfGhIjKlMnO&sz=w2000'
+    );
+
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeEnabled();
+    await page.click('#token-maker-root #btn-generate-token');
+
+    // ⭐ C'est le pion RÉELLEMENT produit qu'on interroge, pas l'état du formulaire.
+    const token = await page.evaluate(
+      () => /** @type {any} */ (window).__tokenMakerInstance.getCurrentToken()
+    );
+    expect(token.imageUrl).toBe('https://drive.google.com/thumbnail?id=1AbCdEfGhIjKlMnO&sz=w2000');
+  });
+
+  test('Refuse un lien Google Drive qui ne désigne aucun fichier', async ({ page }) => {
+    await setupTokenMaker(page);
+
+    await page.setInputFiles('#token-maker-root #token-file-input', {
+      name: 'dossier.png',
+      mimeType: 'image/png',
+      buffer: TEST_PNG_BUFFER,
+    });
+
+    await page.fill(
+      '#token-maker-root #token-canonical-url',
+      'https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnO?usp=sharing'
+    );
+
+    await expect(page.locator('#token-maker-root #token-maker-status')).toContainText(
+      'ne désigne pas un fichier'
+    );
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeDisabled();
+
+    // ⭐ Et si le bouton grisé sautait, la génération forcée refuse quand même : ce qu'on vérifie
+    // est l'absence de pion produit, pas la couleur d'une ligne d'état.
+    const refus = await page.evaluate(() => {
+      try {
+        /** @type {any} */ (window).__tokenMakerInstance.generateToken();
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    });
+    expect(refus).toContain('ne désigne pas un fichier');
+
+    const token = await page.evaluate(
+      () => /** @type {any} */ (window).__tokenMakerInstance.getCurrentToken()
+    );
+    expect(token).toBeNull();
+  });
+
+  test('Laisse passer inchangée une URL relative ordinaire', async ({ page }) => {
+    await setupTokenMaker(page);
+
+    await page.setInputFiles('#token-maker-root #token-file-input', {
+      name: 'ordinaire.png',
+      mimeType: 'image/png',
+      buffer: TEST_PNG_BUFFER,
+    });
+
+    await page.fill('#token-maker-root #token-canonical-url', 'maps/tokens/x.webp');
+    await expect(page.locator('#token-maker-root #token-canonical-url')).toHaveValue(
+      'maps/tokens/x.webp'
+    );
+
+    await page.click('#token-maker-root #btn-generate-token');
+    const token = await page.evaluate(
+      () => /** @type {any} */ (window).__tokenMakerInstance.getCurrentToken()
+    );
+    expect(token.imageUrl).toBe('maps/tokens/x.webp');
+  });
 });

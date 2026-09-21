@@ -367,9 +367,10 @@ export function createHandouts(mount, options = {}) {
     // réseau, pour que ce soit une URL affichable qui parte — et non à l'affichage, où le
     // défaut se serait manifesté sur l'écran des joueurs.
     //
-    // ⛔ Cette conversion reste **propre aux handouts** : elle ne vaut ni pour les fonds de carte
-    // ni pour les images de pions. L'y étendre est un autre chantier, pas un effet de bord de
-    // celui-ci.
+    // ⭐ **Les TROIS surfaces qui acceptent une URL collée la convertissent désormais**, et de la
+    // même façon : ici, `ui/gm/importPanel.js` pour un fond de carte, `ui/gm/tokenMaker.js` pour
+    // une image de pion (21/09/2026). Le MJ lit le même message où qu'il colle son lien.
+    // ⚠ Ce commentaire disait l'inverse jusqu'au 21/09 — il avait survécu à l'extension.
     const url = normalizeImageUrl(saisie);
     // Le champ reflète ce qui est réellement enregistré : le MJ voit la conversion plutôt que de
     // la subir.

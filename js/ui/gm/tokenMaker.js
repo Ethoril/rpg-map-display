@@ -3,9 +3,19 @@ import {
   createToken,
   isPersistableAssetUrl,
   isBoundedImageDataUrl,
+  isUnusableGoogleDriveUrl,
+  normalizeImageUrl,
   TOKEN_IMAGE_MAX_BYTES,
   identifiantAleatoire,
 } from '../../core/schema.js';
+
+/**
+ * Message du lien Drive qui ne désigne aucun fichier — mot pour mot celui des handouts et du
+ * panneau d'import, pour que le MJ lise la même phrase où qu'il colle son lien.
+ */
+const MESSAGE_DRIVE_INUTILISABLE =
+  "Ce lien Google Drive ne désigne pas un fichier (un dossier ?). Ouvrez l'image dans Drive, " +
+  'puis copiez son lien de partage.';
 
 /**
  * @typedef {import('../../core/types.js').Token} Token
@@ -160,15 +170,36 @@ export function createTokenMaker(container, options = {}) {
   const maxBytesBudget = options.maxBytes ?? TOKEN_IMAGE_MAX_BYTES;
   const requireLevelId = options.requireLevelId ?? (options.defaultLevelId !== undefined);
 
+  /**
+   * Lit le champ « URL canonique » en lui appliquant la conversion Google Drive, et reflète le
+   * résultat dans le champ : le MJ voit l'URL réellement enregistrée plutôt que de la subir.
+   *
+   * Un lien de partage Drive est une page HTML, pas une image, et il passe `isPersistableAssetUrl`
+   * sans broncher — c'est bien du HTTPS. Sans cette conversion, le pion affiche une page web, en
+   * silence. Calqué sur `ui/gm/handouts.js` et `ui/gm/importPanel.js`.
+   *
+   * @returns {{url: string, inutilisable: boolean}}
+   */
+  function lireUrlCanonique() {
+    const saisie = canonicalUrlInput.value.trim();
+    if (isUnusableGoogleDriveUrl(saisie)) return { url: saisie, inutilisable: true };
+    const url = normalizeImageUrl(saisie);
+    if (url !== saisie) canonicalUrlInput.value = url;
+    return { url, inutilisable: false };
+  }
+
   function refreshGenerateAvailability() {
-    const explicitUrl = canonicalUrlInput.value.trim();
-    const urlIsValid = explicitUrl === '' || isPersistableAssetUrl(explicitUrl);
+    const { url: explicitUrl, inutilisable } = lireUrlCanonique();
+    const urlIsValid = !inutilisable && (explicitUrl === '' || isPersistableAssetUrl(explicitUrl));
     const levelOk = !requireLevelId || Boolean(defaultLevelId);
     btnGenerate.disabled = !loadedImage || !levelOk || !urlIsValid;
 
     if (requireLevelId && !defaultLevelId) {
       status.style.color = '#f1c40f';
       status.textContent = 'Ajoutez ou sélectionnez un étage avant de générer un pion.';
+    } else if (inutilisable) {
+      status.style.color = '#e74c3c';
+      status.textContent = MESSAGE_DRIVE_INUTILISABLE;
     } else if (!urlIsValid) {
       status.style.color = '#e74c3c';
       status.textContent =
@@ -480,10 +511,13 @@ export function createTokenMaker(container, options = {}) {
     const visionDim = Number.isFinite(visionSaisie) ? Math.max(0, visionSaisie) : 1;
     const rawMaxHp = maxHpInput?.value.trim();
     const maxHp = rawMaxHp && rawMaxHp !== '' ? Math.max(1, parseInt(rawMaxHp, 10) || 1) : null;
-    const explicitCanonicalUrl = canonicalUrlInput.value.trim();
+    const { url: explicitCanonicalUrl, inutilisable: canonicalInutilisable } = lireUrlCanonique();
 
     let imageUrl;
     if (explicitCanonicalUrl) {
+      if (canonicalInutilisable) {
+        throw new Error(MESSAGE_DRIVE_INUTILISABLE);
+      }
       if (!isPersistableAssetUrl(explicitCanonicalUrl)) {
         throw new Error(
           'URL du pion non persistable : utilisez une URL relative ou HTTPS publiée'
