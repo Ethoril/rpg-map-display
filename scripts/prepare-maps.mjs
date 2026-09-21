@@ -965,6 +965,16 @@ export function isReusable(known, recipe, mapsDir) {
     if (!fs.existsSync(thumbPath)) return false;
   }
 
+  // Chaque étage a la sienne depuis la tranche B : effacer celle d'un étage qui n'est pas le
+  // premier doit refabriquer tout autant, sinon le panneau MJ listerait un étage sans image.
+  if (Array.isArray(known.catalogEntry.levels)) {
+    for (const entree of known.catalogEntry.levels) {
+      if (!entree?.thumbUrl) continue;
+      const thumbPath = path.join(mapsDir, 'generated', path.basename(entree.thumbUrl));
+      if (!fs.existsSync(thumbPath)) return false;
+    }
+  }
+
   try {
     const sceneObj = JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
     if (Array.isArray(sceneObj.levels)) {
@@ -1022,6 +1032,20 @@ async function prepareThumb(generatedDir, levelId, imageWidth) {
 }
 
 /**
+ * Date de dernière modification d'un fichier source, en millisecondes entières.
+ *
+ * ⛔ Surtout pas `Date.now()` : l'horodatage part au catalogue, et une horloge ferait réécrire
+ * le fichier à chaque publication d'une source pourtant inchangée. Le dépôt enregistrerait
+ * alors une modification qui n'en est pas une, à chaque passe.
+ *
+ * @param {string} filePath
+ * @returns {number}
+ */
+function dateSource(filePath) {
+  return Math.round(fs.statSync(filePath).mtimeMs);
+}
+
+/**
  * Relève les artefacts de `generated/` que le nouveau catalogue ne référence
  * plus.
  *
@@ -1044,6 +1068,13 @@ export function findOrphanArtifacts(mapsDir, catalogEntries) {
     // La vignette est un artefact comme les autres : sans cette ligne, chaque passe la
     // déclarerait orpheline aussitôt fabriquée.
     if (entry.thumbUrl) referenced.add(path.basename(entry.thumbUrl));
+    // Idem pour les vignettes d'étage : sans cette ligne, une scène multi-étages ferait
+    // signaler orphelines, à chaque passe, toutes les vignettes sauf celle du premier.
+    if (Array.isArray(entry.levels)) {
+      for (const entree of entry.levels) {
+        if (entree?.thumbUrl) referenced.add(path.basename(entree.thumbUrl));
+      }
+    }
     // Pour les scènes multi-étages, chaque image d'étage est aussi référencée
     const scenePath = path.join(generatedDir, path.basename(entry.sceneUrl));
     if (fs.existsSync(scenePath)) {
@@ -1569,6 +1600,12 @@ export async function prepareMaps(options = {}) {
       const preparedLevels = [];
       /** Largeur de l'image produite, par étage : la vignette en a besoin sans redécoder. */
       const largeursImage = new Map();
+      /**
+       * Ce que l'entrée de bibliothèque d'un étage sait de sa source, et qui ne se relit pas
+       * depuis l'étage préparé : d'où il vient, et quand sa source a changé pour la dernière fois.
+       * @type {Map<string, { source: 'uvtt'|'image', updatedAt: number }>}
+       */
+      const provenances = new Map();
       const parseWarningsAcc = [];
       let sceneWalls = 0;
       let scenePortals = 0;
@@ -1589,6 +1626,7 @@ export async function prepareMaps(options = {}) {
           parseWarningsAcc.push(...decor.warnings);
           preparedLevels.push(decor.level);
           largeursImage.set(decor.level.id, decor.width);
+          provenances.set(decor.level.id, { source: 'image', updatedAt: dateSource(uvttPath) });
           continue;
         }
 
@@ -1642,6 +1680,7 @@ export async function prepareMaps(options = {}) {
 
         preparedLevels.push(level);
         largeursImage.set(level.id, resampleResult.width);
+        provenances.set(level.id, { source: 'uvtt', updatedAt: dateSource(uvttPath) });
 
         sceneWalls += level.walls.length;
         scenePortals += level.portals.length;
@@ -1652,13 +1691,28 @@ export async function prepareMaps(options = {}) {
       // Trier les étages par `order` croissant
       preparedLevels.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-      // Vignette : celle du **premier** étage, décidé par ce tri — le même que celui dont
-      // l'image sert déjà d'`imageUrl` au catalogue.
-      const thumbUrl = await prepareThumb(
-        generatedDir,
-        preparedLevels[0].id,
-        largeursImage.get(preparedLevels[0].id)
-      );
+      // Une vignette par étage, et l'entrée de bibliothèque qui va avec : « ➕ Ajouter étage »
+      // ajoute TOUS les étages de la scène, et rien ne disait lesquels.
+      /** @type {import('../js/core/types.js').SceneLibraryEntry[]} */
+      const levelEntries = [];
+      for (const level of preparedLevels) {
+        const provenance = provenances.get(level.id);
+        if (!provenance) {
+          throw new Error(`Étage "${level.id}" préparé sans provenance relevée`);
+        }
+        levelEntries.push({
+          levelId: level.id,
+          name: level.name,
+          thumbUrl: await prepareThumb(generatedDir, level.id, largeursImage.get(level.id)),
+          gridType: level.grid.type,
+          source: provenance.source,
+          updatedAt: provenance.updatedAt,
+        });
+      }
+
+      // Vignette de la CARTE : celle du **premier** étage, décidé par ce tri — le même que
+      // celui dont l'image sert déjà d'`imageUrl` au catalogue.
+      const thumbUrl = levelEntries[0].thumbUrl;
 
       const campaign = createCampaign({
         campaignId: `campaign-${sceneJob.id}`,
@@ -1688,6 +1742,7 @@ export async function prepareMaps(options = {}) {
         sceneUrl: `maps/generated/${sceneFileName}`,
         imageUrl: `maps/generated/${preparedLevels[0].id}.webp`,
         thumbUrl,
+        levels: levelEntries,
         sourceHash: sourceHashValue,
         levelCount: preparedLevels.length,
         features: {

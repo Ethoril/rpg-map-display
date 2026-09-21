@@ -14,6 +14,17 @@ const FAKE_CATALOG = {
       sourceUrl: 'maps/minimal.uvtt',
       sceneUrl: 'maps/generated/minimal.scene.json',
       imageUrl: 'maps/minimal.webp',
+      thumbUrl: 'maps/generated/minimal.thumb.webp',
+      levels: [
+        {
+          levelId: 'minimal-level',
+          name: 'Carte minimale',
+          thumbUrl: 'maps/generated/minimal.thumb.webp',
+          gridType: 'square',
+          source: 'uvtt',
+          updatedAt: 1700000000000,
+        },
+      ],
       sourceHash: 'sha256-test',
       levelCount: 1,
       features: { walls: 3, portals: 2, lights: 1, bakedLighting: false },
@@ -59,6 +70,17 @@ const FAKE_SCENE = {
 };
 
 const MESSAGE_ECHEC = 'canal indisponible (transport de test)';
+
+/**
+ * Une image RÉELLE de 1 × 1 px, servie à la place des vignettes générées.
+ *
+ * ⚠ Elle existe parce qu'une `<img>` dont l'URL ne mène nulle part est présente dans le DOM
+ * comme une autre : seul `naturalWidth > 0` distingue une vignette affichée d'une image cassée.
+ */
+const PNG_1PX = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
 
 /**
  * Injecte un transport dont chaque publication réussit — ou échoue de bout en bout, comme le
@@ -138,6 +160,10 @@ async function setupWithCatalog(page, fixtures = {}) {
       contentType: 'application/json',
       body: JSON.stringify(catalog),
     })
+  );
+
+  await page.route('**/maps/generated/*.thumb.webp', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX })
   );
 
   await page.route('**/maps/generated/minimal.scene.json', (route) =>
@@ -267,5 +293,123 @@ test.describe('U-04 — Bibliothèque de cartes MJ', () => {
 
     await expect(page.locator('.scene-library-status')).toContainText('indisponible');
     await expect(page.locator('.scene-card')).toHaveCount(0);
+  });
+});
+
+test.describe('C-1 tranche B — vignettes et étages dans le panneau MJ', () => {
+  /**
+   * Catalogue d'une scène à deux étages, sur le modèle de ce que publie `pnpm maps:prepare`.
+   * @param {{ thumbs?: boolean }} [options]
+   */
+  const catalogueMultiEtages = ({ thumbs = true } = {}) => ({
+    version: 1,
+    maps: [
+      {
+        id: 'tour',
+        name: 'Tour de guet',
+        sourceUrl: ['maps/tour_00.uvtt', 'maps/tour_01.uvtt'],
+        sceneUrl: 'maps/generated/tour.scene.json',
+        imageUrl: 'maps/generated/pied.webp',
+        ...(thumbs ? { thumbUrl: 'maps/generated/pied.thumb.webp' } : {}),
+        levels: [
+          {
+            levelId: 'pied',
+            name: 'Pied de la tour',
+            thumbUrl: 'maps/generated/pied.thumb.webp',
+            gridType: 'square',
+            source: 'uvtt',
+            updatedAt: 1700000000000,
+          },
+          {
+            levelId: 'sommet',
+            name: 'Sommet',
+            thumbUrl: 'maps/generated/sommet.thumb.webp',
+            gridType: 'square',
+            source: 'uvtt',
+            updatedAt: 1700000000001,
+          },
+        ],
+        sourceHash: ['sha256-a', 'sha256-b'],
+        levelCount: 2,
+        features: { walls: 0, portals: 0, lights: 0, bakedLighting: false },
+      },
+    ],
+  });
+
+  test('la vignette de la carte est une image RÉELLEMENT chargée', async ({ page }) => {
+    await setupWithCatalog(page);
+
+    const vignette = page.locator('.scene-card .scene-card-thumb').first();
+    await expect(vignette).toBeVisible();
+
+    // ⭐ Une `<img>` dont l'URL est fausse existe aussi dans le DOM : seule la largeur
+    // naturelle prouve que le navigateur a réellement décodé une image.
+    await expect
+      .poll(() => vignette.evaluate((el) => /** @type {HTMLImageElement} */ (el).naturalWidth))
+      .toBeGreaterThan(0);
+
+    await expect(vignette).toHaveAttribute('src', 'maps/generated/minimal.thumb.webp');
+    await expect(page.locator('.scene-card-thumb-placeholder')).toHaveCount(0);
+  });
+
+  test('sans thumbUrl, un substitut discret et AUCUNE image cassée', async ({ page }) => {
+    const ancien = structuredClone(FAKE_CATALOG);
+    delete (/** @type {any} */ (ancien.maps[0]).thumbUrl);
+    delete (/** @type {any} */ (ancien.maps[0]).levels);
+
+    await setupWithCatalog(page, { catalog: ancien });
+
+    await expect(page.locator('.scene-card')).toHaveCount(1);
+    await expect(page.locator('.scene-card-thumb-placeholder')).toHaveCount(1);
+
+    // Aucune `<img>` du tout dans la carte : pas d'icône d'image cassée, pas de trou.
+    await expect(page.locator('.scene-card img')).toHaveCount(0);
+
+    // Et le substitut occupe bien une boîte : un élément de hauteur nulle serait un trou.
+    const boite = await page
+      .locator('.scene-card-thumb-placeholder')
+      .evaluate((el) => el.getBoundingClientRect().height);
+    expect(boite).toBeGreaterThan(0);
+  });
+
+  test('une carte multi-étages liste ses étages, une carte mono-étage n’en liste aucun', async ({
+    page,
+  }) => {
+    await setupWithCatalog(page, { catalog: catalogueMultiEtages() });
+
+    await expect(page.locator('.scene-card-level')).toHaveCount(2);
+    await expect(page.locator('.scene-card-level-name')).toHaveText([
+      'Pied de la tour',
+      'Sommet',
+    ]);
+
+    // Chaque étage a sa propre vignette, réellement chargée elle aussi.
+    const largeurs = await page
+      .locator('.scene-card-level .scene-card-thumb')
+      .evaluateAll((els) =>
+        els.map((el) => /** @type {HTMLImageElement} */ (el).naturalWidth)
+      );
+    expect(largeurs).toHaveLength(2);
+    for (const largeur of largeurs) expect(largeur).toBeGreaterThan(0);
+
+    // Mono-étage : rien à énumérer.
+    await setupWithCatalog(page, { catalog: FAKE_CATALOG });
+    await expect(page.locator('.scene-card')).toHaveCount(1);
+    await expect(page.locator('.scene-card-level')).toHaveCount(0);
+  });
+
+  test('les deux boutons font exactement ce qu’ils faisaient', async ({ page }) => {
+    const errors = await setupWithCatalog(page);
+
+    await expect(page.locator('.scene-card-load')).toHaveText('📂 Charger');
+    await expect(page.locator('.scene-card-add')).toHaveText('➕ Ajouter étage');
+
+    // Cliquer la vignette ne charge rien : elle n'a pas de comportement propre.
+    await page.locator('.scene-card-thumb').first().click();
+    await expect(page.locator('.scene-library-status')).not.toContainText('chargée');
+
+    await page.click('.scene-card-load');
+    await expect(page.locator('.scene-library-status')).toContainText('chargée');
+    expect(errors).toEqual([]);
   });
 });

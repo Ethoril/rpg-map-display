@@ -262,3 +262,128 @@ test('C-1 validateCatalog : une thumbUrl présente est tenue au contrat des autr
     `une vignette en data: doit être refusée, erreurs : ${JSON.stringify(errors)}`
   );
 });
+
+test('C-1 tranche B : un catalogue SANS levels reste valide', () => {
+  const catalogue = {
+    version: 1,
+    maps: [
+      {
+        id: 'ancien',
+        name: 'Publié avant les vignettes',
+        sourceUrl: 'maps/ancien.uvtt',
+        sceneUrl: 'maps/generated/ancien.scene.json',
+        imageUrl: 'maps/generated/ancien.webp',
+        sourceHash: 'sha256-abc',
+        levelCount: 2,
+        features: { walls: 1, portals: 0, lights: 0, bakedLighting: false },
+      },
+    ],
+  };
+
+  assert.deepEqual(validateCatalog(catalogue), []);
+});
+
+test('C-1 tranche B : un levels bien formé est accepté et la valeur survit', () => {
+  const catalogue = {
+    version: 1,
+    maps: [
+      {
+        id: 'tour',
+        name: 'Tour',
+        sourceUrl: ['maps/tour_00.uvtt', 'maps/tour_01.uvtt'],
+        sceneUrl: 'maps/generated/tour.scene.json',
+        imageUrl: 'maps/generated/pied.webp',
+        thumbUrl: 'maps/generated/pied.thumb.webp',
+        levels: [
+          {
+            levelId: 'pied',
+            name: 'Pied',
+            thumbUrl: 'maps/generated/pied.thumb.webp',
+            gridType: 'square',
+            source: 'uvtt',
+            updatedAt: 1700000000000,
+          },
+          {
+            levelId: 'sommet',
+            name: 'Sommet',
+            thumbUrl: 'maps/generated/sommet.thumb.webp',
+            gridType: 'hex',
+            source: 'image',
+            updatedAt: 1700000000001,
+          },
+        ],
+        sourceHash: ['sha256-a', 'sha256-b'],
+        levelCount: 2,
+        features: { walls: 0, portals: 0, lights: 0, bakedLighting: false },
+      },
+    ],
+  };
+
+  assert.deepEqual(validateCatalog(catalogue), []);
+  assert.equal(catalogue.maps[0].levels[1].gridType, 'hex');
+});
+
+test('C-1 tranche B : un levels mal formé est refusé, champ par champ', () => {
+  /** @param {any} niveau */
+  const erreursPour = (niveau) =>
+    validateCatalog({
+      version: 1,
+      maps: [
+        {
+          id: 'tour',
+          name: 'Tour',
+          sourceUrl: 'maps/tour.uvtt',
+          sceneUrl: 'maps/generated/tour.scene.json',
+          imageUrl: 'maps/generated/tour.webp',
+          levels: [niveau],
+          sourceHash: 'sha256-a',
+          levelCount: 1,
+          features: { walls: 0, portals: 0, lights: 0, bakedLighting: false },
+        },
+      ],
+    });
+
+  const bon = {
+    levelId: 'pied',
+    name: 'Pied',
+    thumbUrl: 'maps/generated/pied.thumb.webp',
+    gridType: 'square',
+    source: 'uvtt',
+    updatedAt: 1700000000000,
+  };
+  assert.deepEqual(erreursPour(bon), []);
+
+  for (const [champ, valeur] of /** @type {[string, unknown][]} */ ([
+    ['levelId', 42],
+    ['name', ''],
+    ['thumbUrl', 'data:image/webp;base64,AA=='],
+    ['gridType', 'octogonale'],
+    ['source', 'pdf'],
+    ['updatedAt', 'hier'],
+  ])) {
+    const erreurs = erreursPour({ ...bon, [champ]: valeur });
+    assert.ok(
+      erreurs.some((e) => e.includes(champ)),
+      `${champ} = ${String(valeur)} doit être refusé, erreurs : ${erreurs.join(' ; ')}`
+    );
+  }
+
+  assert.ok(
+    validateCatalog({
+      version: 1,
+      maps: [
+        {
+          id: 'tour',
+          name: 'Tour',
+          sourceUrl: 'maps/tour.uvtt',
+          sceneUrl: 'maps/generated/tour.scene.json',
+          imageUrl: 'maps/generated/tour.webp',
+          levels: 'pas-un-tableau',
+          sourceHash: 'sha256-a',
+          levelCount: 1,
+          features: { walls: 0, portals: 0, lights: 0, bakedLighting: false },
+        },
+      ],
+    }).some((e) => e.includes('levels doit être un tableau'))
+  );
+});

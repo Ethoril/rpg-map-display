@@ -830,3 +830,95 @@ test('C-1 vignette : une vignette effacée à la main force la refabrication', a
   assert.ok(fs.existsSync(thumbPath), 'la vignette est refabriquée');
 });
 
+
+test('C-1 tranche B : une vignette par étage, et `levels` les référence toutes', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'tour_00');
+  addMap(mapsDir, 'tour_01');
+  fs.writeFileSync(
+    path.join(mapsDir, 'scenes.json'),
+    JSON.stringify({
+      version: 1,
+      scenes: [
+        {
+          id: 'tour',
+          name: 'Tour',
+          levels: [
+            { source: 'tour_01.uvtt', id: 'sommet', name: 'Sommet', order: 1 },
+            { source: 'tour_00.uvtt', id: 'pied', name: 'Pied', order: 0 },
+          ],
+        },
+      ],
+    }),
+    'utf-8'
+  );
+
+  await prepareMaps({ mapsDir });
+
+  const catalogue = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  const entree = catalogue.maps[0];
+
+  // Le tableau suit l'empilement, pas l'ordre du manifeste.
+  assert.deepEqual(
+    entree.levels.map((/** @type {any} */ l) => l.levelId),
+    ['pied', 'sommet']
+  );
+  assert.deepEqual(
+    entree.levels.map((/** @type {any} */ l) => l.name),
+    ['Pied', 'Sommet']
+  );
+
+  for (const niveau of entree.levels) {
+    assert.equal(niveau.thumbUrl, `maps/generated/${niveau.levelId}.thumb.webp`);
+    assert.ok(
+      fs.existsSync(path.join(mapsDir, 'generated', `${niveau.levelId}.thumb.webp`)),
+      `la vignette de ${niveau.levelId} doit exister sur le disque`
+    );
+    const vignette = await imageDimensions(
+      path.join(mapsDir, 'generated', `${niveau.levelId}.thumb.webp`)
+    );
+    assert.equal(vignette.width, 320);
+    assert.equal(niveau.gridType, 'square');
+    assert.equal(niveau.source, 'uvtt');
+    assert.equal(typeof niveau.updatedAt, 'number');
+  }
+
+  // La vignette de la CARTE reste celle du premier étage : `levels` s'ajoute, il ne remplace pas.
+  assert.equal(entree.thumbUrl, 'maps/generated/pied.thumb.webp');
+  assert.deepEqual(validateCatalog(catalogue), []);
+
+  // Aucune des deux n'est signalée orpheline.
+  assert.deepEqual(
+    findOrphanArtifacts(mapsDir, catalogue.maps).filter((w) => w.includes('thumb')),
+    []
+  );
+
+  // Effacer la vignette d'un étage qui n'est PAS le premier force la refabrication.
+  fs.rmSync(path.join(mapsDir, 'generated', 'sommet.thumb.webp'));
+  const res = await prepareMaps({ mapsDir });
+  assert.equal(res.preparedCount, 1, 'le cache ne doit pas déclarer la scène à jour');
+  assert.ok(fs.existsSync(path.join(mapsDir, 'generated', 'sommet.thumb.webp')));
+});
+
+test('C-1 tranche B : `updatedAt` vient de la source, donc deux publications écrivent le même catalogue', async (t) => {
+  const mapsDir = makeTempMapsDir(t);
+  addMap(mapsDir, 'minimal');
+
+  await prepareMaps({ mapsDir });
+  const premier = fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8');
+
+  // `force` refabrique tout : c'est le seul moyen de vérifier que l'horodatage est RELEVÉ et
+  // non réinventé — une réutilisation de recette recopierait l'entrée sans rien prouver.
+  await prepareMaps({ mapsDir, force: true });
+  const second = fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8');
+
+  assert.equal(second, premier, 'une source inchangée doit republier un catalogue identique');
+
+  // Et une source réellement modifiée fait bouger l'horodatage.
+  const sourcePath = path.join(mapsDir, 'minimal.uvtt');
+  const plusTard = new Date(Date.now() + 60_000);
+  fs.utimesSync(sourcePath, plusTard, plusTard);
+  await prepareMaps({ mapsDir, force: true });
+  const troisieme = JSON.parse(fs.readFileSync(path.join(mapsDir, 'catalog.json'), 'utf-8'));
+  assert.equal(troisieme.maps[0].levels[0].updatedAt, Math.round(plusTard.getTime()));
+});

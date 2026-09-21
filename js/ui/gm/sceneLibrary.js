@@ -6,6 +6,7 @@ import * as store from '../../state/store.js';
 /**
  * @typedef {import('../../transport/Transport.js').Transport} Transport
  * @typedef {import('../../import/catalog.js').CatalogMap} CatalogMap
+ * @typedef {import('../../core/types.js').SceneLibraryEntry} SceneLibraryEntry
  */
 
 /**
@@ -194,6 +195,102 @@ export async function createSceneLibrary(container, options = {}) {
   }
 
   /**
+   * Construit la vignette d'une carte ou d'un étage.
+   *
+   * Sans `thumbUrl` — tout catalogue publié avant la tranche C-1 —, on rend un substitut
+   * de la même boîte : une `<img>` sans source afficherait une icône d'image cassée, et un
+   * élément absent ferait sauter la mise en page d'une carte à l'autre.
+   *
+   * @param {string|undefined} thumbUrl
+   * @param {string} alt
+   * @param {{ largeur: string, hauteur: string }} taille
+   * @returns {HTMLElement}
+   */
+  function renderThumb(thumbUrl, alt, taille) {
+    if (!thumbUrl) {
+      const substitut = document.createElement('div');
+      substitut.className = 'scene-card-thumb-placeholder';
+      substitut.title = 'Aucune vignette — relancez `pnpm maps:prepare`';
+      substitut.textContent = '🗺️';
+      substitut.style.width = taille.largeur;
+      substitut.style.height = taille.hauteur;
+      substitut.style.display = 'flex';
+      substitut.style.alignItems = 'center';
+      substitut.style.justifyContent = 'center';
+      substitut.style.background = '#1e1e1e';
+      substitut.style.border = '1px dashed #3a3a3a';
+      substitut.style.borderRadius = '4px';
+      substitut.style.color = '#555';
+      substitut.style.boxSizing = 'border-box';
+      return substitut;
+    }
+
+    // L'URL reste RELATIVE, comme partout ailleurs dans ce fichier.
+    const img = document.createElement('img');
+    img.className = 'scene-card-thumb';
+    img.src = thumbUrl;
+    img.alt = alt;
+    img.loading = 'lazy';
+    img.style.width = taille.largeur;
+    img.style.height = taille.hauteur;
+    img.style.objectFit = 'cover';
+    img.style.display = 'block';
+    img.style.borderRadius = '4px';
+    img.style.background = '#1e1e1e';
+    return img;
+  }
+
+  /**
+   * Construit la liste des étages d'une scène qui en compte plusieurs.
+   *
+   * ⭐ Elle existe parce que « ➕ Ajouter étage » ajoute **tous** les étages de la scène, et
+   * que rien ne disait lesquels.
+   *
+   * @param {SceneLibraryEntry[]} levels
+   * @returns {HTMLElement}
+   */
+  function renderLevelList(levels) {
+    const listeEl = document.createElement('ul');
+    listeEl.className = 'scene-card-levels';
+    listeEl.style.listStyle = 'none';
+    listeEl.style.margin = '0';
+    listeEl.style.padding = '0';
+    listeEl.style.display = 'flex';
+    listeEl.style.flexDirection = 'column';
+    listeEl.style.gap = '0.4rem';
+
+    for (const level of levels) {
+      const item = document.createElement('li');
+      item.className = 'scene-card-level';
+      item.dataset.levelId = level.levelId;
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '0.5rem';
+      item.style.minWidth = '0';
+
+      const nomEl = document.createElement('span');
+      nomEl.className = 'scene-card-level-name';
+      nomEl.textContent = level.name;
+      nomEl.style.fontSize = '0.8rem';
+      nomEl.style.color = '#bbb';
+      nomEl.style.overflow = 'hidden';
+      nomEl.style.textOverflow = 'ellipsis';
+      nomEl.style.whiteSpace = 'nowrap';
+
+      item.append(
+        renderThumb(level.thumbUrl, `Vignette de l’étage ${level.name}`, {
+          largeur: '48px',
+          hauteur: '36px',
+        }),
+        nomEl
+      );
+      listeEl.appendChild(item);
+    }
+
+    return listeEl;
+  }
+
+  /**
    * Construit la carte d'une entrée du catalogue.
    *
    * @param {CatalogMap} mapEntry
@@ -301,7 +398,21 @@ export async function createSceneLibrary(container, options = {}) {
     );
 
     actions.append(loadBtn, addBtn);
-    mapCard.append(header, actions);
+
+    // La vignette de la carte tient toute la largeur du panneau, hauteur bornée : à 1024 px
+    // le panneau ne fait que ~360 px, et rien ne doit en dépasser (tests/gmPanelOverflow).
+    mapCard.append(
+      renderThumb(mapEntry.thumbUrl, `Vignette de « ${mapEntry.name} »`, {
+        largeur: '100%',
+        hauteur: '110px',
+      }),
+      header
+    );
+    // Une scène à un seul étage n'apprend rien de plus à l'énumérer.
+    if (mapEntry.levels && mapEntry.levels.length > 1) {
+      mapCard.appendChild(renderLevelList(mapEntry.levels));
+    }
+    mapCard.appendChild(actions);
     return mapCard;
   }
 

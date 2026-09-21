@@ -2,6 +2,7 @@
 
 /**
  * @typedef {import('../core/types.js').Campaign} Campaign
+ * @typedef {import('../core/types.js').SceneLibraryEntry} SceneLibraryEntry
  */
 
 /**
@@ -13,6 +14,8 @@
  * @property {string} imageUrl - URL relative de l'image (WebP, PNG, etc.)
  * @property {string} [thumbUrl] - URL relative de la vignette du premier étage, 320 px de large.
  *   **Optionnel** : les catalogues publiés avant la tranche C-1 n'en portent pas.
+ * @property {SceneLibraryEntry[]} [levels] - Un descriptif par étage de la scène, dans l'ordre
+ *   d'empilement. **Optionnel** : les catalogues publiés avant la tranche C-1 n'en portent pas.
  * @property {string} sourceHash - Hash SHA256 de la source : "sha256-xxx"
  * @property {number} levelCount - Nombre d'étages dans cette scène
  * @property {object} features
@@ -121,6 +124,43 @@ export function validateCatalog(obj) {
     // publié jusqu'ici. Présente, elle est tenue au même contrat que les autres URL.
     if (map.thumbUrl !== undefined && map.thumbUrl !== null) {
       checkUrl('thumbUrl');
+    }
+
+    // Même règle que `thumbUrl` juste au-dessus : un catalogue publié avant la tranche C-1
+    // n'a pas de `levels`, et son absence ne doit jamais valoir refus.
+    if (map.levels !== undefined && map.levels !== null) {
+      if (!Array.isArray(map.levels)) {
+        errors.push(`${prefix} : levels doit être un tableau`);
+      } else {
+        for (let j = 0; j < map.levels.length; j++) {
+          const level = map.levels[j];
+          const levelPrefix = `${prefix}.levels[${j}]`;
+          if (!level || typeof level !== 'object') {
+            errors.push(`${levelPrefix} : objet attendu`);
+            continue;
+          }
+          if (!level.levelId || typeof level.levelId !== 'string') {
+            errors.push(`${levelPrefix} : levelId manquant ou invalide`);
+          }
+          if (!level.name || typeof level.name !== 'string') {
+            errors.push(`${levelPrefix} : name manquant`);
+          }
+          if (!level.thumbUrl || typeof level.thumbUrl !== 'string') {
+            errors.push(`${levelPrefix} : thumbUrl manquant ou invalide`);
+          } else if (level.thumbUrl.startsWith('data:') || level.thumbUrl.startsWith('blob:')) {
+            errors.push(`${levelPrefix} : thumbUrl ne doit pas être une data: ou blob: URL`);
+          }
+          if (level.gridType !== 'square' && level.gridType !== 'hex') {
+            errors.push(`${levelPrefix} : gridType invalide`);
+          }
+          if (level.source !== 'uvtt' && level.source !== 'image') {
+            errors.push(`${levelPrefix} : source invalide`);
+          }
+          if (typeof level.updatedAt !== 'number' || !Number.isFinite(level.updatedAt)) {
+            errors.push(`${levelPrefix} : updatedAt invalide`);
+          }
+        }
+      }
     }
 
     if (map.sourceHash) {
