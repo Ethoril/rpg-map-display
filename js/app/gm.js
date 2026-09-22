@@ -1610,16 +1610,13 @@ export async function bootstrapGMApp(options = {}) {
 
       if (activeToolName === 'wall-draw' || activeToolName === 'wall-delete') {
         const grid = gridFor(activeLevel);
-        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-        const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-        const gridScale = Math.abs(origin1.x - origin0.x);
 
         const subMode = gmPanel?.wallEditor?.getSubMode() ?? (activeToolName === 'wall-delete' ? 'supprimer' : 'tracer');
         if (subMode === 'tracer') {
-          const snapPt = snapWallVertex(intention.mapPos, activeLevel, { x: 0, y: 0 }, gridScale);
+          const snapPt = snapWallVertex(intention.mapPos, activeLevel, grid);
           gmPanel?.wallEditor?.addVertex(snapPt);
         } else if (subMode === 'supprimer') {
-          const targetWall = findWallAt(intention.mapPos, activeLevel, { x: 0, y: 0 }, gridScale);
+          const targetWall = findWallAt(intention.mapPos, activeLevel, grid);
           if (targetWall) {
             const removed = store.removeWall(activeLevel.id, targetWall);
             if (removed && transport) {

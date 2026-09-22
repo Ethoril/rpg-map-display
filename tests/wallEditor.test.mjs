@@ -2,7 +2,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { snapWallVertex } from '../js/ui/gm/wallEditor.js';
+import { snapWallVertex, findWallAt } from '../js/ui/gm/wallEditor.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { gridFor } from '../js/grid/index.js';
 import { validateCampaign, createCampaign, createLevel, createToken } from '../js/core/schema.js';
@@ -61,7 +61,7 @@ describe('Tranche L-07 — Éditeur minimal de murs (Unit tests)', () => {
     it('s\'accroche aux coins de case entiers par défaut', () => {
       const mapPos = { x: 104, y: 151 }; // raw cellX = 2.08, raw cellY = 3.02 (scale = 50)
       const level = makeTestCampaign().levels[0];
-      const snap = snapWallVertex(mapPos, level, { x: 0, y: 0 }, 50);
+      const snap = snapWallVertex(mapPos, level, gridFor({ ...level, pxPerCell: 50 }));
 
       assert.deepEqual(snap, { cellX: 2, cellY: 3 });
     });
@@ -70,7 +70,7 @@ describe('Tranche L-07 — Éditeur minimal de murs (Unit tests)', () => {
       // Mur existant à (4, 0). Click à raw cellX = 4.15, cellY = 0.1 (dist < 0.5)
       const mapPos = { x: 4.15 * 50, y: 0.1 * 50 };
       const level = makeTestCampaign().levels[0];
-      const snap = snapWallVertex(mapPos, level, { x: 0, y: 0 }, 50);
+      const snap = snapWallVertex(mapPos, level, gridFor({ ...level, pxPerCell: 50 }));
 
       assert.deepEqual(snap, { cellX: 4, cellY: 0 });
     });
@@ -79,9 +79,33 @@ describe('Tranche L-07 — Éditeur minimal de murs (Unit tests)', () => {
       // Portail existant à (6, 6). Click à raw cellX = 6.1, cellY = 6.1 (dist < 0.5)
       const mapPos = { x: 6.1 * 50, y: 6.1 * 50 };
       const level = makeTestCampaign().levels[0];
-      const snap = snapWallVertex(mapPos, level, { x: 0, y: 0 }, 50);
+      const snap = snapWallVertex(mapPos, level, gridFor({ ...level, pxPerCell: 50 }));
 
       assert.deepEqual(snap, { cellX: 6, cellY: 6 });
+    });
+  });
+
+  // B7 (audit du 22/09/2026) — l'éditeur convertissait avec une origine forcée à (0,0) et
+  // l'échelle X seule. Sur un étage DÉCALÉ, l'accrochage et la suppression tombaient à côté du
+  // mur dessiné (lequel passe par `grid.mapFromCellPoint`, offset compris).
+  describe('1bis. Étage décalé : accrochage et suppression suivent le mur DESSINÉ (B7)', () => {
+    const decale = () => {
+      const level = { ...makeTestCampaign().levels[0], pxPerCell: 50,
+        grid: { ...makeTestCampaign().levels[0].grid, offsetX: 30, offsetY: 20 } };
+      return { level, grid: gridFor(level) };
+    };
+
+    it('le coin accroché est celui sous le doigt, offset compris', () => {
+      const { level, grid } = decale();
+      // Coin (2, 3) dessiné en x = 30 + 100 = 130, y = 20 + 150 = 170.
+      assert.deepEqual(snapWallVertex({ x: 134, y: 172 }, level, grid), { cellX: 2, cellY: 3 });
+    });
+
+    it('un tap sur le mur dessiné le trouve, un tap à sa place « sans offset » non', () => {
+      const { level, grid } = decale();
+      // Le mur (0,0)→(4,0) est dessiné sur y = 20, de x = 30 à x = 230.
+      assert.ok(findWallAt({ x: 225, y: 22 }, level, grid), 'sur le mur dessiné');
+      assert.equal(findWallAt({ x: 225, y: -10 }, level, grid), null, 'là où il serait sans offset');
     });
   });
 

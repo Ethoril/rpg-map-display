@@ -4,6 +4,7 @@
  * @typedef {import('../../core/types.js').Level} Level
  * @typedef {import('../../core/types.js').CellPoint} CellPoint
  * @typedef {import('../../core/types.js').MapPoint} MapPoint
+ * @typedef {import('../../grid/GridAdapter.js').GridAdapter} GridAdapter
  */
 
 /**
@@ -38,23 +39,35 @@ function distSqToSegment(p, a, b) {
 }
 
 /**
+ * Longueur d'une case en pixels carte, mesurée par la grille elle-même, jamais par la densité
+ * de l'étage lue directement.
+ * @param {GridAdapter} grid
+ * @returns {number}
+ */
+function uneCasePx(grid) {
+  const o = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+  const x = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  return Math.max(1, Math.hypot(x.x - o.x, x.y - o.y));
+}
+
+/**
  * Trouve le point d'accrochage pour une position carte (§4) :
  * 1. Extrémité existante de mur ou portail à moins de 0,5 case (prioritaire).
- * 2. Coin de case entier le plus proche à moins de 0,5 case (fallback).
+ * 2. Coin de case entier le plus proche (fallback).
  * Aucun point libre n'est autorisé.
+ *
+ * ⛔ Toutes les conversions passent par la grille (audit du 22/09, B7) — celle-là même qui
+ * DESSINE les murs (`walls.js`, `grid.mapFromCellPoint`). L'éditeur convertissait lui-même avec
+ * une origine forcée à (0,0) et l'échelle X seule : sur un étage décalé ou hexagonal,
+ * l'accrochage et la zone de suppression tombaient à côté du mur affiché.
  *
  * @param {MapPoint} mapPos Position carte en pixels carte
  * @param {Level|null} level Étage courant
- * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
- * @param {number} gridScale Échelle de la grille en pixels carte par case
+ * @param {GridAdapter} grid Grille de cet étage
  * @returns {CellPoint} Point accroché
  */
-export function snapWallVertex(mapPos, level, mapOrigin, gridScale) {
-  const scale = Math.max(1, gridScale);
-  const rawCellX = (mapPos.x - mapOrigin.x) / scale;
-  const rawCellY = (mapPos.y - mapOrigin.y) / scale;
-
-  const maxDistCellsSq = 0.5 * 0.5; // 0,25
+export function snapWallVertex(mapPos, level, grid) {
+  const seuilPx = 0.5 * uneCasePx(grid);
 
   // 1. Recherche d'une extrémité existante à moins de 0,5 case
   if (level) {
@@ -79,12 +92,13 @@ export function snapWallVertex(mapPos, level, mapOrigin, gridScale) {
     }
 
     let bestEndpoint = null;
-    let minEndpointDistSq = Infinity;
+    let minEndpointDist = Infinity;
 
     for (const ep of existingEndpoints) {
-      const dSq = (rawCellX - ep.cellX) ** 2 + (rawCellY - ep.cellY) ** 2;
-      if (dSq <= maxDistCellsSq && dSq < minEndpointDistSq) {
-        minEndpointDistSq = dSq;
+      const pt = grid.mapFromCellPoint(ep);
+      const d = Math.hypot(mapPos.x - pt.x, mapPos.y - pt.y);
+      if (d <= seuilPx && d < minEndpointDist) {
+        minEndpointDist = d;
         bestEndpoint = ep;
       }
     }
@@ -95,26 +109,26 @@ export function snapWallVertex(mapPos, level, mapOrigin, gridScale) {
   }
 
   // 2. Coin de case entier le plus proche
+  const brut = grid.cellPointFromMap(mapPos);
   return {
-    cellX: Math.round(rawCellX),
-    cellY: Math.round(rawCellY),
+    cellX: Math.round(brut.cellX),
+    cellY: Math.round(brut.cellY),
   };
 }
 
 /**
- * Trouve le mur d'un étage le plus proche d'un tap carte (capsule de 0,5 case).
+ * Trouve le mur d'un étage le plus proche d'un tap carte (capsule de 0,5 case). Mêmes
+ * conversions que le dessin des murs — voir `snapWallVertex`.
  *
  * @param {MapPoint} mapPos Position carte en pixels carte
  * @param {Level|null} level Étage courant
- * @param {MapPoint} mapOrigin Origine de la carte en pixels carte
- * @param {number} gridScale Échelle de la grille en pixels carte par case
+ * @param {GridAdapter} grid Grille de cet étage
  * @returns {CellPoint[]|null} Mur trouvé ou null
  */
-export function findWallAt(mapPos, level, mapOrigin, gridScale) {
+export function findWallAt(mapPos, level, grid) {
   if (!level || !Array.isArray(level.walls) || level.walls.length === 0) return null;
 
-  const scale = Math.max(1, gridScale);
-  const maxDistPxSq = (0.5 * scale) ** 2;
+  const maxDistPxSq = (0.5 * uneCasePx(grid)) ** 2;
 
   let bestWall = null;
   let minDistSq = Infinity;
@@ -123,14 +137,8 @@ export function findWallAt(mapPos, level, mapOrigin, gridScale) {
     if (!Array.isArray(wall) || wall.length < 2) continue;
 
     for (let i = 0; i < wall.length - 1; i++) {
-      const pA = {
-        x: mapOrigin.x + wall[i].cellX * scale,
-        y: mapOrigin.y + wall[i].cellY * scale,
-      };
-      const pB = {
-        x: mapOrigin.x + wall[i + 1].cellX * scale,
-        y: mapOrigin.y + wall[i + 1].cellY * scale,
-      };
+      const pA = grid.mapFromCellPoint(wall[i]);
+      const pB = grid.mapFromCellPoint(wall[i + 1]);
 
       const dSq = distSqToSegment(mapPos, pA, pB);
       if (dSq <= maxDistPxSq && dSq < minDistSq) {
