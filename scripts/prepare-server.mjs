@@ -167,7 +167,11 @@ function readJsonBody(req) {
     let body = '';
     req.on('data', (c) => {
       body += c;
-      if (body.length > 1_000_000) reject(new Error('Corps de requête trop volumineux'));
+      if (body.length > 1_000_000) {
+        reject(new Error('Corps de requête trop volumineux'));
+        // Sans ceci, le corps continuait de s'accumuler après le rejet (audit du 22/09, F3).
+        req.destroy();
+      }
     });
     req.on('end', () => {
       try {
@@ -600,9 +604,39 @@ async function apiPublish(body) {
   return { ...result, elapsedMs: Date.now() - started };
 }
 
+/**
+ * ⛔ Garde des requêtes venues d'AILLEURS que la page de l'outil (audit du 22/09, F3).
+ *
+ * L'API écrit et supprime des fichiers du dépôt. Or n'importe quelle page ouverte dans le même
+ * navigateur pouvait lui envoyer un `fetch(…, {method: 'POST', mode: 'no-cors'})` : une requête
+ * « simple », sans vérification préalable, que le serveur exécutait. Trois conditions, toutes
+ * nécessaires :
+ * - l'en-tête `Host` désigne ce serveur (sinon : rebinding DNS d'un nom tiers vers 127.0.0.1) ;
+ * - une origine déclarée est la nôtre ;
+ * - un POST porte `Content-Type: application/json`, qu'une page tierce ne peut envoyer sans
+ *   vérification préalable — à laquelle ce serveur ne répond pas.
+ *
+ * @param {http.IncomingMessage} req
+ * @returns {boolean}
+ */
+function requeteDeLOutil(req) {
+  const hotesPermis = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  if (!hotesPermis.has(String(req.headers.host ?? ''))) return false;
+  const origine = req.headers.origin;
+  if (origine !== undefined && !hotesPermis.has(origine.replace(/^http:\/\//, ''))) return false;
+  if (req.method === 'POST' && !/^application\/json\b/i.test(String(req.headers['content-type'] ?? ''))) {
+    return false;
+  }
+  return true;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
   const route = url.pathname;
+
+  if (route.startsWith('/api/') && !requeteDeLOutil(req)) {
+    return sendJson(res, 403, { error: 'Requête refusée : elle ne vient pas de la page de l’outil.' });
+  }
 
   try {
     if (req.method === 'GET' && route === '/api/sources') {
@@ -648,7 +682,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Reste : fichiers du dépôt, comme serve.mjs.
-  const relative = route === '/' ? 'prepare.html' : decodeURIComponent(route).replace(/^\/+/, '');
+  // ⛔ Dans un `try` (audit du 22/09, F2) : une URL malformée levait une `URIError` dans ce
+  // gestionnaire asynchrone — rejet non géré, et le processus s'arrêtait.
+  let decode;
+  try {
+    decode = decodeURIComponent(route);
+  } catch {
+    res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+    return res.end('400 Bad Request');
+  }
+  const relative = route === '/' ? 'prepare.html' : decode.replace(/^\/+/, '');
   const filePath = path.resolve(repoRoot, relative);
   if (filePath !== repoRoot && !filePath.startsWith(repoRoot + path.sep)) {
     res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });

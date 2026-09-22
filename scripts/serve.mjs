@@ -61,7 +61,16 @@ const MIME = new Map([
 ]);
 
 const server = http.createServer((req, res) => {
-  const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  // ⛔ Dans un `try` (audit du 22/09, F2) : `GET /%E0` levait une `URIError` non rattrapée et
+  // arrêtait le serveur — n'importe qui sur le réseau local, avec `--host 0.0.0.0`.
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  } catch {
+    res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('400 Bad Request');
+    return;
+  }
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const filePath = path.resolve(root, relative);
 
