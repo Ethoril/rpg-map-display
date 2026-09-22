@@ -102,16 +102,22 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
   - le correctif naïf (rendre `current`) retélécharge la session entière.
   → **conception d'abord** : purger `session/{id}/events` seul, par requête bornée. Si cela
   change le protocole → **[DÉCISION]**.
-- [ ] **C2** ✅ `setSessionFog` et `setSessionVision` notifient les abonnés, et chaque
+- [x] **C2** `fada46f` ✅ `setSessionFog` et `setSessionVision` notifient les abonnés, et chaque
   notification réécrit toute la campagne dans localStorage, validation comprise
   (`store.js:2187`, `:2211`). Séparer la notification « session » de la persistance.
 - [ ] **C3** ❔ Deux déplacements concurrents vers la même case : `moveTokenToCell`,
   `token.add` et `level.grid` lèvent sans `try` (`networkEvents.js:113`, `313`, `319`).
   L'erreur est avalée, et MJ et tablette divergent jusqu'au F5. Règle proposée : le MJ fait
   autorité, la tablette se recale sur l'état du MJ.
+  ⏳ **Conception d'abord** (22/09) : un `try` seul ne suffit pas. Un refus côté MJ laisse la
+  tablette sur sa position, et une correction exige une règle de recalage entre les postes.
 - [ ] **C4** ❔ Démarrage hors ligne figé : `await onDisconnect().remove()`
   (`FirebaseTransport.js:1285`) ne rejette jamais, et aucun appelant ne pose d'échéance. Le
   repli local n'est jamais atteint.
+  ⏳ **Conception d'abord** (22/09) : une échéance seule est dangereuse. Si la connexion
+  aboutit après l'échéance, sur un Wi-Fi lent, le MJ passe en local sans le savoir, et ses gestes
+  ne sont plus publiés. Il faut afficher l'état local, **puis adopter** le transport quand il
+  répond.
 - [ ] **C5** ❔ Une resynchro qui lève laisse le client sans écoute et sans nouvel essai
   (`:1132-1143`, `:1307`). La tablette castée ne se masque jamais, donc elle reste figée.
 - [ ] **C6** ✅ Course sur `onDisconnect` : le `cancel()` de l'ancien filet, non attendu,
@@ -122,10 +128,10 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
   ont changé. Supprimer le `measureFirestoreSnapshot` dont le résultat est jeté.
 - [ ] **C8** ✅ Un accusé de réception RTDB par événement reçu, écho compris (`:1357-1361`).
   À regrouper sur le battement, une fois C1 réglé.
-- [ ] **C9** ❔ `presence.js:85` compare `Date.now()` local à des horodatages serveur : une
+- [x] **C9** — **sans objet** : le transport ramène déjà les `at` à l'horloge locale à sa frontière (`FirebaseTransport.js:1881`). ❔ `presence.js:85` compare `Date.now()` local à des horodatages serveur : une
   horloge décalée de plus de 90 s rend toutes les présences périmées. Utiliser
   `serverTimeOffset`.
-- [ ] **C10** ❔ Les caches `sessionFogMap` et `sessionVisionMap` survivent à `resetStore`,
+- [x] **C10** `fada46f` ❔ Les caches `sessionFogMap` et `sessionVisionMap` survivent à `resetStore`,
   `loadCampaign` et `setSessionId` (`store.js:2073-2075`). Le masque d'un étage de même
   identifiant peut revenir.
 
