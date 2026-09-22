@@ -155,7 +155,7 @@ function createMockCanvas(width, height) {
       // `params` porte les arguments REÇUS tels quels : c'est le seul moyen d'éprouver la
       // taille de destination sur son EFFET — ce qui est réellement demandé au contexte —
       // plutôt que sur une variable interne de la couche.
-      journal.push({ op: 'drawImage', mode, args: reste.length, params: reste });
+      journal.push({ op: 'drawImage', mode, args: reste.length, params: reste, source: image ? { width: image.width, height: image.height } : null });
       const src = image?._ctx;
       if (!src) return;
       // Rééchantillonnage au plus proche voisin. `reste` vaut soit [dx, dy], soit les neuf
@@ -1030,6 +1030,36 @@ test('A1 : sur une grille DÉCALÉE, chaque passe part de l’origine de la gril
     assert.ok(passes.length > 0);
     for (const passe of passes) {
       assert.deepEqual(passe.params.slice(4, 8), [70, 35, 1400, 1120], 'destination = rectangle de la grille');
+    }
+  }
+});
+
+// E1 (audit du 22/09/2026) — les caches de la couche (amplifié, voile, stencils) comparent la
+// SEULE révision du champ. Un champ recréé au changement d'étage repartait de 0 et retombait sur
+// la révision du précédent : l'étage B était modulé et désaturé avec les tampons de A, à la
+// taille de A. Chaque passe doit peindre à partir d'une image à la taille du champ COURANT.
+test('E1 : après un changement d’étage de taille différente, aucune passe ne peint un tampon de l’étage précédent', () => {
+  const couche = new LightLayer({ createCanvas: fabrique });
+  for (const suppressed of [false, true]) {
+    for (const [w, h] of [[10, 10], [20, 16]]) {
+      const level = createLevel({ id: `e1-${w}`, widthCells: w, heightCells: h, pxPerCell: 100, ambient: { level: 0.3, baked: false } });
+      const adaptateur = gridFor(level);
+      couche.update(adaptateur, level, []);
+      const champ = champDe(couche);
+      const masque = masqueVisible(champ.maskWidth, champ.maskHeight, { x: 0, y: 0, w: champ.maskWidth, h: champ.maskHeight });
+      const ctx = createMockCanvas(4, 4)._ctx;
+      couche.render(ctx, adaptateur, level, {
+        role: /** @type {'players'} */ ('players'), visibleCanvas: masque, ...(suppressed ? { suppressed } : {}),
+      });
+      const passes = ctx.journal.filter((/** @type {any} */ e) => e.op === 'drawImage');
+      assert.ok(passes.length > 0);
+      for (const passe of passes) {
+        assert.equal(passe.source?.width, champ.maskWidth, `${w}×${h} : tampon d’un autre étage (${passe.source?.width} px de large)`);
+      }
+      // Le champ AMPLIFIÉ (désaturation) est recopié dans un stencil neuf : c'est lui, et lui seul,
+      // qui restait celui de l'étage précédent — l'éprouver directement.
+      const amplifie = /** @type {any} */ (couche)._champAmplifie;
+      if (amplifie) assert.equal(amplifie.width, champ.maskWidth, `${w}×${h} : champ amplifié de l’étage précédent`);
     }
   }
 });

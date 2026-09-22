@@ -3,6 +3,9 @@
 import { FOG_MASK_PX_PER_CELL, VISION_MAX_RANGE_CELLS } from '../core/constants.js';
 import { sweep } from './sweep.js';
 
+/** Dernière révision attribuée, tous champs confondus — voir `LightField._touch()`. */
+let derniereRevision = 0;
+
 /** @typedef {import('../core/types.js').MapPoint} MapPoint */
 /** @typedef {import('../core/types.js').Segment} Segment */
 
@@ -108,7 +111,7 @@ export class LightField {
 
     this.ctx = this.canvas?.getContext?.('2d') ?? this.canvas?._ctx ?? null;
     /** @type {number} Révision du contenu, voir `_touch()`. */
-    this.revision = 0;
+    this.revision = derniereRevision;
     /** @type {number} Sources réellement peintes à la dernière composition. */
     this.paintedCount = 0;
     this.clear();
@@ -119,7 +122,11 @@ export class LightField {
    * muté **en place**, son identité ne change donc jamais quand son contenu change.
    */
   _touch() {
-    this.revision++;
+    // ⛔ Compteur PARTAGÉ par tous les champs, jamais remis à zéro (audit du 22/09, E1). Les
+    // caches de `LightLayer` (amplifié, voile, stencils) comparent ce seul numéro. Un champ
+    // recréé au changement d'étage repartait de 0 et retombait sur la même révision que le
+    // précédent : l'étage B se désaturait avec la lumière de A.
+    this.revision = ++derniereRevision;
     if (this.canvas) this.canvas.__lightRevision = this.revision;
   }
 
