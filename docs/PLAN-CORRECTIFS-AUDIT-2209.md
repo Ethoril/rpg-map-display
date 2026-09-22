@@ -200,36 +200,46 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 - [ ] **E4** ✅ Hexagonal : le masque couvre `W` cases alors que les rangées impaires vont
   jusqu'à `W + 0,5`. Des bandes restent sans brouillard (`HexGrid.js:116-121` combiné avec
   `fogLayer.js:630`). À traiter avec A1.
+  ⏳ Partiel (A1, `26dc8d1`) : la bande d'offset reçoit le voile. Les demi-cases hexagonales
+  situées au-delà de `mapExtent` restent sans voile ; pour les couvrir, il faudrait élargir le
+  masque d'une demi-case, ce qui touche sa taille (exception de CONVENTIONS §1).
 - [ ] **E5** ✅ Hexagonal : l'aperçu de glisser soustrait `taille/2`, la convention du carré
   (`tokens.js:256-259`). L'interpolation en coordonnées décalées saute d'une demi-case
   (`:62-68`, `100`).
+  ⏳ Reporté (22/09) : défaut cosmétique. Le corriger proprement exige une méthode de grille
+  « ancrage dont le centre est ici », à ajouter à `GridAdapter`.
 - [x] **E6** `792e367` ✅ La poignée de gabarit est dessinée 1,5 fois plus petite que sa zone de tap
   sur la tablette : `ctx.getTransform()` inclut `stage.resolution` (`templates.js:88`).
 - [ ] **E7** ✅ Les bornes d'un pion sont vérifiées en carré même en hexagonal
   (`schema.js:1133-1136`). Passer par `grid.cellsOccupied`.
+  ⏳ **[DÉCISION]** : D-8.
 - [ ] **E8** ✅ La migration L-10 convertit case → pixel dans `schema.js:208-212`, sans le
   décalage et en supposant le carré. Elle est masquée par la liste blanche du test 1. La
   faire passer par la grille.
 
+  ⏳ Reporté (22/09) : cette migration ne touche que les documents antérieurs au 05/08, déjà
+  migrés. La corriger demande de la sortir de `core/`, qui n'a pas accès à la grille.
 ### P5 — import et serveurs locaux
 
-- [ ] **F1** ✅ UVTT (`uvtt.js`) :
+- [x] **F1** `dfbf365` ✅ UVTT (`uvtt.js`) :
   - portes (`:317`) et lumières (`:357`) testées avec `typeof`, donc `Infinity` passe ;
   - `map_origin` n'est pas validé (`:192-195`) et donne `NaN` ;
   - un `map_size` non entier (`:150`) passe en silence.
   Règle d'universalité : **avertir, jamais écarter en silence**.
-- [ ] **F2** ✅ `decodeURIComponent` hors `try` dans `serve.mjs:63` et
+- [x] **F2** `341157c` ✅ `decodeURIComponent` hors `try` dans `serve.mjs:63` et
   `prepare-server.mjs:651` : `GET /%E0` fait tomber le serveur.
-- [ ] **F3** ❔ `prepare-server` n'a aucune protection contre les requêtes venues d'un autre
+- [x] **F3** `341157c` ❔ `prepare-server` n'a aucune protection contre les requêtes venues d'un autre
   site (`:164-181`, `603-650`) : il faut vérifier `Origin` et `Host`, et exiger
   `Content-Type: application/json`. Une requête rejetée pour sa taille doit aussi être
   détruite.
-- [ ] **F4** ❔ `levelSelector.js:94` injecte un identifiant dans un sélecteur CSS sans
+- [x] **F4** `dfbf365` ❔ `levelSelector.js:94` injecte un identifiant dans un sélecteur CSS sans
   l'échapper : utiliser `CSS.escape`.
 - [ ] **F5** ❔ `tokenMaker.js:611` ajoute `/` devant une URL `https://`. Il n'y a pas
   d'`onerror` en `:300` (une image HEIC est ignorée sans message). `sceneLibrary.js:152`
   publie les étages bruts, et une boucle interrompue laisse un ajout partiel.
 
+  ⏳ Partiel (`dfbf365`) : l'URL et l'`onerror` sont corrigés. Reste `sceneLibrary.js:152`, qui
+  publie les étages bruts et laisse un ajout partiel si un `addLevel` lève en cours de boucle.
 ### P6 — coûts évitables
 
 Aucun critère de performance n'est coché sans mesure sur la tablette. Ces lignes suppriment
@@ -311,3 +321,5 @@ un travail inutile, sans rien promettre de chiffré.
 | 22/09 | E2 | `6eb9516` | une lampe posée stocke le CENTRE de sa case ; les lampes déjà posées gardent leur lumière, leur marqueur rejoint leur halo |
 | 22/09 | E1 | `d80b9f2` | compteur de révision partagé par tous les `LightField` |
 | 22/09 | E3, E6 | `792e367` | `isCellVisibleInMask(…, pavage)` ; la couche gabarits reçoit `camera.zoom` |
+| 22/09 | F2, F3 | `341157c` | `tests/serveursLocaux.test.mjs` lance les vrais serveurs |
+| 22/09 | F1, F4, F5 | `dfbf365` | `map_size` non entier arrondi au-dessus ; décision E7 en **D-8** |
