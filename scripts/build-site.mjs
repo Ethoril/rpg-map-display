@@ -32,6 +32,10 @@ export const SITE_MANIFEST = Object.freeze({
     'js/app/gm.js',
     'js/app/player.js',
     'js/app/diag.js',
+    // Aucun module ne l'importe : `docs/SONDE-LATENCE.md` le fait charger à la main depuis la
+    // console de la vraie fenêtre MJ. Sans cette entrée, la ligne rendait une 404 sur Pages
+    // (audit du 22/09, D11 — même famille que E-15).
+    'js/app/sondeLatence.js',
   ]),
   directories: Object.freeze([
     Object.freeze({ source: 'css', extension: '.css' }),

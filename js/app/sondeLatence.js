@@ -1,8 +1,11 @@
-// @ts-nocheck
+// @ts-check
 /**
- * Sonde de latence — module chargeable depuis la console de la fenêtre MJ.
+ * Sonde de latence — module chargeable depuis la console de la fenêtre MJ, par la ligne
+ * d'import donnée dans `docs/SONDE-LATENCE.md`.
  *
- *     import('./js/app/sondeLatence.js')
+ * ⚠ Ne pas recopier cette ligne ici : `scripts/build-site.mjs` suit les imports, commentaires
+ * compris, et la résolvait relativement à CE fichier (`js/app/js/app/…`), ce qui cassait le
+ * paquet Pages.
  *
  * ⭐ **Ce fichier existe parce que le copier-coller a échoué.** La sonde était livrée comme cent
  * lignes à coller dans la console ; le mainteneur a copié la clôture Markdown avec, et a reçu un
@@ -12,13 +15,29 @@
  *
  * ⚠ Aucun autre module ne l'importe : il ne se charge que sur demande explicite, et ne coûte donc
  * rien en séance tant que personne ne le réclame.
+ *
+ * ⛔ Typé comme le reste du dépôt (audit du 22/09, D2) : il portait `@ts-nocheck`, interdit par
+ * la règle 1. Le typage ci-dessous décrit ce que la sonde lit, pas plus — c'est un outil de
+ * console qui fouille les internes du transport, d'où les `any` explicites et bornés.
+ */
+
+/**
+ * @typedef {Object} ReleveEnCours
+ * @property {string} type
+ * @property {number} emis Horloge de l'émetteur
+ * @property {number} arrivee Horloge locale
+ * @property {number} t1
+ * @property {number} t1bis
+ * @property {number} t2
+ * @property {number} t3
+ * @property {boolean} pageMasquee
  */
 
 (async () => {
   // Chemin relatif au module. La documentation ne duplique plus ce code : elle donne uniquement
   // l'import à exécuter depuis la page, ce qui évite qu'une copie diverge de cette source.
   const store = await import('../state/store.js');
-  const app = window.__RPG_APP__;
+  const app = /** @type {any} */ (window).__RPG_APP__;
   const tr = app.transport;
   const loop = app.frameLoop;
   // Le vrai transport range ses abonnés dans `_subscribers`, celui des tests dans `listeners`.
@@ -26,7 +45,9 @@
   const abonnes = tr && (tr._subscribers || tr.listeners);
   if (!abonnes || !loop) { console.error('Transport ou boucle de rendu introuvable — la page MJ est-elle connectée ?'); return; }
 
+  /** @type {Array<Record<string, number|string>>} */
   const releves = [];
+  /** @type {ReleveEnCours|null} */
   let enCours = null;
 
   // ── t1 : l'événement arrive. Écouteur inséré EN TÊTE.
@@ -37,7 +58,7 @@
   // 613 ms de « réseau » qui n'en étaient pas.
   const anciens = [...abonnes];
   abonnes.clear();
-  const premier = (e) => {
+  const premier = (/** @type {any} */ e) => {
     if (e?.type !== 'token.move') return;
     enCours = {
       type: e.type,
@@ -52,7 +73,7 @@
   for (const s of anciens) abonnes.add(s);
 
   // ── t1bis : tous les gestionnaires de l'application ont fini. Écouteur ajouté en DERNIER.
-  const dernier = (e) => {
+  const dernier = (/** @type {any} */ e) => {
     if (e?.type !== 'token.move' || !enCours) return;
     enCours.t1bis = performance.now();
   };
@@ -101,15 +122,19 @@
   };
   document.addEventListener('visibilitychange', noterMasquage);
 
-  window.sonde = {
+  /** @type {any} */ (window).sonde = {
     _actif: true,
     releves,
     decalageServeur: () => (tr._serverTimeOffset ?? 0),
     bilan() {
       if (!releves.length) { console.log('Aucun déplacement joueur relevé.'); return; }
       console.table(releves);
-      const med = (k) => {
-        const v = releves.map((r) => r[k]).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+      const med = (/** @type {string} */ k) => {
+        const v = releves
+          .map((r) => r[k])
+          .filter((x) => typeof x === 'number' && Number.isFinite(x))
+          .map((x) => /** @type {number} */ (x))
+          .sort((a, b) => a - b);
         return v.length ? v[Math.floor(v.length / 2)] : NaN;
       };
       console.log(

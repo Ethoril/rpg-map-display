@@ -65,6 +65,12 @@ test('1. Application case <-> pixel confinée (hors js/grid/, pas de conversion 
     if (content.includes('pxPerCell') && !allowedMentionPaths.has(rel)) {
       assert.fail(`Fichier non autorisé utilisant pxPerCell : ${rel}`);
     }
+    // ⛔ Le nom RECONSTITUÉ contourne le `includes` ci-dessus : `level['px' + 'PerCell']` a vécu
+    // dans `js/input/templateHit.js` jusqu'à l'audit du 22/09 (D3). Interdit partout, exceptions
+    // comprises — une exception mentionne le nom, elle n'a aucune raison de le cacher.
+    if (/(['"`])px\1\s*\+\s*(['"`])PerCell\2/.test(content)) {
+      assert.fail(`Nom pxPerCell reconstitué pour échapper à ce test : ${rel}`);
+    }
   }
 });
 
@@ -116,74 +122,125 @@ test('4. vision/ indépendant de la grille (aucun import de grid/ dans js/vision
   }
 });
 
-test('5. Manifeste respecté (tout fichier de js/ figure dans ARCHITECTURE.md §1)', () => {
-  const archDocPath = path.join(rootDir, 'docs', 'ARCHITECTURE.md');
-  const archContent = fs.readFileSync(archDocPath, 'utf8');
+test('5. Manifeste respecté (tout fichier de js/ et scripts/ figure dans ARCHITECTURE.md §1)', () => {
+  // ⛔ Audit du 22/09, D5 : le test cherchait le NOM DE BASE n'importe où dans le document. Un
+  // `js/ui/gm/stage.js` passait parce que `stage.js` est listé sous `render/`, et `scripts/`
+  // n'était pas lu du tout. On reconstruit désormais les CHEMINS COMPLETS depuis l'arbre du §1.
+  const archContent = fs.readFileSync(path.join(rootDir, 'docs', 'ARCHITECTURE.md'), 'utf8');
+  const section = archContent.slice(archContent.indexOf('## 1.'), archContent.indexOf('## 2.'));
+  const bloc = section.slice(section.indexOf('```') + 3, section.indexOf('```', section.indexOf('```') + 3));
 
-  const allJs = getAllJsFiles(jsDir);
+  /** @type {Set<string>} */
+  const listes = new Set();
+  /** @type {string[]} */
+  const pile = [];
+  for (const ligne of bloc.split('\n')) {
+    const m = /[├└]─ (\S+)/.exec(ligne);
+    if (!m) continue;
+    // Chaque niveau de l'arbre est indenté de 4 colonnes (`│   `).
+    const profondeur = Math.round(m.index / 4);
+    pile.length = profondeur;
+    pile.push(m[1]);
+    listes.add(pile.join(''));
+  }
+  assert.ok(listes.has('js/app/gm.js'), 'lecture de l’arbre du §1 : js/app/gm.js introuvable, le format a dérivé');
 
-  for (const filePath of allJs) {
-    const rel = toRelativeJsPath(filePath);
-    const basename = path.basename(rel);
+  // ⏳ Fichiers présents mais absents du manifeste, relevés par l'audit du 22/09 (D5). Leur
+  // inscription au §1 — ou leur retrait — est une décision du mainteneur. Cette liste ne doit
+  // que RÉTRÉCIR.
+  const enAttente = new Set([
+    'scripts/extract-poster.mjs',
+    'scripts/install-status-icons.mjs',
+    'scripts/measure-firestore-snapshots.mjs',
+    'scripts/videoProbe.mjs',
+  ]);
 
-    if (!archContent.includes(basename) && !archContent.includes(rel)) {
-      assert.fail(`Fichier non listé dans le manifeste ARCHITECTURE.md §1 : ${rel}`);
-    }
+  /** @param {string} dir @returns {string[]} */
+  const fichiers = (dir) =>
+    fs.existsSync(dir)
+      ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+          e.isDirectory() ? fichiers(path.join(dir, e.name)) : [path.join(dir, e.name)]
+        )
+      : [];
+  const hors = [...fichiers(jsDir), ...fichiers(path.join(rootDir, 'scripts'))]
+    .map(toRelativeJsPath)
+    .filter((rel) => /\.(?:js|mjs)$/.test(rel))
+    .filter((rel) => !listes.has(rel) && !enAttente.has(rel));
+  assert.deepEqual(hors, [], `Fichiers hors du manifeste ARCHITECTURE.md §1 : ${hors.join(', ')}`);
+
+  for (const rel of enAttente) {
+    assert.ok(!listes.has(rel), `${rel} est désormais au manifeste : le retirer de la liste d'attente`);
   }
 });
 
 test("6. Règles d'importation (tableau §2 d'ARCHITECTURE.md vérifié fichier par fichier)", () => {
-  const allJs = getAllJsFiles(jsDir);
+  // ⛔ Audit du 22/09, D4 — ce test était contournable de quatre façons : aucune branche pour
+  // `ui/*` ni pour `input/*` au-delà de deux interdits ; les ré-exports `export … from` n'étaient
+  // pas lus ; les chemins absolus `/js/…` étaient sautés ; `import( '…')` avec une espace
+  // échappait au motif. Et il vérifiait des INTERDITS, là où la table dit ce qui est PERMIS :
+  // `vision → movement → grid` contournait la règle portante n°1 par transitivité.
+  //
+  // Il lit désormais les imports d'EXÉCUTION seuls, commentaires retirés : un `@typedef
+  // {import('…')}` n'ajoute aucune dépendance au chargement — c'est ainsi que `ui/*` nomme
+  // l'interface `Transport` sans l'importer.
+  /** Ce que chaque module a le droit d'importer, colonne « Peut importer » de la table §2. */
+  const permis = /** @type {Record<string, string[]|null>} */ ({
+    core: [],
+    // ⏳ `movement` : violation connue, H1 du plan d'audit — `grid/*` délègue `cellsInRange` à
+    // `movement/reachable.js`. À retirer quand H1 est tranché, pas à généraliser.
+    grid: ['core', 'movement'],
+    transport: ['core'],
+    state: ['core', 'grid', 'import'],
+    import: ['core', 'grid'],
+    movement: ['core', 'grid'],
+    vision: ['core'],
+    input: ['core'],
+    // `render/*` importe `vision/*` et `input/templateHit.js`, que la table ne liste pas : il
+    // reste vérifié par ses interdits jusqu'à ce que la table soit amendée (plan d'audit, D4).
+    render: null,
+    ui: null,
+    app: null,
+  });
+  /** Interdits explicites, pour les modules sans liste d'autorisations. */
+  const interdits = /** @type {Record<string, string[]>} */ ({
+    render: ['transport', 'ui', 'import', 'app'],
+    ui: ['transport', 'app'],
+    app: [],
+  });
 
-  for (const filePath of allJs) {
+  const importRegex =
+    /(?:\bimport\s+(?:[\w*{}\s,$]+?\s+from\s+)?|\bexport\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+|\bimport\s*\(\s*)['"]([^'"]+)['"]/g;
+
+  for (const filePath of getAllJsFiles(jsDir)) {
     const rel = toRelativeJsPath(filePath);
-    const content = fs.readFileSync(filePath, 'utf8');
+    const module = rel.split('/')[1];
+    const code = fs
+      .readFileSync(filePath, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
 
-    const importRegex = /(?:import\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|import\s*\(?['"]([^'"]+)['"]\)?)/g;
-    let match;
-    while ((match = importRegex.exec(content)) !== null) {
-      const importPath = match[1] || match[2];
-      if (!importPath || !importPath.startsWith('.')) continue;
-
-      const resolvedAbs = path.resolve(path.dirname(filePath), importPath);
+    for (const match of code.matchAll(importRegex)) {
+      const importPath = match[1];
+      let resolvedAbs;
+      if (importPath.startsWith('.')) resolvedAbs = path.resolve(path.dirname(filePath), importPath);
+      else if (importPath.startsWith('/')) resolvedAbs = path.join(rootDir, importPath);
+      else continue; // spécificateur nu : l'import map, vérifiée par le test 2 et check-deps
       const importedRel = toRelativeJsPath(resolvedAbs);
+      if (!importedRel.startsWith('js/')) continue;
+      const cible = importedRel.split('/')[1];
+      if (cible === module) continue;
 
-      if (rel.startsWith('js/core/')) {
-        if (!importedRel.startsWith('js/core/')) {
-          assert.fail(`Violation règle d'importation : ${rel} ne peut importer que core/*, mais importe ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/grid/')) {
-        if (['render/', 'state/', 'transport/', 'ui/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/transport/')) {
-        if (['render/', 'grid/', 'ui/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/state/')) {
-        if (['render/', 'ui/', 'transport/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/import/')) {
-        if (['render/', 'ui/', 'transport/', 'state/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/movement/')) {
-        if (!importedRel.startsWith('js/core/') && !importedRel.startsWith('js/grid/') && !importedRel.startsWith('js/movement/')) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit importer que core/*, grid/* ou movement/*, mais importe ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/vision/')) {
-        if (['grid/', 'render/', 'ui/', 'state/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/render/')) {
-        if (['transport/', 'ui/', 'import/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
-      } else if (rel.startsWith('js/input/')) {
-        if (['render/', 'state/'].some((d) => importedRel.startsWith('js/' + d))) {
-          assert.fail(`Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`);
-        }
+      const liste = permis[module];
+      if (liste) {
+        assert.ok(
+          liste.includes(cible),
+          `Violation règle d'importation : ${rel} (${module}/*) ne peut importer que ${liste.map((m) => m + '/*').join(', ') || 'son propre module'}, mais importe ${importedRel}`
+        );
+      } else {
+        assert.ok(
+          !(interdits[module] ?? []).includes(cible),
+          `Violation règle d'importation : ${rel} ne doit pas importer ${importedRel}`
+        );
       }
     }
   }
@@ -200,6 +257,13 @@ test('7. Versions centralisées (aucun numéro de version ni URL CDN dans un .js
     const content = fs.readFileSync(filePath, 'utf8');
     if (cdnRegex.test(content)) {
       assert.fail(`URL CDN détectée dans le fichier JS : ${rel}`);
+    }
+    // ⛔ Audit du 22/09, D6 : seuls jsdelivr et gstatic étaient cherchés — unpkg, esm.sh ou
+    // skypack passaient. Toute URL dans un spécificateur d'import est interdite : les versions
+    // n'ont qu'un domicile, l'import map (STACK.md).
+    const importUrl = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"`](?:https?:)?\/\/[^'"`]+['"`]/;
+    if (importUrl.test(content)) {
+      assert.fail(`Import par URL dans le fichier JS : ${rel}`);
     }
   }
 });
@@ -235,11 +299,19 @@ test("9. Toute couche branchée dans gm.js / player.js figure dans CANVAS_LAYER_
 
   for (const fichier of ['js/app/gm.js', 'js/app/player.js']) {
     const contenu = fs.readFileSync(path.join(rootDir, fichier), 'utf8');
-    const appel = contenu.slice(contenu.indexOf('renderLayerStack({'));
-    assert.ok(appel.length > 0, `${fichier} doit appeler renderLayerStack`);
+    // ⛔ `indexOf` vaut -1 si l'appel disparaît, et `slice(-1)` rend alors un caractère : la
+    // garde `appel.length > 0` ne pouvait pas échouer (audit du 22/09, D10).
+    const debut = contenu.indexOf('renderLayerStack({');
+    assert.ok(debut >= 0, `${fichier} doit appeler renderLayerStack`);
+    // L'objet littéral seul, jusqu'à sa fermeture à l'indentation de l'appel.
+    const fin = contenu.indexOf('\n    });', debut);
+    assert.ok(fin > debut, `${fichier} : fin de l'appel à renderLayerStack introuvable`);
+    const appel = contenu.slice(debut, fin);
 
-    // Les clés de premier niveau de l'objet littéral, à leur indentation propre.
-    const cles = [...appel.matchAll(/^ {6}([a-zA-Z]+): \(\) => \{/gm)].map((m) => m[1]);
+    // Les clés de premier niveau de l'objet littéral, à leur indentation propre, sous TOUTES
+    // leurs formes : `cle: () => {`, `cle: fonction,`, `cle() {`. Le motif n'acceptait que la
+    // première, et une couche écrite autrement échappait au contrôle.
+    const cles = [...appel.matchAll(/^ {6}([a-zA-Z]+)\s*(?::|\()/gm)].map((m) => m[1]);
     assert.ok(cles.length >= 8, `${fichier} : ${cles.length} couches lues, c'est trop peu — le motif a dérivé`);
 
     for (const cle of cles) {
@@ -255,4 +327,28 @@ test("9. Toute couche branchée dans gm.js / player.js figure dans CANVAS_LAYER_
   assert.equal(CANVAS_LAYER_ORDER.indexOf('light'), CANVAS_LAYER_ORDER.indexOf('grid') + 1);
   assert.ok(CANVAS_LAYER_ORDER.indexOf('light') < CANVAS_LAYER_ORDER.indexOf('tokens'));
   assert.ok(CANVAS_LAYER_ORDER.indexOf('light') < CANVAS_LAYER_ORDER.indexOf('fog'));
+});
+
+test('10. Aucune directive @ts-nocheck ni @ts-ignore (règle 1)', () => {
+  // ⛔ Audit du 22/09, D2 : `js/app/sondeLatence.js` portait `@ts-nocheck`, et trois tests
+  // `@ts-ignore`, sans qu'aucun test ne le voie. On cherche la DIRECTIVE — un commentaire qui
+  // commence par elle — et non sa mention dans une phrase.
+  const directive = /^\s*(?:\/\/|\/\*+|\*)\s*@ts-(?:nocheck|ignore)\b/m;
+  /** @param {string} dir @returns {string[]} */
+  const fichiers = (dir) => {
+    if (!fs.existsSync(dir)) return [];
+    /** @type {string[]} */
+    const out = [];
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const plein = path.join(dir, e.name);
+      if (e.isDirectory()) out.push(...fichiers(plein));
+      else if (/\.(?:js|mjs)$/.test(e.name)) out.push(plein);
+    }
+    return out;
+  };
+  const fautifs = ['js', 'scripts', 'tests']
+    .flatMap((r) => fichiers(path.join(rootDir, r)))
+    .filter((f) => directive.test(fs.readFileSync(f, 'utf8')))
+    .map(toRelativeJsPath);
+  assert.deepEqual(fautifs, [], `directive de typage interdite dans : ${fautifs.join(', ')}`);
 });

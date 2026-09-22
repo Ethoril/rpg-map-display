@@ -58,7 +58,9 @@ const empreinte = (/** @type {Record<string, string>} */ map) =>
 function aUnScriptModule(fichier) {
   const chemin = path.join(rootDir, fichier);
   const html = fs.readFileSync(chemin, 'utf8');
-  return /<script\s+[^>]*type=["']module["']/i.test(html);
+  // ⛔ Guillemets FACULTATIFS (audit du 22/09, D7) : `type=module` est du HTML valide, et une
+  // page écrite ainsi échappait à la comparaison d'import map.
+  return /<script\s+[^>]*type\s*=\s*["']?module\b/i.test(html);
 }
 
 const imports = lireImportMap('gm.html');
@@ -119,16 +121,34 @@ if (checksAvailability) {
 /** @type {Map<string, string>} */
 const pkgVersions = new Map();
 
+/**
+ * ⛔ Audit du 22/09, D7 : la version était ÉCRASÉE URL après URL. Avec `firebase-app` en 12.16.0
+ * et `firebase-auth` en 12.15.0 dans l'import map, seule la dernière était comparée — vert.
+ * Deux URL d'un même paquet en deux versions sont désormais un échec.
+ *
+ * @param {string} nom
+ * @param {string} version
+ * @param {string} url
+ */
+function noterVersion(nom, version, url) {
+  const deja = pkgVersions.get(nom);
+  if (deja !== undefined && deja !== version) {
+    console.error(`[FAIL] ${nom} : versions mélangées dans l'import map (${deja} et ${version}, ${url}).`);
+    process.exit(1);
+  }
+  pkgVersions.set(nom, version);
+}
+
 for (const url of urls) {
   const jsdelivrMatch = url.match(/cdn\.jsdelivr\.net\/npm\/((?:@[^\/]+\/)?[^\/@]+)@([^\/]+)/);
   if (jsdelivrMatch) {
-    pkgVersions.set(jsdelivrMatch[1], jsdelivrMatch[2]);
+    noterVersion(jsdelivrMatch[1], jsdelivrMatch[2], url);
     continue;
   }
 
   const gstaticMatch = url.match(/gstatic\.com\/firebasejs\/([^\/]+)\//);
   if (gstaticMatch) {
-    pkgVersions.set('firebase', gstaticMatch[1]);
+    noterVersion('firebase', gstaticMatch[1], url);
   }
 }
 

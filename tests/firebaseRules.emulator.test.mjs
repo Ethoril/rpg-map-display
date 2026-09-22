@@ -1,6 +1,7 @@
 // @ts-check
 
 import test from 'node:test';
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,15 @@ const enabled = Boolean(
   process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_DATABASE_EMULATOR_HOST
 );
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// ⛔ En CI, des émulateurs absents sont une PANNE (audit du 22/09, D8) : si les variables
+// `*_EMULATOR_HOST` changent de nom, l'étape `test:firebase-rules` passait avec zéro test exécuté.
+// Seulement dans l'étape qui LANCE les émulateurs : ce fichier tourne aussi dans `test:unit`,
+// sans eux, où ses tests doivent rester sautés.
+const etapeEmulateurs = process.env.npm_lifecycle_event === 'test:firebase-rules';
+test('CI : les émulateurs Firebase sont joignables', { skip: !process.env.CI || !etapeEmulateurs }, () => {
+  assert.ok(enabled, 'FIRESTORE_EMULATOR_HOST et FIREBASE_DATABASE_EMULATOR_HOST requis en CI');
+});
 
 test('émulateurs : les règles autorisent seulement les deux identités et les chemins prévus', { skip: !enabled }, async () => {
   const environment = await initializeTestEnvironment({

@@ -92,8 +92,7 @@ test('1. Normalisation des portails dans les campagnes et étages', () => {
 
 test('2. Validation stricte de validateCampaign sur state et structure de portail', () => {
   const invalidCampaign = makeValidPortalCampaign();
-  // @ts-ignore
-  invalidCampaign.levels[0].portals[0].state = 'ajar';
+  /** @type {any} */ (invalidCampaign.levels[0].portals[0]).state = 'ajar';
 
   const errors = validateCampaign(invalidCampaign);
   assert.ok(errors.length > 0);

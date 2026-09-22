@@ -112,8 +112,7 @@ test('Q-b 2. validateCampaign valide le champ health', () => {
   assert.equal(validateCampaign(campaign).length, 0);
 
   // health invalide
-  // @ts-ignore
-  const badToken = createToken({ id: 'gob', levelId: level.id, health: 'invalid_state' });
+  const badToken = createToken(/** @type {any} */ ({ id: 'gob', levelId: level.id, health: 'invalid_state' }));
   const badCampaign = createCampaign({ levels: [level], tokens: [badToken] });
   const errs = validateCampaign(badCampaign);
   assert.ok(errs.length > 0);

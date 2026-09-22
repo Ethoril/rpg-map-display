@@ -69,6 +69,10 @@ test('R1-06 : le paquet Pages suit exactement la liste blanche et est détermini
   // utilisé sur la tablette, et les portes qui restent ouvertes ne se ferment que là.
   assert.equal(fs.existsSync(path.join(siteDir, 'diag.html')), true);
   assert.equal(fs.existsSync(path.join(siteDir, 'js/app/diag.js')), true);
+  // D11 (audit du 22/09/2026) : `docs/SONDE-LATENCE.md` fait taper `import('./js/app/sondeLatence.js')`
+  // dans la vraie fenêtre MJ. Aucun module ne l'importe, donc il n'entrait pas dans le paquet :
+  // sur Pages, la ligne rendait une 404. Même famille que E-15, les vignettes.
+  assert.equal(fs.existsSync(path.join(siteDir, 'js/app/sondeLatence.js')), true);
   // `prepare.html` reste dehors, et pour une raison qui n'est pas la même : il parle à
   // `scripts/prepare-server.mjs`, qui n'existe pas sur Pages. Publié, il serait inerte
   // et mentirait sur ce qu'il sait faire.

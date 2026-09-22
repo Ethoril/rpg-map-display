@@ -34,6 +34,14 @@ const RAISON =
   'RPG_FIREBASE_CONFIG absente ou incomplète (apiKey, authDomain, databaseURL, projectId, ' +
   'appId, testEmail, testPassword requis) : un projet Firebase réel est nécessaire.';
 
+// ⛔ En CI, une configuration absente est une PANNE, pas un contexte (audit du 22/09, D8). Ce
+// sont les seuls tests du vrai `FirebaseTransport` : un secret renommé ou un JSON cassé les
+// faisait tous passer en `skip`, et la porte restait verte sans avoir rien éprouvé.
+test('CI : la configuration Firebase réelle est présente', () => {
+  test.skip(!process.env.CI, 'hors CI, l’absence de configuration est permise');
+  expect(complet, RAISON).toBe(true);
+});
+
 /**
  * Ouvre un contexte isolé, y monte un client transport, et rend sa sonde.
  *

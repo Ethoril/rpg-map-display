@@ -182,8 +182,7 @@ test('6. Validation du Schéma pour token.markers', () => {
   const invalidToken1 = createToken({
     id: 'tok-2',
     levelId: 'rdc',
-    // @ts-ignore
-    markers: ['poisonned'],
+    markers: /** @type {any} */ (['poisonned']),
   });
   campaign.tokens = [invalidToken1];
   const errs1 = validateCampaign(campaign);
