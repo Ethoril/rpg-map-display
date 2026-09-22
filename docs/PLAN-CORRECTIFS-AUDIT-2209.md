@@ -245,37 +245,42 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 Aucun critère de performance n'est coché sans mesure sur la tablette. Ces lignes suppriment
 un travail inutile, sans rien promettre de chiffré.
 
-- [ ] **G1** `networkEvents.js:36` fait un `getCampaign()` (clone profond, 2,5 ms sur Mac) à
+- [x] **G1** `cc5c668` `networkEvents.js:36` fait un `getCampaign()` (clone profond, 2,5 ms sur Mac) à
   chaque événement réseau.
 - [ ] **G2** Chaque mutation valide deux fois, et `deepFreeze` parcourt tout l'arbre, murs
   compris. `getRenderSnapshot` copie deux fois les cases atteignables (`store.js:1900`).
   `structuredClone` est appliqué au résultat de `normalizeCampaign`, déjà une copie (`:416`,
   `:528`).
-- [ ] **G3** La couche gabarits reconstruit les segments et relance un sweep par gabarit à
+  ⏳ Non fait : valider deux fois et geler tout l'arbre touchent le contrat transactionnel du
+  store. À mesurer avant d'y toucher.
+- [x] **G3** `cc5c668` La couche gabarits reconstruit les segments et relance un sweep par gabarit à
   chaque image, pan compris (`templates.js:89`, `119`). Mettre en cache sur la signature.
-- [ ] **G4** Vue joueurs : décodage du masque lancé jusqu'à quatre fois par image tant que le
+- [x] **G4** `cc5c668` Vue joueurs : décodage du masque lancé jusqu'à quatre fois par image tant que le
   premier n'a pas abouti (`player.js:352`, `380`). Mémoriser la promesse.
-- [ ] **G5** `path.js:73` : le budget `max(100, 4×distance)` explore toute la carte, avec une
+- [x] **G5** `cc5c668` `path.js:73` : le budget `max(100, 4×distance)` explore toute la carte, avec une
   file linéaire. Borner par `speedCells`.
 - [ ] **G6** Signatures de murs recalculées à chaque image ; `gridFor()` réalloue la grille à
   chaque image ; `HexGrid.renderGrid` n'est pas limité à la vue (`HexGrid.js:333-349`).
-- [ ] **G7** ❔ Fond animé trop lent : le repli fait `display:none` sans `pause()`
+  ⏳ Non fait : à mesurer sur la tablette d'abord.
+- [x] **G7** `cc5c668` ❔ Fond animé trop lent : le repli fait `display:none` sans `pause()`
   (`videoBackdrop.js:433-435`).
 - [ ] **G8** Mineurs :
   - `devicePixelRatio` n'est lu qu'une fois (`stage.js:280`) ;
   - `?v=${Date.now()}` contourne le cache des icônes (`statusBadges.js:309`) ;
   - des `ImageBitmap` ne sont jamais fermés (`background.js:127-130`).
 
+  ⏳ Non fait : mineurs.
 ### P7 — conformité et nettoyage
 
 - [ ] **H1** ✅ `grid/*` importe `movement/reachable.js` (`SquareGrid.js:3`, `HexGrid.js:3`),
   interdit par `ARCHITECTURE.md` §2. `reachable.js:64-68` lit `grid.type` et calcule sur
   `a`/`b`. Il faut déplacer la règle « ne pas couper les coins » dans la grille.
-- [ ] **H2** ✅ Les étiquettes de `measure.js` (`:155-216`) et les murs (`walls.js:265`)
+  ⏳ **[DÉCISION]** : D-7, point 2.
+- [x] **H2** `68808ba` ✅ Les étiquettes de `measure.js` (`:155-216`) et les murs (`walls.js:265`)
   ignorent le zoom : illisibles au zoom 0,2.
-- [ ] **H3** ✅ Le `...overrides` final de `createLevel` et `createCampaign` écrase les
+- [x] **H3** `68808ba` ✅ Le `...overrides` final de `createLevel` et `createCampaign` écrase les
   fusions de `grid`, `ambient` et `settings` (`schema.js:552`, `:406`).
-- [ ] **H4** ✅ Le calcul `gridScaleX/Y` est copié quatre fois dans `gm.js` (376, 556, 1349,
+- [x] **H4** `68808ba` ✅ Le calcul `gridScaleX/Y` est copié quatre fois dans `gm.js` (376, 556, 1349,
   1556). Le remplacer par une fonction de la grille ; lié à B7.
 - [ ] **H5** Code mort (vérifié par grep dans `js/` et `tests/`) :
   - `shortestPath`, l'import `normalizeCampaignColors`, `TEMPLATE_ORIGIN_EPS` ;
@@ -287,12 +292,16 @@ un travail inutile, sans rien promettre de chiffré.
   - l'option `visibleAlpha` de `tokens.js` et l'option `visiblePolygons` de `fogLayer.js` ;
   - le champ `image` de `parseUvtt`, et deux `undefined` orphelins dans `prepare-maps.mjs`.
   Ce qui n'est utilisé que par les tests reste, sauf si le test ne teste que ce code.
+  ⏳ Partiel (`68808ba`). Gardés à dessein : `edgesOf`, qui appartient à l'interface normative
+  du §3 ; `Camera.convergeTo`, testé et utile au suivi de caméra ; les branches `_liveQuery`,
+  défensives ; l'appel à `diagnosticCanal` dans `diag.js`, dont le comptage aiderait à trancher C1.
 - [ ] **H6** **[DÉCISION]** Les règles Firebase accordent tout au compte technique sans
   `email_verified`, et ne séparent pas MJ et tablette (`database.rules.json:5-6`,
   `firestore.rules:11`). Domaine console du mainteneur.
 - [ ] **H7** Faible : aucune CSP ni SRI sur les pages ; les actions CI sont épinglées par tag
   et non par SHA ; il manque un champ `packageManager` ; `forbidOnly` n'est actif qu'en CI.
-- [ ] **H8** Les couleurs venues du réseau vont telles quelles dans `cssText`
+  ⏳ Non fait : priorité basse.
+- [x] **H8** — **sans objet** : `validateCampaign` impose `#RRGGBB` à `borderColor` et à la couleur des gabarits (`schema.js:1068`, `:1237`). Les couleurs venues du réseau vont telles quelles dans `cssText`
   (`panel.js:1228`, `templateTools.js:193`) : les valider.
 
 ## 3. Tranché pendant l'audit
@@ -323,3 +332,5 @@ un travail inutile, sans rien promettre de chiffré.
 | 22/09 | E3, E6 | `792e367` | `isCellVisibleInMask(…, pavage)` ; la couche gabarits reçoit `camera.zoom` |
 | 22/09 | F2, F3 | `341157c` | `tests/serveursLocaux.test.mjs` lance les vrais serveurs |
 | 22/09 | F1, F4, F5 | `dfbf365` | `map_size` non entier arrondi au-dessus ; décision E7 en **D-8** |
+| 23/09 | G1, G3–G5, G7 | `cc5c668` | aucun gain chiffré revendiqué : pas de mesure tablette |
+| 23/09 | H2–H5 | `68808ba` | `createLevel` étale ses overrides en premier |
