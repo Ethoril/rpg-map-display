@@ -758,3 +758,40 @@ test('Vue joueurs : une destination refusée ou occupée déclenche un retour tr
   );
   expect(refused).toEqual([{ cell: { a: 8, b: 2 }, kind: 'refused' }]);
 });
+
+// B9 (audit du 22/09/2026) — une erreur de transport affichait « Connexion impossible » jusqu'au
+// rechargement : `transportError` n'était jamais remis à zéro. Une présence reçue ensuite prouve
+// que le serveur répond, et doit effacer le bandeau, sur le MJ comme sur la tablette.
+test('B9 : « Connexion impossible » s’efface dès qu’une présence prouve que le serveur répond', async ({ page }) => {
+  await page.goto('/gm.html');
+  const res = await page.evaluate(async () => {
+    const vPath = './js/ui/versionBadge.js';
+    const { mountGMVersionBadge, mountPlayerVersionBadge } = await import(/* @vite-ignore */ /** @type {any} */ (vPath));
+    /** @type {Array<(err: unknown) => void>} */
+    const erreurs = [];
+    /** @type {Array<(p: any) => void>} */
+    const presences = [];
+    const transport = {
+      getClientId: () => 'moi',
+      onError: (/** @type {any} */ cb) => { erreurs.push(cb); return () => {}; },
+      subscribePresence: (/** @type {any} */ cb) => { presences.push(cb); return () => {}; },
+    };
+    const pied = document.createElement('div');
+    document.body.appendChild(pied);
+    mountGMVersionBadge(pied, { build: 42, transport });
+    mountPlayerVersionBadge({ build: 42, transport });
+    const bandeau = () => /** @type {HTMLElement} */ (pied.querySelector('#version-mismatch-banner-gm'));
+    const tablette = () => document.getElementById('player-version-overlay')?.textContent ?? '';
+
+    for (const cb of erreurs) cb(new Error('permission refusée'));
+    const pendant = { mj: bandeau().style.display, texte: bandeau().textContent, tab: tablette() };
+    for (const cb of presences) cb({});
+    const apres = { mj: bandeau().style.display, tab: tablette() };
+    return { pendant, apres };
+  });
+  expect(res.pendant.mj).toBe('block');
+  expect(res.pendant.texte).toContain('Connexion impossible');
+  expect(res.pendant.tab).toContain('Connexion impossible');
+  expect(res.apres.mj).toBe('none');
+  expect(res.apres.tab).not.toContain('Connexion impossible');
+});

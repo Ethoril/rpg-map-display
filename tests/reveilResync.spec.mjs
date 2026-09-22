@@ -266,3 +266,33 @@ test('MJ : au F5 comme au réveil, il garde SON étage, pas celui écrit par la 
   expect(await etageActif()).toBe('lvl2');
   await context.close();
 });
+
+// B10 (audit du 22/09/2026) — tout `resize` de la vue joueurs recadrait la caméra sur la carte
+// entière, y compris le passage en plein écran au premier geste : le zoom réglé par la table
+// était perdu. Il ne l'est plus dès que la table a touché sa caméra.
+test('B10 : un redimensionnement garde la caméra que la table a réglée', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+  const player = await context.newPage();
+  await installBrowserTransport(player, 'b10-camera', S0);
+  await player.goto('/player.html?session=b10-camera');
+  await waitForApp(player);
+
+  const camera = () =>
+    player.evaluate(() => {
+      const c = /** @type {any} */ (window).__RPG_APP__.camera;
+      return { x: c.x, y: c.y, zoom: c.zoom };
+    });
+  await player.evaluate(() => {
+    const input = /** @type {any} */ (window).__RPG_APP__.pointerInput;
+    input.emit({ type: 'pinchZoom', scaleFactor: 2, center: { screenX: 500, screenY: 350 } });
+    input.emit({ type: 'panBy', deltaX: 40, deltaY: 0 });
+  });
+  const reglee = await camera();
+
+  await player.setViewportSize({ width: 1200, height: 800 });
+  await player.waitForTimeout(300);
+  const apres = await camera();
+  expect(apres.zoom).toBeCloseTo(reglee.zoom, 6);
+  expect(apres.x).toBeCloseTo(reglee.x, 6);
+  await context.close();
+});

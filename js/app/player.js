@@ -456,6 +456,11 @@ export async function bootstrapPlayerApp(options = {}) {
 
   /** @type {string|null} */
   let lastActiveLevelId = null;
+  // La table a-t-elle CHOISI sa caméra — restaurée d'un F5, ou déplacée au doigt depuis le
+  // dernier cadrage automatique ? Un redimensionnement ne recadre que si elle ne l'a pas fait
+  // (audit du 22/09, B10) : le passage en plein écran au premier geste déclenche un `resize`,
+  // et recadrer à ce moment effaçait la caméra que la table venait de retrouver ou de régler.
+  let cameraChoisie = restoredCamera;
   /** @param {import('../core/types.js').Level|null} activeLevel */
   function fitActiveLevel(activeLevel) {
     if (!activeLevel || activeLevel.id === lastActiveLevelId) return;
@@ -474,6 +479,7 @@ export async function bootstrapPlayerApp(options = {}) {
     camera.setZoom(
       Math.min(stage.width / Math.max(1, etendue.width), stage.height / Math.max(1, etendue.height))
     );
+    cameraChoisie = false;
   }
 
   function renderAll() {
@@ -798,6 +804,7 @@ export async function bootstrapPlayerApp(options = {}) {
         const payload = /** @type {any} */ (event.payload);
         if (payload?.camera) {
           camera.setPan(payload.camera.x, payload.camera.y);
+          cameraChoisie = true;
           camera.setZoom(payload.camera.zoom);
           requestRender();
         }
@@ -973,6 +980,7 @@ export async function bootstrapPlayerApp(options = {}) {
         camera.x - intention.deltaX / camera.zoom,
         camera.y - intention.deltaY / camera.zoom
       );
+      cameraChoisie = true;
       persistCamera();
       requestRender();
     } else if (intention.type === 'pinchZoom') {
@@ -980,6 +988,7 @@ export async function bootstrapPlayerApp(options = {}) {
       camera.setZoom(camera.zoom * intention.scaleFactor);
       const after = camera.screenToMap(intention.center);
       camera.setPan(camera.x + before.x - after.x, camera.y + before.y - after.y);
+      cameraChoisie = true;
       persistCamera();
       requestRender();
     }
@@ -989,7 +998,7 @@ export async function bootstrapPlayerApp(options = {}) {
   const onResize = () => {
     stage.resize();
     camera.setViewport(stage.width, stage.height);
-    lastActiveLevelId = null;
+    if (!cameraChoisie) lastActiveLevelId = null;
     requestRender();
   };
   const onKeyDown = (/** @type {KeyboardEvent} */ event) => {

@@ -97,7 +97,13 @@ export function mountGMVersionBadge(container, options = {}) {
     if (typeof transport.subscribePresence === 'function') {
       try {
         unsubTransportPresence = transport.subscribePresence((/** @type {any} */ presences) => {
+          // ⛔ Une présence reçue prouve que le serveur répond (audit du 22/09, B9) : l'erreur
+          // précédente n'est plus d'actualité. Sans ce retour à zéro, UNE erreur — même un
+          // refus logique de publication — laissait « Connexion impossible » affiché jusqu'au
+          // rechargement, par-dessus toute alerte de version.
+          transportError = null;
           setPresenceMap(presences);
+          update();
         });
       } catch (err) {
         transportError = /** @type {any} */ (err)?.message || String(err);
@@ -418,7 +424,13 @@ export function mountPlayerVersionBadge(options = {}) {
     if (typeof transport.subscribePresence === 'function') {
       try {
         unsubTransportPresence = transport.subscribePresence((/** @type {any} */ presences) => {
+          // ⛔ Une présence reçue prouve que le serveur répond (audit du 22/09, B9) : l'erreur
+          // précédente n'est plus d'actualité. Sans ce retour à zéro, UNE erreur — même un
+          // refus logique de publication — laissait « Connexion impossible » affiché jusqu'au
+          // rechargement, par-dessus toute alerte de version.
+          transportError = null;
           setPresenceMap(presences);
+          update();
         });
       } catch (err) {
         transportError = /** @type {any} */ (err)?.message || String(err);
