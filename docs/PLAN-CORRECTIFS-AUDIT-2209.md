@@ -188,13 +188,13 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 
 ### P4 — hexagonal et lumière
 
-- [ ] **E1** ✅ Caches de `LightLayer` périmés entre deux étages de tailles différentes : le
+- [x] **E1** `d80b9f2` ✅ Caches de `LightLayer` périmés entre deux étages de tailles différentes : le
   compteur de révision repart à 2 et `invalidate()` n'est jamais appelé
   (`light.js:333-336`, `471`, `532`, `794`).
-- [ ] **E2** ✅ Le halo d'une lampe part du coin de la case (`mapFromCellPoint`), alors que
+- [x] **E2** `6eb9516` ✅ Le halo d'une lampe part du coin de la case (`mapFromCellPoint`), alors que
   son marqueur et sa zone de tap sont au centre (`lightMarkers.js:69`, `lightHit.js:59`).
   Une lampe posée au tap (`gm.js:1590`) éclaire depuis le coin.
-- [ ] **E3** ✅ Hexagonal : la visibilité d'un pion est testée sans le décalage de rangée
+- [x] **E3** `792e367` ✅ Hexagonal : la visibilité d'un pion est testée sans le décalage de rangée
   (`fog.js:459-460`). Sur les rangées impaires, le point tombe sur l'arête : un PNJ visible
   disparaît côté joueurs.
 - [ ] **E4** ✅ Hexagonal : le masque couvre `W` cases alors que les rangées impaires vont
@@ -203,7 +203,7 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 - [ ] **E5** ✅ Hexagonal : l'aperçu de glisser soustrait `taille/2`, la convention du carré
   (`tokens.js:256-259`). L'interpolation en coordonnées décalées saute d'une demi-case
   (`:62-68`, `100`).
-- [ ] **E6** ✅ La poignée de gabarit est dessinée 1,5 fois plus petite que sa zone de tap
+- [x] **E6** `792e367` ✅ La poignée de gabarit est dessinée 1,5 fois plus petite que sa zone de tap
   sur la tablette : `ctx.getTransform()` inclut `stage.resolution` (`templates.js:88`).
 - [ ] **E7** ✅ Les bornes d'un pion sont vérifiées en carré même en hexagonal
   (`schema.js:1133-1136`). Passer par `grid.cellsOccupied`.
@@ -308,3 +308,6 @@ un travail inutile, sans rien promettre de chiffré.
 | 22/09 | C2, C10 | `fada46f` | notification `{ session: true }` : ni sauvegarde locale, ni instantané Firestore pour un masque |
 | 22/09 | D2–D11 | `6dec21d` | les écarts tolérés sont dans des listes d'attente explicites du test ; décisions en **D-7** |
 | 22/09 | D3 | `0f4eca3` | `GridAdapter.cellPitch()` |
+| 22/09 | E2 | `6eb9516` | une lampe posée stocke le CENTRE de sa case ; les lampes déjà posées gardent leur lumière, leur marqueur rejoint leur halo |
+| 22/09 | E1 | `d80b9f2` | compteur de révision partagé par tous les `LightField` |
+| 22/09 | E3, E6 | `792e367` | `isCellVisibleInMask(…, pavage)` ; la couche gabarits reçoit `camera.zoom` |
