@@ -255,6 +255,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
     ├─ PLAN-LOT2.md               [2] découpage du lot 2 en tranches, décisions arrêtées
     │                              (portes à trois états, autorité vision/fog) et amendements
     │                              du CdC à faire
+    ├─ PLAN-CORRECTIFS-AUDIT-2209.md plan de reprise hiérarchisé des correctifs issus de
+    │                              l'audit du 22/09/2026, coché au fil des commits
     ├─ FEUILLE-DE-ROUTE-COMPLEMENTAIRE.md
     │                              travaux transverses issus de l'audit du 07/08/2026 :
     │                              fiabilité, exploitation, performance et préparation 1.0
