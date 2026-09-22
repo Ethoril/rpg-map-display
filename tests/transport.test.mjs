@@ -618,3 +618,60 @@ test('LocalSocketTransport lève systématiquement "non implémenté"', async ()
     await assert.rejects(async () => await local.snapshot(), /LocalSocketTransport non implémenté/);
     assert.throws(() => local.disconnect(), /LocalSocketTransport non implémenté/);
 });
+
+// A2 (audit du 22/09/2026) — le repli local du transport partage la clé `rpg_campaign_<id>`
+// avec le store, qui y écrit la campagne NUE et la relit comme telle. Y écrire l'enveloppe
+// rendait la copie locale illisible au F5 sans Firestore.
+test('A2 : saveSnapshot écrit la campagne NUE sous rpg_campaign_, jamais l’enveloppe', async () => {
+    const memoire = new Map();
+    const faux = {
+        getItem: (/** @type {string} */ k) => memoire.get(k) ?? null,
+        setItem: (/** @type {string} */ k, /** @type {string} */ v) => { memoire.set(k, String(v)); },
+        removeItem: (/** @type {string} */ k) => { memoire.delete(k); },
+    };
+    const avant = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { value: faux, configurable: true, writable: true });
+    try {
+        const transport = new FirebaseTransport(validConfig);
+        transport._sessionId = 'session-a2';
+        await transport.saveSnapshot({
+            campaign: {
+                campaignId: 'a2', name: 'A2', links: [], settings: {}, templates: [],
+                levels: [{ id: 'rdc', walls: [] }], tokens: [],
+            },
+            activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+        });
+        const ecrit = JSON.parse(memoire.get('rpg_campaign_session-a2') ?? 'null');
+        assert.ok(ecrit, 'le repli local est écrit');
+        assert.ok(Array.isArray(ecrit.levels), 'la campagne nue, lisible par le store');
+        assert.equal(ecrit.campaign, undefined, 'pas d’enveloppe');
+    } finally {
+        if (avant) Object.defineProperty(globalThis, 'localStorage', avant);
+        else delete (/** @type {any} */ (globalThis)).localStorage;
+    }
+});
+
+test('A2 : le repli local de snapshot() déballe une enveloppe héritée, et lit la campagne nue', async () => {
+    const memoire = new Map();
+    const faux = {
+        getItem: (/** @type {string} */ k) => memoire.get(k) ?? null,
+        setItem: (/** @type {string} */ k, /** @type {string} */ v) => { memoire.set(k, String(v)); },
+        removeItem: (/** @type {string} */ k) => { memoire.delete(k); },
+    };
+    const avant = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { value: faux, configurable: true, writable: true });
+    try {
+        const campagne = { campaignId: 'a2', levels: [{ id: 'rdc' }], tokens: [] };
+        for (const ecrit of [{ campaign: campagne, activeLevelId: 'rdc' }, campagne]) {
+            memoire.set('rpg_campaign_session-a2', JSON.stringify(ecrit));
+            const transport = new FirebaseTransport(validConfig);
+            transport.onError(() => {});
+            transport._sessionId = 'session-a2';
+            const etat = /** @type {any} */ (await transport.snapshot());
+            assert.ok(Array.isArray(etat?.campaign?.levels), 'la campagne est lue, enveloppée ou non');
+        }
+    } finally {
+        if (avant) Object.defineProperty(globalThis, 'localStorage', avant);
+        else delete (/** @type {any} */ (globalThis)).localStorage;
+    }
+});

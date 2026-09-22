@@ -1537,7 +1537,10 @@ export class FirebaseTransport {
             const localCamp = localStorage.getItem(`rpg_campaign_${sessionId}`);
             const localSess = localStorage.getItem(`rpg_session_${sessionId}`);
             if (localCamp) {
-              const campObj = JSON.parse(localCamp);
+              const lu = JSON.parse(localCamp);
+              // Une enveloppe `{campaign, …}` a longtemps été écrite ici (A2) : elle existe
+              // encore chez les utilisateurs, on en extrait la campagne.
+              const campObj = lu && !Array.isArray(lu.levels) && lu.campaign ? lu.campaign : lu;
               const sessObj = localSess ? JSON.parse(localSess) : {};
               // ⛔ `activeHandout` fait partie du repli, à l'identique de
               // `store.loadFromLocalStorage`. `restoreFromSnapshot` remet le champ à `null`
@@ -1606,7 +1609,15 @@ export class FirebaseTransport {
     // Les URL HTTP(S) persistantes sont conservées dans le repli local.
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campaignData));
+        // ⛔ La campagne NUE, jamais l'enveloppe `{campaign, activeLevelId, …}` (audit du
+        // 22/09, A2) : cette clé est partagée avec `store.saveToLocalStorage`, qui y écrit la
+        // campagne nue et la relit comme telle. L'enveloppe, écrite 250 ms après le store,
+        // rendait la copie illisible au F5 sans Firestore — puis la faisait effacer.
+        const enveloppe = /** @type {{campaign?: unknown}} */ (campaignData);
+        const campagneNue = enveloppe.campaign && typeof enveloppe.campaign === 'object'
+          ? enveloppe.campaign
+          : campaignData;
+        localStorage.setItem(`rpg_campaign_${this._sessionId}`, JSON.stringify(campagneNue));
       } catch (err) {
         this._reportError(err, `écriture du repli local "${this._sessionId}"`);
       }
