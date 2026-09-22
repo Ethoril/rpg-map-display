@@ -247,6 +247,36 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(activeLevel?.imageUrl).toBe('');
   });
 
+  // A6 (audit du 22/09/2026) — l'identifiant de l'aperçu vient du nom de fichier, avec la règle
+  // de `prepare-maps` : glisser l'UVTT d'une carte déjà préparée remplaçait le VRAI étage par un
+  // étage sans image, murs compris. L'aperçu doit refuser, et l'étage rester intact.
+  test('Diagnostic UVTT : l aperçu ne remplace JAMAIS un étage existant de même identifiant', async ({ page }) => {
+    await setupGMView(page);
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const { createLevel } = await import('../js/core/schema.js');
+      store.addLevel(createLevel({ id: 'minimal', name: 'Vraie carte', imageUrl: 'maps/minimal.webp' }));
+    });
+
+    await page.click('#gm-mode-prep');
+    await page.click('.gm-tab-btn[data-tab="import-uvtt"]');
+    await page.setInputFiles('#uvtt-file-input', {
+      name: 'minimal.uvtt',
+      mimeType: 'application/json',
+      buffer: Buffer.from(MINIMAL_UVTT_CONTENT, 'utf-8'),
+    });
+    await expect(page.locator('#btn-validate-uvtt-import')).toBeEnabled();
+    await page.click('#btn-validate-uvtt-import');
+    await expect(page.locator('#uvtt-status')).toContainText('ne le remplace pas');
+
+    const etage = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return store.getCampaign()?.levels.find((l) => l.id === 'minimal') ?? null;
+    });
+    expect(etage?.imageUrl).toBe('maps/minimal.webp');
+    expect(etage?.name).toBe('Vraie carte');
+  });
+
   test('Diagnostic Image : import avec URL, calibration et publication vers le store et la vue joueurs', async ({
     context,
   }) => {

@@ -280,6 +280,16 @@ export function createImportPanel(container, options = {}) {
     };
 
     try {
+      // ⛔ Un aperçu ne remplace JAMAIS un étage existant (audit du 22/09, A6). L'identifiant
+      // vient du nom de fichier, avec la même règle que `prepare-maps` : glisser ici l'UVTT
+      // d'une carte déjà préparée remplaçait en place le vrai étage par un étage sans image,
+      // murs et portes compris, et sans rien publier à la tablette.
+      const existant = store.getCampaign()?.levels.find((l) => l.id === level.id);
+      if (existant) {
+        throw new Error(
+          `un étage « ${existant.name || existant.id} » porte déjà l'identifiant "${level.id}" : l'aperçu ne le remplace pas. Pour changer sa carte, sélectionnez-le puis « Remplacer l'étage courant » (onglet Image).`
+        );
+      }
       store.addLevel(level);
       const publishedResult = { ...pendingUvtt, level };
 
