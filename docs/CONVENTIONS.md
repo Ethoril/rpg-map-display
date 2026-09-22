@@ -26,9 +26,14 @@ pixels et l'autre en cases. Des noms différents rendent le mélange **impossibl
 compiler** — c'est le même mécanisme que `{a, b}` pour la topologie de grille.
 
 `CellPoint` est indispensable et distinct de `Cell` : la géométrie importée d'un UVTT
-(murs, portails, lumières, extrémités de liaison) est en unités de case mais
+(murs, portails, lumières) est en unités de case mais
 **fractionnaire** — un portail se pose en `{cellX: 4.5, cellY: 2}`. Ce ne sont pas des
 index de case.
+
+⚠ **Les extrémités de liaison sont des `Cell`, pas des `CellPoint`** (tranché le 22/09/2026).
+Une liaison se franchit quand un pion arrive sur *sa* case : l'extrémité est cette case,
+donc un index entier, comparé à la case du pion. Une extrémité fractionnaire est refusée à
+la validation, avec un message — jamais arrondie en silence.
 
 ```js
 /** @type {Cell} */      const cell = { a: 4, b: 7 }                  // ✅ index de case
@@ -61,8 +66,16 @@ quel espace.
 **Uniquement des coordonnées de cellule.** Jamais de pixel dans un document de scène ni
 dans un payload d'événement. Le pixel n'existe qu'au rendu.
 
-Exception unique et explicite : `pxPerCell` dans le document d'étage, et les dimensions
-du masque de fog. Rien d'autre.
+Exceptions explicites, et rien d'autre :
+
+- `pxPerCell` dans le document d'étage, et les dimensions du masque de fog ;
+- `Template.origin`, un `MapPoint` persisté et transmis par `template.move` (amendement
+  L-10 du cahier des charges) ;
+- `ping.mapPos`, un `MapPoint` transmis (cahier des charges §7).
+
+Conséquence assumée (tranché le 22/09/2026) : recaler la grille d'un étage laisse les pions
+sur leurs cases, mais les gabarits restent sur leurs pixels et se décalent par rapport aux
+cases. Un gabarit est éphémère et un recalage est rare : ce n'est pas un bug à corriger.
 
 ### `terrainCost` : `Record` persisté, `Map` en mémoire
 
