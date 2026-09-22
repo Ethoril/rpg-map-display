@@ -443,9 +443,15 @@ function discPolygon(center, radiusPx) {
  * @param {Uint8Array|null} maskAlpha Tableau d'alpha du masque
  * @param {number} widthCells Largeur en cases
  * @param {number} heightCells Hauteur en cases
+ * @param {'square'|'hex'} [pavage='square'] Pavage de l'étage. ⛔ Indispensable en hexagonal
+ *   (audit du 22/09, E3) : le centre d'une case de rangée impaire est décalé d'une demi-case en X,
+ *   et l'axe Y du masque suit l'échelle des rangées (√3/2 case). Sans lui, le point testé tombait
+ *   sur l'arête gauche de l'hexagone — sur un mur quand il y en a un — et un PNJ entièrement
+ *   visible disparaissait de la vue joueurs. `vision/` ne connaît pas la grille : c'est
+ *   l'appelant qui dit le pavage.
  * @returns {boolean} true si le centre de la case est dans la vision courante (alpha > 0)
  */
-export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells) {
+export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells, pavage = 'square') {
   if (!cell || typeof cell.a !== 'number' || typeof cell.b !== 'number') return false;
   if (!maskAlpha || !widthCells || !heightCells) return false;
 
@@ -456,8 +462,15 @@ export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells) {
   const maskWidth = widthCells * FOG_MASK_PX_PER_CELL;
   const maskHeight = heightCells * FOG_MASK_PX_PER_CELL;
 
-  const maskX = Math.floor((a + 0.5) * FOG_MASK_PX_PER_CELL);
-  const maskY = Math.floor((b + 0.5) * FOG_MASK_PX_PER_CELL);
+  // Centre de la case dans l'espace du masque. En hexagonal (odd-r) : décalage d'une demi-case
+  // sur les rangées impaires, et centre à 1/√3 rangée du haut de la rangée. Le centre d'une case
+  // de dernière colonne impaire tombe pile sur le bord droit du masque, qui ne couvre que
+  // `widthCells` cases : on le ramène au dernier pixel, dans la moitié gauche de l'hexagone.
+  const hex = pavage === 'hex';
+  const centreX = a + 0.5 + (hex ? 0.5 * (b & 1) : 0);
+  const centreY = hex ? b + 1 / Math.sqrt(3) : b + 0.5;
+  const maskX = Math.min(maskWidth - 1, Math.floor(centreX * FOG_MASK_PX_PER_CELL));
+  const maskY = Math.min(maskHeight - 1, Math.floor(centreY * FOG_MASK_PX_PER_CELL));
 
   if (maskX < 0 || maskX >= maskWidth || maskY < 0 || maskY >= maskHeight) return false;
 

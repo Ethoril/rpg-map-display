@@ -245,7 +245,7 @@ export class TokensLayer {
       if (aucuneVisionPubliee) continue;
 
       if (isPlayerView && maskAlpha && options.activeLevelWidthCells && options.activeLevelHeightCells) {
-        if (!isCellVisibleInMask(token.cell, maskAlpha, options.activeLevelWidthCells, options.activeLevelHeightCells)) {
+        if (!isCellVisibleInMask(token.cell, maskAlpha, options.activeLevelWidthCells, options.activeLevelHeightCells, grid.type)) {
           continue;
         }
       }

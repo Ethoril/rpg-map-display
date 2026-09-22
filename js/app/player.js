@@ -86,7 +86,8 @@ function promptAtCellOf(state, activeLevel, visibleCanvas) {
       porteur.cell,
       maskAlpha,
       activeLevel.widthCells,
-      activeLevel.heightCells
+      activeLevel.heightCells,
+      activeLevel.grid?.type === 'hex' ? 'hex' : 'square'
     )
   ) {
     return null;
@@ -589,7 +590,7 @@ export async function bootstrapPlayerApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         templatesLayer.render(
           stage.context, grid, activeLevel,
-          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), true
+          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), true, camera.zoom
         );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },

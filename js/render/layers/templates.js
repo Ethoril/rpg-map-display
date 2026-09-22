@@ -68,9 +68,13 @@ export class TemplatesLayer {
    * @param {import('../../core/types.js').Level} level Étage courant
    * @param {import('../../core/types.js').Template[]} templates Liste des gabarits de campagne
    * @param {boolean} [isPlayerView=false] true si rendu côté vue joueurs
+   * @param {number} [cameraZoom] Zoom de la CAMÉRA — celui que reçoit le hit-test
+   *   (`findHitTemplate`). ⛔ Pas le zoom du contexte (audit du 22/09, E6) : `ctx.getTransform()`
+   *   inclut la résolution de la scène (jusqu'à 1,5 sur la tablette), et la poignée se dessinait
+   *   1,5 fois plus petite que la zone qui réagit au doigt.
    * @returns {number} Nombre de gabarits rendus
    */
-  render(ctx, grid, level, templates, isPlayerView = false) {
+  render(ctx, grid, level, templates, isPlayerView = false, cameraZoom) {
     if (!ctx || !grid || !level || !Array.isArray(templates) || templates.length === 0) {
       return 0;
     }
@@ -85,7 +89,12 @@ export class TemplatesLayer {
     if (visibleTemplates.length === 0) return 0;
 
     const transform = ctx.getTransform ? ctx.getTransform() : null;
-    const zoom = transform ? Math.hypot(transform.a, transform.b) || 1 : 1;
+    const zoom =
+      cameraZoom && cameraZoom > 0
+        ? cameraZoom
+        : transform
+          ? Math.hypot(transform.a, transform.b) || 1
+          : 1;
     const segments = getLevelObstacleSegments(level, grid);
     const p0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
     const p1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });

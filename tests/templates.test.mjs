@@ -436,3 +436,31 @@ test('Vérification d\'isolation (L-10) : aucun résidu d\'énumération de case
   assert.equal(codeTemplates.includes('computeTemplateCells'), false, 'templates.js ne doit plus exporter ni utiliser computeTemplateCells');
   assert.equal(codeTemplates.includes('getSessionTemplateCells'), false, 'templates.js ne doit plus lire getSessionTemplateCells');
 });
+
+// E6 (audit du 22/09/2026) — la poignée se dessinait avec le zoom du CONTEXTE, qui inclut la
+// résolution de la scène (1,5 sur la tablette), alors que le hit-test reçoit le zoom de la
+// caméra : la poignée était 1,5 fois plus petite que la zone qui réagit au doigt.
+test('E6 : la poignée dessinée a le rayon de la zone de tap, résolution de la scène comprise', async () => {
+  const { TemplatesLayer } = await import('../js/render/layers/templates.js');
+  const { getTemplateHandleRadiusMap } = await import('../js/input/templateHit.js');
+  const level = createLevel({ id: 'e6', widthCells: 10, heightCells: 10, pxPerCell: 100 });
+  const grid = gridFor(level);
+  const cone = {
+    id: 'c', levelId: 'e6', shape: /** @type {const} */ ('cone'), origin: { x: 300, y: 300 },
+    radiusCells: 3, directionDeg: 0, color: '#ff0000', visibleToPlayers: true,
+  };
+  /** @type {number[]} */
+  const rayons = [];
+  const resolution = 1.5;
+  const zoomCamera = 2;
+  const noop = () => {};
+  const ctx = /** @type {any} */ ({
+    getTransform: () => ({ a: resolution * zoomCamera, b: 0 }),
+    save: noop, restore: noop, beginPath: noop, moveTo: noop, lineTo: noop, closePath: noop,
+    fill: noop, stroke: noop, clip: noop, rect: noop, setLineDash: noop,
+    arc: (/** @type {number} */ _x, /** @type {number} */ _y, /** @type {number} */ r) => { rayons.push(r); },
+  });
+  new TemplatesLayer().render(ctx, grid, level, [cone], true, zoomCamera);
+  const attendu = getTemplateHandleRadiusMap(3 * 100, zoomCamera);
+  assert.ok(rayons.some((r) => Math.abs(r - attendu) < 1e-9), `poignée ${rayons.join(', ')} ≠ zone de tap ${attendu}`);
+});

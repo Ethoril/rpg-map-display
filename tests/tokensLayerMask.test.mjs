@@ -265,3 +265,30 @@ test('6. Verrouillage du seuil d\'alpha (127 => false, 128 => true)', () => {
     'Un pixel central d\'alpha 128 doit rendre true'
   );
 });
+
+// E3 (audit du 22/09/2026) — en hexagonal, le point testé ignorait le décalage des rangées
+// impaires : il tombait sur l'arête gauche de l'hexagone, et un PNJ entièrement visible
+// disparaissait de la vue joueurs. Masque où SEUL le vrai centre de la case est vu.
+test('E3 : en hexagonal, la visibilité d’un pion se lit au VRAI centre de sa case, rangées impaires comprises', () => {
+  const W = 4;
+  const H = 4;
+  const largeur = W * 8;
+  /** @param {number} x @param {number} y */
+  const masqueAutour = (x, y) => {
+    const alpha = new Uint8Array(largeur * H * 8);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const px = Math.min(largeur - 1, Math.max(0, x + dx));
+        alpha[(y + dy) * largeur + px] = 255;
+      }
+    }
+    return alpha;
+  };
+  // Case (1, 1), rangée impaire : centre en x = 8 × (1 + 0,5 + 0,5) = 16, y = 8 × (1 + 1/√3) ≈ 12,6.
+  assert.equal(isCellVisibleInMask({ a: 1, b: 1 }, masqueAutour(16, 12), W, H, 'hex'), true);
+  // Dernière colonne d'une rangée impaire : le centre est sur le bord droit du masque.
+  assert.equal(isCellVisibleInMask({ a: 3, b: 1 }, masqueAutour(31, 12), W, H, 'hex'), true);
+  // Et le carré, lui, ne change pas : centre (1,5 ; 1,5) → pixel (12, 12).
+  assert.equal(isCellVisibleInMask({ a: 1, b: 1 }, masqueAutour(12, 12), W, H), true);
+  assert.equal(isCellVisibleInMask({ a: 1, b: 1 }, masqueAutour(16, 12), W, H), false);
+});
