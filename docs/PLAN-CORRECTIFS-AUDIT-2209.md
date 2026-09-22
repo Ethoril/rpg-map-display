@@ -135,6 +135,20 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
   `loadCampaign` et `setSessionId` (`store.js:2073-2075`). Le masque d'un étage de même
   identifiant peut revenir.
 
+> ⏳ **État de P2 au 22/09.** C1, C5, C6 et C8 touchent au comportement du vrai SDK en cas de
+> coupure, de reconnexion et de transaction. Aucun ne se prouve par un rouge sans une base
+> Firebase réelle. Or les seuls tests de ce type (`firebaseTransport.spec.mjs`) ne tournent
+> qu'en CI, avec le secret. Avant de les corriger, il faut un scénario rouge dans ce fichier,
+> **sur une branche**, pour ne pas figer Pages (un `verify` rouge bloque le déploiement).
+> - **C1** : on ne sait pas trancher à la lecture. Une écoute active sous `session/{id}` peut
+>   remplir le cache local ; dans ce cas, la purge télécharge toute la session au lieu de ne rien
+>   faire. Le test doit mesurer les deux.
+> - **C6** : le défaut d'ordre est certain (`resync` n'attend pas le `cancel()`, qui annule le
+>   nouveau filet). Le correctif proposé : ne pas annuler le filet lors d'une resynchro, puisque
+>   la nouvelle inscription porte sur le même chemin. Plus un réarmement sur `.info/connected`.
+> - **C7** : n'écrire que les documents Firestore modifiés. Faisable sans réseau (diff pur), mais
+>   il faut garder la transaction de révision : à concevoir avec ADR-012.
+
 ### P3 — la porte, là où elle ment
 
 - [x] **D1** `5f1faaa` ✅ Faux vert sur l'interdiction n°1 (pas de drag joueur) : c'est le mock
