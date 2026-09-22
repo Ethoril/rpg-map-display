@@ -3,6 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { LightMarkersLayer } from '../js/render/layers/lightMarkers.js';
+import { collectLightSources } from '../js/render/layers/light.js';
+import { findHitLight } from '../js/input/lightHit.js';
+import { gridFor } from '../js/grid/index.js';
+import { createLevel } from '../js/core/schema.js';
 
 /** Faux contexte qui journalise — motif de `tests/links.test.mjs` et `tests/lightLayer.test.mjs`. */
 function fauxContexte() {
@@ -16,16 +20,16 @@ function fauxContexte() {
     save() {},
     restore() {},
     beginPath() {},
-    arc() { journal.push({ op: 'arc' }); },
+    arc(/** @type {number} */ x, /** @type {number} */ y) { journal.push({ op: 'arc', x, y }); },
     fill() { journal.push({ op: 'fill', fillStyle: ctx.fillStyle }); },
     stroke() { journal.push({ op: 'stroke', strokeStyle: ctx.strokeStyle }); },
   };
   return ctx;
 }
 
-/** Adaptateur minimal : `cellCenter` rend le centre d'une case de 100 px, en carré. */
+/** Adaptateur minimal, carré à 100 px : `light.at` est un `CellPoint`, lu par `mapFromCellPoint`. */
 const GRID = /** @type {any} */ ({
-  cellCenter: (/** @type {{a: number, b: number}} */ { a, b }) => ({ x: a * 100 + 50, y: b * 100 + 50 }),
+  mapFromCellPoint: (/** @type {{cellX: number, cellY: number}} */ { cellX, cellY }) => ({ x: cellX * 100, y: cellY * 100 }),
 });
 
 test('LightMarkersLayer dessine les DEUX états, allumée et éteinte, avec des couleurs distinctes', () => {
@@ -81,3 +85,27 @@ test('C-2 — `lightMarkers` figure dans CANVAS_LAYER_ORDER, au rang 12 (entre `
   assert.ok(CANVAS_LAYER_ORDER.indexOf('lightMarkers') > CANVAS_LAYER_ORDER.indexOf('fog'));
   assert.ok(CANVAS_LAYER_ORDER.indexOf('lightMarkers') < CANVAS_LAYER_ORDER.indexOf('measure'));
 });
+
+
+// E2 (audit du 22/09/2026) — le marqueur et la zone de tap lisaient `light.at` comme un `Cell`
+// (`cellCenter({a: at.cellX, …})`), le halo comme un `CellPoint`. Une lampe UVTT en 4,5 avait son
+// marqueur une demi-case à côté de sa lumière. Marqueur, tap et halo doivent coïncider, en carré
+// comme en hexagonal, sur une grille décalée.
+for (const type of /** @type {const} */ (['square', 'hex'])) {
+  test(`E2 (${type}) : marqueur, zone de tap et halo d’une lampe au même point`, () => {
+    const level = createLevel({
+      id: 'e2', widthCells: 10, heightCells: 10, pxPerCell: 100,
+      grid: { type, offsetX: 30, offsetY: 20, color: '#000000', opacity: 0.25, visible: true },
+      lights: [{ id: 'uvtt', at: { cellX: 4.5, cellY: 2.5 }, range: 3, intensity: 1, color: '#ffffff', shadows: true, on: true }],
+    });
+    const grid = gridFor(level);
+    const halo = collectLightSources(level, [], grid)[0].center;
+
+    const ctx = fauxContexte();
+    new LightMarkersLayer().render(/** @type {any} */ (ctx), grid, level, { zoom: 1 });
+    const arc = ctx.journal.find((/** @type {any} */ e) => e.op === 'arc');
+    assert.ok(Math.abs(arc.x - halo.x) < 1e-6 && Math.abs(arc.y - halo.y) < 1e-6, `marqueur ${arc.x},${arc.y} ≠ halo ${halo.x},${halo.y}`);
+
+    assert.equal(findHitLight(grid, level, halo, 1)?.light.id, 'uvtt', 'un tap sur le halo désigne la lampe');
+  });
+}

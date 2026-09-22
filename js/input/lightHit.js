@@ -52,11 +52,9 @@ export function findHitLight(grid, activeLevel, mapPos, zoom = 1) {
 
   for (const light of activeLevel.lights) {
     if (!light || !light.at) continue;
-    // ⛔ `mapFromCellPoint` rend l'ORIGINE de la case (un coin), pas son centre — leçon C-5.
-    // `cellCenter` prend un `Cell {a,b}` et rend toujours un centre, dans les deux pavages ;
-    // `light.at` est un `CellPoint {cellX,cellY}`, d'où la conversion. C'est la MÊME conversion
-    // que celle qui DESSINE la lampe (`js/render/layers/lightMarkers.js`) : viser ce qu'on voit.
-    const point = grid.cellCenter({ a: light.at.cellX, b: light.at.cellY });
+    // La MÊME conversion que celle qui DESSINE la lampe (`lightMarkers.js`) et son halo
+    // (`light.js`) : viser ce qu'on voit. `light.at` est un `CellPoint` (audit du 22/09, E2).
+    const point = grid.mapFromCellPoint(light.at);
     const dist = Math.hypot(mapPos.x - point.x, mapPos.y - point.y);
     if (dist < maxDist) {
       // Départage stable par identifiant : deux lampes à égalité de distance ne doivent pas

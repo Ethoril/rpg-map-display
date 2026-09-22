@@ -582,7 +582,7 @@ test('C-2 : un tap MJ sur une lampe la bascule, et le champ lumineux se recompos
     widthCells: 10,
     heightCells: 10,
     ambient: { level: 0, baked: false },
-    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    lights: [{ id: 'l1', at: { cellX: 5.5, cellY: 5.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
   });
   // ⚠ Un PJ est nécessaire pour que la ligne de vue atteigne la case de la lampe — sans lui,
   // `fogLayer` ne calcule aucune ligne de vue et le masque reste vide quel que soit l'état de la
@@ -654,10 +654,10 @@ test('C-2 : l\'arbitrage à trois — le plus proche gagne, sans ordre de branch
     // Cas A (780, 750) : lampe à 10, porte à 15, pion à 20 — la lampe est la plus proche des
     // TROIS et doit l'emporter.
     lights: [
-      { id: 'l-close', at: { cellX: 7.4, cellY: 7.0 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      { id: 'l-close', at: { cellX: 7.9, cellY: 7.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
       // Cas B (1000, 1000) : à portée d'un pion pile sous le doigt (dist 0) ET d'une lampe
       // dans sa tolérance (dist 15) — le pion doit gagner malgré la lampe candidate.
-      { id: 'l-near-token', at: { cellX: 9.35, cellY: 9.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      { id: 'l-near-token', at: { cellX: 9.85, cellY: 10 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
     ],
     portals: [
       { id: 'door-far', a: { cellX: 7.65, cellY: 7 }, b: { cellX: 7.65, cellY: 8 }, state: 'closed', freestanding: false },
@@ -748,7 +748,7 @@ test('C-2 : poser crée la lampe exactement à la case tapée', async ({ page })
   });
   expect(apres.length, 'une seule lampe a été créée').toBe(1);
   // ⭐ Égalité avec la case VISÉE, pas seulement « différent de (0,0) ».
-  expect(apres[0].at).toEqual({ cellX: 2, cellY: 2 });
+  expect(apres[0].at).toEqual({ cellX: 2.5, cellY: 2.5 });
   expect(apres[0].on, 'une lampe posée est allumée par défaut').toBe(true);
 
   const publie = await page.evaluate(() =>
@@ -757,14 +757,14 @@ test('C-2 : poser crée la lampe exactement à la case tapée', async ({ page })
     )
   );
   expect(publie?.payload?.levelId).toBe('level-place');
-  expect(publie?.payload?.light?.at).toEqual({ cellX: 2, cellY: 2 });
+  expect(publie?.payload?.light?.at).toEqual({ cellX: 2.5, cellY: 2.5 });
 });
 
 test('C-2 : supprimer retire la lampe, et le rejeu converge sans lever', async ({ page }) => {
   const sessionId = `light-delete-${Date.now()}`;
   const level = createLevel({
     id: 'level-delete', name: 'Delete', pxPerCell: 100, widthCells: 10, heightCells: 10,
-    lights: [{ id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    lights: [{ id: 'l1', at: { cellX: 3.5, cellY: 3.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
   });
   await installBrowserTransport(page, sessionId, {
     campaign: createCampaign({ campaignId: 'c-delete', levels: [level] }),
@@ -823,7 +823,7 @@ test('C-2 : light.place sur une lampe éteinte qui existe déjà la laisse ÉTEI
     ]);
     const level = schema.createLevel(/** @type {any} */ ({
       id: 'level-preserve', name: 'Preserve', pxPerCell: 100, widthCells: 10, heightCells: 10,
-      lights: [{ id: 'l1', at: { cellX: 1, cellY: 1 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+      lights: [{ id: 'l1', at: { cellX: 1.5, cellY: 1.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
     }));
     const campaign = schema.createCampaign({ levels: [level] });
     store.loadCampaign(campaign);
@@ -834,7 +834,7 @@ test('C-2 : light.place sur une lampe éteinte qui existe déjà la laisse ÉTEI
     // ...puis « reposée » par `light.place`, au même identifiant, avec `on: true` dans les
     // données — comme le ferait un MJ qui tape à nouveau la même case avec l'outil « Poser ».
     store.placeLight('level-preserve', {
-      id: 'l1', at: { cellX: 1, cellY: 1 }, range: 6, intensity: 1, color: '#ffdca8', shadows: true, on: true,
+      id: 'l1', at: { cellX: 1.5, cellY: 1.5 }, range: 6, intensity: 1, color: '#ffdca8', shadows: true, on: true,
     });
 
     return store.getCampaign()?.levels[0].lights.find((/** @type {any} */ l) => l.id === 'l1')?.on;
@@ -856,7 +856,7 @@ test('C-2 : les joueurs n\'ont aucun chemin vers la bascule — un tap sur une l
     ]);
     const level = schema.createLevel(/** @type {any} */ ({
       id: 'level-player', name: 'Player', pxPerCell: 100, widthCells: 10, heightCells: 10,
-      lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+      lights: [{ id: 'l1', at: { cellX: 5.5, cellY: 5.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
     }));
     const campaign = schema.createCampaign({ levels: [level] });
     store.loadCampaign(campaign);
@@ -959,7 +959,7 @@ test('C-2 : glisser une lampe la déplace et ne publie light.move QU\'UNE FOIS',
   const level = createLevel({
     id: 'level-drag', name: 'Drag', pxPerCell: 100, widthCells: 10, heightCells: 10,
     ambient: { level: 1, baked: false },
-    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    lights: [{ id: 'l1', at: { cellX: 5.5, cellY: 5.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
   });
   await installBrowserTransport(page, sessionId, {
     campaign: createCampaign({ campaignId: 'c-drag', levels: [level] }),
@@ -980,14 +980,14 @@ test('C-2 : glisser une lampe la déplace et ne publie light.move QU\'UNE FOIS',
   await page.mouse.up();
 
   expect(await lightAt(page, 'l1'), 'la lampe est arrivée exactement sur la case relâchée')
-    .toEqual({ cellX: 7, cellY: 6 });
+    .toEqual({ cellX: 7.5, cellY: 6.5 });
 
   // ⭐ On COMPTE les publications : un `light.move` par `pointermove` laisserait la dernière
   // juste tout en inondant le réseau, et « la dernière est la bonne » passerait au vert.
   const moves = await publishedOfType(page, 'light.move');
   expect(moves.length, 'exactement UN light.move, quel que soit le nombre de pointermove').toBe(1);
   expect(moves[0].payload).toEqual({
-    levelId: 'level-drag', lightId: 'l1', at: { cellX: 7, cellY: 6 },
+    levelId: 'level-drag', lightId: 'l1', at: { cellX: 7.5, cellY: 6.5 },
   });
 });
 
@@ -996,7 +996,7 @@ test('C-2 : pendant le glisser, AVANT le relâcher, rien n\'est publié et le st
   const level = createLevel({
     id: 'level-silence', name: 'Silence', pxPerCell: 100, widthCells: 10, heightCells: 10,
     ambient: { level: 0, baked: false },
-    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    lights: [{ id: 'l1', at: { cellX: 5.5, cellY: 5.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
   });
   // Un PJ, pour que la vision soit réellement calculée et publiée : sans lui, « aucune vision
   // n'est partie » serait vrai même sur une régression.
@@ -1028,11 +1028,11 @@ test('C-2 : pendant le glisser, AVANT le relâcher, rien n\'est publié et le st
   expect((await publishedOfType(page, 'light.move')).length, 'aucun light.move avant le relâcher').toBe(0);
   expect((await publishedOfType(page, 'vision.update')).length, 'aucune vision republiée pendant le glisser').toBe(visionsAvant);
   expect(await lightAt(page, 'l1'), 'la lampe est toujours sur sa case de départ')
-    .toEqual({ cellX: 5, cellY: 5 });
+    .toEqual({ cellX: 5.5, cellY: 5.5 });
 
   // Et le relâcher, lui, agit : sans cette moitié, un glisser totalement inerte serait vert.
   await page.mouse.up();
-  expect(await lightAt(page, 'l1')).toEqual({ cellX: 7, cellY: 6 });
+  expect(await lightAt(page, 'l1')).toEqual({ cellX: 7.5, cellY: 6.5 });
   expect((await publishedOfType(page, 'light.move')).length).toBe(1);
 });
 
@@ -1045,14 +1045,14 @@ test('C-2 : ⭐ le tap et le glisser désignent le MÊME objet, lampe comme pion
       // Point A (780, 750) : centre de cette lampe à (790, 750), donc à 10 — et le pion
       // `npc-far` (case 8,7 → rectangle x 800..900) à 20, dans sa marge de saisie mais PLUS
       // LOIN. La lampe doit gagner les deux gestes.
-      { id: 'l-close', at: { cellX: 7.4, cellY: 7.0 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      { id: 'l-close', at: { cellX: 7.9, cellY: 7.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
       // Point B (1000, 1000) : centre de cette lampe à (985, 1000), donc à 15 — et le pion
       // `npc-under-tap` pile sous le doigt, à 0. Le pion doit gagner les deux gestes.
-      { id: 'l-near-token', at: { cellX: 9.35, cellY: 9.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      { id: 'l-near-token', at: { cellX: 9.85, cellY: 10 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
       // Point C (1500, 1450) : centre de cette lampe à (1515, 1450), donc à 15 — et la PORTE
       // ci-dessous à 5. C'est le point où le crochet de la lampe doit RENDRE LA MAIN : sans
       // l'arbitrage commun, il saisirait cette lampe alors que le tap, lui, ouvre la porte.
-      { id: 'l-behind-door', at: { cellX: 14.65, cellY: 14.0 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
+      { id: 'l-behind-door', at: { cellX: 15.15, cellY: 14.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true },
     ],
     portals: [
       { id: 'door-near', a: { cellX: 15.05, cellY: 14 }, b: { cellX: 15.05, cellY: 15 }, state: 'closed', freestanding: false },
@@ -1100,7 +1100,7 @@ test('C-2 : ⭐ le tap et le glisser désignent le MÊME objet, lampe comme pion
   await page.mouse.up();
 
   expect(await lightAt(page, 'l-close'), 'le glisser au point A a déplacé la LAMPE')
-    .toEqual({ cellX: 4, cellY: 4 });
+    .toEqual({ cellX: 4.5, cellY: 4.5 });
   expect(await cellOf('npc-far'), 'et le pion voisin n\'a PAS bougé').toEqual({ a: 8, b: 7 });
 
   // 3. L'inverse au point B : le pion gagne, et le glisser déplace le PION.
@@ -1114,7 +1114,7 @@ test('C-2 : ⭐ le tap et le glisser désignent le MÊME objet, lampe comme pion
   expect(await cellOf('npc-under-tap'), 'le glisser au point B a déplacé le PION')
     .toEqual({ a: 3, b: 14 });
   expect(await lightAt(page, 'l-near-token'), 'et la lampe voisine, plus loin, n\'a PAS bougé')
-    .toEqual({ cellX: 9.35, cellY: 9.5 });
+    .toEqual({ cellX: 9.85, cellY: 10 });
 
   // 4. Point C : la PORTE gagne. Le tap l'ouvre — et le glisser depuis ce même point ne doit
   // PAS emporter la lampe qui traîne dans sa tolérance ; il pan la carte, comme un glisser
@@ -1137,7 +1137,7 @@ test('C-2 : ⭐ le tap et le glisser désignent le MÊME objet, lampe comme pion
   await page.mouse.up();
 
   expect(await lightAt(page, 'l-behind-door'), 'le glisser au point C n\'emporte PAS la lampe')
-    .toEqual({ cellX: 14.65, cellY: 14.0 });
+    .toEqual({ cellX: 15.15, cellY: 14.5 });
 });
 
 test('C-2 : un glisser relâché hors carte ne déplace rien et ne publie rien', async ({ page }) => {
@@ -1145,7 +1145,7 @@ test('C-2 : un glisser relâché hors carte ne déplace rien et ne publie rien',
   const level = createLevel({
     id: 'level-hors', name: 'Hors carte', pxPerCell: 100, widthCells: 10, heightCells: 10,
     ambient: { level: 1, baked: false },
-    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+    lights: [{ id: 'l1', at: { cellX: 5.5, cellY: 5.5 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
   });
   await installBrowserTransport(page, sessionId, {
     campaign: createCampaign({ campaignId: 'c-hors', levels: [level] }),
@@ -1166,6 +1166,6 @@ test('C-2 : un glisser relâché hors carte ne déplace rien et ne publie rien',
   await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
   await page.mouse.up();
 
-  expect(await lightAt(page, 'l1'), 'la lampe est restée sur sa case').toEqual({ cellX: 5, cellY: 5 });
+  expect(await lightAt(page, 'l1'), 'la lampe est restée sur sa case').toEqual({ cellX: 5.5, cellY: 5.5 });
   expect((await publishedOfType(page, 'light.move')).length, 'rien ne part sur le réseau').toBe(0);
 });

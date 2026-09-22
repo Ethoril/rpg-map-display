@@ -57,16 +57,17 @@ export class LightMarkersLayer {
     ctx.save();
     for (const light of level.lights) {
       if (!light || !light.at) continue;
-      // ⛔ `mapFromCellPoint` rend l'ORIGINE de la case (un coin), pas son centre — leçon du
-      // jour (C-5). `cellCenter` prend un `Cell {a,b}` et rend toujours un centre, dans les
-      // deux pavages ; `light.at` est un `CellPoint {cellX,cellY}`, d'où la conversion.
+      // ⛔ Le marqueur se pose LÀ OÙ LA LAMPE ÉCLAIRE : `mapFromCellPoint(light.at)`, exactement
+      // comme le halo (`light.js`) — audit du 22/09, E2. `light.at` est un `CellPoint` à la
+      // convention de l'UVTT, où 4,5 désigne le centre de la case 4. Le lire comme un `Cell`
+      // (`cellCenter({a: at.cellX, …})`) décalait d'une demi-case toute lampe importée.
       // ⭐ Pendant un glisser MJ, SEUL ce marqueur suit le doigt — le champ éclairé reste où il
       // est, faute de mutation du store. Même patron que l'aperçu de pion (`tokens.js`) : la
       // position est celle du doigt, non accrochée à la grille, l'accrochage se fait au relâcher.
       const point =
         options.dragPreview?.lightId === light.id
           ? options.dragPreview.mapPos
-          : grid.cellCenter({ a: light.at.cellX, b: light.at.cellY });
+          : grid.mapFromCellPoint(light.at);
       // ⭐ Booléen à deux états, jamais un troisième : `on !== false` traite une valeur absente
       // comme allumée, ceinture de la normalisation faite par `schema.normalizeLevel`.
       const on = light.on !== false;

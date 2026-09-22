@@ -799,7 +799,7 @@ export async function bootstrapGMApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         templatesLayer.render(
           stage.context, grid, activeLevel,
-          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), false
+          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), false, camera.zoom
         );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -1642,7 +1642,10 @@ export async function bootstrapGMApp(options = {}) {
         if (cell) {
           const light = {
             id: `light-${Date.now()}-${++lightPlaceCounter}`,
-            at: { cellX: cell.a, cellY: cell.b },
+            // ⛔ Le CENTRE de la case tapée, en `CellPoint` (audit du 22/09, E2). `light.at` est un
+            // point fractionnaire à la convention de l'UVTT — `{cellX: a, cellY: b}` en désigne le
+            // COIN, et le halo éclairait depuis là.
+            at: grid.cellPointFromMap(grid.cellCenter(cell)),
             ...LIGHT_DEFAULT,
           };
           store.placeLight(activeLevel.id, light);
@@ -1883,7 +1886,8 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
-      const at = { cellX: targetCell.a, cellY: targetCell.b };
+      // Le centre de la case d'arrivée, comme à la pose (E2).
+      const at = grid.cellPointFromMap(grid.cellCenter(targetCell));
       store.moveLight(levelId, intention.lightId, at);
       transport?.publish({
         type: 'light.move',
