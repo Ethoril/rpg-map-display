@@ -693,6 +693,11 @@ export function createTokenMaker(container, options = {}) {
      * @param {string|null} levelId
      */
     setDefaultLevelId: (levelId) => {
+      // ⛔ Seulement si l'étage CHANGE (audit du 22/09, B8) : le panneau appelle ceci à chaque
+      // notification du store, fog et vision compris, soit environ 1 Hz en jeu — et
+      // `refreshGenerateAvailability` réécrit le statut. « Pion posé… », les erreurs en rouge,
+      // tout disparaissait à la publication suivante.
+      if (levelId === defaultLevelId) return;
       defaultLevelId = levelId;
       refreshGenerateAvailability();
     },

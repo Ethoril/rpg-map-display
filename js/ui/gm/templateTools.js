@@ -164,6 +164,9 @@ export function createTemplateTools(container, options) {
    * l'écran : on ne saurait pas si le bon a été retiré. Le filet des autres étages est la barre
    * d'étage, qui les rend visibles avant de les toucher.
    */
+  /** Signature de la dernière liste rendue — voir `refresh`. */
+  let signatureRendue = /** @type {string|null} */ (null);
+
   function refresh() {
     const all = getTemplates?.();
     // Sans source de gabarits, il n'y a pas de liste à tenir : le composant reste utilisable
@@ -172,6 +175,13 @@ export function createTemplateTools(container, options) {
 
     const levelId = getActiveLevelId?.() ?? null;
     const posed = levelId ? all.filter((t) => t && t.levelId === levelId) : [];
+
+    // ⛔ Ne reconstruire que si la liste a changé (audit du 22/09, B8). Le panneau appelle
+    // ceci à chaque notification du store, fog et vision compris : reconstruire à chaque fois
+    // remplaçait le bouton « Retirer » entre l'appui et le relâchement, et le clic était perdu.
+    const signature = JSON.stringify([levelId, posed]);
+    if (signature === signatureRendue) return;
+    signatureRendue = signature;
 
     if (posed.length === 0) {
       const vide = document.createElement('p');

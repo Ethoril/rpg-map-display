@@ -1052,6 +1052,49 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
 // `cancel` (second doigt, pointercancel) ne laisse aucune trace. Avant le correctif, le store
 // bougeait à chaque `move`, et le `end` publiait l'avant-dernière position.
 // ─────────────────────────────────────────────────────────────────────────────
+  // B8 (audit du 22/09/2026) — le panneau se rafraîchit à CHAQUE notification du store, fog et
+  // vision compris. La liste des gabarits était reconstruite à chaque fois : le bouton
+  // « Retirer » changeait sous le doigt et le clic se perdait. Et la liste des liaisons, elle,
+  // n'était jamais rafraîchie : un étage ajouté n'y apparaissait pas.
+  test('B8 : une notification étrangère garde les boutons de la liste, et un étage ajouté rejoint les liaisons', async ({ page }) => {
+    const sessionId = `test-b8-${Date.now()}`;
+    const gabarit = {
+      id: 'tpl-b8', levelId: 'lvl-ligne', shape: /** @type {const} */ ('circle'),
+      origin: { x: 350, y: 420 }, radiusCells: 2, directionDeg: 0, color: '#ef4444', visibleToPlayers: true,
+    };
+    await installBrowserTransport(page, sessionId, snapshotLigne([gabarit]));
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+
+    const res = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const { createLevel } = await import('../js/core/schema.js');
+      const ligne = /** @type {any} */ (document.querySelector('[data-template-id="tpl-b8"]'));
+      if (!ligne) throw new Error('la liste des gabarits ne montre pas tpl-b8');
+      ligne.__marque = true;
+      // Notification sans rapport avec les gabarits : l'étage change de nom.
+      let notifie = false;
+      const stop = store.subscribe(() => { notifie = true; });
+      store.updateLevel('lvl-ligne', { name: 'Renommé B8' });
+      stop();
+      if (!notifie) throw new Error('aucune notification : le test ne prouverait rien');
+      const memeLigne = /** @type {any} */ (document.querySelector('[data-template-id="tpl-b8"]'))?.__marque === true;
+
+      const statut = /** @type {HTMLElement} */ (document.querySelector('#token-maker-status'));
+      statut.textContent = 'Pion posé (message à garder)';
+      store.updateLevel('lvl-ligne', { name: 'Renommé encore' });
+      const statutGarde = statut.textContent;
+
+      store.addLevel(createLevel({ id: 'cave-b8', name: 'Cave B8' }));
+      const options = [.../** @type {HTMLSelectElement} */ (document.querySelector('#link-level-b')).options]
+        .map((o) => o.value);
+      return { memeLigne, options, statutGarde };
+    });
+    expect(res.memeLigne, 'la ligne du gabarit a été reconstruite par une notification étrangère').toBe(true);
+    expect(res.options).toContain('cave-b8');
+    expect(res.statutGarde, 'le statut du créateur de pions est écrasé par une notification').toBe('Pion posé (message à garder)');
+  });
+
 test.describe('B4 — glisser de gabarit : aperçu, pose finale, annulation', () => {
   const ligneB4 = {
     id: 'tpl-b4',

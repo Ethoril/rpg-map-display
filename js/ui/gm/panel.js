@@ -1187,9 +1187,17 @@ export function createGMPanel(container, options = {}) {
    * points de vie, leurs marqueurs et leur histoire. La ligne les affiche pour cette raison —
    * un « Gobelin » sans ses 3 PV restants ne se reconnaît pas.
    */
+  /** Signature de la dernière réserve rendue — voir `updateReserveDrawer`. */
+  let signatureReserve = /** @type {string|null} */ (null);
+
   function updateReserveDrawer() {
     if (!reserveDrawer || !reserveList) return;
     const enReserve = store.getReserve();
+    // ⛔ Même garde que la liste des gabarits (audit du 22/09, B8) : reconstruire la réserve
+    // à chaque notification perdait un clic sur « Poser » tombé entre deux reconstructions.
+    const signature = JSON.stringify([enReserve, store.getStackingNormalizationReport()]);
+    if (signature === signatureReserve) return;
+    signatureReserve = signature;
     reserveDrawer.style.display = enReserve.length > 0 ? 'block' : 'none';
 
     // ⭐ Le chargement peut avoir envoyé des pions en réserve dans le dos du mainteneur (une
@@ -1950,6 +1958,8 @@ export function createGMPanel(container, options = {}) {
 
   updateLightBarFromStore();
 
+  /** @type {string|null} */
+  let derniereSignatureLiaisons = null;
   // Écouter les changements dans le store pour mettre à jour les inputs de grille si besoin
   const unsubscribeStore = store.subscribe(() => {
     levelSelector?.update();
@@ -1958,6 +1968,18 @@ export function createGMPanel(container, options = {}) {
     // sur ses propres gestes : un gabarit retiré par appui long sur la carte, ou par un
     // événement réseau, doit disparaître de la liste sans qu'on rouvre l'onglet.
     templateTools?.refresh();
+    // La liste des liaisons suit les étages et les liaisons (B8) : elle n'était rafraîchie que par
+    // ses propres gestes, et restait périmée après un `removeLevel`, un `scene.load` ou un ajout
+    // venu d'un autre poste MJ. Signature, pour ne pas reconstruire le menu sous le doigt.
+    const campagne = store.getCampaign();
+    const signatureLiaisons = JSON.stringify([
+      campagne?.levels.map((l) => [l.id, l.name]) ?? [],
+      campagne?.links ?? [],
+    ]);
+    if (signatureLiaisons !== derniereSignatureLiaisons) {
+      derniereSignatureLiaisons = signatureLiaisons;
+      linkEditor?.refresh();
+    }
     updateReserveDrawer();
     updateLightBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
