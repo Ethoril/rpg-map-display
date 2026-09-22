@@ -354,7 +354,11 @@ export function loadFromLocalStorage(sessionId) {
     const rawSess = storage.getItem(`rpg_session_${sessionId}`);
     if (!rawCamp && !rawSess) return false;
 
-    const campData = rawCamp ? JSON.parse(rawCamp) : null;
+    const lu = rawCamp ? JSON.parse(rawCamp) : null;
+    // Le transport a longtemps écrit sous cette clé l'enveloppe `{campaign, …}` au lieu de la
+    // campagne nue (audit du 22/09, A2). Elle existe encore chez les utilisateurs : sans ce
+    // déballage, rien n'était restauré, et la sauvegarde suivante effaçait la clé.
+    const campData = lu && !Array.isArray(lu.levels) && lu.campaign ? lu.campaign : lu;
     const sessData = rawSess ? JSON.parse(rawSess) : {};
 
     restoreFromSnapshot(
@@ -944,7 +948,32 @@ export function addLevel(levelData) {
   if (!activeLevelId) {
     activeLevelId = levelNormalized.id;
   }
+  // Un étage remplacé en place (même identifiant) peut changer de grille ou de murs.
+  rafraichirZoneAtteignable(levelNormalized.id);
   notifySubscribers();
+}
+
+/**
+ * Recalcule la zone atteignable du pion sélectionné, s'il y en a un et qu'il est sur
+ * `levelId` (ou sur n'importe quel étage si `levelId` est omis).
+ *
+ * ⛔ Toute mutation qui change la vitesse, la taille ou la position d'un pion, ou la grille,
+ * les murs ou les portes d'un étage, doit passer par ici (audit du 22/09, A4). La zone est
+ * un CACHE : sans ce rappel, elle restait celle d'avant la mutation — la tablette acceptait
+ * un coup à 6 cases pour un pion ramené à 3, et des clés de cases carrées étaient relues
+ * en hexagonal.
+ *
+ * @param {string} [levelId]
+ * @returns {void}
+ */
+function rafraichirZoneAtteignable(levelId) {
+  const selectedId = getSelectedTokenId();
+  if (!selectedId || !campaign) return;
+  const token = campaign.tokens.find((t) => t.id === selectedId);
+  if (!token) return;
+  if (levelId !== undefined && token.levelId !== levelId) return;
+  const level = campaign.levels.find((l) => l.id === token.levelId) || null;
+  if (level) setSelectionState(token, level);
 }
 
 /**
@@ -1075,6 +1104,7 @@ export function updateLevel(levelId, levelUpdates) {
   };
   assertValidCampaign(candidate, `Mise à jour de l'étage "${levelId}"`);
   replaceCampaign(candidate);
+  rafraichirZoneAtteignable(levelId);
   notifySubscribers();
 }
 
@@ -1149,6 +1179,8 @@ export function replaceLevelMap(levelId, patch) {
   const selectedId = getSelectedTokenId();
   if (selectedId && reservedTokenIds.includes(selectedId)) {
     clearSelectionState();
+  } else {
+    rafraichirZoneAtteignable(levelId);
   }
 
   notifySubscribers();
@@ -1532,6 +1564,8 @@ export function updateToken(tokenId, patch) {
 
   assertValidCampaign(candidate, `Mise à jour du pion "${tokenId}"`);
   replaceCampaign(candidate);
+  // `speedCells` et `sizeCells` sont dans ce patch : la zone atteignable en dépend (A4).
+  rafraichirZoneAtteignable();
   notifySubscribers();
 }
 

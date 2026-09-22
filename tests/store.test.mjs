@@ -32,7 +32,7 @@ import {
   getLastPersistenceError,
 } from '../js/state/store.js';
 
-import { setSelectionState } from '../js/state/selection.js';
+import { setSelectionState, getReachableCells } from '../js/state/selection.js';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 
 /**
@@ -732,4 +732,73 @@ test('une panne de stockage du masque de fog est consignée, jamais avalée (CON
     // ajouté après celui-ci hériterait d'une sauvegarde automatique active.
     setSessionId(null);
   }
+});
+
+// A2 (audit du 22/09/2026) — le transport a longtemps écrit l'ENVELOPPE `{campaign, …}` sous
+// la même clé que la campagne nue. Une telle entrée existe chez les utilisateurs : la relire
+// doit restaurer la campagne, et surtout ne pas l'effacer. Avant le correctif, rien n'était
+// restauré, puis la sauvegarde suivante faisait `removeItem` — la copie locale disparaissait.
+test('A2 : une enveloppe {campaign, …} déjà écrite sous rpg_campaign_ se relit, et reste en place', () => {
+  const memoire = new Map();
+  const faux = {
+    getItem: (/** @type {string} */ k) => memoire.get(k) ?? null,
+    setItem: (/** @type {string} */ k, /** @type {string} */ v) => { memoire.set(k, String(v)); },
+    removeItem: (/** @type {string} */ k) => { memoire.delete(k); },
+  };
+  const avant = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { value: faux, configurable: true, writable: true });
+  try {
+    resetStore();
+    const camp = makeValidCampaign();
+    memoire.set('rpg_campaign_a2', JSON.stringify({
+      campaign: camp, activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+    }));
+
+    loadFromLocalStorage('a2');
+
+    assert.strictEqual(getState().campaign?.campaignId, 'camp-test', 'la campagne de l’enveloppe est restaurée');
+    const relu = JSON.parse(memoire.get('rpg_campaign_a2') ?? 'null');
+    assert.ok(relu && Array.isArray(relu.levels), 'la clé porte désormais la campagne nue, pas un vide');
+  } finally {
+    if (avant) Object.defineProperty(globalThis, 'localStorage', avant);
+    else delete (/** @type {any} */ (globalThis)).localStorage;
+    resetStore();
+  }
+});
+
+// A4 (audit du 22/09/2026) — la zone atteignable est un CACHE. Les mutations qui en changent
+// les entrées — vitesse et taille du pion, grille ou carte de son étage — doivent la recalculer.
+// Avant le correctif, elle restait celle d'avant : la tablette acceptait un coup à l'ancienne
+// portée. Chaque assertion compare au calcul frais d'une sélection refaite de zéro.
+test('A4 : la zone atteignable suit la vitesse, la grille et le remplacement de l’étage', () => {
+  loadCampaign(makeValidCampaign());
+  selectLevel('rdc');
+  setSelection('hero-1');
+  const initiale = getReachableCells().size;
+  assert.ok(initiale > 1);
+
+  /** Taille de la zone qu'une sélection refaite de zéro donnerait. */
+  const fraiche = () => {
+    const token = getCampaign()?.tokens.find((t) => t.id === 'hero-1');
+    const level = getCampaign()?.levels.find((l) => l.id === 'rdc');
+    const avant = getReachableCells();
+    setSelectionState(/** @type {any} */ (token), /** @type {any} */ (level));
+    const n = getReachableCells().size;
+    return { n, avant: avant.size };
+  };
+
+  updateToken('hero-1', { speedCells: 1 });
+  let r = fraiche();
+  assert.equal(r.avant, r.n, 'après un changement de vitesse');
+  assert.ok(r.n < initiale, 'la zone a bien rétréci');
+
+  updateToken('hero-1', { speedCells: 3 });
+  updateLevel('rdc', { grid: { type: 'hex' } });
+  r = fraiche();
+  assert.equal(r.avant, r.n, 'après un passage en hexagonal');
+
+  const rdc = /** @type {any} */ (getCampaign()?.levels.find((l) => l.id === 'rdc'));
+  addLevel({ ...structuredClone(rdc), grid: { ...rdc.grid, type: 'square' } });
+  r = fraiche();
+  assert.equal(r.avant, r.n, 'après un remplacement en place de l’étage');
 });
