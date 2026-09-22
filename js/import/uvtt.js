@@ -98,7 +98,6 @@ export function parseUvttColor(rawColor, options = {}) {
  * @param {string | object} jsonInput Chaîne JSON ou objet décodé
  * @returns {{
  *   level: Level,
- *   image: string,
  *   imageBase64: string,
  *   grid: import('../core/types.js').GridConfig,
  *   walls: CellPoint[][],
@@ -500,7 +499,6 @@ export function parseUvtt(jsonInput) {
 
   return {
     level,
-    image: imageBase64,
     imageBase64,
     grid: level.grid,
     walls: level.walls,

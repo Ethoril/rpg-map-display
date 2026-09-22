@@ -1321,7 +1321,7 @@ export function renameScene(mapsDir, id, name) {
     }
   }
 
-  const existante = data.scenes.find((/** @type {any} */ s) => s && s.id === id);undefined
+  const existante = data.scenes.find((/** @type {any} */ s) => s && s.id === id);
   const creee = !existante;
   if (existante) {
     existante.name = nom;
@@ -1402,7 +1402,7 @@ export function planMapDeletion(mapsDir, id) {
     // refusé même s'il ne désigne rien aujourd'hui.
     const absolu = cheminSousMaps(mapsDir, relatif);
     if (!fs.existsSync(absolu)) continue;
-    files.push({ path: relatif, bytes: fs.statSync(absolu).size });undefined
+    files.push({ path: relatif, bytes: fs.statSync(absolu).size });
   }
 
   const catalogue = lireCatalogue(mapsDir);

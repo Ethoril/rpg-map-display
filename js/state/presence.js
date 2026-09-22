@@ -46,15 +46,6 @@ export function setPresenceMap(presences) {
 }
 
 /**
- * Supprime un client de la carte de présence.
- *
- * @param {string} clientId
- */
-export function removePresence(clientId) {
-  if (presenceMap.delete(clientId)) notifySubscribers();
-}
-
-/**
  * Réinitialise la carte de présence.
  */
 export function clearPresence() {

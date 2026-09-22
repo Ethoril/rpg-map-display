@@ -216,6 +216,10 @@ const ADAPTATEUR = {
   mapExtent() {
     return { width: this.widthCells * 100, height: this.heightCells * 100 };
   },
+  /** @returns {{x: number, y: number}} */
+  cellPitch() {
+    return { x: 100, y: 100 };
+  },
   /** @returns {{x: number, y: number, width: number, height: number}} */
   maskRect() {
     return { x: 0, y: 0, width: this.widthCells * 100, height: this.heightCells * 100 };

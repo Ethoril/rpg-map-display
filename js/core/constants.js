@@ -430,7 +430,7 @@ export const STATUS_ICON_CACHE_LIMIT = 128;
  * retour de table du 05/08/2026, « si un pion est sur une case adjacente aux portes, souvent
  * on ouvre/ferme la porte au lieu de sélectionner le pion ». Le déséquilibre n'était pas dans
  * cette valeur seule mais dans son rapport à l'autre : **le pion se désigne sans aucune
- * tolérance** (la case exacte, `tokenAtCell`), la porte avec une demi-case tout autour.
+ * tolérance** (la case exacte), la porte avec une demi-case tout autour.
  *
  * L'arithmétique de la table le dit : à la vue « carte entière » — la vue normale de la
  * tablette — une case fait 33 px à l'écran (cf. `hardware_measurements`), donc l'ancienne
@@ -603,11 +603,6 @@ export const TEMPLATE_VERTEX_HANDLE_PX = 24;
  * Évite d'engloutir le corps d'un cône de rayon 1 dézoomé.
  */
 export const TEMPLATE_VERTEX_HANDLE_MAX_RATIO = 0.4;
-
-/**
- * Épsilon de décollement d'origine pour éviter de poser l'origine d'un sweep pile sur un segment.
- */
-export const TEMPLATE_ORIGIN_EPS = 0.5;
 
 /**
  * Tolérance de désignation des pions au doigt, en pixels ÉCRAN.

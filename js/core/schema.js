@@ -517,11 +517,18 @@ export function validateLinks(campaign) {
 /**
  * Fabrique d'une instance d'étage (Level) avec valeurs par défaut (CdC §6).
  *
- * @param {Partial<Level & { grid?: Partial<import('./types.js').GridConfig> }>} [overrides]
+ * @param {Partial<Omit<Level, 'grid' | 'ambient'>> & {
+ *   grid?: Partial<import('./types.js').GridConfig>,
+ *   ambient?: Partial<import('./types.js').AmbientLight>,
+ * }} [overrides] Une grille ou une ambiante PARTIELLE est fusionnée avec ses défauts.
  * @returns {Level}
  */
 export function createLevel(overrides = {}) {
   return {
+    // ⛔ EN PREMIER (audit du 22/09, H3) : étalé en dernier, il écrasait les fusions de `grid` et
+    // `ambient` ci-dessous — `createLevel({grid: {type: 'hex'}})` perdait offsetX, couleur,
+    // opacité, et la validation échouait.
+    ...overrides,
     id: overrides.id ?? 'rdc',
     name: overrides.name ?? 'Rez-de-chaussée',
     order: overrides.order ?? 0,
@@ -549,7 +556,6 @@ export function createLevel(overrides = {}) {
       baked: false,
       ...(overrides.ambient ?? {}),
     },
-    ...overrides,
   };
 }
 

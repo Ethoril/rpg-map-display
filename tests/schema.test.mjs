@@ -409,3 +409,15 @@ test('C-2 — validateCampaign refuse un `Light.on` non booléen', () => {
   const errors = validateCampaign(createCampaign({ levels: [level] }));
   assert.ok(errors.some((err) => err.includes('lumière "sale"') && err.includes('on doit être un booléen')));
 });
+
+// H3 (audit du 22/09/2026) — le `...overrides` final de `createLevel` écrasait la fusion de
+// `grid` et d'`ambient` : une grille partielle perdait tous ses autres champs.
+test('H3 : createLevel fusionne une grille et une ambiante partielles avec leurs défauts', () => {
+  const level = createLevel({ id: 'h3', grid: { type: 'hex' }, ambient: { level: 0.4 } });
+  assert.equal(level.grid.type, 'hex');
+  assert.equal(level.grid.offsetX, 0);
+  assert.equal(level.grid.color, '#000000');
+  assert.equal(level.ambient.level, 0.4);
+  assert.equal(level.ambient.baked, false);
+  assert.deepEqual(validateCampaign(createCampaign({ levels: [level] })), []);
+});

@@ -112,14 +112,6 @@ export class PointerInput {
   }
 
   /**
-   * Modifie le rôle courant (vue joueurs ou vue MJ).
-   * @param {'players'|'gm'} role
-   */
-  setRole(role) {
-    this.role = role;
-  }
-
-  /**
    * Attache les écouteurs d'événements DOM à l'élément.
    */
   attach() {

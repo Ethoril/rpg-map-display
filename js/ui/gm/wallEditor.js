@@ -286,11 +286,6 @@ export function createWallEditor(container, options) {
       options.requestRender?.();
       updateUI();
     },
-    cancelDraft: () => {
-      draftVertices = [];
-      options.requestRender?.();
-      updateUI();
-    },
     updateUI,
   };
 }

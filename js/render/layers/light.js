@@ -355,10 +355,7 @@ export class LightLayer {
     // unique étirait le champ composé de 13,4 % en hauteur, et une lampe se retrouvait
     // peinte une case trop haut par rapport au pion qu'elle éclaire.
     const origine = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const uneCaseX = adaptateur.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const uneCaseY = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 1 });
-    const echelleX = Math.abs(uneCaseX.x - origine.x);
-    const echelleY = Math.abs(uneCaseY.y - origine.y);
+    const { x: echelleX, y: echelleY } = adaptateur.cellPitch();
 
     // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé. ⛔ Et pas du tout
     // sur une carte cuite, qui n'a aucune source à occlure.

@@ -710,26 +710,5 @@ export function createTokenMaker(container, options = {}) {
       defaultLevelId = levelId;
       refreshGenerateAvailability();
     },
-    setShape: (/** @type {string} */ shape) => {
-      shapeSelect.value = shape;
-      drawPreview();
-    },
-    setKind: (/** @type {string} */ kind) => {
-      kindSelect.value = kind;
-      drawPreview();
-    },
-    setBorderColor: (/** @type {string} */ color) => {
-      colorInput.value = color;
-      drawPreview();
-    },
-    setSizeCells: (/** @type {number} */ size) => {
-      sizeCellsInput.value = String(size);
-    },
-    setSpeedCells: (/** @type {number} */ speed) => {
-      speedCellsInput.value = String(speed);
-    },
-    setLabel: (/** @type {string} */ label) => {
-      labelInput.value = label;
-    },
   };
 }

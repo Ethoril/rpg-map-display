@@ -27,17 +27,22 @@ export class MeasureLayer {
 
     if (measure.levelId && measure.levelId !== level.id) return;
 
+    // ⛔ Tailles en pixels ÉCRAN (audit du 22/09, H2) : elles étaient en pixels carte, et au zoom
+    // « carte entière » (≈ 0,2) l'étiquette de distance faisait 3 px — illisible pour le MJ.
+    // `options.camera` était déjà transmis, et jamais lu.
+    const k = 1 / Math.max(0.01, options.camera?.zoom ?? 1);
+
     const start = measure.start;
     const end = measure.end;
     if (!end) {
       // Un seul point armé : dessiner une pastille de départ
       ctx.save();
       ctx.beginPath();
-      ctx.arc(start.x, start.y, 8, 0, Math.PI * 2);
+      ctx.arc(start.x, start.y, 8 * k, 0, Math.PI * 2);
       ctx.fillStyle = '#3b82f6';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * k;
       ctx.stroke();
       ctx.restore();
       return;
@@ -51,30 +56,30 @@ export class MeasureLayer {
 
     // Ligne de liaison en pointillés
     ctx.beginPath();
-    ctx.setLineDash([8, 6]);
+    ctx.setLineDash([8 * k, 6 * k]);
     ctx.moveTo(start.x, start.y);
     ctx.lineTo(end.x, end.y);
     ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * k;
     ctx.stroke();
     ctx.setLineDash([]);
 
     // Pastille de départ
     ctx.beginPath();
-    ctx.arc(start.x, start.y, 7, 0, Math.PI * 2);
+    ctx.arc(start.x, start.y, 7 * k, 0, Math.PI * 2);
     ctx.fillStyle = '#3b82f6';
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * k;
     ctx.stroke();
 
     // Pastille d'arrivée
     ctx.beginPath();
-    ctx.arc(end.x, end.y, 7, 0, Math.PI * 2);
+    ctx.arc(end.x, end.y, 7 * k, 0, Math.PI * 2);
     ctx.fillStyle = '#3b82f6';
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * k;
     ctx.stroke();
 
     // Pastille / Badge du texte de distance au milieu
@@ -82,19 +87,18 @@ export class MeasureLayer {
     const midY = (start.y + end.y) / 2;
     const label = `${distance} case${distance > 1 ? 's' : ''}`;
 
-    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.font = `bold ${14 * k}px system-ui, sans-serif`;
     const metrics = ctx.measureText(label);
-    const padX = 8;
-    const padY = 5;
+    const padX = 8 * k;
     const boxW = metrics.width + padX * 2;
-    const boxH = 22;
+    const boxH = 22 * k;
 
     ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
     ctx.beginPath();
-    ctx.roundRect(midX - boxW / 2, midY - boxH / 2, boxW, boxH, 4);
+    ctx.roundRect(midX - boxW / 2, midY - boxH / 2, boxW, boxH, 4 * k);
     ctx.fill();
     ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.5 * k;
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';

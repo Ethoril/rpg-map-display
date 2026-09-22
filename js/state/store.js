@@ -3,7 +3,6 @@
 import {
   validateCampaign,
   createCampaign,
-  normalizeCampaignColors,
   normalizeCampaign,
   normalizeLevel,
   isPersistableAssetUrl,

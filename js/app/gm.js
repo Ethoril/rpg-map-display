@@ -54,27 +54,6 @@ import { getPresenceList, listOtherGmClients } from '../state/presence.js';
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 /** @typedef {import('../core/types.js').MapPoint} MapPoint */
 
-/**
- * @param {import('../core/types.js').Campaign|null} campaign
- * @param {import('../core/types.js').Level|null} activeLevel
- * @param {import('../core/types.js').Cell|null} cell
- */
-function tokenAtCell(campaign, activeLevel, cell) {
-  if (!campaign || !activeLevel || !cell) return null;
-  return (
-    campaign.tokens.find((token) => {
-      if (token.levelId !== activeLevel.id) return false;
-      const size = Math.max(1, token.sizeCells || 1);
-      return (
-        cell.a >= token.cell.a &&
-        cell.a < token.cell.a + size &&
-        cell.b >= token.cell.b &&
-        cell.b < token.cell.b + size
-      );
-    }) ?? null
-  );
-}
-
 function defaultGmSessionId() {
   const existing = sessionStorage.getItem(GM_SESSION_STORAGE_KEY);
   if (existing) return existing;
@@ -375,10 +354,7 @@ export async function bootstrapGMApp(options = {}) {
 
     // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
     const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
-    const gridScaleX = Math.abs(origin1.x - origin0.x);
-    const gridScaleY = Math.abs(origin1B.y - origin0.y);
+    const { x: gridScaleX, y: gridScaleY } = grid.cellPitch();
 
     // La règle du mode tactique, assemblée une seule fois et servie deux fois : au masque
     // exploré, qui la mémorise, et à la vision publiée, qui ne mémorise rien.
@@ -555,10 +531,7 @@ export async function bootstrapGMApp(options = {}) {
     const grid = gridFor(level);
     // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
     const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-    const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
-    const gridScaleX = Math.abs(origin1.x - origin0.x);
-    const gridScaleY = Math.abs(origin1B.y - origin0.y);
+    const { x: gridScaleX, y: gridScaleY } = grid.cellPitch();
     const originR = grid.mapFromCellPoint({ cellX: rangeCells, cellY: 0 });
     const rangePx = Math.hypot(originR.x - origin0.x, originR.y - origin0.y);
 
@@ -762,7 +735,7 @@ export async function bootstrapGMApp(options = {}) {
       walls: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const draft = gmPanel?.wallEditor?.isArmed() ? gmPanel.wallEditor.getDraft() : null;
-        wallsLayer.render(stage.context, grid, activeLevel, draft);
+        wallsLayer.render(stage.context, grid, activeLevel, draft, camera.zoom);
         layerDurations.walls = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       portals: () => {
@@ -1415,10 +1388,7 @@ export async function bootstrapGMApp(options = {}) {
       const grid = gridFor(activeLevel);
       // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
       const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-      const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
-      const origin1B = grid.mapFromCellPoint({ cellX: 0, cellY: 1 });
-      const gridScaleX = Math.abs(origin1.x - origin0.x);
-      const gridScaleY = Math.abs(origin1B.y - origin0.y);
+      const { x: gridScaleX, y: gridScaleY } = grid.cellPitch();
 
       const radiusCells = gmPanel?.fogTools?.getBrushRadiusCells() ?? 1;
       const radiusPx = radiusCells * gridScaleX;

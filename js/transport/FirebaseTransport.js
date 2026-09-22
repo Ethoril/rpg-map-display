@@ -6,7 +6,6 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   GoogleAuthProvider,
-  signOut,
 } from 'firebase/auth';
 import {
   getDatabase,
@@ -44,9 +43,6 @@ import { identifiantAleatoire, isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } fr
 const CHAMPS_REQUIS = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'appId'];
 const TRANSIENT_ASSET_URL = /^(?:data|blob):/i;
 const PRESENCE_HEARTBEAT_MS = 30_000;
-
-/** Limite imposée par Firestore pour un document, en octets. */
-export const FIRESTORE_DOCUMENT_LIMIT_BYTES = 1024 * 1024;
 
 /**
  * Plafond applicatif volontairement inférieur à la limite Firestore. La marge absorbe les
@@ -977,11 +973,6 @@ export class FirebaseTransport {
     const auth = this._ensureAuth();
     const credential = await signInWithEmailAndPassword(auth, email, password);
     return credential.user;
-  }
-
-  /** @returns {Promise<void>} */
-  async signOut() {
-    await signOut(this._ensureAuth());
   }
 
   // --- Signalement d'erreur -------------------------------------------------

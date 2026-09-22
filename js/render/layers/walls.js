@@ -21,12 +21,15 @@ export class WallsLayer {
    * @param {GridAdapter} grid
    * @param {Level} level
    * @param {CellPoint[]|null} [draft=null] Polyligne en cours de tracé (optionnelle)
+   * @param {number} [cameraZoom=1] Zoom de la caméra. ⛔ Les épaisseurs sont en pixels ÉCRAN
+   *   (audit du 22/09, H2) : en pixels carte, un mur faisait 0,6 px au zoom « carte entière ».
    * @returns {number} Nombre de segments de murs dessinés
    */
-  render(ctx, grid, level, draft = null) {
+  render(ctx, grid, level, draft = null, cameraZoom = 1) {
     if (!ctx || !grid || !level) {
       return 0;
     }
+    const k = 1 / Math.max(0.01, cameraZoom);
 
     ctx.save();
     let renderedSegments = 0;
@@ -36,7 +39,7 @@ export class WallsLayer {
     // 1. Rendu des murs confirmés de l'étage
     if (walls.length > 0) {
       ctx.strokeStyle = '#f97316'; // Orange lumineux
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 * k;
       ctx.globalAlpha = 0.85;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -63,8 +66,8 @@ export class WallsLayer {
 
       // Traits discontinus bleu cyan pour le tracé en cours
       ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 3 * k;
+      ctx.setLineDash([6 * k, 4 * k]);
       ctx.globalAlpha = 0.9;
       ctx.lineCap = 'round';
 
@@ -84,7 +87,7 @@ export class WallsLayer {
       for (const node of draft) {
         const pt = grid.mapFromCellPoint({ cellX: node.cellX, cellY: node.cellY });
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+        ctx.arc(pt.x, pt.y, 4 * k, 0, Math.PI * 2);
         ctx.fill();
       }
 

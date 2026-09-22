@@ -82,9 +82,3 @@ export function findPath(grid, from, to, blockedEdges, terrainCost, coutConnu) {
   return reconstructPath(predecessors, from, to);
 }
 
-/**
- * Alias de findPath pour la rétrocompatibilité des spécifications.
- * @type {typeof findPath}
- */
-export const shortestPath = findPath;
-
