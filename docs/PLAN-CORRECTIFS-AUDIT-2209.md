@@ -154,36 +154,36 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 - [x] **D1** `5f1faaa` ✅ Faux vert sur l'interdiction n°1 (pas de drag joueur) : c'est le mock
   `mountStage.mjs:110-111` qui porte la garde `role === 'gm'`. Le mock doit répondre
   « oui » et laisser `pointer.js` refuser. Muter `pointer.js:259` pour prouver le rouge.
-- [ ] **D2** ✅ `// @ts-nocheck` dans `js/app/sondeLatence.js:1`. Le typer, et ajouter un
+- [x] **D2** `6dec21d` ✅ `// @ts-nocheck` dans `js/app/sondeLatence.js:1`. Le typer, et ajouter un
   test d'architecture qui interdit `@ts-nocheck` et `@ts-ignore` dans `js/`.
-- [ ] **D3** ✅ `'px' + 'PerCell'` dans `templateHit.js:109` contourne le test : passer par la
+- [x] **D3** `0f4eca3` ✅ `'px' + 'PerCell'` dans `templateHit.js:109` contourne le test : passer par la
   grille. Le test 1 doit attraper aussi la propriété calculée et les alias (`pxCell` dans
   `importPanel.js:415`). Aligner sa liste d'exceptions sur `ARCHITECTURE.md` §4.1
   (`gridPitch.js` et `importPanel.js` n'y figurent pas) → **[DÉCISION]** si l'un des deux
   doit rester en exception.
-- [ ] **D4** ✅ Test 6 des imports (`architecture.test.mjs:142-190`) :
+- [x] **D4** `6dec21d` ✅ Test 6 des imports (`architecture.test.mjs:142-190`) :
   - aucune branche pour `ui/*` ;
   - ré-exports non lus, chemins absolus et `import( '…')` ignorés ;
   - liste d'interdits au lieu d'une liste d'autorisés.
   Passer à la liste d'autorisés de `ARCHITECTURE.md` §2. Cela fera rougir
   `grid/* → movement/*` (voir H1).
-- [ ] **D5** ✅ Test 5 du manifeste : le nom de base est cherché n'importe où, et seul
+- [x] **D5** `6dec21d` ✅ Test 5 du manifeste : le nom de base est cherché n'importe où, et seul
   `js/` est lu. Comparer le chemin complet, et lire aussi `scripts/` et `tests/`. Rougira
   sur quatre scripts et `tests/browserTestTransport.mjs` : les inscrire au manifeste ou les
   retirer → **[DÉCISION]** fichier par fichier si leur rôle n'est pas évident.
-- [ ] **D6** ✅ Test 7 (CDN) : il ne cherche que jsdelivr et gstatic. Chercher toute URL
+- [x] **D6** `6dec21d` ✅ Test 7 (CDN) : il ne cherche que jsdelivr et gstatic. Chercher toute URL
   `https://` dans un `import`.
-- [ ] **D7** ✅ `check-deps` écrase la version de Firebase URL après URL
+- [x] **D7** `6dec21d` ✅ `check-deps` écrase la version de Firebase URL après URL
   (`check-deps.mjs:130-133`). Comparer chaque URL. Accepter aussi `type=module` sans
   guillemets (`:61`).
-- [ ] **D8** ❔ En CI, les tests du vrai Firebase passent en `skip` silencieux si le secret
+- [x] **D8** `6dec21d` ❔ En CI, les tests du vrai Firebase passent en `skip` silencieux si le secret
   manque ou si les variables d'émulateur changent de nom (`firebaseTransport.spec.mjs:106`,
   `144`, `firebaseRules.emulator.test.mjs:20`). Si `CI` est défini, échouer.
-- [ ] **D9** ✅ `playerMaskPerformance.spec.mjs` « 2. Mesure » est une mesure sans
+- [x] **D9** `6dec21d` ✅ `playerMaskPerformance.spec.mjs` « 2. Mesure » est une mesure sans
   assertion, dans la porte. La déplacer dans `tests/mesures/`.
-- [ ] **D10** ✅ Test 9 contournable (`architecture.test.mjs:222-227`) : motif trop étroit,
+- [x] **D10** `6dec21d` ✅ Test 9 contournable (`architecture.test.mjs:222-227`) : motif trop étroit,
   et `indexOf === -1` rend le test toujours vrai.
-- [ ] **D11** ❔ `sondeLatence.js` n'est pas publié par `build-site.mjs:30-34`, alors que
+- [x] **D11** `6dec21d` ❔ `sondeLatence.js` n'est pas publié par `build-site.mjs:30-34`, alors que
   `docs/SONDE-LATENCE.md` le fait charger sur Pages : même famille qu'E-15.
 
 ### P4 — hexagonal et lumière
@@ -305,3 +305,6 @@ un travail inutile, sans rien promettre de chiffré.
 | 22/09 | B7 | `2b61fa5` | `snapWallVertex` et `findWallAt` prennent la grille |
 | 22/09 | B8 | `375f93a` | rafraîchissements du panneau gardés par signature ; la liste des liaisons suit les étages |
 | 22/09 | B9, B10 | `ceafc11` | une présence reçue efface l'erreur ; la caméra choisie par la table survit au `resize` |
+| 22/09 | C2, C10 | `fada46f` | notification `{ session: true }` : ni sauvegarde locale, ni instantané Firestore pour un masque |
+| 22/09 | D2–D11 | `6dec21d` | les écarts tolérés sont dans des listes d'attente explicites du test ; décisions en **D-7** |
+| 22/09 | D3 | `0f4eca3` | `GridAdapter.cellPitch()` |
