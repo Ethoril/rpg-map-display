@@ -121,6 +121,15 @@ export class HexGrid {
   }
 
   /**
+   * Pas de la grille par axe — voir le contrat dans `GridAdapter.js`.
+   *
+   * @returns {{x: number, y: number}}
+   */
+  cellPitch() {
+    return { x: this.pxPerCell, y: this.pxPerCell * SQRT3_OVER_2 };
+  }
+
+  /**
    * Rectangle couvert par un masque de l'étage — voir le contrat dans `GridAdapter.js`. Même
    * échelle par axe que `composeVisibleMask` : une colonne vaut `pxPerCell`, une rangée
    * `pxPerCell × √3/2`.

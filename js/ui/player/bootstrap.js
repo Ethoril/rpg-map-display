@@ -297,7 +297,10 @@ export function bootstrapPlayerView(options) {
     canStartTemplateDrag: (_screenPos, mapPos) => {
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return null;
-      const hit = findHitTemplate(state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom, 0, true);
+      const hit = findHitTemplate(
+        state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom,
+        gridFor(state.activeLevel).cellPitch().x, true
+      );
       return hit ? { templateId: hit.template.id, dragMode: hit.mode } : null;
     },
   });

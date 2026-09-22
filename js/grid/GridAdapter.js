@@ -33,6 +33,13 @@
  *   l'offset de la grille y est donc inclus. C'est la taille sur laquelle on cadre la
  *   caméra. ⛔ **Pas** celle vers laquelle on agrandit un masque : voir `maskRect`.
  *
+ * @property {() => {x: number, y: number}} cellPitch
+ *   Pas de la grille en pixels carte, PAR AXE : écart entre deux colonnes (`x`) et entre deux
+ *   rangées (`y`). En carré les deux valent `pxPerCell` ; en hexagonal les rangées ne sont
+ *   espacées que de √3/2 case (E-11). C'est la « taille d'une case » qu'il faut aux longueurs
+ *   exprimées en cases — rayon d'un gabarit, portée d'un pinceau — et qu'on recopiait par
+ *   différence de deux `mapFromCellPoint` (audit du 22/09, D3 et H4).
+ *
  * @property {() => {x: number, y: number, width: number, height: number}} maskRect
  *   Rectangle, en pixels carte, que couvre un masque de `widthCells × heightCells` cases
  *   (brouillard, vision, champ lumineux) : il commence à l'origine de la grille, **offset

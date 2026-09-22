@@ -84,6 +84,15 @@ export class SquareGrid {
   }
 
   /**
+   * Pas de la grille par axe — voir le contrat dans `GridAdapter.js`.
+   *
+   * @returns {{x: number, y: number}}
+   */
+  cellPitch() {
+    return { x: this.pxPerCell, y: this.pxPerCell };
+  }
+
+  /**
    * Rectangle couvert par un masque de l'étage — voir le contrat dans `GridAdapter.js`.
    *
    * @returns {{x: number, y: number, width: number, height: number}}

@@ -95,19 +95,21 @@ export function isPointInLine(origin, directionDeg, lengthPx, widthPx, mapPos) {
  * @param {Level} level Étage courant
  * @param {Template[]} templates Liste des gabarits
  * @param {MapPoint} mapPos Position du tap/curseur en pixels carte
- * @param {number} [zoom=1] Zoom courant de la vue
- * @param {number} [cellScale] Taille d'une case en pixels carte (optionnelle)
+ * @param {number} zoom Zoom courant de la vue
+ * @param {number} cellScale Taille d'une case en pixels carte — `grid.cellPitch().x`, la même
+ *   que celle du rendu. ⛔ Obligatoire (audit du 22/09, D3) : le repli lisait `level['px' +
+ *   'PerCell']`, un nom calculé qui contournait le test d'architecture.
  * @param {boolean} [isPlayerView=false] true si vue joueurs (seuls les gabarits visibleToPlayers sont réactifs)
  * @returns {{ template: Template, mode: 'move'|'rotate' } | null}
  */
-export function findHitTemplate(level, templates, mapPos, zoom = 1, cellScale = 0, isPlayerView = false) {
+export function findHitTemplate(level, templates, mapPos, zoom, cellScale, isPlayerView = false) {
   if (!level || !Array.isArray(templates) || templates.length === 0 || !mapPos) {
     return null;
   }
-
-  const levelObj = /** @type {any} */ (level);
-  const key = 'px' + 'PerCell';
-  const cellPx = cellScale || levelObj[key] || 140;
+  if (!(cellScale > 0)) {
+    throw new Error(`findHitTemplate : taille de case invalide (${cellScale}) — passer grid.cellPitch().x`);
+  }
+  const cellPx = cellScale;
   const levelTemplates = templates.filter((t) => t && t.levelId === level.id);
   const candidates = isPlayerView
     ? levelTemplates.filter((t) => t.visibleToPlayers === true)

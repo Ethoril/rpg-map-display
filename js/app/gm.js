@@ -1776,7 +1776,7 @@ export async function bootstrapGMApp(options = {}) {
         state.campaign?.templates ?? [],
         intention.mapPos,
         camera.zoom,
-        0,
+        gridFor(state.activeLevel).cellPitch().x,
         false
       );
       if (hitTemplate && store.removeTemplate(hitTemplate.template.id)) {
@@ -1972,7 +1972,10 @@ export async function bootstrapGMApp(options = {}) {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return null;
-      const hit = findHitTemplate(state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom, 0, false);
+      const hit = findHitTemplate(
+        state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom,
+        gridFor(state.activeLevel).cellPitch().x, false
+      );
       return hit ? { templateId: hit.template.id, dragMode: hit.mode } : null;
     },
   });

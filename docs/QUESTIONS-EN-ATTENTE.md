@@ -1072,6 +1072,26 @@ l'inverse : le **MJ** publie sa caméra à chaque pan et chaque zoom, et une tab
    décider ce que le MJ en fait.
 3. **Les deux sens.**
 
+### D-7 ⏳ Trois écarts entre `ARCHITECTURE.md` et le code réel (audit du 22/09, D3-D5, H1)
+
+Les tests d'architecture sont désormais assez stricts pour les voir. Chacun est toléré par une
+liste d'attente **explicite** dans `tests/architecture.test.mjs`, qui ne doit que rétrécir.
+
+1. **Table §2 : `render/*` importe `vision/*`** (`fogLayer`, `light`, `templates`, `tokens`) **et
+   `input/templateHit.js`**, que la table ne liste pas. Faut-il amender la table (c'est l'usage
+   réel, et il est sain : le rendu consomme la géométrie de vision), ou déplacer du code ?
+   `render/*` reste vérifié par ses interdits en attendant.
+2. **Table §2 : `grid/*` importe `movement/reachable.js`** (H1). `cellsInRange` fait partie du
+   contrat de `GridAdapter` mais délègue à `movement/`. Les options : amender la table, ou sortir
+   `cellsInRange` du contrat pour que les appelants passent par `movement/` directement.
+3. **Manifeste §1** : quatre scripts sont absents.
+   - Trois sont en usage : `extract-poster.mjs` et `videoProbe.mjs`, importés par `prepare-maps` ;
+     `install-status-icons.mjs`, lu par un test.
+   - `measure-firestore-snapshots.mjs` est une mesure ponctuelle de l'ADR-012.
+   Faut-il les inscrire ou les retirer ?
+4. **§4.1** : les exceptions à `pxPerCell` du test comptent `import/gridPitch.js` et
+   `ui/gm/importPanel.js`, qui calibrent sans convertir de position. Le document ne les cite pas.
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
