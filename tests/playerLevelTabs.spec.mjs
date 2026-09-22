@@ -262,3 +262,28 @@ test('UX-12 critères 4 et 5 : ARIA, navigation aux flèches, cible tactile et a
   });
   expect(contourVisible, 'le focus clavier doit rester visible').toBe(true);
 });
+
+// F4 (audit du 22/09/2026) — l'identifiant d'étage était injecté tel quel dans un sélecteur CSS.
+// Un `"` — un `data.id` d'UVTT importé sans retouche — faisait lever une `SyntaxError` à la
+// navigation par flèches, et le focus restait sur l'onglet précédent.
+test('F4 : la navigation aux flèches supporte un identifiant d’étage contenant des guillemets', async ({ page }) => {
+  const sessionId = `f4-${Date.now()}`;
+  const special = 'cave"sud';
+  const snap = structuredClone(SNAPSHOT);
+  snap.campaign.levels[2] = etage(special, 'Cave sud');
+  /** @type {string[]} */
+  const erreurs = [];
+  page.on('pageerror', (err) => erreurs.push(err.message));
+  await installBrowserTransport(page, sessionId, snap);
+  await page.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(page);
+  for (const id of ['rdc', 'et1', special]) await poserMasque(page, id, true);
+  await expect.poll(() => idsDesOnglets(page)).toEqual(['rdc', 'et1', special]);
+
+  await page.locator('.player-level-tab[data-level-id="rdc"]').focus();
+  await page.keyboard.press('End');
+  await expect.poll(() => etageAffiche(page)).toBe(special);
+  const focus = await page.evaluate(() => /** @type {HTMLElement|null} */ (document.activeElement)?.dataset.levelId);
+  expect(focus).toBe(special);
+  expect(erreurs).toEqual([]);
+});

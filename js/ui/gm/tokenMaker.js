@@ -307,6 +307,12 @@ export function createTokenMaker(container, options = {}) {
         drawPreview();
         refreshGenerateAvailability();
       };
+      // Un format que le navigateur ne décode pas (HEIC d'un iPhone, par exemple) était ignoré sans
+      // un mot (audit du 22/09, F5) : le bouton restait grisé et rien ne disait pourquoi.
+      img.onerror = () => {
+        status.style.color = '#e74c3c';
+        status.textContent = `Image illisible par le navigateur (${file.type || 'format inconnu'}) : convertissez-la en PNG, JPEG ou WebP.`;
+      };
       img.src = /** @type {string} */ (evt.target?.result);
     };
     reader.readAsDataURL(file);
@@ -608,7 +614,10 @@ export function createTokenMaker(container, options = {}) {
         drawPreview();
         refreshGenerateAvailability();
       };
-      const src = t.imageUrl.startsWith('/') || t.imageUrl.startsWith('data:') ? t.imageUrl : `/${t.imageUrl}`;
+      // Une URL absolue (`https:`, `data:`, `blob:`) ou déjà racinée passe telle quelle ; seul un
+      // chemin relatif du dépôt est raciné. Préfixer `/` devant `https://…` (audit du 22/09, F5)
+      // rendait `/https://…`, une 404 : l'aperçu restait vide dans l'outil de préparation.
+      const src = /^(?:[a-z][a-z\d+.-]*:|\/)/i.test(t.imageUrl) ? t.imageUrl : `/${t.imageUrl}`;
       img.src = src;
     }
 

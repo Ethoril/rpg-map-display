@@ -147,12 +147,24 @@ export function parseUvtt(jsonInput) {
     );
   }
 
-  const widthCells = typeof sizeSource?.x === 'number' && sizeSource.x > 0 ? sizeSource.x : 40;
-  const heightCells = typeof sizeSource?.y === 'number' && sizeSource.y > 0 ? sizeSource.y : 30;
-  if (widthCells !== sizeSource?.x || heightCells !== sizeSource?.y) {
+  const tailleValide = (/** @type {unknown} */ v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  const largeurBrute = tailleValide(sizeSource?.x) ? sizeSource.x : 40;
+  const hauteurBrute = tailleValide(sizeSource?.y) ? sizeSource.y : 30;
+  if (largeurBrute !== sizeSource?.x || hauteurBrute !== sizeSource?.y) {
     warnings.push(
       `resolution.map_size absent ou invalide (${JSON.stringify(sizeSource)}) : ` +
-        `dimensions repliées sur ${widthCells}x${heightCells} cases, valeurs inventées.`
+        `dimensions repliées sur ${largeurBrute}x${hauteurBrute} cases, valeurs inventées.`
+    );
+  }
+  // ⛔ Une taille non entière (audit du 22/09, F1) était acceptée ici puis refusée par le schéma,
+  // qui exige des cases entières : la carte ne s'importait pas, sans dire pourquoi. Arrondie AU
+  // DESSUS, pour que la grille couvre toute l'image — rien n'en est écarté.
+  const widthCells = Math.ceil(largeurBrute);
+  const heightCells = Math.ceil(hauteurBrute);
+  if (widthCells !== largeurBrute || heightCells !== hauteurBrute) {
+    warnings.push(
+      `resolution.map_size non entier (${largeurBrute}x${hauteurBrute}) : grille arrondie à ` +
+        `${widthCells}x${heightCells} cases, la dernière colonne ou rangée déborde de l'image.`
     );
   }
 
@@ -189,8 +201,17 @@ export function parseUvtt(jsonInput) {
     );
   }
 
-  const originX = resolution.map_origin?.x ?? 0;
-  const originY = resolution.map_origin?.y ?? 0;
+  // ⛔ Validée (audit du 22/09, F1) : `{x: "abc"}` donnait un `offsetX` à NaN, et toute la grille
+  // cassait — avec un avertissement annonçant « +NaN px ».
+  const origineBrute = resolution.map_origin;
+  const origineValide = (/** @type {unknown} */ v) => v === undefined || (typeof v === 'number' && Number.isFinite(v));
+  const originX = origineValide(origineBrute?.x) ? (origineBrute?.x ?? 0) : 0;
+  const originY = origineValide(origineBrute?.y) ? (origineBrute?.y ?? 0) : 0;
+  if (!origineValide(origineBrute?.x) || !origineValide(origineBrute?.y)) {
+    warnings.push(
+      `resolution.map_origin invalide (${JSON.stringify(origineBrute)}) : origine ramenée à (0, 0).`
+    );
+  }
   const offsetX = originX * pxPerCell;
   const offsetY = originY * pxPerCell;
 
@@ -313,9 +334,11 @@ export function parseUvtt(jsonInput) {
       const ptA = p.bounds[0];
       const ptB = p.bounds[1];
       if (
+        // `Number.isFinite`, comme les murs (audit du 22/09, F1) : `typeof` laissait passer
+        // `Infinity` (`1e999` en JSON), une porte acceptée dont le segment ne bloquait rien.
         !ptA || !ptB ||
-        typeof ptA.x !== 'number' || typeof ptA.y !== 'number' ||
-        typeof ptB.x !== 'number' || typeof ptB.y !== 'number'
+        !Number.isFinite(ptA.x) || !Number.isFinite(ptA.y) ||
+        !Number.isFinite(ptB.x) || !Number.isFinite(ptB.y)
       ) {
         portesRejetees++;
         continue;
@@ -354,8 +377,8 @@ export function parseUvtt(jsonInput) {
     for (const l of data.lights) {
       if (
         !l || !l.position ||
-        typeof l.position.x !== 'number' ||
-        typeof l.position.y !== 'number'
+        !Number.isFinite(l.position.x) ||
+        !Number.isFinite(l.position.y)
       ) {
         lumieresRejetees++;
         continue;

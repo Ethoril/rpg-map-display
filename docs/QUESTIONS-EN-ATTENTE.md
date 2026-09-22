@@ -1092,6 +1092,24 @@ liste d'attente **explicite** dans `tests/architecture.test.mjs`, qui ne doit qu
 4. **§4.1** : les exceptions à `pxPerCell` du test comptent `import/gridPitch.js` et
    `ui/gm/importPanel.js`, qui calibrent sans convertir de position. Le document ne les cite pas.
 
+### D-8 ⏳ Un grand pion hexagonal peut-il déborder de la carte ? (audit du 22/09, E7)
+
+**Le fait.** `schema.js` vérifie les bornes d'un pion **en carré** : `cell.a + sizeCells ≤
+widthCells`, avec l'ancrage au coin haut-gauche. En hexagonal, l'emprise est une rosette
+**centrée** sur l'ancrage, et `HexGrid.cellsOccupied` la **rogne** déjà aux bords.
+
+**Conséquence actuelle.** Le traitement est asymétrique :
+- un pion de taille 2 en colonne 0 est accepté, et sa rosette déborde à gauche ;
+- le même pion en dernière colonne est refusé, alors que son débordement à droite est identique.
+
+**Les options :**
+1. **Seul l'ancrage doit être dans la carte**, et la rosette est rognée comme le fait déjà la
+   grille. Un grand pion peut alors se poser en lisière.
+2. **Toute la rosette doit tenir dans la carte**, des deux côtés.
+
+`core/` ne connaît pas la grille : dans les deux cas, la règle s'écrira dans `schema.js` pour le
+seul pavage hexagonal.
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.

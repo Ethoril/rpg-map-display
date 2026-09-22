@@ -91,7 +91,9 @@ export function createPlayerLevelSelector(container, options) {
       const idCible = ordreAffiche[cible];
       if (idCible && idCible !== actuel) options.onSelectLevel(idCible);
       const btn = /** @type {HTMLElement|null} */ (
-        container.querySelector(`[data-level-id="${idCible}"]`)
+        // `CSS.escape` (audit du 22/09, F4) : un identifiant d'étage contenant `"` — un `data.id`
+        // d'UVTT importé tel quel — faisait lever une `SyntaxError` à la navigation par flèches.
+        container.querySelector(`[data-level-id="${CSS.escape(String(idCible))}"]`)
       );
       btn?.focus();
     },

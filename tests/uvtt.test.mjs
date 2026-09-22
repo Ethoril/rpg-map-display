@@ -404,3 +404,30 @@ test('D-3 : la borne des portées importées SUIT le plafond du moteur, elle n�
     `l’avertissement doit citer le plafond réel, obtenu : ${avertissement}`
   );
 });
+
+// F1 (audit du 22/09/2026) — trois entrées atypiques passaient sans un mot, ou cassaient plus
+// loin. Règle d'universalité : avertir, jamais écarter en silence.
+test('F1 : Infinity, map_origin invalide et map_size non entier sont signalés, et la carte reste importable', () => {
+  const base = JSON.parse(fs.readFileSync(path.resolve('fixtures/synthetic/minimal.uvtt'), 'utf-8'));
+
+  // `1e999` dans le JSON d'origine devient `Infinity` au parse : on le reproduit par le texte.
+  const avecInfini = JSON.stringify({
+    ...base,
+    portals: [{ bounds: [{ x: 1, y: 1 }, { x: 2, y: 1 }] }, { bounds: [{ x: 1, y: 1 }, { x: 0, y: 1 }] }],
+    lights: [{ position: { x: 1, y: 1 }, range: 3 }, { position: { x: 0, y: 1 }, range: 3 }],
+  }).replace('"x":2,"y":1}]', '"x":1e999,"y":1}]').replace('"position":{"x":0,"y":1}', '"position":{"x":1e999,"y":1}');
+  const res1 = parseUvtt(avecInfini);
+  assert.equal(res1.level.portals.length, 1, 'la porte infinie est écartée');
+  assert.equal(res1.level.lights.length, 1, 'la lumière infinie est écartée');
+  assert.ok(res1.warnings.some((w) => /porte/.test(w)), 'et c’est dit');
+  assert.ok(res1.warnings.some((w) => /lumi/i.test(w)), 'et c’est dit');
+
+  const res2 = parseUvtt(JSON.stringify({ ...base, resolution: { ...base.resolution, map_origin: { x: 'abc', y: 0 } } }));
+  assert.equal(res2.level.grid.offsetX, 0, 'pas de NaN dans la grille');
+  assert.ok(res2.warnings.some((w) => /map_origin invalide/.test(w)));
+
+  const res3 = parseUvtt(JSON.stringify({ ...base, resolution: { ...base.resolution, map_size: { x: 10.5, y: 8 } } }));
+  assert.equal(res3.level.widthCells, 11, 'arrondi au-dessus : la grille couvre toute l’image');
+  assert.ok(Number.isInteger(res3.level.heightCells));
+  assert.ok(res3.warnings.some((w) => /non entier/.test(w)));
+});

@@ -342,3 +342,30 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(token.imageUrl).toBe('maps/tokens/x.webp');
   });
 });
+
+// F5 (audit du 22/09/2026) — deux silences du créateur de pions.
+test('F5 : une image illisible est signalée, et une URL https n’est pas racinée en /https://', async ({ page }) => {
+  await setupTokenMaker(page);
+
+  // 1. Un fichier annoncé image mais que le navigateur ne décode pas (HEIC d'un iPhone).
+  await page.setInputFiles('#token-maker-root #token-file-input', {
+    name: 'photo.heic',
+    mimeType: 'image/heic',
+    buffer: Buffer.from('pas une image décodable'),
+  });
+  await expect(page.locator('#token-maker-root #token-maker-status')).toContainText('illisible');
+
+  // 2. Rééditer un pion dont l'image est une URL https : l'aperçu la charge telle quelle.
+  const demandees = /** @type {string[]} */ ([]);
+  page.on('request', (req) => demandees.push(req.url()));
+  await page.route('https://images.example.test/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: TEST_PNG_BUFFER })
+  );
+  await page.evaluate(() =>
+    /** @type {any} */ (window).__tokenMakerInstance.populateFromToken({
+      id: 'p1', label: 'Héros', imageUrl: 'https://images.example.test/heros.png',
+    })
+  );
+  await expect.poll(() => demandees.some((u) => u === 'https://images.example.test/heros.png')).toBe(true);
+  expect(demandees.some((u) => u.includes('/https://'))).toBe(false);
+});
