@@ -238,6 +238,13 @@ export class PointerInput {
     const timeStamp = performance.now();
 
     this.activePointers.set(e.pointerId, { screenPos, timeStamp });
+    // ⛔ Capture (audit du 22/09, B2) : sans elle, un bouton relâché au-dessus du panneau MJ
+    // n'envoie jamais `pointerup` au canvas, et le glisser ou le pan continue au simple survol.
+    try {
+      this.element.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Pointeur déjà relâché, ou élément de test sans capture : rien à capturer.
+    }
 
     if (this.activePointers.size === 1) {
       this.startScreenPos = screenPos;
@@ -284,14 +291,7 @@ export class PointerInput {
       // Annulation d'appui long et bascule en mode pinch/pan à 2 doigts
       this.clearLongPressTimer();
       this.longPressTriggered = false;
-      if (this.mode === 'brushing' && this.startScreenPos) {
-        this.emit({
-          type: 'brushStroke',
-          screenPos: this.startScreenPos,
-          mapPos: this.camera.screenToMap(this.startScreenPos),
-          phase: 'end',
-        });
-      }
+      this.interruptGesture();
       this.mode = 'pinching';
       this.dragTokenId = null;
       this.dragLightId = null;
@@ -472,88 +472,94 @@ export class PointerInput {
 
     this.clearLongPressTimer();
 
-    if (this.activePointers.size === 1 && this.startScreenPos) {
-      // Vider tout pan coalescé en attente
-      if (this.mode === 'panning' && this.rafId !== null) {
-        cancelAnimationFrame(this.rafId);
-        this.flushCoalescedPan();
+    // ⛔ `finally` (audit du 22/09, B1) : une intention qui lève — un pion lâché sur une case
+    // occupée — sortait d'ici avant `activePointers.delete`. Le pointeur restait enregistré,
+    // l'automate restait en glisser, et un pion fantôme suivait la souris au simple survol.
+    try {
+      if (this.activePointers.size === 1 && this.startScreenPos) {
+        // Vider tout pan coalescé en attente
+        if (this.mode === 'panning' && this.rafId !== null) {
+          cancelAnimationFrame(this.rafId);
+          this.flushCoalescedPan();
+        }
+
+        const dist = distanceBetween(this.startScreenPos, screenPos);
+        if (this.mode === 'brushing') {
+          const mapPos = this.camera.screenToMap(screenPos);
+          this.emit({
+            type: 'brushStroke',
+            screenPos,
+            mapPos,
+            phase: 'end',
+          });
+        } else if (this.mode === 'gmTokenDrag' && this.dragTokenId) {
+          const mapPos = this.camera.screenToMap(screenPos);
+          this.emit({
+            type: 'dragToken',
+            tokenId: this.dragTokenId,
+            screenPos,
+            mapPos,
+            phase: 'end',
+          });
+        } else if (this.mode === 'gmLightDrag' && this.dragLightId) {
+          const mapPos = this.camera.screenToMap(screenPos);
+          this.emit({
+            type: 'dragLight',
+            lightId: this.dragLightId,
+            screenPos,
+            mapPos,
+            phase: 'end',
+          });
+        } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
+          const mapPos = this.camera.screenToMap(screenPos);
+          this.emit({
+            type: 'dragTemplate',
+            templateId: this.dragTemplateHit.templateId,
+            dragMode: this.dragTemplateHit.dragMode,
+            screenPos,
+            mapPos,
+            phase: 'end',
+          });
+        } else if (
+          this.mode === 'tapCandidate' &&
+          this.longPressTriggered &&
+          dist < this.dragDistanceThreshold
+        ) {
+          // C'est un APPUI LONG ! (Geste achevé émis au pointerup)
+          this.emit({
+            type: 'longPress',
+            screenPos: this.startScreenPos,
+            mapPos: this.camera.screenToMap(this.startScreenPos),
+          });
+        } else if (
+          this.mode === 'tapCandidate' &&
+          !this.longPressTriggered &&
+          dist < this.dragDistanceThreshold
+        ) {
+          // C'est un TAP ! Une pression immobile reste un tap tant qu'elle n'a pas atteint
+          // l'appui long. `dragHoldMs` décide seulement quand un *mouvement* devient un drag ;
+          // l'employer ici créait une zone morte entre 150 et 500 ms.
+          this.emit({
+            type: 'tap',
+            screenPos: this.startScreenPos,
+            mapPos: this.camera.screenToMap(this.startScreenPos),
+          });
+        }
       }
+    } finally {
+      this.activePointers.delete(e.pointerId);
 
-      const dist = distanceBetween(this.startScreenPos, screenPos);
-      if (this.mode === 'brushing') {
-        const mapPos = this.camera.screenToMap(screenPos);
-        this.emit({
-          type: 'brushStroke',
-          screenPos,
-          mapPos,
-          phase: 'end',
-        });
-      } else if (this.mode === 'gmTokenDrag' && this.dragTokenId) {
-        const mapPos = this.camera.screenToMap(screenPos);
-        this.emit({
-          type: 'dragToken',
-          tokenId: this.dragTokenId,
-          screenPos,
-          mapPos,
-          phase: 'end',
-        });
-      } else if (this.mode === 'gmLightDrag' && this.dragLightId) {
-        const mapPos = this.camera.screenToMap(screenPos);
-        this.emit({
-          type: 'dragLight',
-          lightId: this.dragLightId,
-          screenPos,
-          mapPos,
-          phase: 'end',
-        });
-      } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
-        const mapPos = this.camera.screenToMap(screenPos);
-        this.emit({
-          type: 'dragTemplate',
-          templateId: this.dragTemplateHit.templateId,
-          dragMode: this.dragTemplateHit.dragMode,
-          screenPos,
-          mapPos,
-          phase: 'end',
-        });
-      } else if (
-        this.mode === 'tapCandidate' &&
-        this.longPressTriggered &&
-        dist < this.dragDistanceThreshold
-      ) {
-        // C'est un APPUI LONG ! (Geste achevé émis au pointerup)
-        this.emit({
-          type: 'longPress',
-          screenPos: this.startScreenPos,
-          mapPos: this.camera.screenToMap(this.startScreenPos),
-        });
-      } else if (
-        this.mode === 'tapCandidate' &&
-        !this.longPressTriggered &&
-        dist < this.dragDistanceThreshold
-      ) {
-        // C'est un TAP ! Une pression immobile reste un tap tant qu'elle n'a pas atteint
-        // l'appui long. `dragHoldMs` décide seulement quand un *mouvement* devient un drag ;
-        // l'employer ici créait une zone morte entre 150 et 500 ms.
-        this.emit({
-          type: 'tap',
-          screenPos: this.startScreenPos,
-          mapPos: this.camera.screenToMap(this.startScreenPos),
-        });
+      if (this.activePointers.size === 0) {
+        this.startScreenPos = null;
+        this.lastScreenPos = null;
+        this.mode = 'idle';
+        this.dragTokenId = null;
+        this.dragLightId = null;
+        this.dragTemplateHit = null;
+        this.lastPinchCenter = null;
+        this.longPressTriggered = false;
       }
-    }
-
-    this.activePointers.delete(e.pointerId);
-
-    if (this.activePointers.size === 0) {
-      this.startScreenPos = null;
-      this.lastScreenPos = null;
-      this.mode = 'idle';
-      this.dragTokenId = null;
-      this.dragLightId = null;
-      this.dragTemplateHit = null;
-      this.lastPinchCenter = null;
-      this.longPressTriggered = false;
+      if (this.activePointers.size === 1) this.resumeWithRemainingPointer();
     }
   }
 
@@ -564,24 +570,7 @@ export class PointerInput {
   handlePointerCancel(e) {
     this.clearLongPressTimer();
     this.longPressTriggered = false;
-    if (this.mode === 'brushing' && this.startScreenPos) {
-      this.emit({
-        type: 'brushStroke',
-        screenPos: this.startScreenPos,
-        mapPos: this.camera.screenToMap(this.startScreenPos),
-        phase: 'end',
-      });
-    } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
-      const screenPos = this.lastScreenPos || { screenX: 0, screenY: 0 };
-      this.emit({
-        type: 'dragTemplate',
-        templateId: this.dragTemplateHit.templateId,
-        dragMode: this.dragTemplateHit.dragMode,
-        screenPos,
-        mapPos: this.camera.screenToMap(screenPos),
-        phase: 'end',
-      });
-    }
+    this.interruptGesture();
     this.activePointers.delete(e.pointerId);
 
     if (this.activePointers.size === 0) {
@@ -592,6 +581,8 @@ export class PointerInput {
       this.dragLightId = null;
       this.dragTemplateHit = null;
       this.lastPinchCenter = null;
+    } else {
+      this.resumeWithRemainingPointer();
     }
   }
 
@@ -600,7 +591,61 @@ export class PointerInput {
    * @returns {void}
    */
   handleWindowBlur() {
+    this.interruptGesture();
     this.resetInteraction();
+  }
+
+  /**
+   * Termine proprement le geste en cours quand il est INTERROMPU — `pointercancel`, perte de
+   * focus, second doigt posé — et non achevé par un `pointerup`.
+   *
+   * ⛔ Audit du 22/09, B3 : seuls le pinceau et le gabarit recevaient une fin. Un pion ou une
+   * lampe gardaient leur fantôme dessiné, et un gabarit interrompu par un second doigt n'était
+   * jamais publié. Désormais un glisser interrompu est ANNULÉ (`phase: 'cancel'`) : l'aperçu
+   * s'efface et rien ne bouge — rien ne se déplace dans le dos de personne. Le pinceau, lui,
+   * a déjà peint au fil du geste : il reçoit sa fin (`'end'`), comme avant.
+   *
+   * @returns {void}
+   */
+  interruptGesture() {
+    const screenPos = this.lastScreenPos || this.startScreenPos;
+    if (!screenPos) return;
+    const mapPos = this.camera.screenToMap(screenPos);
+    if (this.mode === 'brushing') {
+      this.emit({ type: 'brushStroke', screenPos, mapPos, phase: 'end' });
+    } else if (this.mode === 'gmTokenDrag' && this.dragTokenId) {
+      this.emit({ type: 'dragToken', tokenId: this.dragTokenId, screenPos, mapPos, phase: 'cancel' });
+    } else if (this.mode === 'gmLightDrag' && this.dragLightId) {
+      this.emit({ type: 'dragLight', lightId: this.dragLightId, screenPos, mapPos, phase: 'cancel' });
+    } else if (this.mode === 'templateDrag' && this.dragTemplateHit) {
+      this.emit({
+        type: 'dragTemplate',
+        templateId: this.dragTemplateHit.templateId,
+        dragMode: this.dragTemplateHit.dragMode,
+        screenPos,
+        mapPos,
+        phase: 'cancel',
+      });
+    }
+  }
+
+  /**
+   * Deux doigts → un seul : le doigt restant reprend le pan DEPUIS SA position.
+   *
+   * ⛔ Audit du 22/09, B5 : il repartait avec l'origine et la dernière position du premier
+   * doigt. Si c'était le second qui restait, son premier déplacement valait tout l'écart entre
+   * les deux doigts, et la carte sautait.
+   *
+   * @returns {void}
+   */
+  resumeWithRemainingPointer() {
+    if (this.activePointers.size !== 1) return;
+    const [restant] = this.activePointers.values();
+    this.startScreenPos = restant.screenPos;
+    this.lastScreenPos = restant.screenPos;
+    this.lastPinchCenter = null;
+    this.initialPinchDistance = 0;
+    this.mode = 'panning';
   }
 
   /**

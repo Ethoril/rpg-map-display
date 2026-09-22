@@ -31,7 +31,7 @@ const SANS_SEUILS_TEMPORELS = { longPressMs: 100_000, dragHoldMs: 100_000 };
  * Helper pour monter la scène gm.html avec le Probe d'input.
  * @param {import('@playwright/test').Page} page
  * @param {'players'|'gm'} [role='players']
- * @param {{longPressMs?: number, dragHoldMs?: number}} [options] seuils temporels
+ * @param {{longPressMs?: number, dragHoldMs?: number, throwOnDragEnd?: boolean}} [options] seuils temporels, et la panne simulée de B1
  */
 async function mountInputStage(page, role = 'players', options = {}) {
   /** @type {string[]} */
@@ -450,4 +450,91 @@ test('Vue MJ — un appui long immobile conserve l intention longPress', async (
   );
   expect(intentions.filter((/** @type {any} */ item) => item.type === 'longPress')).toHaveLength(1);
   expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit du 22/09/2026 — gestes interrompus. Événements pointer SYNTHÉTIQUES : Playwright ne
+// sait pas poser deux doigts ni annuler un pointeur, et ce sont précisément ces cas-là.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Envoie une suite d'événements pointer au canvas, dans la page.
+ * @param {import('@playwright/test').Page} page
+ * @param {Array<[string, number, number, number]>} suite [type, pointerId, x, y]
+ */
+async function pointers(page, suite) {
+  await page.evaluate(async (evenements) => {
+    const canvas = /** @type {HTMLCanvasElement} */ (document.querySelector('#board'));
+    const r = canvas.getBoundingClientRect();
+    for (const [type, pointerId, x, y] of evenements) {
+      if (type === 'blur') {
+        window.dispatchEvent(new Event('blur'));
+        continue;
+      }
+      if (type === 'wait') {
+        await new Promise((ok) => setTimeout(ok, x));
+        continue;
+      }
+      canvas.dispatchEvent(new PointerEvent(type, {
+        pointerId, clientX: r.left + x, clientY: r.top + y, bubbles: true, pointerType: 'touch',
+      }));
+    }
+  }, suite);
+}
+
+/** @param {import('@playwright/test').Page} page */
+const intentionsDe = (page) =>
+  page.evaluate(() => /** @type {any} */ (window).__stageProbe.getIntentions());
+/** @param {import('@playwright/test').Page} page */
+const etatInput = (page) =>
+  page.evaluate(() => /** @type {any} */ (window).__stageProbe.getInputState());
+
+test('B1 : une fin de glisser qui LÈVE ne laisse pas l’automate bloqué en glisser', async ({ page }) => {
+  await mountInputStage(page, 'gm', { ...SANS_APPUI_LONG, throwOnDragEnd: true });
+  page.removeAllListeners('pageerror'); // l'exception simulée est attendue
+  await pointers(page, [
+    ['pointerdown', 1, 200, 200], ['wait', 200, 0, 0],
+    ['pointermove', 1, 240, 200], ['pointermove', 1, 280, 200], ['pointerup', 1, 280, 200],
+  ]).catch(() => {});
+  expect(await etatInput(page)).toEqual({ mode: 'idle', pointers: 0 });
+
+  // Survol sans bouton : AUCUN glisser fantôme.
+  await page.evaluate(() => /** @type {any} */ (window).__stageProbe.clearIntentions());
+  await pointers(page, [['pointermove', 1, 320, 200], ['pointermove', 1, 360, 200]]);
+  expect((await intentionsDe(page)).filter((/** @type {any} */ i) => i.type === 'dragToken')).toHaveLength(0);
+});
+
+test('B3 : pointercancel et perte de focus ANNULENT un glisser de pion, sans le déplacer', async ({ page }) => {
+  await mountInputStage(page, 'gm', SANS_APPUI_LONG);
+  for (const interruption of /** @type {const} */ (['pointercancel', 'blur'])) {
+    await page.evaluate(() => /** @type {any} */ (window).__stageProbe.clearIntentions());
+    await pointers(page, [
+      ['pointerdown', 1, 200, 200], ['wait', 200, 0, 0],
+      ['pointermove', 1, 240, 200], ['pointermove', 1, 280, 200],
+      [interruption, 1, 280, 200],
+    ]);
+    const phases = (await intentionsDe(page))
+      .filter((/** @type {any} */ i) => i.type === 'dragToken')
+      .map((/** @type {any} */ i) => i.phase);
+    expect(phases.at(-1), interruption).toBe('cancel');
+    expect(phases, interruption).not.toContain('end');
+    expect(await etatInput(page), interruption).toEqual({ mode: 'idle', pointers: 0 });
+  }
+});
+
+test('B5 : deux doigts puis un seul — le doigt restant repart de SA position, la carte ne saute pas', async ({ page }) => {
+  await mountInputStage(page, 'players');
+  await pointers(page, [
+    ['pointerdown', 1, 100, 100], ['pointerdown', 2, 400, 100],
+    ['pointermove', 2, 402, 100], ['pointerup', 1, 100, 100],
+    ['pointermove', 2, 412, 100], ['wait', 50, 0, 0], ['pointerup', 2, 412, 100],
+  ]);
+  await waitForIntention(page, 'panBy');
+  const dx = (await intentionsDe(page))
+    .filter((/** @type {any} */ i) => i.type === 'panBy')
+    .reduce((/** @type {number} */ s, /** @type {any} */ i) => s + i.deltaX, 0);
+  // Tout le geste : 1 px de pan à deux doigts (le centre passe de 250 à 251), puis 10 px du doigt
+  // restant. Avant le correctif, le doigt restant repartait de la position du PREMIER : 312 px de
+  // saut au lieu de 10, soit 313 au total.
+  expect(dx).toBe(11);
 });

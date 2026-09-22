@@ -88,6 +88,11 @@ const probe = {
   },
   camera,
   getIntentions: () => [...emittedIntentions],
+  /** État de l'automate d'entrée, pour les tests qui éprouvent sa remise à zéro. */
+  getInputState: () => ({
+    mode: currentInput?.mode ?? null,
+    pointers: currentInput?.activePointers.size ?? 0,
+  }),
   clearIntentions: () => {
     emittedIntentions.length = 0;
   },
@@ -98,19 +103,28 @@ const probe = {
      * Seuils temporels, à surcharger quand un test doit maintenir l'appui dans
      * une fenêtre bornée — voir le commentaire de `waitForIntention` dans
      * `tests/input.spec.mjs`.
-     * @type {{longPressMs?: number, dragHoldMs?: number}}
+     * `throwOnDragEnd` fait lever l'application à la fin d'un glisser de pion, comme
+     * `moveTokenToCell` sur une case occupée (audit du 22/09, B1).
+     * @type {{longPressMs?: number, dragHoldMs?: number, throwOnDragEnd?: boolean}}
      */
     options = {}
   ) => {
     currentInput?.detach();
     emittedIntentions.length = 0;
+    const { throwOnDragEnd = false, ...seuils } = options;
     currentInput = new PointerInput(canvasElem, camera, {
       role,
-      ...options,
-      canStartTokenDrag: (_screenPoint, _mapPoint) =>
-        role === 'gm' && canDrag ? 'probe-token' : null,
+      ...seuils,
+      // ⛔ AUCUNE garde de rôle ici (audit du 22/09, D1). Le hit-test de l'application répond
+      // « il y a un pion » quel que soit le rôle : c'est `pointer.js` qui doit refuser le
+      // glisser côté joueurs. Une garde `role === 'gm'` dans ce mock produisait elle-même le
+      // comportement testé, et l'interdiction n°1 restait verte sans sa garde de production.
+      canStartTokenDrag: (_screenPoint, _mapPoint) => (canDrag ? 'probe-token' : null),
       onIntention: (intention) => {
         emittedIntentions.push(intention);
+        if (throwOnDragEnd && intention.type === 'dragToken' && intention.phase === 'end') {
+          throw new Error('case occupée (simulée)');
+        }
         if (intention.type === 'panBy') {
           camera.setPan(
             camera.x - intention.deltaX / camera.zoom,

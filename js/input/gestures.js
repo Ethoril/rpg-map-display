@@ -26,7 +26,8 @@
  * @property {ScreenPoint} screenPos Position courante sur l'écran
  * @property {MapPoint} mapPos Même position sur la carte
  * @property {string} tokenId Identifiant déterminé au pointerdown
- * @property {'start'|'move'|'end'} phase Phase du glisser
+ * @property {'start'|'move'|'end'|'cancel'} phase Phase du glisser — `cancel` : geste interrompu
+ *   (pointercancel, perte de focus, second doigt) ; l'aperçu s'efface, rien ne bouge
  */
 
 /**
@@ -35,7 +36,7 @@
  * @property {ScreenPoint} screenPos Position courante sur l'écran
  * @property {MapPoint} mapPos Même position sur la carte
  * @property {string} lightId Identifiant déterminé au pointerdown
- * @property {'start'|'move'|'end'} phase Phase du glisser
+ * @property {'start'|'move'|'end'|'cancel'} phase Phase du glisser — `cancel` : voir `DragTokenIntention`
  */
 
 /**
@@ -67,7 +68,7 @@
  * @property {MapPoint} mapPos Même position sur la carte
  * @property {string} templateId Identifiant du gabarit
  * @property {'move'|'rotate'} dragMode 'move' pour déplacement, 'rotate' pour rotation
- * @property {'start'|'move'|'end'} phase Phase du glisser
+ * @property {'start'|'move'|'end'|'cancel'} phase Phase du glisser — `cancel` : voir `DragTokenIntention`
  */
 
 /**
