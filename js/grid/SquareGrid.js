@@ -84,6 +84,20 @@ export class SquareGrid {
   }
 
   /**
+   * Rectangle couvert par un masque de l'étage — voir le contrat dans `GridAdapter.js`.
+   *
+   * @returns {{x: number, y: number, width: number, height: number}}
+   */
+  maskRect() {
+    return {
+      x: this.offsetX,
+      y: this.offsetY,
+      width: this.widthCells * this.pxPerCell,
+      height: this.heightCells * this.pxPerCell,
+    };
+  }
+
+  /**
    * Cellule → CENTRE de la case, en pixels carte. Alias explicite de `pointFromCell`
    * pour l'API sans ambiguïté de G-1 (`docs/QUESTIONS-EN-ATTENTE.md` C-5).
    *

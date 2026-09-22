@@ -216,6 +216,10 @@ const ADAPTATEUR = {
   mapExtent() {
     return { width: this.widthCells * 100, height: this.heightCells * 100 };
   },
+  /** @returns {{x: number, y: number, width: number, height: number}} */
+  maskRect() {
+    return { x: 0, y: 0, width: this.widthCells * 100, height: this.heightCells * 100 };
+  },
 };
 
 /**
@@ -973,7 +977,7 @@ function etirementsDuChamp(forme) {
 test('E-12 : carte HEXAGONALE à rangées IMPAIRES — le champ est étiré à la largeur de la carte, pas une demi-case de plus', () => {
   // ⛔ Avant le correctif, la largeur venait de `mapFromCellPoint({cellX: 16, cellY: 15})`,
   // qui ajoute le décalage odd-r de la rangée 15 : 140 × 16,5 = 2310 au lieu de 2240.
-  const attendueY = Math.ceil(15 * 140 * (Math.sqrt(3) / 2));
+  const attendueY = 15 * 140 * (Math.sqrt(3) / 2);
 
   // Modulation + désaturation.
   const { largeurs, hauteurs } = etirementsDuChamp({ widthCells: 16, heightCells: 15, hex: true });
@@ -993,11 +997,39 @@ test('E-12 : carte HEXAGONALE à rangées IMPAIRES — le champ est étiré à l
 test('E-12 : carte HEXAGONALE à rangées PAIRES — la largeur reste celle d’avant le correctif', () => {
   const { largeurs, hauteurs } = etirementsDuChamp({ widthCells: 16, heightCells: 16, hex: true });
   for (const largeur of largeurs) assert.equal(largeur, 16 * 140, 'rangées paires : le décalage odd-r valait déjà 0');
-  for (const hauteur of hauteurs) assert.equal(hauteur, Math.ceil(16 * 140 * (Math.sqrt(3) / 2)));
+  for (const hauteur of hauteurs) assert.equal(hauteur, 16 * 140 * (Math.sqrt(3) / 2));
 });
 
 test('E-12 : carte CARRÉE à rangées impaires — inchangée', () => {
   const { largeurs, hauteurs } = etirementsDuChamp({ widthCells: 16, heightCells: 15, hex: false });
   for (const largeur of largeurs) assert.equal(largeur, 16 * 140);
   for (const hauteur of hauteurs) assert.equal(hauteur, 15 * 140);
+});
+
+// A1 (audit du 22/09/2026) — le champ se pose sur l'origine de la grille, offset compris. Un
+// VRAI adaptateur ici, pas le faux du fichier : c'est lui qui porte l'offset.
+test('A1 : sur une grille DÉCALÉE, chaque passe part de l’origine de la grille, pas de (0,0)', () => {
+  const level = createLevel({
+    id: 'a1', widthCells: 10, heightCells: 8, pxPerCell: 140,
+    ambient: { level: 0, baked: false },
+    grid: { type: 'square', offsetX: 70, offsetY: 35, color: '#000000', opacity: 0.25, visible: true },
+  });
+  const adaptateur = gridFor(level);
+  for (const suppressed of [false, true]) {
+    const couche = new LightLayer({ createCanvas: fabrique });
+    couche.update(adaptateur, level, []);
+    const champ = champDe(couche);
+    const masque = masqueVisible(champ.maskWidth, champ.maskHeight, {
+      x: 0, y: 0, w: champ.maskWidth, h: champ.maskHeight,
+    });
+    const ctx = createMockCanvas(4, 4)._ctx;
+    couche.render(ctx, adaptateur, level, {
+      role: /** @type {'players'} */ ('players'), visibleCanvas: masque, ...(suppressed ? { suppressed } : {}),
+    });
+    const passes = ctx.journal.filter((/** @type {any} */ e) => e.op === 'drawImage');
+    assert.ok(passes.length > 0);
+    for (const passe of passes) {
+      assert.deepEqual(passe.params.slice(4, 8), [70, 35, 1400, 1120], 'destination = rectangle de la grille');
+    }
+  }
 });

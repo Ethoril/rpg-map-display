@@ -1098,7 +1098,7 @@ test('E-12 : carte HEXAGONALE à rangées IMPAIRES — le voile est étiré à l
   // qui ajoute le décalage odd-r de la rangée 15 : 140 × 16,5 = 2310 au lieu de 2240.
   assert.equal(etirement.dw, 16 * 140, 'le voile doit couvrir exactement 16 cases de large');
   assert.notEqual(etirement.dw, 2310, 'la demi-case du décalage odd-r n’est pas une largeur de carte');
-  assert.equal(etirement.dh, Math.ceil(15 * 140 * (Math.sqrt(3) / 2)), 'l’axe Y, lui, ne change pas');
+  assert.equal(etirement.dh, 15 * 140 * (Math.sqrt(3) / 2), 'l’axe Y, lui, ne change pas');
 });
 
 test('E-12 : carte HEXAGONALE à rangées PAIRES — la largeur reste celle d’avant le correctif', () => {
@@ -1110,7 +1110,7 @@ test('E-12 : carte HEXAGONALE à rangées PAIRES — la largeur reste celle d’
   });
 
   assert.equal(etirement.dw, 16 * 140, 'rangées paires : le décalage odd-r valait déjà 0');
-  assert.equal(etirement.dh, Math.ceil(16 * 140 * (Math.sqrt(3) / 2)));
+  assert.equal(etirement.dh, 16 * 140 * (Math.sqrt(3) / 2));
 });
 
 test('E-12 : carte CARRÉE à rangées impaires — inchangée', () => {
@@ -1118,4 +1118,38 @@ test('E-12 : carte CARRÉE à rangées impaires — inchangée', () => {
 
   assert.equal(etirement.dw, 16 * 140);
   assert.equal(etirement.dh, 15 * 140);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A1 (audit du 22/09/2026) — le voile se pose sur l'origine de la grille, offset compris.
+//
+// ⚠ Éprouvé sur des PIXELS, pas sur les arguments de `drawImage` : ce qui compte est de
+// savoir si la table voit au-delà du mur. Avant le correctif, le masque était étiré depuis
+// (0,0) sur `mapExtent()` : avec 30 px d'offset, le mur tombait à x=65 au lieu de 80, et la
+// zone visible entre 65 et 80 était voilée — et symétriquement, sur une carte réelle, la vision
+// débordait de l'autre côté.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('A1 : sur une grille DÉCALÉE, le voile suit le mur et la bande d’offset reste voilée', () => {
+  const level = createLevel({
+    id: 'a1',
+    widthCells: 10,
+    heightCells: 10,
+    pxPerCell: 10,
+    grid: { type: 'square', offsetX: 30, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+    walls: [[{ cellX: 5, cellY: 0 }, { cellX: 5, cellY: 10 }]],
+  });
+  const grid = gridFor(level);
+  const pc = createToken({ id: 'pj', levelId: 'a1', kind: 'pc', cell: { a: 2, b: 5 }, visionDim: 4 });
+
+  // Mur en x = 30 + 5 × 10 = 80 pixels carte ; le PJ est centré en x = 55.
+  const { ctx } = createMockCanvas(130, 100);
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 130, 100);
+
+  createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+
+  assert.equal(ctx.getImageData(75, 55).data[0], 100, 'juste avant le mur, dans la vision : fond intact');
+  assert.ok(ctx.getImageData(85, 55).data[0] < 100, 'juste derrière le mur : voilé');
+  assert.ok(ctx.getImageData(10, 55).data[0] < 100, 'la bande d’offset, hors de toute case : voilée');
 });

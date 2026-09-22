@@ -708,10 +708,11 @@ export class LightLayer {
     // la largeur de la carte. Interrogé en `cellY = heightCells`, il ajoutait une demi-case
     // sur toute carte hexagonale à nombre de rangées IMPAIR : le champ lumineux entier y
     // était étiré en largeur.
-    const etendue = adaptateur.mapExtent();
-    const largeurCarte = Math.ceil(etendue.width);
-    const hauteurCarte = Math.ceil(etendue.height);
-    if (largeurCarte <= 0 || hauteurCarte <= 0) return false;
+    //
+    // ⛔ Et le champ se pose sur `maskRect()`, pas sur `(0,0)–mapExtent()` (audit du 22/09,
+    // A1) : il commence à l'origine de la grille, offset compris.
+    const rect = adaptateur.maskRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
 
     // ⭐ Le MJ est assombri DEUX FOIS MOINS que la table — le rapport que le fog applique déjà
     // dans ses deux états depuis L-04. Sans cela, un donjon sans source rendrait sa vue
@@ -742,7 +743,7 @@ export class LightLayer {
       ctx.save();
       ctx.globalAlpha = attenuation;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(voile, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
+      ctx.drawImage(voile, 0, 0, champ.maskWidth, champ.maskHeight, rect.x, rect.y, rect.width, rect.height);
       ctx.restore();
       return true;
     }
@@ -753,7 +754,7 @@ export class LightLayer {
     ctx.save();
     ctx.globalAlpha = attenuation;
     ctx.globalCompositeOperation = 'multiply';
-    ctx.drawImage(modulation, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
+    ctx.drawImage(modulation, 0, 0, champ.maskWidth, champ.maskHeight, rect.x, rect.y, rect.width, rect.height);
     ctx.restore();
 
     if (stencilCouleur) {
@@ -766,7 +767,7 @@ export class LightLayer {
       ctx.save();
       ctx.globalAlpha = attenuation;
       ctx.globalCompositeOperation = 'saturation';
-      ctx.drawImage(stencilCouleur, 0, 0, champ.maskWidth, champ.maskHeight, 0, 0, largeurCarte, hauteurCarte);
+      ctx.drawImage(stencilCouleur, 0, 0, champ.maskWidth, champ.maskHeight, rect.x, rect.y, rect.width, rect.height);
       ctx.restore();
     }
     return true;

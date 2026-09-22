@@ -627,6 +627,31 @@ export class FogLayer {
     // Étape D : Déposer le voile final à trois états sur le contexte de scène en
     // source-over — le seul agrandissement de tout ce chemin, qu'il y ait eu
     // recomposition ou non.
-    ctx.drawImage(this._offscreenCanvas, 0, 0, mapWidth, mapHeight);
+    //
+    // ⛔ Le masque se pose sur `maskRect()`, jamais sur `(0,0)–mapExtent()` (audit du 22/09,
+    // A1) : il commence à l'origine de la grille. L'étirer depuis (0,0) le décalait d'autant
+    // qu'il y a d'offset, et la table voyait jusqu'à une demi-case au-delà d'un mur.
+    //
+    // Ce qui déborde du masque dans l'étendue de la carte — la bande d'offset, et les
+    // demi-cases des rangées impaires en hexagonal (E4) — n'est couvert par aucune cellule :
+    // rien ne peut l'y avoir révélé. Il reçoit donc le voile non exploré, le sens conservateur
+    // (révéler moins se corrige à l'œil, révéler plus ne se rattrape pas).
+    const rect = grid.maskRect();
+    const droite = rect.x + rect.width;
+    const bas = rect.y + rect.height;
+    const bandes = [
+      [0, 0, mapWidth, rect.y],
+      [0, bas, mapWidth, mapHeight - bas],
+      [0, rect.y, rect.x, rect.height],
+      [droite, rect.y, mapWidth - droite, rect.height],
+    ].filter(([, , w, h]) => w > 0 && h > 0);
+    if (bandes.length > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(0, 0, 0, ${veilUnexplored})`;
+      for (const [x, y, w, h] of bandes) ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+    ctx.drawImage(this._offscreenCanvas, rect.x, rect.y, rect.width, rect.height);
   }
 }

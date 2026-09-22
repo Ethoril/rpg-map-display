@@ -30,8 +30,15 @@
  *
  * @property {() => {width: number, height: number}} mapExtent
  *   Étendue de la carte en pixels, **mesurée depuis l'origine de l'espace carte (0,0)** —
- *   l'offset de la grille y est donc inclus. C'est la taille vers laquelle on agrandit un
- *   masque, et celle sur laquelle on cadre la caméra.
+ *   l'offset de la grille y est donc inclus. C'est la taille sur laquelle on cadre la
+ *   caméra. ⛔ **Pas** celle vers laquelle on agrandit un masque : voir `maskRect`.
+ *
+ * @property {() => {x: number, y: number, width: number, height: number}} maskRect
+ *   Rectangle, en pixels carte, que couvre un masque de `widthCells × heightCells` cases
+ *   (brouillard, vision, champ lumineux) : il commence à l'origine de la grille, **offset
+ *   compris**, et non en (0,0). ⛔ Étirer un masque sur `mapExtent()` le décalait d'autant
+ *   qu'il y a d'offset — jusqu'à une demi-case de vision au-delà d'un mur (audit du 22/09,
+ *   A1). Ce qui est hors de ce rectangle n'est couvert par aucun masque.
  *
  *   ⛔ **Ne JAMAIS la reconstituer par `mapFromCellPoint({cellX: widthCells, cellY: heightCells})`.**
  *   Ce point porte le décalage odd-r `0,5 × (rangée & 1)`, qui dit où commence une rangée
