@@ -54,7 +54,7 @@ let activeHandout = null;
  */
 let renderSnapshot = null;
 
-/** @type {Set<() => void>} */
+/** @type {Set<(change: StoreChange) => void>} */
 const subscribers = new Set();
 
 /**
@@ -141,6 +141,13 @@ let stackingNormalizationReport = [];
  * @param {string | null} sessionId
  */
 export function setSessionId(sessionId) {
+  // ⛔ Les masques de session en mémoire appartiennent à LA session (audit du 22/09, C10) :
+  // `getSessionFog` les sert avant le stockage, donc les garder faisait revenir, dans une
+  // autre session, le masque d'un étage de même identifiant.
+  if (sessionId !== currentSessionId) {
+    sessionFogMap.clear();
+    sessionVisionMap.clear();
+  }
   currentSessionId = sessionId;
 }
 
@@ -460,13 +467,27 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
 }
 
 /**
- * Notifie tous les abonnés d'une mutation.
+ * Nature d'une notification : `session` vaut `true` quand seul un masque de session (fog
+ * exploré, vision courante) a changé — la campagne, elle, est intacte.
+ * @typedef {{ session: boolean }} StoreChange
  */
-function notifySubscribers() {
+
+/**
+ * Notifie tous les abonnés d'une mutation.
+ *
+ * ⛔ Audit du 22/09, C2 : `setSessionFog` et `setSessionVision` passaient par ici comme une
+ * mutation de campagne. Chaque masque reçu — la vision, publiée sans limite de fréquence —
+ * revalidait et réécrivait TOUTE la campagne dans localStorage, et faisait réécrire l'instantané
+ * Firestore par les abonnés, alors que la campagne n'avait pas changé. Une notification de
+ * session saute la sauvegarde, et le dit à ses abonnés.
+ *
+ * @param {StoreChange} [change]
+ */
+function notifySubscribers(change = { session: false }) {
   // Ne pas reconstruire ici : il n'y a pas de raison de payer même une copie de Map tant
   // qu'aucune frame ne lit l'état. La prochaine lecture reconstruira un instantané unique.
   renderSnapshot = null;
-  if (currentSessionId) {
+  if (currentSessionId && !change.session) {
     // La sauvegarde automatique est une **commodité**, pas une clause du contrat de mutation.
     // Quand on arrive ici, la mutation est déjà appliquée : laisser l'exception remonter
     // laisserait le store muté, les abonnés jamais prévenus, donc aucun rendu et — depuis
@@ -488,7 +509,7 @@ function notifySubscribers() {
   }
   for (const listener of Array.from(subscribers)) {
     try {
-      listener();
+      listener(change);
     } catch (err) {
       console.error('Erreur dans un abonné du store :', err);
     }
@@ -496,9 +517,10 @@ function notifySubscribers() {
 }
 
 /**
- * S'abonne aux changements d'état du store.
+ * S'abonne aux changements d'état du store. L'abonné reçoit la nature du changement : voir
+ * `StoreChange`.
  *
- * @param {() => void} listener
+ * @param {(change: StoreChange) => void} listener
  * @returns {() => void} Fonction de désabonnement
  */
 export function subscribe(listener) {
@@ -1853,6 +1875,8 @@ export function resetStore() {
   campaign = null;
   activeLevelId = null;
   activeHandout = null;
+  sessionFogMap.clear();
+  sessionVisionMap.clear();
   clearSelectionState();
   notifySubscribers();
 }
@@ -2218,7 +2242,7 @@ export function setSessionFog(levelId, png) {
       writeFogToStorage(currentSessionId, levelId, png);
     }
   }
-  notifySubscribers();
+  notifySubscribers({ session: true });
 }
 
 /**
@@ -2242,5 +2266,5 @@ export function setSessionVision(levelId, png) {
   } else {
     sessionVisionMap.set(levelId, png);
   }
-  notifySubscribers();
+  notifySubscribers({ session: true });
 }

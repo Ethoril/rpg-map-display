@@ -802,3 +802,63 @@ test('A4 : la zone atteignable suit la vitesse, la grille et le remplacement de 
   r = fraiche();
   assert.equal(r.avant, r.n, 'après un remplacement en place de l’étage');
 });
+
+// C2 (audit du 22/09/2026) — un masque de session (fog, vision) n'est pas une mutation de
+// campagne. Il réécrivait pourtant TOUTE la campagne dans localStorage, validation comprise, et
+// faisait réécrire l'instantané Firestore par les abonnés.
+test('C2 : un masque de session ne réécrit pas la campagne, et le dit à ses abonnés', () => {
+  /** @type {string[]} */
+  const ecritures = [];
+  const memoire = new Map();
+  const faux = {
+    getItem: (/** @type {string} */ k) => memoire.get(k) ?? null,
+    setItem: (/** @type {string} */ k, /** @type {string} */ v) => { ecritures.push(k); memoire.set(k, String(v)); },
+    removeItem: (/** @type {string} */ k) => { memoire.delete(k); },
+  };
+  const avant = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { value: faux, configurable: true, writable: true });
+  try {
+    resetStore();
+    setSessionId('c2');
+    loadCampaign(makeValidCampaign());
+    /** @type {any[]} */
+    const recus = [];
+    const stop = subscribe((change) => recus.push(change));
+    ecritures.length = 0;
+
+    setSessionFog('rdc', 'iVBORw0KGgo=');
+    assert.deepEqual(ecritures.filter((k) => k.startsWith('rpg_campaign_')), [], 'la campagne n’est pas réécrite');
+    assert.deepEqual(recus.at(-1), { session: true });
+
+    updateLevel('rdc', { name: 'Renommé' });
+    assert.ok(ecritures.includes('rpg_campaign_c2'), 'une vraie mutation, elle, sauvegarde');
+    assert.deepEqual(recus.at(-1), { session: false });
+    stop();
+  } finally {
+    if (avant) Object.defineProperty(globalThis, 'localStorage', avant);
+    else delete (/** @type {any} */ (globalThis)).localStorage;
+    resetStore();
+  }
+});
+
+// C10 (audit du 22/09/2026) — les masques de session en mémoire survivaient à `resetStore` et
+// à un changement de session : `getSessionFog` les sert avant le stockage, et le masque d'un
+// étage de même identifiant revenait dans une autre session.
+test('C10 : changer de session ou remettre le store à zéro oublie les masques en mémoire', () => {
+  resetStore();
+  setSessionId('c10-a');
+  setSessionFog('rdc', 'iVBORw0KGgo=A');
+  assert.equal(getSessionFog('rdc'), 'iVBORw0KGgo=A');
+
+  setSessionId('c10-b');
+  assert.equal(getSessionFog('rdc'), null, 'une autre session ne voit pas le fog de la précédente');
+
+  setSessionFog('rdc', 'iVBORw0KGgo=B');
+  resetStore();
+  setSessionId('c10-b');
+  // Relu du stockage de c10-b, et non d'une mémoire périmée : c'est le même, ici, mais la
+  // mémoire, elle, a bien été vidée.
+  assert.equal(getSessionFog('rdc'), 'iVBORw0KGgo=B');
+  setSessionFog('rdc', null);
+  resetStore();
+});

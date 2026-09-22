@@ -993,11 +993,12 @@ export async function bootstrapGMApp(options = {}) {
   // Lu AVANT tout abonnement : la restauration ci-dessous notifie les abonnés.
   const etageMemorise = lireEtageMemorise();
 
-  const unsubscribeStore = store.subscribe(() => {
+  const unsubscribeStore = store.subscribe((change) => {
     memoriserEtage(store.getActiveLevelId());
     syncVision();
     requestRender();
-    scheduleSnapshot();
+    // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
+    if (!change?.session) scheduleSnapshot();
   });
 
   /** @type {(() => void)|null} */

@@ -785,9 +785,10 @@ export async function bootstrapPlayerApp(options = {}) {
       })
     : null;
 
-  const unsubscribeStore = store.subscribe(() => {
+  const unsubscribeStore = store.subscribe((change) => {
     requestRender();
-    scheduleSnapshot();
+    // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
+    if (!change?.session) scheduleSnapshot();
     // L'étage affiché est mémorisé à chaque changement, et pas seulement quand la table en
     // choisit un : c'est ce qui fait qu'un F5 retrouve l'étage où la séance en était, y
     // compris avant qu'un sélecteur existe pour en changer (UX-12).
