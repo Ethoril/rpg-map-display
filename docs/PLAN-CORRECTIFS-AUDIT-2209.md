@@ -79,17 +79,17 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
   `persistCamera` à chaque événement. `VIEW_PUBLISH_HZ = 10` n'est lu nulle part.
   ⚠ L'audit rapporte que le CdC §7 désigne la tablette comme émettrice : vérifier qui doit
   émettre avant de limiter. En cas de contradiction → **[DÉCISION]**.
-- [ ] **B7** ✅ L'éditeur de murs convertit lui-même, avec une origine forcée à `(0,0)` et
+- [x] **B7** `2b61fa5` ✅ L'éditeur de murs convertit lui-même, avec une origine forcée à `(0,0)` et
   l'échelle X seule (`gm.js:1556-1565`, `wallEditor.js:52-55`, `126-133`). Sur un étage
   décalé ou hexagonal, l'accrochage tombe à côté du mur dessiné. Passer par `grid.*`.
-- [ ] **B8** ❔ Le panneau entier se reconstruit à chaque notification, y compris fog et
+- [x] **B8** `375f93a` ❔ Le panneau entier se reconstruit à chaque notification, y compris fog et
   vision, soit environ 1 Hz (`panel.js:1954-1965`). Les statuts de `tokenMaker` sont effacés,
   et un clic tombé entre une reconstruction et la suivante est perdu (`templateTools.js:167`,
   `panel.js:1219`). À l'inverse, `linkEditor.refresh` n'est jamais appelé sur une mutation.
-- [ ] **B9** ✅ Le bandeau « Connexion impossible » ne s'efface jamais : `transportError`
+- [x] **B9** `ceafc11` ✅ Le bandeau « Connexion impossible » ne s'efface jamais : `transportError`
   n'est jamais remis à `null` (`versionBadge.js:92/103/116`, `413/424/437`). Il masque aussi
   l'alerte de version.
-- [ ] **B10** ❔ Chaque `resize` de la vue joueurs recadre la caméra sur la carte entière
+- [x] **B10** `ceafc11` ❔ Chaque `resize` de la vue joueurs recadre la caméra sur la carte entière
   (`player.js:974`), y compris le passage en plein écran au premier geste. Le zoom de la
   table est perdu. Intention non documentée : par la règle 4, on garde la caméra.
 
@@ -282,3 +282,6 @@ un travail inutile, sans rien promettre de chiffré.
 | 22/09 | A6 | `48a1907` | refus explicite ; `onImportUvtt` n'est câblé nulle part, l'aperçu n'est donc jamais publié |
 | 22/09 | B1–B5, D1 | `5f1faaa` | nouvelle phase `cancel` des glissers ; le mock ne porte plus la garde de rôle |
 | 22/09 | B1, B4, B6 | `896421e` | pose de gabarit pure (`templateDragPose`) ; `view.change` à 10 Hz. Qui émet : **D-6** |
+| 22/09 | B7 | `2b61fa5` | `snapWallVertex` et `findWallAt` prennent la grille |
+| 22/09 | B8 | `375f93a` | rafraîchissements du panneau gardés par signature ; la liste des liaisons suit les étages |
+| 22/09 | B9, B10 | `ceafc11` | une présence reçue efface l'erreur ; la caméra choisie par la table survit au `resize` |
