@@ -347,6 +347,11 @@ test('un flux qui rampe rend la main à l’image fixe', () => {
   assert.equal(h.backdrop.active, false, 'le repli doit se déclencher');
   assert.equal(h.video.style.display, 'none');
   assert.match(h.warnings.join(' '), /trop lent/);
+  // G7 (audit du 22/09/2026) : masquer ne suffit pas, le décodage logiciel qui a causé le repli
+  // continuait de brûler processeur et batterie jusqu'au changement d'étage.
+  assert.equal(h.video.src, '', 'la source est retirée : le décodage s’arrête');
+  const charges = h.video.loadCount;
+  assert.ok(charges >= 2, 'load() est rappelé après le retrait, sans quoi Chromium garde le flux');
 });
 
 test('un flux à cadence normale n’est jamais repris, boucle comprise', () => {

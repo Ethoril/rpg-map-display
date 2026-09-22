@@ -61,6 +61,25 @@ function getLevelObstacleSegments(level, grid) {
  */
 export class TemplatesLayer {
   /**
+   * ⛔ Audit du 22/09, G3 : chaque image reconstruisait tous les segments d'obstacles et relançait
+   * un sweep par gabarit, pan compris — alors que les autres couches l'évitent par signature. Les
+   * segments se mettent en cache par ÉTAGE (objet gelé, remplacé par le store à chaque mutation :
+   * son identité suffit comme clé), et chaque polygone par pose de gabarit sur ces segments.
+   *
+   * @param {{ sweep?: typeof sweep }} [options] `sweep` injectable, pour que les tests comptent les
+   *   balayages réels.
+   */
+  constructor(options = {}) {
+    this._sweep = options.sweep ?? sweep;
+    /** @type {WeakMap<object, import('../../core/types.js').Segment[]>} */
+    this._segmentsParEtage = new WeakMap();
+    /** @type {import('../../core/types.js').Segment[]|null} */
+    this._segmentsDuCache = null;
+    /** @type {Map<string, import('../../core/types.js').MapPoint[]>} */
+    this._polygones = new Map();
+  }
+
+  /**
    * Rendu des gabarits.
    *
    * @param {CanvasRenderingContext2D} ctx Contexte Canvas 2D
@@ -95,7 +114,18 @@ export class TemplatesLayer {
         : transform
           ? Math.hypot(transform.a, transform.b) || 1
           : 1;
-    const segments = getLevelObstacleSegments(level, grid);
+    let segments = this._segmentsParEtage.get(level);
+    if (!segments) {
+      segments = getLevelObstacleSegments(level, grid);
+      this._segmentsParEtage.set(level, segments);
+    }
+    if (segments !== this._segmentsDuCache) {
+      // Autre étage, ou étage muté : les polygones calculés sur les anciens segments sont caducs.
+      this._segmentsDuCache = segments;
+      this._polygones.clear();
+    }
+    /** @type {Set<string>} */
+    const clesVues = new Set();
     const p0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
     const p1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
     const cellPx = Math.abs(p1.x - p0.x);
@@ -125,7 +155,13 @@ export class TemplatesLayer {
       // largeur)` : une ligne de 4 cases sur 3 de large perdrait ses deux coins avant. Élargir
       // le disque ne fait rien fuir, c'est la forme tracée ensuite qui borne la peinture.
       const sweepRadiusPx = shape === 'line' ? Math.hypot(radiusPx, halfWidthPx) : radiusPx;
-      const sweepPoly = sweep(origin, segments, sweepRadiusPx);
+      const cle = `${template.id}|${origin.x},${origin.y}|${sweepRadiusPx}`;
+      clesVues.add(cle);
+      let sweepPoly = this._polygones.get(cle);
+      if (!sweepPoly) {
+        sweepPoly = this._sweep(origin, segments, sweepRadiusPx);
+        this._polygones.set(cle, sweepPoly);
+      }
       if (sweepPoly && sweepPoly.length >= 3) {
         ctx.beginPath();
         ctx.moveTo(sweepPoly[0].x, sweepPoly[0].y);
@@ -197,6 +233,10 @@ export class TemplatesLayer {
     }
 
     ctx.restore();
+    // Borné au nombre de gabarits : une pose qu'aucun gabarit n'occupe plus est oubliée.
+    for (const cle of this._polygones.keys()) {
+      if (!clesVues.has(cle)) this._polygones.delete(cle);
+    }
     return renderedCount;
   }
 }

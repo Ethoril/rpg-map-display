@@ -66,11 +66,18 @@ export function reconstructPath(predecessors, from, to) {
  * @param {Cell} to
  * @param {Set<string>} blockedEdges
  * @param {Map<string, number>} [terrainCost]
+ * @param {number} [coutConnu] Coût déjà connu pour atteindre `to` — celui de la zone atteignable.
+ *   ⛔ Audit du 22/09, G5 : sans lui, le budget `max(100, 4 × distance)` faisait explorer toute la
+ *   carte à chaque tap (4 615 cases sur `testbig150`), alors que la cible est connue atteignable à
+ *   ce coût. Le chemin rendu est le même : Dijkstra l'atteint dès ce budget.
  * @returns {Cell[]}
  */
-export function findPath(grid, from, to, blockedEdges, terrainCost) {
+export function findPath(grid, from, to, blockedEdges, terrainCost, coutConnu) {
   const distanceEstimate = grid.distance(from, to);
-  const budget = Math.max(100, distanceEstimate * 4);
+  const budget =
+    typeof coutConnu === 'number' && Number.isFinite(coutConnu) && coutConnu >= 0
+      ? coutConnu + 1e-9
+      : Math.max(100, distanceEstimate * 4);
   const { predecessors } = computeReachable(grid, from, budget, blockedEdges, terrainCost);
   return reconstructPath(predecessors, from, to);
 }

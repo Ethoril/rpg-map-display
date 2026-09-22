@@ -432,6 +432,12 @@ export class VideoBackdrop {
 
     this.failed = true;
     video.style.display = 'none';
+    // ⛔ Masquer ne suffit pas (audit du 22/09, G7) : c'est précisément un décodage logiciel qui
+    // a provoqué ce repli, et il continuait jusqu'au changement d'étage. Même arrêt que `sync()`
+    // sans URL. `currentUrl` reste posé : un `sync` du même étage ne relancera pas le flux.
+    if (typeof video.pause === 'function') video.pause();
+    video.removeAttribute('src');
+    if (typeof video.load === 'function') video.load();
     this._disarmStallCheck();
     this.onWarning(
       `Fond animé trop lent (${(ratio * 100).toFixed(0)} % du temps réel) : repli sur ` +

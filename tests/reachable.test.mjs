@@ -138,3 +138,31 @@ test('computeBlockedEdges (stub lot 1a) retourne un Set vide', () => {
   assert.ok(edges instanceof Set);
   assert.equal(edges.size, 0);
 });
+
+// G5 (audit du 22/09/2026) — le tap de déplacement explorait toute la carte : budget
+// `max(100, 4 × distance)`. Le coût de la cible est déjà connu (zone atteignable) ; il suffit à
+// Dijkstra, et le chemin rendu est le même. On compte les voisinages explorés : c'est
+// déterministe, contrairement à une durée.
+test('G5 : borner la recherche par le coût connu rend le même chemin, en explorant bien moins', () => {
+  const level = createLevel({ id: 'g5', widthCells: 60, heightCells: 60 });
+  const grid = gridFor(level);
+  let appels = 0;
+  const compteuse = /** @type {any} */ (Object.create(grid));
+  compteuse.neighbors = (/** @type {any} */ c) => { appels++; return grid.neighbors(c); };
+
+  const from = { a: 10, b: 10 };
+  const to = { a: 13, b: 12 };
+  const zone = grid.cellsInRange(from, 6, new Set());
+  const cout = zone.get(cellKey(to));
+  assert.ok(typeof cout === 'number');
+
+  appels = 0;
+  const libre = findPath(compteuse, from, to, new Set());
+  const exploreLibre = appels;
+  appels = 0;
+  const borne = findPath(compteuse, from, to, new Set(), undefined, cout);
+  const exploreBorne = appels;
+
+  assert.deepEqual(borne, libre, 'même chemin');
+  assert.ok(exploreBorne * 10 < exploreLibre, `${exploreBorne} voisinages bornés contre ${exploreLibre} libres`);
+});

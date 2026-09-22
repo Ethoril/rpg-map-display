@@ -263,7 +263,11 @@ export function bootstrapPlayerView(options) {
 
     const blockedEdges = computeBlockedEdges(activeLevel, grid);
     const terrainCostMap = terrainCostRecordToMap(activeLevel.terrainCost);
-    const path = findPath(grid, selectedToken.cell, targetCell, blockedEdges, terrainCostMap);
+    // Le coût de la cible est déjà dans la zone atteignable : il borne la recherche (G5).
+    const path = findPath(
+      grid, selectedToken.cell, targetCell, blockedEdges, terrainCostMap,
+      reachableCells.get(cellKey(targetCell))
+    );
     const startedAt = Date.now();
 
     const moveData = {

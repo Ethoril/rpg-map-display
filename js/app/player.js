@@ -344,6 +344,17 @@ export async function bootstrapPlayerApp(options = {}) {
   const playerExploredCanvasMap = new Map();
 
   /**
+   * PNG en cours de décodage, par étage et par nature de masque.
+   *
+   * ⛔ Audit du 22/09, G4 : le cache ne se remplit qu'au RETOUR du décodage, et le masque visible
+   * est demandé quatre fois par image. Pendant une animation, chaque image relançait donc quatre
+   * décodages du même PNG, chacun avec son canvas et son tampon, jusqu'à ce que le premier
+   * aboutisse. Un décodage déjà lancé pour ce PNG n'est pas relancé.
+   * @type {Map<string, string>}
+   */
+  const decodagesEnCours = new Map();
+
+  /**
    * @param {import('../core/types.js').Level|null} level
    */
   function getPlayerExploredCanvas(level) {
@@ -356,6 +367,9 @@ export async function bootstrapPlayerApp(options = {}) {
       return existing.canvas;
     }
 
+    const cleExploree = `explore:${level.id}`;
+    if (decodagesEnCours.get(cleExploree) === png) return existing ? existing.canvas : null;
+    decodagesEnCours.set(cleExploree, png);
     void decodeFogPng(png, level.widthCells, level.heightCells).then((canvas) => {
       // Plusieurs PNG peuvent décoder dans le désordre. Ne jamais laisser un ancien masque
       // écraser la valeur que le transport a déjà remplacée dans le store.
@@ -363,6 +377,8 @@ export async function bootstrapPlayerApp(options = {}) {
       playerExploredCanvasMap.set(level.id, { png, canvas });
       playerLevelSelector?.update();
       requestRender();
+    }).finally(() => {
+      if (decodagesEnCours.get(cleExploree) === png) decodagesEnCours.delete(cleExploree);
     });
 
     return existing ? existing.canvas : null;
@@ -384,12 +400,17 @@ export async function bootstrapPlayerApp(options = {}) {
       return existing.canvas;
     }
 
+    const cleVisible = `visible:${level.id}`;
+    if (decodagesEnCours.get(cleVisible) === png) return existing ? existing.canvas : null;
+    decodagesEnCours.set(cleVisible, png);
     void decodeFogPng(png, level.widthCells, level.heightCells).then((canvas) => {
       // Même garde que pour le fog exploré : une torche ou une porte peut générer plusieurs
       // `vision.update` successifs alors que les décompressions précédentes sont encore actives.
       if (store.getSessionVision(level.id) !== png) return;
       playerVisibleCanvasMap.set(level.id, { png, canvas });
       requestRender();
+    }).finally(() => {
+      if (decodagesEnCours.get(cleVisible) === png) decodagesEnCours.delete(cleVisible);
     });
 
     return existing ? existing.canvas : null;

@@ -464,3 +464,36 @@ test('E6 : la poignée dessinée a le rayon de la zone de tap, résolution de la
   const attendu = getTemplateHandleRadiusMap(3 * 100, zoomCamera);
   assert.ok(rayons.some((r) => Math.abs(r - attendu) < 1e-9), `poignée ${rayons.join(', ')} ≠ zone de tap ${attendu}`);
 });
+
+// G3 (audit du 22/09/2026) — chaque image relançait un sweep par gabarit, pan compris. Deux
+// rendus identiques n'en font plus qu'un ; déplacer un gabarit ou muter l'étage en refont un.
+test('G3 : le sweep d’un gabarit n’est refait que si sa pose ou l’étage change', async () => {
+  const { TemplatesLayer } = await import('../js/render/layers/templates.js');
+  let balayages = 0;
+  const couche = new TemplatesLayer({
+    sweep: (/** @type {any} */ o, /** @type {any} */ seg, /** @type {number} */ r) => { balayages++; return sweep(o, seg, r); },
+  });
+  const noop = () => {};
+  const ctx = /** @type {any} */ ({
+    getTransform: () => ({ a: 1, b: 0 }), save: noop, restore: noop, beginPath: noop, moveTo: noop,
+    lineTo: noop, closePath: noop, fill: noop, stroke: noop, clip: noop, rect: noop, arc: noop, setLineDash: noop,
+  });
+  const level = createLevel({
+    id: 'g3', widthCells: 10, heightCells: 10, pxPerCell: 100,
+    walls: [[{ cellX: 5, cellY: 0 }, { cellX: 5, cellY: 10 }]],
+  });
+  const grid = gridFor(level);
+  const cercle = { id: 't', levelId: 'g3', shape: /** @type {const} */ ('circle'), origin: { x: 300, y: 300 },
+    radiusCells: 2, directionDeg: 0, color: '#ff0000', visibleToPlayers: true };
+
+  couche.render(ctx, grid, level, [cercle], false, 1);
+  couche.render(ctx, gridFor(level), level, [cercle], false, 2); // pan/zoom : même pose
+  assert.equal(balayages, 1, 'un pan ne refait pas le sweep');
+
+  couche.render(ctx, grid, level, [{ ...cercle, origin: { x: 320, y: 300 } }], false, 1);
+  assert.equal(balayages, 2, 'déplacer le gabarit le refait');
+
+  const mute = createLevel({ ...level, walls: [] });
+  couche.render(ctx, gridFor(mute), mute, [{ ...cercle, origin: { x: 320, y: 300 } }], false, 1);
+  assert.equal(balayages, 3, 'muter l’étage le refait');
+});

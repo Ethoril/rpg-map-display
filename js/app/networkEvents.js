@@ -33,7 +33,10 @@ function rememberLinkTraverseEventId(eventId) {
 export function applyNetworkEvent(event) {
   if (!event || typeof event !== 'object' || !event.type) return false;
   const payload = /** @type {Record<string, any>} */ (event.payload || {});
-  const campaign = store.getCampaign();
+  // Lecture seule de la campagne VIVANTE, gelée en profondeur par le store, et non
+  // `getCampaign()`, qui en fait un clone profond (2,5 ms sur Mac) — à chaque événement réseau,
+  // pour de simples tests d'existence (audit du 22/09, G1). Ce module ne la mute jamais.
+  const campaign = store.getRenderSnapshot().campaign;
 
   switch (event.type) {
     // Remplacement complet de la scène (U-05), pendant réseau du mode

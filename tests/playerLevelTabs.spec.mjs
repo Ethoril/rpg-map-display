@@ -287,3 +287,39 @@ test('F4 : la navigation aux flèches supporte un identifiant d’étage contena
   expect(focus).toBe(special);
   expect(erreurs).toEqual([]);
 });
+
+// G4 (audit du 22/09/2026) — le cache d'un masque ne se remplit qu'au retour du décodage ; le
+// masque visible est demandé quatre fois par image. Chaque demande relançait un décodage du même
+// PNG tant que le premier n'avait pas abouti.
+test('G4 : un même masque demandé plusieurs fois pendant son décodage n’est décodé qu’une fois', async ({ page }) => {
+  const sessionId = `g4-${Date.now()}`;
+  await page.addInitScript(() => {
+    const Origine = window.DecompressionStream;
+    /** @type {any} */ (window).__decompressions = 0;
+    // Remplacement volontaire, pour compter les décodages réels.
+    window.DecompressionStream = class extends Origine {
+      /** @param {any} f */
+      constructor(f) { super(f); /** @type {any} */ (window).__decompressions++; }
+    };
+  });
+  await installBrowserTransport(page, sessionId, SNAPSHOT);
+  await page.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const decodages = await page.evaluate(async () => {
+    const [store, fog] = await Promise.all([import('../js/state/store.js'), import('../js/vision/fog.js')]);
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const level = store.getCampaign()?.levels.find((l) => l.id === 'rdc');
+    if (!level) throw new Error('étage rdc absent');
+    const masque = new fog.ExploredFog(level.widthCells, level.heightCells);
+    masque.revealAll();
+    const png = await masque.exportPng();
+    // Hors du store : on appelle le décodeur directement, dans la même tâche, comme quatre
+    // couches d'une même image.
+    const avant = /** @type {any} */ (window).__decompressions;
+    store.setSessionVision('rdc', png);
+    for (let i = 0; i < 4; i++) app.getPlayerVisibleCanvas(level);
+    return /** @type {any} */ (window).__decompressions - avant;
+  });
+  expect(decodages).toBe(1);
+});
