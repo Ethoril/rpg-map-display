@@ -901,7 +901,12 @@ export async function bootstrapPlayerApp(options = {}) {
         applyingRemote = true;
         try {
           if (snapshot && (snapshot.campaign || snapshot.levels)) {
-            store.restoreFromSnapshot(snapshot, { sessionId });
+            // ⛔ L'étage de la TABLE, comme au démarrage (audit du 22/09, A3) : l'instantané
+            // porte celui du MJ, et le relire tel quel faisait basculer l'écran des joueurs.
+            store.restoreFromSnapshot(snapshot, {
+              sessionId,
+              activeLevelId: lireEtageMemorise() ?? undefined,
+            });
           }
         } finally {
           applyingRemote = false;

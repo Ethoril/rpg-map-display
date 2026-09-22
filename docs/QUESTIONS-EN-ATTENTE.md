@@ -1036,6 +1036,28 @@ depuis le 04/08, mais le rapatriement des scénarios dans la porte n'est pas dé
 
 ---
 
+### D-5 ⏳ Qui a le droit d'écrire l'instantané de campagne ? (audit du 22/09, A5)
+
+**Le fait.** La tablette réécrit toute la campagne dans Firestore 250 ms après chaque mutation
+locale (`player.js`, `scheduleSnapshot`), comme le MJ. Le dernier qui écrit le document entier
+gagne. Le CdC §3 fait pourtant du MJ le nœud autoritaire de la persistance.
+
+**Pourquoi on ne la retire pas d'office.** À sa connexion, un poste n'écoute que les événements
+*postérieurs* (`startAfter` sur la dernière clé) et reprend l'état depuis l'instantané. Un coup
+joué sur la tablette pendant que le Mac recharge n'existe donc **que** dans l'instantané que la
+tablette a écrit. Couper cette écriture perdrait ce coup côté MJ.
+
+**Ce qui est déjà corrigé** (règle 4, sans décision) : au F5 et au réveil, le MJ garde son propre
+étage, mémorisé localement comme celui de la table. L'`activeLevelId` du document ne le déplace
+plus.
+
+**Les options :**
+1. **Laisser tel quel.** Le risque reste un écrasement par un état périmé de la tablette, par
+   exemple une tablette réveillée qui écrit avant la fin de sa resynchro.
+2. **Le MJ seul écrit, et rejoue l'historique à sa connexion** au lieu de partir de la dernière
+   clé. C'est plus juste, mais cela touche le protocole de rétention (voir C1 du plan d'audit).
+3. **La tablette n'écrit que tant qu'aucun MJ n'est présent**, ce que la présence RTDB sait dire.
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.

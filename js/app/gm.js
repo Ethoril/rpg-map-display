@@ -954,7 +954,32 @@ export async function bootstrapGMApp(options = {}) {
   // Toute mutation du store est une occasion, pour l'autorité de vision, de constater
   // qu'elle a changé — déplacement de pion venu du réseau compris. C'est ce qui rend la
   // publication indépendante des frames que le navigateur veut bien accorder.
+  // ── L'étage que regarde le MJ est SON point de vue (audit du 22/09, A5) ─────────────────
+  //
+  // Même règle que UX-10 côté joueurs : mémorisé localement, jamais repris du document. La
+  // tablette réécrit l'instantané avec SON `activeLevelId` ; le reprendre au F5 déplaçait le
+  // MJ sur l'étage choisi par la table — dans son dos (règle 4).
+  const CLE_ETAGE_MJ = `rpg_gm_level_${sessionId}`;
+  const lireEtageMemorise = () => {
+    try {
+      return localStorage.getItem(CLE_ETAGE_MJ) || null;
+    } catch {
+      return null;
+    }
+  };
+  /** @param {string|null} levelId */
+  const memoriserEtage = (levelId) => {
+    try {
+      if (levelId) localStorage.setItem(CLE_ETAGE_MJ, levelId);
+    } catch {
+      // Stockage plein ou refusé : on perd la mémoire de l'étage au F5, rien de plus.
+    }
+  };
+  // Lu AVANT tout abonnement : la restauration ci-dessous notifie les abonnés.
+  const etageMemorise = lireEtageMemorise();
+
   const unsubscribeStore = store.subscribe(() => {
+    memoriserEtage(store.getActiveLevelId());
     syncVision();
     requestRender();
     scheduleSnapshot();
@@ -1142,7 +1167,7 @@ export async function bootstrapGMApp(options = {}) {
       applyingRemote = true;
       try {
         if (snapshot && (snapshot.campaign || snapshot.levels)) {
-          store.restoreFromSnapshot(snapshot, { sessionId });
+          store.restoreFromSnapshot(snapshot, { sessionId, activeLevelId: etageMemorise ?? undefined });
         } else {
           store.loadFromLocalStorage(sessionId);
           const persistenceError = store.getLastPersistenceError();
@@ -1183,7 +1208,11 @@ export async function bootstrapGMApp(options = {}) {
       applyingRemote = true;
       try {
         if (snapshot && (snapshot.campaign || snapshot.levels)) {
-          store.restoreFromSnapshot(snapshot, { sessionId });
+          // L'étage que le MJ regarde MAINTENANT, pas celui de l'instantané (A5).
+          store.restoreFromSnapshot(snapshot, {
+            sessionId,
+            activeLevelId: store.getActiveLevelId() ?? undefined,
+          });
         }
       } finally {
         applyingRemote = false;

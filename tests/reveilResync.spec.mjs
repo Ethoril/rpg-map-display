@@ -208,3 +208,61 @@ test('Bail valide : aucune resynchro, et aucune régression de l’état', async
   expect(erreurs).toEqual([]);
   await context.close();
 });
+
+// A3 (audit du 22/09/2026) — la resynchro du réveil relisait l'instantané SANS l'étage mémorisé
+// par la table : la tablette rebasculait sur l'étage que le MJ regardait, et mémorisait ce
+// nouvel étage pour le prochain F5. Le démarrage, lui, le passait déjà.
+test('Bail périmé : la resynchro garde l’étage choisi par la table, pas celui du MJ', async ({ browser }) => {
+  const deuxEtages = structuredClone(S0);
+  deuxEtages.campaign.levels.push({ ...NIVEAU, id: 'lvl2', name: 'Cave', order: 1 });
+  const context = await browser.newContext();
+  const player = await context.newPage();
+  await installBrowserTransport(player, 'reveil-etage', deuxEtages);
+  await player.goto('/player.html');
+  await waitForApp(player);
+
+  const etageActif = () =>
+    player.evaluate(async () => (await import('../js/state/store.js')).getState().activeLevelId);
+  await expect.poll(etageActif, { timeout: 5000 }).toBe('lvl');
+
+  await player.evaluate(async () => (await import('../js/state/store.js')).selectLevel('lvl2'));
+  await expect.poll(etageActif, { timeout: 5000 }).toBe('lvl2');
+
+  // L'instantané porte l'étage du MJ, `lvl`, comme le vrai document.
+  await player.evaluate((suivant) => {
+    /** @type {any} */ (window).__RPG_TEST_WIRE__.snapshot = suivant;
+  }, deuxEtages);
+  await endormirPuisReveiller(player, true);
+
+  await expect.poll(() => resynchros(player), { timeout: 5000 }).toBe(1);
+  await player.waitForTimeout(300);
+  expect(await etageActif()).toBe('lvl2');
+  await context.close();
+});
+
+// A5 (audit du 22/09/2026) — la tablette réécrit l'instantané avec SON étage. Au F5 comme au
+// réveil, le MJ le reprenait et se retrouvait sur l'étage choisi par la table.
+test('MJ : au F5 comme au réveil, il garde SON étage, pas celui écrit par la tablette', async ({ browser }) => {
+  const deuxEtages = structuredClone(S0);
+  deuxEtages.campaign.levels.push({ ...NIVEAU, id: 'lvl2', name: 'Cave', order: 1 });
+  deuxEtages.activeLevelId = 'lvl'; // l'étage de la TABLE, tel que le document le porte
+  const context = await browser.newContext();
+  const gm = await context.newPage();
+  await gm.addInitScript(() => localStorage.setItem('rpg_gm_level_etage-mj', 'lvl2'));
+  await installBrowserTransport(gm, 'etage-mj', deuxEtages);
+  await gm.goto('/gm.html?session=etage-mj');
+  await waitForApp(gm);
+
+  const etageActif = () =>
+    gm.evaluate(async () => (await import('../js/state/store.js')).getState().activeLevelId);
+  await expect.poll(etageActif, { timeout: 5000 }).toBe('lvl2');
+
+  await gm.evaluate((suivant) => {
+    /** @type {any} */ (window).__RPG_TEST_WIRE__.snapshot = suivant;
+  }, deuxEtages);
+  await endormirPuisReveiller(gm, true);
+  await expect.poll(() => resynchros(gm), { timeout: 5000 }).toBe(1);
+  await gm.waitForTimeout(300);
+  expect(await etageActif()).toBe('lvl2');
+  await context.close();
+});
