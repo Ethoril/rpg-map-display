@@ -1058,6 +1058,20 @@ plus.
    clé. C'est plus juste, mais cela touche le protocole de rétention (voir C1 du plan d'audit).
 3. **La tablette n'écrit que tant qu'aucun MJ n'est présent**, ce que la présence RTDB sait dire.
 
+### D-6 ⏳ `view.change` : le CdC dit « tablette », le code fait émettre le MJ (audit du 22/09, B6)
+
+**Le fait.** CdC §7 : `view.change`, émetteur **tablette**, 10 Hz. Le code, depuis le lot 1b, fait
+l'inverse : le **MJ** publie sa caméra à chaque pan et chaque zoom, et une tablette ouverte en
+`?camera=follow` la suit. Aucune tablette ne publie la sienne.
+
+**Déjà corrigé, sans décision** : la publication du MJ est limitée à 10 Hz, la fréquence du CdC.
+
+**Les options :**
+1. **Amender le CdC** : c'est le MJ qui émet, pour le mode « la table suit le MJ ».
+2. **Suivre le CdC** : la tablette émet, et le MJ peut voir ce que voit la table. Il faut alors
+   décider ce que le MJ en fait.
+3. **Les deux sens.**
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.

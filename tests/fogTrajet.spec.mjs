@@ -237,3 +237,62 @@ test('Un glisser MJ ne révèle que la case d arrivée, pas la ligne parcourue',
   expect(erreurs).toEqual([]);
   await context.close();
 });
+
+// B1 (audit du 22/09/2026) — un pion MJ lâché sur une case OCCUPÉE. `moveTokenToCell` lève
+// (C-6) ; l'exception remontait sans garde jusqu'à l'automate de gestes. Attendu : aucune
+// erreur de page, aucun déplacement, aucune publication.
+test('B1 : un pion MJ lâché sur une case occupée reste en place, sans erreur ni publication', async ({ browser }) => {
+  const occupe = structuredClone(SNAPSHOT);
+  occupe.campaign.tokens.push({ ...TOKEN, id: 'pc-2', label: 'Voisin', cell: { a: 5, b: 8 } });
+  const context = await browser.newContext();
+  const gm = await context.newPage();
+  /** @type {string[]} */
+  const erreurs = [];
+  gm.on('pageerror', (err) => erreurs.push(err.message));
+  await installBrowserTransport(gm, 'b1-occupe', occupe);
+  await gm.goto('/gm.html?session=b1-occupe');
+  await waitForApp(gm);
+
+  await gm.evaluate(([arrivee]) => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'dragToken', phase: 'end', tokenId: 'pc-1', mapPos: arrivee, screenPos: { x: 0, y: 0 },
+    });
+  }, [centre({ a: 5, b: 8 })]);
+
+  const etat = await gm.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const pion = store.getCampaign()?.tokens.find((t) => t.id === 'pc-1');
+    return {
+      cell: pion?.cell,
+      moves: /** @type {any} */ (window).__RPG_TEST_WIRE__.published.filter((/** @type {any} */ e) => e.type === 'token.move').length,
+    };
+  });
+  expect(erreurs).toEqual([]);
+  expect(etat.cell).toEqual(CELL_DEPART);
+  expect(etat.moves).toBe(0);
+  await context.close();
+});
+
+// B6 (audit du 22/09/2026) — `view.change` est limité à 10 Hz (CdC §7). Trente pans émis d'un
+// coup ne publient qu'une ou deux fois, et la DERNIÈRE publication porte la caméra finale.
+test('B6 : trente pans d’affilée publient au plus deux view.change, dont le dernier est la caméra finale', async ({ browser }) => {
+  const context = await browser.newContext();
+  const gm = await context.newPage();
+  await installBrowserTransport(gm, 'b6-vue', SNAPSHOT);
+  await gm.goto('/gm.html?session=b6-vue');
+  await waitForApp(gm);
+
+  const bilan = await gm.evaluate(async () => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const wire = /** @type {any} */ (window).__RPG_TEST_WIRE__;
+    const avant = wire.published.filter((/** @type {any} */ e) => e.type === 'view.change').length;
+    for (let i = 0; i < 30; i++) app.pointerInput.emit({ type: 'panBy', deltaX: 3, deltaY: 0 });
+    await new Promise((ok) => setTimeout(ok, 300));
+    const vues = wire.published.filter((/** @type {any} */ e) => e.type === 'view.change').slice(avant);
+    return { n: vues.length, derniere: vues.at(-1)?.payload.camera.x, camera: app.camera.x };
+  });
+  expect(bilan.n).toBeGreaterThan(0);
+  expect(bilan.n).toBeLessThanOrEqual(2);
+  expect(bilan.derniere).toBe(bilan.camera);
+  await context.close();
+});

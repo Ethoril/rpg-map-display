@@ -20,7 +20,7 @@ import { MeasureLayer } from '../render/layers/measure.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
-import { findHitTemplate } from '../input/templateHit.js';
+import { findHitTemplate, templateDragPose, withTemplatePreview } from '../input/templateHit.js';
 import { findHitToken, exactTokenAtCell } from '../input/tokenHit.js';
 import { findHitLight } from '../input/lightHit.js';
 import { FrameProbe } from '../render/probe.js';
@@ -32,6 +32,7 @@ import {
   SESSION_EVICT_GM_EVENT,
   VISION_REQUEST_EVENT,
   LIGHT_DEFAULT,
+  VIEW_PUBLISH_HZ,
 } from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
@@ -603,6 +604,12 @@ export async function bootstrapGMApp(options = {}) {
    */
   let dragLightPreview = null;
   /**
+   * Pose d'aperçu du gabarit en cours de glisser (B4). Transitoire comme `dragPreview` : ni
+   * store, ni réseau.
+   * @type {{ templateId: string, origin: import('../core/types.js').MapPoint, directionDeg: number }|null}
+   */
+  let templateDragPreview = null;
+  /**
    * Porte verrouillée que le MJ vient de taper en vain, et l'instant du tap. État de rendu
    * transitoire, comme `dragPreview` : il ne va ni dans le store ni sur le réseau — l'autre MJ
    * n'a pas à voir clignoter un geste qui n'est pas le sien.
@@ -781,11 +788,19 @@ export async function bootstrapGMApp(options = {}) {
           selectedToken: state.selectedToken,
           reachableCells: state.reachableCells,
         });
+        // Retour « case occupée » d'un pion lâché sur un voisin (B1), le même que la tablette.
+        animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
+          now: Date.now(),
+          zoom: camera.zoom,
+        });
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], false);
+        templatesLayer.render(
+          stage.context, grid, activeLevel,
+          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), false
+        );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       tokens: () => {
@@ -1360,6 +1375,29 @@ export async function bootstrapGMApp(options = {}) {
     };
   }
 
+  // ── `view.change` limité à VIEW_PUBLISH_HZ (CdC §7 : « throttlé 10 Hz ») ─────────────────
+  //
+  // ⛔ Audit du 22/09, B6 : le pan en publiait un par image, la molette et le pincement du
+  // trackpad un par événement `wheel` — chacun un push RTDB. La caméra est lue AU DÉPART de la
+  // publication, jamais au moment où elle est demandée : la dernière position part toujours.
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let viewPublishTimer = null;
+  let lastViewPublishAt = -Infinity;
+  function scheduleViewPublish() {
+    if (!transport || viewPublishTimer !== null) return;
+    const attente = Math.max(0, lastViewPublishAt + 1000 / VIEW_PUBLISH_HZ - Date.now());
+    viewPublishTimer = setTimeout(() => {
+      viewPublishTimer = null;
+      lastViewPublishAt = Date.now();
+      transport?.publish({
+        type: 'view.change',
+        payload: { camera: { x: camera.x, y: camera.y, zoom: camera.zoom } },
+        at: lastViewPublishAt,
+        by: 'gm',
+      });
+    }, attente);
+  }
+
   /**
    * @param {import('../input/gestures.js').InputIntention} intention
    */
@@ -1410,12 +1448,7 @@ export async function bootstrapGMApp(options = {}) {
       );
       persistCamera();
       requestRender();
-      transport?.publish({
-        type: 'view.change',
-        payload: { camera: { x: camera.x, y: camera.y, zoom: camera.zoom } },
-        at: Date.now(),
-        by: 'gm',
-      });
+      scheduleViewPublish();
       return;
     }
 
@@ -1426,12 +1459,7 @@ export async function bootstrapGMApp(options = {}) {
       camera.setPan(camera.x + before.x - after.x, camera.y + before.y - after.y);
       persistCamera();
       requestRender();
-      transport?.publish({
-        type: 'view.change',
-        payload: { camera: { x: camera.x, y: camera.y, zoom: camera.zoom } },
-        at: Date.now(),
-        by: 'gm',
-      });
+      scheduleViewPublish();
       return;
     }
 
@@ -1766,6 +1794,12 @@ export async function bootstrapGMApp(options = {}) {
     }
 
     if (intention.type === 'dragToken') {
+      if (intention.phase === 'cancel') {
+        // Geste interrompu (B3) : l'aperçu s'efface, le pion reste où il était.
+        dragPreview = null;
+        requestRender();
+        return;
+      }
       if (intention.phase !== 'end') {
         dragPreview = { tokenId: intention.tokenId, mapPos: intention.mapPos };
         requestRender();
@@ -1788,12 +1822,21 @@ export async function bootstrapGMApp(options = {}) {
 
       const from = { a: token.cell.a, b: token.cell.b };
       const startedAt = Date.now();
-      store.moveTokenToCell(token.id, targetCell, {
-        from,
-        to: targetCell,
-        path: [from, targetCell],
-        startedAt,
-      });
+      try {
+        store.moveTokenToCell(token.id, targetCell, {
+          from,
+          to: targetCell,
+          path: [from, targetCell],
+          startedAt,
+        });
+      } catch {
+        // ⛔ Case occupée (C-6) — audit du 22/09, B1. L'exception remontait jusqu'à l'automate
+        // de gestes et le laissait bloqué en glisser. Même retour transitoire que sur la
+        // tablette, et rien ne part sur le réseau.
+        moveZoneLayer.showDestinationFeedback(targetCell, 'occupied');
+        requestRender();
+        return;
+      }
 
       // Pas de révélation le long du trajet ici : le MJ franchit les murs et pose son
       // pion où il veut, ce glisser n'est pas un trajet marché. `syncVision`, déclenché
@@ -1810,6 +1853,11 @@ export async function bootstrapGMApp(options = {}) {
     }
 
     if (intention.type === 'dragLight') {
+      if (intention.phase === 'cancel') {
+        dragLightPreview = null;
+        requestRender();
+        return;
+      }
       if (intention.phase !== 'end') {
         // ⛔ **Aucune mutation, aucune publication tant que le doigt est posé.** Seul le
         // marqueur suit le doigt ; le champ éclairé, lui, ne bouge pas — parce qu'il ne peut
@@ -1849,6 +1897,13 @@ export async function bootstrapGMApp(options = {}) {
     }
 
     if (intention.type === 'dragTemplate') {
+      if (intention.phase === 'cancel') {
+        // Geste interrompu (B3) : l'aperçu s'efface, le gabarit reste où il était.
+        gmTemplateDragState = null;
+        templateDragPreview = null;
+        requestRender();
+        return;
+      }
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return;
       const activeLevel = state.activeLevel;
@@ -1858,50 +1913,37 @@ export async function bootstrapGMApp(options = {}) {
       if (intention.phase === 'start') {
         gmTemplateDragState = {
           templateId: t.id,
+          dragMode: intention.dragMode,
           startMapPos: { ...intention.mapPos },
           initialOrigin: { ...t.origin },
           initialDirectionDeg: t.directionDeg || 0,
         };
       }
-
       if (!gmTemplateDragState || gmTemplateDragState.templateId !== t.id) return;
 
-      if (intention.dragMode === 'move') {
-        const dx = intention.mapPos.x - gmTemplateDragState.startMapPos.x;
-        const dy = intention.mapPos.y - gmTemplateDragState.startMapPos.y;
-        const newOrigin = {
-          x: gmTemplateDragState.initialOrigin.x + dx,
-          y: gmTemplateDragState.initialOrigin.y + dy,
-        };
-        store.moveTemplate(t.id, newOrigin, t.directionDeg);
-      } else if (intention.dragMode === 'rotate') {
-        const dx = intention.mapPos.x - t.origin.x;
-        const dy = intention.mapPos.y - t.origin.y;
-        const angleRad = Math.atan2(dy, dx);
-        const angleDeg = Math.round(((angleRad * 180) / Math.PI + 360) % 360);
-        store.moveTemplate(t.id, t.origin, angleDeg);
+      // ⛔ Aperçu seul tant que le doigt est posé (B4) : ni store, ni réseau, ni instantané.
+      const pose = templateDragPose(gmTemplateDragState, intention.mapPos);
+      if (intention.phase !== 'end') {
+        templateDragPreview = { templateId: t.id, ...pose };
+        requestRender();
+        return;
       }
 
+      gmTemplateDragState = null;
+      templateDragPreview = null;
+      store.moveTemplate(t.id, pose.origin, pose.directionDeg);
       requestRender();
-
-      if (intention.phase === 'end') {
-        transport?.publish({
-          type: 'template.move',
-          payload: {
-            templateId: t.id,
-            origin: t.origin,
-            directionDeg: t.directionDeg || 0,
-          },
-          at: Date.now(),
-          by: 'gm',
-        });
-        gmTemplateDragState = null;
-      }
+      transport?.publish({
+        type: 'template.move',
+        payload: { templateId: t.id, origin: pose.origin, directionDeg: pose.directionDeg },
+        at: Date.now(),
+        by: 'gm',
+      });
       return;
     }
   }
 
-  /** @type {{ templateId: string, startMapPos: import('../core/types.js').MapPoint, initialOrigin: import('../core/types.js').MapPoint, initialDirectionDeg: number }|null} */
+  /** @type {import('../input/templateHit.js').TemplateDragState|null} */
   let gmTemplateDragState = null;
 
   const pointerInput = new PointerInput(canvas, camera, {

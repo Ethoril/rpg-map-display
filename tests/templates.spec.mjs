@@ -1045,4 +1045,69 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     // Échantillon 2 (assertion) : derrière le mur, découpé par ctx.clip() (< 20, carte seule ~12)
     expect(mesure.redDomBehind, `${contexte} : le gabarit a débordé derrière le mur (défaut de ctx.clip)`).toBeLessThan(20);
   });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B4 (audit du 22/09/2026) — le glisser de gabarit n'est qu'un APERÇU tant que le doigt est
+// posé : ni store, ni réseau. Le `end` commet et publie la pose FINALE, telle quelle ; un
+// `cancel` (second doigt, pointercancel) ne laisse aucune trace. Avant le correctif, le store
+// bougeait à chaque `move`, et le `end` publiait l'avant-dernière position.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('B4 — glisser de gabarit : aperçu, pose finale, annulation', () => {
+  const ligneB4 = {
+    id: 'tpl-b4',
+    levelId: 'lvl-ligne',
+    shape: /** @type {const} */ ('line'),
+    origin: { x: 350, y: 420 },
+    radiusCells: 3,
+    directionDeg: 0,
+    widthCells: 1,
+    color: '#ef4444',
+    visibleToPlayers: true,
+  };
+
+  for (const vue of /** @type {const} */ (['gm', 'player'])) {
+    test(`${vue} : le store et le réseau ne voient que la pose finale, et rien après une annulation`, async ({ page }) => {
+      const sessionId = `test-b4-${vue}-${Date.now()}`;
+      await installBrowserTransport(page, sessionId, snapshotLigne([ligneB4]));
+      await page.goto(`/${vue}.html?session=${sessionId}`);
+      await waitForApp(page);
+
+      /** @param {'start'|'move'|'end'|'cancel'} phase @param {number} x */
+      const glisser = (phase, x) =>
+        page.evaluate(([ph, mx]) => {
+          /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+            type: 'dragTemplate', templateId: 'tpl-b4', dragMode: 'move', phase: ph,
+            mapPos: { x: mx, y: 420 }, screenPos: { screenX: 0, screenY: 0 },
+          });
+        }, /** @type {const} */ ([phase, x]));
+      const origine = () =>
+        page.evaluate(async () => {
+          const store = await import('../js/state/store.js');
+          return store.getState().campaign?.templates.find((t) => t.id === 'tpl-b4')?.origin;
+        });
+      const publies = () =>
+        page.evaluate(() =>
+          /** @type {any} */ (window).__RPG_TEST_WIRE__.published
+            .filter((/** @type {any} */ e) => e.type === 'template.move')
+            .map((/** @type {any} */ e) => e.payload.origin)
+        );
+
+      await glisser('start', 350);
+      await glisser('move', 400);
+      await glisser('move', 450);
+      expect(await origine(), 'pendant le geste, le store ne bouge pas').toEqual({ x: 350, y: 420 });
+      expect(await publies(), 'pendant le geste, rien ne part').toEqual([]);
+
+      await glisser('end', 500);
+      expect(await origine()).toEqual({ x: 500, y: 420 });
+      expect(await publies(), 'la pose FINALE, pas l’avant-dernière').toEqual([{ x: 500, y: 420 }]);
+
+      await glisser('start', 500);
+      await glisser('move', 600);
+      await glisser('cancel', 600);
+      expect(await origine(), 'annulé : le gabarit reste où il était').toEqual({ x: 500, y: 420 });
+      expect(await publies(), 'annulé : rien de plus ne part').toEqual([{ x: 500, y: 420 }]);
+    });
+  }
+});
 });

@@ -21,6 +21,7 @@ import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { isPlayerManipulableToken } from '../input/tokenHit.js';
+import { withTemplatePreview } from '../input/templateHit.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
 import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
 import { VISION_REQUEST_EVENT } from '../core/constants.js';
@@ -298,6 +299,11 @@ export async function bootstrapPlayerApp(options = {}) {
   const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
   const templatesLayer = new TemplatesLayer();
+  /**
+   * Pose d'aperçu du gabarit que la table fait glisser (B4) — transitoire, ni store ni réseau.
+   * @type {{ templateId: string, origin: import('../core/types.js').MapPoint, directionDeg: number }|null}
+   */
+  let templateDragPreview = null;
   const pingsLayer = new PingsLayer();
   /**
    * Ping courant. ⛔ `at` est posé à la **réception locale**, jamais lu de `event.at` : c'est le
@@ -575,7 +581,10 @@ export async function bootstrapPlayerApp(options = {}) {
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        templatesLayer.render(stage.context, grid, activeLevel, state.campaign?.templates ?? [], true);
+        templatesLayer.render(
+          stage.context, grid, activeLevel,
+          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), true
+        );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       tokens: () => {
@@ -933,6 +942,10 @@ export async function bootstrapPlayerApp(options = {}) {
     transport: transport || undefined,
     onDestinationRejected: (cell, kind) => {
       moveZoneLayer.showDestinationFeedback(cell, kind);
+      requestRender();
+    },
+    onTemplatePreview: (preview) => {
+      templateDragPreview = preview;
       requestRender();
     },
   });

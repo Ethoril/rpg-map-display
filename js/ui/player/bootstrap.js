@@ -9,7 +9,7 @@ import { computeBlockedEdges } from '../../import/blockedEdges.js';
 import { terrainCostRecordToMap } from '../../core/schema.js';
 import * as store from '../../state/store.js';
 
-import { findHitTemplate } from '../../input/templateHit.js';
+import { findHitTemplate, templateDragPose } from '../../input/templateHit.js';
 import {
   findHitToken,
   exactTokenAtCell,
@@ -30,6 +30,8 @@ import {
  * @property {Transport} [transport] Transport réseau optionnel pour la synchronisation
  * @property {(cell: Cell, kind: 'refused'|'occupied') => void} [onDestinationRejected]
  *   Retour transitoire demandé par la vue pour une destination qui ne peut pas recevoir le pion.
+ * @property {(preview: {templateId: string, origin: import('../../core/types.js').MapPoint, directionDeg: number}|null) => void} [onTemplatePreview]
+ *   Pose d'aperçu d'un gabarit en cours de glisser, `null` quand il s'achève ou s'interrompt (B4).
  */
 
 /**
@@ -41,8 +43,9 @@ import {
 export function bootstrapPlayerView(options) {
   const { element, camera, transport } = options;
   const onDestinationRejected = options.onDestinationRejected ?? (() => {});
+  const onTemplatePreview = options.onTemplatePreview ?? (() => {});
 
-  /** @type {{ templateId: string, startMapPos: import('../../core/types.js').MapPoint, initialOrigin: import('../../core/types.js').MapPoint, initialDirectionDeg: number }|null} */
+  /** @type {import('../../input/templateHit.js').TemplateDragState|null} */
   let playerTemplateDragState = null;
 
   /**
@@ -51,6 +54,14 @@ export function bootstrapPlayerView(options) {
    */
   function handleIntention(intention) {
     if (intention.type === 'dragTemplate') {
+      if (intention.phase === 'cancel') {
+        // Geste interrompu — second doigt, pointercancel (B3, B4) : rien n'a été muté, rien
+        // n'est publié, l'aperçu s'efface. Avant, le store avait déjà bougé à chaque `move`,
+        // et le `end` jamais émis laissait la table et le MJ en désaccord.
+        playerTemplateDragState = null;
+        onTemplatePreview(null);
+        return;
+      }
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return;
       const activeLevel = state.activeLevel;
@@ -60,45 +71,30 @@ export function bootstrapPlayerView(options) {
       if (intention.phase === 'start') {
         playerTemplateDragState = {
           templateId: t.id,
+          dragMode: intention.dragMode,
           startMapPos: { ...intention.mapPos },
           initialOrigin: { ...t.origin },
           initialDirectionDeg: t.directionDeg || 0,
         };
       }
-
       if (!playerTemplateDragState || playerTemplateDragState.templateId !== t.id) return;
 
-      if (intention.dragMode === 'move') {
-        const dx = intention.mapPos.x - playerTemplateDragState.startMapPos.x;
-        const dy = intention.mapPos.y - playerTemplateDragState.startMapPos.y;
-        const newOrigin = {
-          x: playerTemplateDragState.initialOrigin.x + dx,
-          y: playerTemplateDragState.initialOrigin.y + dy,
-        };
-        store.moveTemplate(t.id, newOrigin, t.directionDeg);
-      } else if (intention.dragMode === 'rotate') {
-        const dx = intention.mapPos.x - t.origin.x;
-        const dy = intention.mapPos.y - t.origin.y;
-        const angleRad = Math.atan2(dy, dx);
-        const angleDeg = Math.round(((angleRad * 180) / Math.PI + 360) % 360);
-        store.moveTemplate(t.id, t.origin, angleDeg);
+      // ⛔ Aperçu seul tant que le doigt est posé (B4) : ni store, ni réseau.
+      const pose = templateDragPose(playerTemplateDragState, intention.mapPos);
+      if (intention.phase !== 'end') {
+        onTemplatePreview({ templateId: t.id, ...pose });
+        return;
       }
 
-      if (intention.phase === 'end') {
-        if (transport) {
-          transport.publish({
-            type: 'template.move',
-            payload: {
-              templateId: t.id,
-              origin: t.origin,
-              directionDeg: t.directionDeg || 0,
-            },
-            at: Date.now(),
-            by: 'players',
-          });
-        }
-        playerTemplateDragState = null;
-      }
+      playerTemplateDragState = null;
+      onTemplatePreview(null);
+      store.moveTemplate(t.id, pose.origin, pose.directionDeg);
+      transport?.publish({
+        type: 'template.move',
+        payload: { templateId: t.id, origin: pose.origin, directionDeg: pose.directionDeg },
+        at: Date.now(),
+        by: 'players',
+      });
       return;
     }
 

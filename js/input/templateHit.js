@@ -154,3 +154,60 @@ export function findHitTemplate(level, templates, mapPos, zoom = 1, cellScale = 
 
   return null;
 }
+
+/**
+ * État d'un glisser de gabarit, posé au `start` : tout ce qu'il faut pour calculer la pose à
+ * n'importe quel instant sans relire le store.
+ *
+ * @typedef {Object} TemplateDragState
+ * @property {string} templateId
+ * @property {'move'|'rotate'} dragMode
+ * @property {MapPoint} startMapPos Position du doigt au `start`
+ * @property {MapPoint} initialOrigin Origine du gabarit au `start`
+ * @property {number} initialDirectionDeg Direction du gabarit au `start`
+ */
+
+/**
+ * Pose d'un gabarit en cours de glisser : origine et direction, pour une position du doigt.
+ *
+ * ⛔ Audit du 22/09, B4 : le glisser mutait le store à chaque `pointermove` — clone,
+ * validation, sauvegarde locale, reconstruction du panneau, instantané Firebase écrit avant le
+ * `pointerup` — puis publiait l'avant-dernière position, lue dans le store AVANT la dernière
+ * mutation. La pose est désormais un calcul pur : l'aperçu la dessine, et le `end` la commet et
+ * la publie une seule fois, telle quelle, sur le MJ comme sur la tablette.
+ *
+ * @param {TemplateDragState} drag
+ * @param {MapPoint} mapPos Position courante du doigt
+ * @returns {{ origin: MapPoint, directionDeg: number }}
+ */
+export function templateDragPose(drag, mapPos) {
+  if (drag.dragMode === 'rotate') {
+    const angleRad = Math.atan2(mapPos.y - drag.initialOrigin.y, mapPos.x - drag.initialOrigin.x);
+    return {
+      origin: { x: drag.initialOrigin.x, y: drag.initialOrigin.y },
+      directionDeg: Math.round(((angleRad * 180) / Math.PI + 360) % 360),
+    };
+  }
+  return {
+    origin: {
+      x: drag.initialOrigin.x + (mapPos.x - drag.startMapPos.x),
+      y: drag.initialOrigin.y + (mapPos.y - drag.startMapPos.y),
+    },
+    directionDeg: drag.initialDirectionDeg,
+  };
+}
+
+/**
+ * Liste de gabarits où l'un d'eux est remplacé par sa pose d'aperçu. La liste d'origine, venue
+ * du store gelé, n'est pas touchée.
+ *
+ * @param {Template[]} templates
+ * @param {{ templateId: string, origin: MapPoint, directionDeg: number }|null} preview
+ * @returns {Template[]}
+ */
+export function withTemplatePreview(templates, preview) {
+  if (!preview) return templates;
+  return templates.map((t) =>
+    t.id === preview.templateId ? { ...t, origin: preview.origin, directionDeg: preview.directionDeg } : t
+  );
+}
