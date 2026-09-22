@@ -26,45 +26,45 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 
 ### P0 — ce que la table voit de faux, ou des données perdues
 
-- [ ] **A1** ✅ Fog et lumière décalés quand la grille a un décalage. Le masque couvre
+- [x] **A1** `26dc8d1` ✅ Fog et lumière décalés quand la grille a un décalage. Le masque couvre
   `widthCells` cases depuis l'origine de la grille, mais il est posé en `(0,0)` et étiré sur
   `mapExtent()`, décalage compris. Les joueurs voient jusqu'à une demi-case au-delà d'un mur.
   `fogLayer.js:630`, `light.js:745,756,769`. Test : un étage à `offsetX: 70`.
-- [ ] **A2** ✅ Le repli localStorage efface la sauvegarde. Le transport écrit l'enveloppe
+- [x] **A2** `23e8fd9` ✅ Le repli localStorage efface la sauvegarde. Le transport écrit l'enveloppe
   `{campaign, activeLevelId…}` sous `rpg_campaign_<id>` (`FirebaseTransport.js:1609`), là où le
   store écrit la campagne nue (`store.js:315`). Au F5 sans Firestore, rien n'est restauré,
   puis `removeItem`. Correctif : une seule forme sous cette clé, et une lecture qui tolère
   les deux formes déjà écrites chez les utilisateurs.
-- [ ] **A3** ✅ Au réveil, la tablette rebascule sur l'étage du MJ. `player.js:904` omet
+- [x] **A3** `44c1ae1` ✅ Au réveil, la tablette rebascule sur l'étage du MJ. `player.js:904` omet
   `activeLevelId: lireEtageMemorise()`, contrairement au démarrage (`:837`).
-- [ ] **A4** ✅ Zone de déplacement périmée. `updateToken` (vitesse, taille), `updateLevel`
+- [x] **A4** `c7b18cc` ✅ Zone de déplacement périmée. `updateToken` (vitesse, taille), `updateLevel`
   (grille) et `addLevel` en remplacement ne rappellent pas `setSelectionState`
   (`store.js:1485`, `:1051`, `:927`). La tablette accepte un coup à 6 cases pour un pion
   passé à 3.
-- [ ] **A5** ✅ La tablette écrit toute la campagne dans Firestore à chaque mutation locale,
+- [x] **A5** `44c1ae1` ✅ La tablette écrit toute la campagne dans Firestore à chaque mutation locale,
   avec son `activeLevelId` et son `selectedTokenId` (`player.js:691-703`, `:773-775`). Au F5
   du MJ, celui-ci atterrit sur l'étage de la table : violation de la règle 4. Le dernier qui
   écrit le document gagne. Direction : le MJ est seul à persister (CdC §114). ⚠ Vérifier
   d'abord dans l'historique git si l'écriture tablette sert un cas voulu (MJ absent ?).
   Si c'est le cas → **[DÉCISION]**.
-- [ ] **A6** ❔ L'aperçu UVTT de diagnostic écrit dans la campagne (`importPanel.js:275-283`,
+- [x] **A6** `48a1907` ❔ L'aperçu UVTT de diagnostic écrit dans la campagne (`importPanel.js:275-283`,
   alors que le commentaire dit le contraire). L'identifiant est dérivé du nom de fichier :
   glisser l'UVTT d'une carte déjà préparée **remplace le vrai étage** par un étage sans
   image, sans aucun `level.add` publié. Pas de borne de taille sur `readAsText`.
 
 ### P1 — gestes MJ et tablette
 
-- [ ] **B1** ✅ Un pion lâché sur une case occupée : l'exception de `moveTokenToCell`
+- [x] **B1** `5f1faaa + 896421e` ✅ Un pion lâché sur une case occupée : l'exception de `moveTokenToCell`
   (`gm.js:1762`) sort de `handlePointerUp` avant `activePointers.delete`
   (`pointer.js:491-546`). L'automate reste en `gmTokenDrag` et un pion fantôme suit la
   souris. Deux correctifs : refuser proprement dans `gm.js` (comme `bootstrap.js` avec
   `findStackingConflict`), et nettoyer le pointeur dans un `finally`.
-- [ ] **B2** ✅ Pas de `setPointerCapture` sur le canvas (`pointer.js:125-132`). Relâcher
+- [x] **B2** `5f1faaa` ✅ Pas de `setPointerCapture` sur le canvas (`pointer.js:125-132`). Relâcher
   au-dessus du panneau laisse le glisser ou le pan actif au survol.
-- [ ] **B3** ✅ `pointercancel` n'émet `end` que pour le pinceau et le gabarit, et le blur
+- [x] **B3** `5f1faaa` ✅ `pointercancel` n'émet `end` que pour le pinceau et le gabarit, et le blur
   n'émet rien (`pointer.js:564-604`). Les aperçus pion et lampe restent dessinés, et un
   gabarit déplacé n'est jamais publié.
-- [ ] **B4** ✅ Glisser de gabarit, MJ (`gm.js:1847-1866`) et tablette
+- [x] **B4** `896421e` ✅ Glisser de gabarit, MJ (`gm.js:1847-1866`) et tablette
   (`bootstrap.js:54-101`) :
   - il mute le store à chaque `pointermove` (clone, validation, localStorage, panneau,
     instantané Firebase avant le `pointerup`) ;
@@ -73,9 +73,9 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
     (`pointer.js:283-298`).
   Direction : un aperçu comme pour les pions, une seule mutation et une seule publication
   au `end`.
-- [ ] **B5** ✅ Passer de deux doigts à un fait sauter la carte : le doigt restant repart
+- [x] **B5** `5f1faaa` ✅ Passer de deux doigts à un fait sauter la carte : le doigt restant repart
   avec l'origine du premier (`pointer.js:320-342`, `548-557`).
-- [ ] **B6** ✅ `view.change` part sans limite de fréquence (`gm.js:1384-1405`), avec un
+- [x] **B6** `896421e` ✅ `view.change` part sans limite de fréquence (`gm.js:1384-1405`), avec un
   `persistCamera` à chaque événement. `VIEW_PUBLISH_HZ = 10` n'est lu nulle part.
   ⚠ L'audit rapporte que le CdC §7 désigne la tablette comme émettrice : vérifier qui doit
   émettre avant de limiter. En cas de contradiction → **[DÉCISION]**.
@@ -131,7 +131,7 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 
 ### P3 — la porte, là où elle ment
 
-- [ ] **D1** ✅ Faux vert sur l'interdiction n°1 (pas de drag joueur) : c'est le mock
+- [x] **D1** `5f1faaa` ✅ Faux vert sur l'interdiction n°1 (pas de drag joueur) : c'est le mock
   `mountStage.mjs:110-111` qui porte la garde `role === 'gm'`. Le mock doit répondre
   « oui » et laisser `pointer.js` refuser. Muter `pointer.js:259` pour prouver le rouge.
 - [ ] **D2** ✅ `// @ts-nocheck` dans `js/app/sondeLatence.js:1`. Le typer, et ajouter un
@@ -276,3 +276,9 @@ un travail inutile, sans rien promettre de chiffré.
 | Date | Lignes | Commit | Note |
 |---|---|---|---|
 | 22/09 | — | `9538230` | deux écarts de convention tranchés |
+| 22/09 | A1 | `26dc8d1` | `maskRect()` ajouté à `GridAdapter` ; la bande hors masque reçoit le voile non exploré. ⚠ E4 n'est que partiel : les demi-cases hexagonales hors de `mapExtent` restent sans voile |
+| 22/09 | A2, A4 | `23e8fd9`, `c7b18cc` | les lecteurs déballent aussi l'enveloppe déjà écrite chez les utilisateurs |
+| 22/09 | A3, A5 | `44c1ae1` | le MJ mémorise son étage (`rpg_gm_level_<id>`). Qui écrit l'instantané : **D-5** |
+| 22/09 | A6 | `48a1907` | refus explicite ; `onImportUvtt` n'est câblé nulle part, l'aperçu n'est donc jamais publié |
+| 22/09 | B1–B5, D1 | `5f1faaa` | nouvelle phase `cancel` des glissers ; le mock ne porte plus la garde de rôle |
+| 22/09 | B1, B4, B6 | `896421e` | pose de gabarit pure (`templateDragPose`) ; `view.change` à 10 Hz. Qui émet : **D-6** |
