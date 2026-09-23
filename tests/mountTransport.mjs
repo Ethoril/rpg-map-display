@@ -64,6 +64,11 @@ abonner();
     return true;
   },
   purge: () => transport.purgeEvents(),
+  /** La resynchro du réveil, telle que l'application la déclenche (audit du 22/09, C6). */
+  resync: async () => {
+    await /** @type {any} */ (transport).resync();
+    return true;
+  },
   /**
    * La purge AUTOMATIQUE, telle que le transport la déclenche lui-même (audit du 22/09, C1). Rend
    * le nombre d'événements supprimés.

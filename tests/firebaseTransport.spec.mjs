@@ -96,6 +96,7 @@ async function ouvrirClient(browser, sessionId, role) {
     compterEvenements: () => page.evaluate(() => /** @type {any} */ (window).__probe.compterEvenements()),
     /** @returns {Promise<Array<string|null>>} */
     curseurs: () => page.evaluate(() => /** @type {any} */ (window).__probe.curseurs()),
+    resync: () => page.evaluate(() => /** @type {any} */ (window).__probe.resync()),
     /** @returns {Promise<boolean>} */
     horlogePrete: () => page.evaluate(() => /** @type {any} */ (window).__probe.horlogePrete()),
   };
@@ -240,6 +241,34 @@ test('C1 : la purge automatique supprime les événements que tous les clients o
     expect(apres, 'et la base les a réellement perdues').toBeLessThan(avant);
   } finally {
     await joueurs.context.close();
+    await purgerQuandLesLeasesOntDisparu(mj);
+    await mj.context.close();
+  }
+});
+
+
+// C6 (audit du 22/09/2026) — pendant une resynchro, le `cancel()` de l'ancien filet `onDisconnect`
+// partait après la nouvelle inscription, sur le même chemin, et l'annulait. Le client se
+// déconnectait ensuite sans que son bail disparaisse : un fantôme, qui bloquait la purge 120 s.
+// ⚠ Sans le correctif, l'échec dépend d'une course réseau : ce test peut passer par chance.
+test('C6 : après une resynchro, le bail d’un client disparaît quand il se déconnecte', async ({ browser }) => {
+  test.skip(!complet, RAISON);
+
+  const sessionId = `test-filet-${Date.now()}`;
+  const mj = await ouvrirClient(browser, sessionId, 'gm');
+  const joueurs = await ouvrirClient(browser, sessionId, 'players');
+  try {
+    await mj.snapshot();
+    await joueurs.snapshot();
+    await expect.poll(() => mj.curseurs().then((c) => c.length), { timeout: 15000 }).toBe(2);
+    await joueurs.resync();
+    await expect.poll(() => mj.curseurs().then((c) => c.length), { timeout: 15000 }).toBe(2);
+
+    await joueurs.context.close();
+    await expect
+      .poll(() => mj.curseurs().then((c) => c.length), { timeout: 30000, message: 'le bail fantôme reste' })
+      .toBe(1);
+  } finally {
     await purgerQuandLesLeasesOntDisparu(mj);
     await mj.context.close();
   }
