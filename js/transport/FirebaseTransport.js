@@ -16,6 +16,8 @@ import {
   orderByKey,
   startAfter,
   limitToLast,
+  limitToFirst,
+  endAt,
   get,
   onChildAdded,
   onValue,
@@ -1389,34 +1391,41 @@ export class FirebaseTransport {
     if (!this._db || !this._sessionId || epoch !== this._sessionEpoch || !this._serverTimeOffsetReady) {
       return 0;
     }
+    // ⛔ Plus de transaction sur `session/{id}` (audit du 22/09, C1, CONFIRMÉ contre la base
+    // réelle le 23/09 : six événements reçus par tous, zéro supprimé). Le rappel rendait `undefined`
+    // sur un cache local vide — ce qui ANNULE la transaction avant même d'atteindre le serveur —,
+    // et personne n'écoute la session entière : la purge automatique n'a jamais rien supprimé.
+    // Rendre `current` à la place ferait retélécharger TOUTE la session, événements compris, à
+    // chaque tentative.
+    //
+    // Lecture puis suppression, sans transaction, et c'est sûr parce que la frontière est
+    // MONOTONE : un curseur n'avance jamais qu'en avant, donc une frontière lue en retard est
+    // prudente. Un client qui arrive après la lecture s'annonce `joining`, lit la dernière clé et
+    // n'écoute qu'après elle : il n'a jamais besoin d'un événement antérieur à la frontière. Un
+    // client dont le bail a expiré en est exclu, et c'est `mayHaveMissedEvents` qui le resynchronise.
+    const db = this._db;
     const sessionId = this._sessionId;
     const serverNow = Date.now() + this._serverTimeOffset;
-    let deletedCount = 0;
-    const result = await runTransaction(
-      ref(this._db, `session/${sessionId}`),
-      (/** @type {any} */ current) => {
-        deletedCount = 0;
-        if (!current || typeof current !== 'object') return;
-        const status = getAcknowledgedEventFrontier(
-          current.retentionClients,
-          serverNow,
-          current.presence
-        );
-        if (status.blocked || !status.frontier || !current.events) return;
+    const [clientsSnap, presenceSnap] = await Promise.all([
+      get(ref(db, `session/${sessionId}/retentionClients`)),
+      get(ref(db, `session/${sessionId}/presence`)),
+    ]);
+    if (epoch !== this._sessionEpoch) return 0;
+    const status = getAcknowledgedEventFrontier(clientsSnap.val(), serverNow, presenceSnap.val() ?? {});
+    if (status.blocked || !status.frontier) return 0;
 
-        const keys = Object.keys(current.events)
-          .filter((key) => key <= /** @type {string} */ (status.frontier))
-          .sort()
-          .slice(0, EVENT_RETENTION_BATCH_SIZE);
-        if (keys.length === 0) return;
-        const events = { ...current.events };
-        for (const key of keys) delete events[key];
-        deletedCount = keys.length;
-        return { ...current, events: Object.keys(events).length > 0 ? events : null };
-      },
-      { applyLocally: false }
+    const eventsRef = ref(db, `session/${sessionId}/events`);
+    const aSupprimer = await get(
+      query(eventsRef, orderByKey(), endAt(status.frontier), limitToFirst(EVENT_RETENTION_BATCH_SIZE))
     );
-    return result.committed ? deletedCount : 0;
+    if (!aSupprimer.exists() || epoch !== this._sessionEpoch) return 0;
+    /** @type {Record<string, null>} */
+    const retraits = {};
+    for (const key of Object.keys(aSupprimer.val())) retraits[key] = null;
+    const nombre = Object.keys(retraits).length;
+    if (nombre === 0) return 0;
+    await update(eventsRef, retraits);
+    return nombre;
   }
 
   /**
