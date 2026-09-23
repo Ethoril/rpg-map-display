@@ -1802,6 +1802,15 @@ Correctif : `transport.mayHaveMissedEvents()` et `transport.resync()`. Au retour
 si le bail est périmé, le client rebranche son écoute et relit l'instantané. C'est le F5, sans le
 F5.
 
+> ⚠ **Rectification du 23/09/2026 (audit, C1), prouvée contre la base réelle.** Cette cause n'a
+> PAS pu produire la désynchro du 16/08 : la purge automatique n'a **jamais rien supprimé**. Son
+> `runTransaction` s'annulait sur un cache local vide — mesuré : six événements reçus par tous,
+> zéro supprimé. La vraie cause de la désynchro du 16/08 reste **inconnue**.
+>
+> Depuis le correctif de C1, la purge fonctionne — et le mécanisme décrit ci-dessus devient donc
+> **réel**. C'est précisément la reprise livrée ce jour-là qui le couvre, et elle est testée ; son
+> réessai en cas d'échec (C5) a été ajouté le 23/09.
+
 ⛔ Quatre interdits qui ont chacun coûté un tour, à ne pas défaire :
 
 - **Ne pas relire l'instantané à chaque réveil.** L'instantané est réécrit 250 ms après chaque

@@ -95,7 +95,7 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 
 ### P2 — réseau et persistance
 
-- [ ] **C1** ✅ La purge automatique des événements ne supprime jamais rien : le callback de
+- [x] **C1** `230bcd9` — CONFIRMÉ contre la base réelle (0/6 supprimés), corrigé (6/6) ✅ La purge automatique des événements ne supprime jamais rien : le callback de
   la transaction rend `undefined` sur un cache local nul, ce qui l'annule
   (`FirebaseTransport.js:1408`). `events` grossit sans fin. ⚠ Deux conséquences :
   - la cause notée dans `ETAT.md` pour la désynchro du 16/08 ne tient plus ;
@@ -118,9 +118,9 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
   aboutit après l'échéance, sur un Wi-Fi lent, le MJ passe en local sans le savoir, et ses gestes
   ne sont plus publiés. Il faut afficher l'état local, **puis adopter** le transport quand il
   répond.
-- [ ] **C5** ❔ Une resynchro qui lève laisse le client sans écoute et sans nouvel essai
+- [x] **C5** `ef68cdd` ❔ Une resynchro qui lève laisse le client sans écoute et sans nouvel essai
   (`:1132-1143`, `:1307`). La tablette castée ne se masque jamais, donc elle reste figée.
-- [ ] **C6** ✅ Course sur `onDisconnect` : le `cancel()` de l'ancien filet, non attendu,
+- [x] **C6** `7d351b7` — CONFIRMÉ contre la base réelle (bail fantôme), corrigé ; réarmement sur `.info/connected` non fait ✅ Course sur `onDisconnect` : le `cancel()` de l'ancien filet, non attendu,
   annule le nouveau (`:1244`, `:2060`). Rien n'écoute `.info/connected` pour réarmer après
   une coupure : des présences fantômes restent.
 - [ ] **C7** ✅ Chaque sauvegarde réécrit tous les documents Firestore (2 + étages + pions)
@@ -335,3 +335,4 @@ un travail inutile, sans rien promettre de chiffré.
 | 23/09 | G1, G3–G5, G7 | `cc5c668` | aucun gain chiffré revendiqué : pas de mesure tablette |
 | 23/09 | H2–H5 | `68808ba` | `createLevel` étale ses overrides en premier |
 | 23/09 | D-5 à D-8 | `62e4c08` | arbitrages du mainteneur appliqués ; suivi de caméra supprimé (D-6) |
+| 23/09 | C1, C5, C6 | branche `audit/reseau` | reproduits ROUGES en CI contre le vrai Firebase avant correction ; ETAT.md rectifié sur la cause du 16/08 |
