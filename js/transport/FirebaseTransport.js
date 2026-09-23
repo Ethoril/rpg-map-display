@@ -1234,7 +1234,7 @@ export class FirebaseTransport {
       // exactement quand le réseau se rétablit à peine. L'attendre laisserait le client sans
       // aucun écouteur indéfiniment. Le nouveau bail s'écrit de toute façon au même chemin
       // sous le même `clientId` et écrase celui-ci.
-      this._releaseRetentionClient().catch((err) =>
+      this._releaseRetentionClient({ annulerFilet: false }).catch((err) =>
         this._reportError(err, 'retrait du curseur de rétention avant resynchro')
       );
 
@@ -2054,9 +2054,16 @@ export class FirebaseTransport {
    * fin de s\u00e9ance. La suppression distante pr\u00e9c\u00e8de l'annulation de onDisconnect.
    *
    * @private
+   * @param {{ annulerFilet?: boolean }} [options] `annulerFilet: false` pendant une RESYNCHRO.
+   *   ⛔ Audit du 22/09, C6 : la resynchro n'attend pas ce retrait, et le nouveau bail s'inscrit
+   *   sur le MÊME chemin (même `clientId`). Le `cancel()` d'ici partait donc après la nouvelle
+   *   inscription et l'annulait — `cancel` agit sur tout le chemin. Le client se déconnectait
+   *   ensuite sans que son bail disparaisse, et ce fantôme bloquait la purge 120 s. Le filet de
+   *   l'ancien bail n'a pas besoin d'être annulé : il supprime le même nœud que le nouveau.
    * @returns {Promise<void>}
    */
-  async _releaseRetentionClient() {
+  async _releaseRetentionClient(options = {}) {
+    const annulerFilet = options.annulerFilet !== false;
     if (this._retentionHeartbeat) {
       clearInterval(this._retentionHeartbeat);
       this._retentionHeartbeat = null;
@@ -2068,7 +2075,7 @@ export class FirebaseTransport {
     this._retentionClientOnDisconnect = null;
     try {
       await remove(clientRef);
-      await disconnectRegistration?.cancel();
+      if (annulerFilet) await disconnectRegistration?.cancel();
     } catch (err) {
       this._reportError(err, 'retrait du curseur de r\u00e9tention \u00e0 la d\u00e9connexion');
       throw err;

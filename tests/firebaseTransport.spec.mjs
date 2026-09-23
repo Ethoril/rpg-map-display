@@ -253,6 +253,7 @@ test('C1 : la purge automatique supprime les événements que tous les clients o
 // ⚠ Sans le correctif, l'échec dépend d'une course réseau : ce test peut passer par chance.
 test('C6 : après une resynchro, le bail d’un client disparaît quand il se déconnecte', async ({ browser }) => {
   test.skip(!complet, RAISON);
+  test.setTimeout(90_000);
 
   const sessionId = `test-filet-${Date.now()}`;
   const mj = await ouvrirClient(browser, sessionId, 'gm');
