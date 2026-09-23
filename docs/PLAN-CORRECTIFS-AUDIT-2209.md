@@ -105,13 +105,13 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 - [x] **C2** `fada46f` ✅ `setSessionFog` et `setSessionVision` notifient les abonnés, et chaque
   notification réécrit toute la campagne dans localStorage, validation comprise
   (`store.js:2187`, `:2211`). Séparer la notification « session » de la persistance.
-- [ ] **C3** ❔ Deux déplacements concurrents vers la même case : `moveTokenToCell`,
+- [x] **C3** `72fa4e5` — le MJ arbitre (D-10) ; ❔ Deux déplacements concurrents vers la même case : `moveTokenToCell`,
   `token.add` et `level.grid` lèvent sans `try` (`networkEvents.js:113`, `313`, `319`).
   L'erreur est avalée, et MJ et tablette divergent jusqu'au F5. Règle proposée : le MJ fait
   autorité, la tablette se recale sur l'état du MJ.
   ⏳ **Conception d'abord** (22/09) : un `try` seul ne suffit pas. Un refus côté MJ laisse la
   tablette sur sa position, et une correction exige une règle de recalage entre les postes.
-- [ ] **C4** ❔ Démarrage hors ligne figé : `await onDisconnect().remove()`
+- [x] **C4** `4ed4ed2` — local, puis reprise par rechargement (D-10) ; ❔ Démarrage hors ligne figé : `await onDisconnect().remove()`
   (`FirebaseTransport.js:1285`) ne rejette jamais, et aucun appelant ne pose d'échéance. Le
   repli local n'est jamais atteint.
   ⏳ **Conception d'abord** (22/09) : une échéance seule est dangereuse. Si la connexion
@@ -123,7 +123,7 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
 - [x] **C6** `7d351b7` — CONFIRMÉ contre la base réelle (bail fantôme), corrigé ; réarmement sur `.info/connected` non fait ✅ Course sur `onDisconnect` : le `cancel()` de l'ancien filet, non attendu,
   annule le nouveau (`:1244`, `:2060`). Rien n'écoute `.info/connected` pour réarmer après
   une coupure : des présences fantômes restent.
-- [ ] **C7** ✅ Chaque sauvegarde réécrit tous les documents Firestore (2 + étages + pions)
+- [x] **C7** `308a5fc` — seuls les documents modifiés sont réécrits, amendement ADR-012 (D-10), prouvé contre la base réelle ; ✅ Chaque sauvegarde réécrit tous les documents Firestore (2 + étages + pions)
   et réencode la campagne environ six fois (`:1595-1661`). N'écrire que les documents qui
   ont changé. Supprimer le `measureFirestoreSnapshot` dont le résultat est jeté.
 - [ ] **C8** ✅ Un accusé de réception RTDB par événement reçu, écho compris (`:1357-1361`).
@@ -336,3 +336,4 @@ un travail inutile, sans rien promettre de chiffré.
 | 23/09 | H2–H5 | `68808ba` | `createLevel` étale ses overrides en premier |
 | 23/09 | D-5 à D-8 | `62e4c08` | arbitrages du mainteneur appliqués ; suivi de caméra supprimé (D-6) |
 | 23/09 | C1, C5, C6 | branche `audit/reseau` | reproduits ROUGES en CI contre le vrai Firebase avant correction ; ETAT.md rectifié sur la cause du 16/08 |
+| 23/09 | C3, C4, C7 | `72fa4e5`, `4ed4ed2`, `308a5fc` | arbitrages D-10 ; C7 exigeait un amendement de l'ADR-012, signalé au mainteneur avant d'être fait |
