@@ -1089,6 +1089,42 @@ export async function bootstrapGMApp(options = {}) {
           ? store.getCampaign()?.tokens.find((t) => t.id === payload.tokenId)?.cell ?? null
           : null;
 
+      // ── C3 : le MJ ARBITRE deux coups vers la même case (D-10, tranché le 23/09/2026) ──────
+      //
+      // La table a joué vers une case que le MJ occupe déjà — chacun avant d'avoir reçu le coup de
+      // l'autre. Refuser en silence laissait les deux écrans diverger jusqu'au F5. Le MJ garde son
+      // coup et publie deux `token.move` ordinaires, dans cet ordre (RTDB conserve l'ordre d'un
+      // même émetteur) :
+      //   1. le pion de la table revient à sa case d'origine — `refus: 'occupied'` fait afficher
+      //      à la tablette le retour « case occupée » ;
+      //   2. l'occupant est réannoncé à sa case : la tablette, qui avait refusé le coup du MJ pour
+      //      la même raison, peut maintenant l'appliquer, la case venant d'être libérée.
+      if (event.type === 'token.move' && event.by === 'players' && payload.tokenId && payload.to) {
+        const occupant = store.findMoveConflict(payload.tokenId, payload.to);
+        if (occupant && avant) {
+          const now = Date.now();
+          transport?.publish({
+            type: 'token.move',
+            payload: {
+              tokenId: payload.tokenId, from: payload.to, to: avant, path: [payload.to, avant],
+              startedAt: now, refus: 'occupied',
+            },
+            at: now,
+            by: 'gm',
+          });
+          transport?.publish({
+            type: 'token.move',
+            payload: {
+              tokenId: occupant.id, from: occupant.cell, to: occupant.cell, path: [occupant.cell],
+              startedAt: now,
+            },
+            at: now,
+            by: 'gm',
+          });
+          return;
+        }
+      }
+
       applyingRemote = true;
       let mute = false;
       try {

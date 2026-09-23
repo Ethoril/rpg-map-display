@@ -629,6 +629,26 @@ export function setSelection(tokenId) {
 export const selectToken = setSelection;
 
 /**
+ * Le pion qui empêcherait `tokenId` d'aller en `cell` (une case, un pion — C-6), ou `null`.
+ * Ne mute rien : c'est la question que `moveTokenToCell` se pose avant de lever.
+ *
+ * Sert à l'arbitrage du MJ (audit du 22/09, C3 ; D-10) : devant un coup reçu de la table vers une
+ * case qu'il occupe déjà, le MJ doit savoir QUI l'occupe pour réannoncer ce pion.
+ *
+ * @param {string} tokenId
+ * @param {Cell} cell
+ * @returns {Token|null}
+ */
+export function findMoveConflict(tokenId, cell) {
+  if (!campaign) return null;
+  const token = campaign.tokens.find((t) => t.id === tokenId);
+  if (!token) return null;
+  const level = campaign.levels.find((l) => l.id === token.levelId);
+  if (!level) return null;
+  return findStackingConflict(campaign.tokens, level, token.levelId, cell, token.sizeCells || 1, tokenId) ?? null;
+}
+
+/**
  * Déplace un pion vers une case (index entier Cell {a, b}).
  * Mutation composite : si le pion déplacé est sélectionné, sa sélection est mise à jour.
  * Émet UN SEUL signal de changement.
@@ -659,6 +679,7 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
   if (!token) {
     throw new Error(`Pion inconnu : "${tokenId}"`);
   }
+  // (`findMoveConflict`, plus bas, répond à la même question sans rien muter.)
 
   const fromCell = { a: token.cell.a, b: token.cell.b };
 

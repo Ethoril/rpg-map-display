@@ -778,7 +778,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 
 | Type | Émetteur | Fréquence |
 |---|---|---|
-| `token.move` | MJ, joueurs | **ponctuel** — `{id, from, to, path, startedAt}` |
+| `token.move` | MJ, joueurs | **ponctuel** — `{id, from, to, path, startedAt}`, plus `refus: 'occupied'` quand le MJ renvoie un pion de la table à sa case d'origine (arbitrage D-10, 23/09/2026) |
 | `token.levelChange` | MJ, joueurs (liaison) | ponctuel |
 | `token.create` / `update` / `delete` | MJ | ponctuel |
 | `portal.toggle` | MJ, joueurs si autorisé | ponctuel — `{levelId, portalId, state}`, état **absolu** |

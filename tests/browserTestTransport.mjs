@@ -37,7 +37,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       });
 
       let documentHidden = false;
-      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void}} */
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void}} */
       const wire = {
         published: [],
         received: [],
@@ -55,6 +55,11 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           documentHidden = hidden;
           document.dispatchEvent(new Event('visibilitychange'));
         },
+        // Retenue des événements ENTRANTS (audit du 22/09, C3) : deux postes peuvent ainsi jouer
+        // chacun leur coup avant d'avoir reçu celui de l'autre — une vraie course.
+        retenir: false,
+        retenus: [],
+        relacher: () => {},
       };
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => documentHidden });
       Object.defineProperty(document, 'visibilityState', {
@@ -74,9 +79,26 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
 
         async connect(/** @type {string} */ connectedSessionId) {
           this.channel = new BroadcastChannel(`rpg-test-${connectedSessionId}`);
+          const livrer = (/** @type {any} */ data) => {
+            wire.received.push(data);
+            // Comme le vrai transport (`_notifySubscribers`) : l'erreur d'un abonné se journalise,
+            // elle n'interrompt ni les autres abonnés ni la livraison.
+            for (const listener of this.listeners) {
+              try {
+                listener(data);
+              } catch (err) {
+                console.error('Erreur dans un handler de souscription :', err);
+              }
+            }
+          };
+          wire.relacher = () => {
+            wire.retenir = false;
+            const lot = wire.retenus.splice(0);
+            for (const data of lot) livrer(data);
+          };
           this.channel.addEventListener('message', (message) => {
-            wire.received.push(message.data);
-            for (const listener of this.listeners) listener(message.data);
+            if (wire.retenir) wire.retenus.push(message.data);
+            else livrer(message.data);
           });
         }
 

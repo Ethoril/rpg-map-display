@@ -863,6 +863,13 @@ export async function bootstrapPlayerApp(options = {}) {
       } finally {
         applyingRemote = false;
       }
+      // C3 (D-10) : le MJ a refusé le coup de la table — la case était prise. Le pion vient de
+      // revenir ; le même retour transitoire qu'un refus local dit pourquoi.
+      const donnees = /** @type {any} */ (event.payload);
+      if (event.type === 'token.move' && donnees?.refus === 'occupied' && donnees.from) {
+        moveZoneLayer.showDestinationFeedback(donnees.from, 'occupied');
+        requestRender();
+      }
     });
 
     try {
