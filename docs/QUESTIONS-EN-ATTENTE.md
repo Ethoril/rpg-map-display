@@ -1036,7 +1036,13 @@ depuis le 04/08, mais le rapatriement des scénarios dans la porte n'est pas dé
 
 ---
 
-### D-5 ⏳ Qui a le droit d'écrire l'instantané de campagne ? (audit du 22/09, A5)
+### D-5 ✅ Qui a le droit d'écrire l'instantané de campagne ? (audit du 22/09, A5)
+
+> ## ✅ TRANCHÉ le 23/09/2026 — la tablette n'écrit l'instantané que si aucun MJ n'est présent
+>
+> Décision du mainteneur (option 3). La présence RTDB dit si un poste MJ est actif ; tant qu'il
+> l'est, lui seul persiste. Un coup joué pendant son F5 reste sauvé par la tablette, et une
+> tablette réveillée ne peut plus écraser l'état du MJ.
 
 **Le fait.** La tablette réécrit toute la campagne dans Firestore 250 ms après chaque mutation
 locale (`player.js`, `scheduleSnapshot`), comme le MJ. Le dernier qui écrit le document entier
@@ -1058,7 +1064,14 @@ plus.
    clé. C'est plus juste, mais cela touche le protocole de rétention (voir C1 du plan d'audit).
 3. **La tablette n'écrit que tant qu'aucun MJ n'est présent**, ce que la présence RTDB sait dire.
 
-### D-6 ⏳ `view.change` : le CdC dit « tablette », le code fait émettre le MJ (audit du 22/09, B6)
+### D-6 ✅ `view.change` : le CdC dit « tablette », le code fait émettre le MJ (audit du 22/09, B6)
+
+> ## ✅ TRANCHÉ le 23/09/2026 — le suivi de caméra est SUPPRIMÉ
+>
+> Décision du mainteneur : **chaque écran déplace et zoome sa vue indépendamment, toujours.** Le
+> MJ ne publie plus son cadrage, le mode `?camera=follow` disparaît, et `view.change` sort du §7
+> du cahier des charges comme du code. La vision et le fog ne sont pas concernés : ils n'ont
+> jamais dépendu du cadrage.
 
 **Le fait.** CdC §7 : `view.change`, émetteur **tablette**, 10 Hz. Le code, depuis le lot 1b, fait
 l'inverse : le **MJ** publie sa caméra à chaque pan et chaque zoom, et une tablette ouverte en
@@ -1072,7 +1085,16 @@ l'inverse : le **MJ** publie sa caméra à chaque pan et chaque zoom, et une tab
    décider ce que le MJ en fait.
 3. **Les deux sens.**
 
-### D-7 ⏳ Trois écarts entre `ARCHITECTURE.md` et le code réel (audit du 22/09, D3-D5, H1)
+### D-7 ✅ Trois écarts entre `ARCHITECTURE.md` et le code réel (audit du 22/09, D3-D5, H1)
+
+> ## ✅ TRANCHÉ le 23/09/2026 — le document s'aligne sur le code, sauf un script retiré
+>
+> Décisions du mainteneur :
+> 1. et 2. **La table §2 est amendée** : `render/* → vision/*, input/*` et `grid/* → movement/*`.
+>    Le test d'architecture passe en liste d'autorisations complète.
+> 3. **Les trois scripts en usage sont inscrits au §1** ; `measure-firestore-snapshots.mjs` est
+>    retiré (sa mesure est consignée dans l'ADR-012, git garde le script).
+> 4. **`gridPitch.js` et `importPanel.js` sont inscrits au §4.1**, famille « définition du repère ».
 
 Les tests d'architecture sont désormais assez stricts pour les voir. Chacun est toléré par une
 liste d'attente **explicite** dans `tests/architecture.test.mjs`, qui ne doit que rétrécir.
@@ -1092,7 +1114,12 @@ liste d'attente **explicite** dans `tests/architecture.test.mjs`, qui ne doit qu
 4. **§4.1** : les exceptions à `pxPerCell` du test comptent `import/gridPitch.js` et
    `ui/gm/importPanel.js`, qui calibrent sans convertir de position. Le document ne les cite pas.
 
-### D-8 ⏳ Un grand pion hexagonal peut-il déborder de la carte ? (audit du 22/09, E7)
+### D-8 ✅ Un grand pion hexagonal peut-il déborder de la carte ? (audit du 22/09, E7)
+
+> ## ✅ TRANCHÉ le 23/09/2026 — seul l'ancrage doit être dans la carte
+>
+> Décision du mainteneur (option 1). En hexagonal, la rosette est rognée aux bords, comme
+> `HexGrid.cellsOccupied` le fait déjà : un grand pion peut se poser en lisière, des deux côtés.
 
 **Le fait.** `schema.js` vérifie les bornes d'un pion **en carré** : `cell.a + sizeCells ≤
 widthCells`, avec l'ancrage au coin haut-gauche. En hexagonal, l'emprise est une rosette
@@ -1109,6 +1136,14 @@ widthCells`, avec l'ancrage au coin haut-gauche. En hexagonal, l'emprise est une
 
 `core/` ne connaît pas la grille : dans les deux cas, la règle s'écrira dans `schema.js` pour le
 seul pavage hexagonal.
+
+### D-9 ✅ Règles Firebase : compte technique sans `email_verified` (audit du 22/09, H6)
+
+> ## ✅ TRANCHÉ le 23/09/2026 — on laisse tel quel
+>
+> Décision du mainteneur. Le risque suppose que le compte technique soit supprimé, puis recréé par
+> un tiers alors que l'inscription par e-mail reste ouverte. ⛔ Ne pas rouvrir de ma propre
+> initiative.
 
 ## E. Dettes techniques consignées, non corrigées
 
