@@ -90,6 +90,14 @@ async function ouvrirClient(browser, sessionId, role) {
     reconnect: () => page.evaluate(() => /** @type {any} */ (window).__probe.reconnect()),
     purge: () => page.evaluate(() => /** @type {any} */ (window).__probe.purge()),
     purgeSession: () => page.evaluate(() => /** @type {any} */ (window).__probe.purgeSession()),
+    /** @returns {Promise<number>} */
+    purgeAutomatique: () => page.evaluate(() => /** @type {any} */ (window).__probe.purgeAutomatique()),
+    /** @returns {Promise<number>} */
+    compterEvenements: () => page.evaluate(() => /** @type {any} */ (window).__probe.compterEvenements()),
+    /** @returns {Promise<Array<string|null>>} */
+    curseurs: () => page.evaluate(() => /** @type {any} */ (window).__probe.curseurs()),
+    /** @returns {Promise<boolean>} */
+    horlogePrete: () => page.evaluate(() => /** @type {any} */ (window).__probe.horlogePrete()),
   };
 }
 
@@ -191,6 +199,47 @@ test('une reconnexion ne rejoue pas l\'historique de la session', async ({ brows
     joueurs = null;
   } finally {
     await joueurs?.context.close();
+    await purgerQuandLesLeasesOntDisparu(mj);
+    await mj.context.close();
+  }
+});
+
+
+// C1 (audit du 22/09/2026) — la purge AUTOMATIQUE des événements supprime-t-elle quoi que ce soit ?
+// À la lecture, son `runTransaction` sur `session/{id}` rendait `undefined` quand le cache local
+// était vide, ce qui annule la transaction : `events` grossirait alors sans fin. Seule une base
+// réelle tranche. Deux clients reçoivent tout, leurs curseurs atteignent le dernier événement :
+// la purge doit en supprimer.
+test('C1 : la purge automatique supprime les événements que tous les clients ont reçus', async ({ browser }) => {
+  test.skip(!complet, RAISON);
+
+  const sessionId = `test-purge-auto-${Date.now()}`;
+  const mj = await ouvrirClient(browser, sessionId, 'gm');
+  const joueurs = await ouvrirClient(browser, sessionId, 'players');
+  try {
+    await mj.snapshot();
+    await joueurs.snapshot();
+    for (let i = 0; i < 6; i++) await mj.publish('token.move');
+    await expect.poll(() => joueurs.recus().then((r) => r.length), { timeout: 15000 }).toBe(6);
+
+    const avant = await mj.compterEvenements();
+    expect(avant, 'les six événements sont dans la base').toBeGreaterThanOrEqual(6);
+    // Chaque curseur a rattrapé le dernier événement, et l'horloge serveur est connue.
+    await expect
+      .poll(async () => {
+        const c = await mj.curseurs();
+        return c.length >= 2 && new Set(c).size === 1 && c[0] !== null;
+      }, { timeout: 20000 })
+      .toBe(true);
+    await expect.poll(() => mj.horlogePrete(), { timeout: 10000 }).toBe(true);
+
+    const supprimes = await mj.purgeAutomatique();
+    const apres = await mj.compterEvenements();
+    console.log(`[C1] avant ${avant}, supprimés annoncés ${supprimes}, après ${apres}`);
+    expect(supprimes, 'la purge automatique annonce des suppressions').toBeGreaterThan(0);
+    expect(apres, 'et la base les a réellement perdues').toBeLessThan(avant);
+  } finally {
+    await joueurs.context.close();
     await purgerQuandLesLeasesOntDisparu(mj);
     await mj.context.close();
   }

@@ -64,6 +64,28 @@ abonner();
     return true;
   },
   purge: () => transport.purgeEvents(),
+  /**
+   * La purge AUTOMATIQUE, telle que le transport la déclenche lui-même (audit du 22/09, C1). Rend
+   * le nombre d'événements supprimés.
+   */
+  purgeAutomatique: () =>
+    /** @type {any} */ (transport)._pruneAcknowledgedEvents(/** @type {any} */ (transport)._sessionEpoch),
+  /** Nombre d'événements réellement présents dans la base, lu au serveur. */
+  compterEvenements: async () => {
+    const { get, ref } = await import('firebase/database');
+    const db = /** @type {any} */ (transport)._db;
+    const snap = await get(ref(db, `session/${params.sessionId}/events`));
+    return snap.exists() ? Object.keys(snap.val()).length : 0;
+  },
+  /** Curseurs de rétention au serveur, pour attendre que chacun ait tout accusé. */
+  curseurs: async () => {
+    const { get, ref } = await import('firebase/database');
+    const db = /** @type {any} */ (transport)._db;
+    const snap = await get(ref(db, `session/${params.sessionId}/retentionClients`));
+    return Object.values(snap.val() ?? {}).map((c) => /** @type {any} */ (c)?.eventCursor ?? null);
+  },
+  /** Prêt à purger : l'écart d'horloge serveur est connu. */
+  horlogePrete: () => Boolean(/** @type {any} */ (transport)._serverTimeOffsetReady),
   purgeSession: () =>
     transport.purgeSessionEvents(params.sessionId, { dryRun: false, confirm: true }),
 };
