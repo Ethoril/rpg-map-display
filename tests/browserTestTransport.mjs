@@ -37,7 +37,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       });
 
       let documentHidden = false;
-      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, snapshot: any, setHidden: (hidden: boolean) => void}} */
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void}} */
       const wire = {
         published: [],
         received: [],
@@ -45,6 +45,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         // resynchros réellement demandées.
         gap: false,
         resyncs: 0,
+        resyncFailures: 0,
         // Remplacé par un test qui veut simuler un état que ce client a manqué ; `null` laisse
         // l'instantané injecté au démarrage.
         snapshot: null,
@@ -107,6 +108,11 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
 
         async resync() {
           wire.resyncs += 1;
+          // Échecs simulés (audit du 22/09, C5) : le test fixe combien de resynchros lèvent.
+          if (wire.resyncFailures > 0) {
+            wire.resyncFailures -= 1;
+            throw new Error('resynchro impossible (simulée)');
+          }
           // ⛔ `wire.gap` n'est PAS remis à faux ici : c'est le test qui décide, et il doit
           // pouvoir déclarer un trou à deux réveils consécutifs. Le vrai transport, lui,
           // recalcule sa réponse depuis l'âge de son bail à chaque appel.

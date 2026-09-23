@@ -925,6 +925,25 @@ export async function bootstrapPlayerApp(options = {}) {
     });
   }
 
+  // ⛔ Réessai d'une reprise ÉCHOUÉE (audit du 22/09, C5). Une resynchro qui lève laissait le
+  // client sans écoute, et rien ne réessayait avant le prochain `visibilitychange` — or la
+  // tablette castée ne se masque jamais : elle restait figée jusqu'au F5. Le réessai porte sur
+  // TOUTE la reprise (resynchro, instantané, restauration), pas sur le seul canal : rouvrir
+  // l'écoute sans relire l'état laisserait perdus les événements manqués. Délai doublé à chaque
+  // échec, de 2 s à 30 s ; un simple dépassement d'échéance n'en déclenche pas, la reprise
+  // continuant alors sa route.
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let repriseDiffereeTimer = null;
+  let delaiReprise = 2000;
+  const planifierNouvelleReprise = () => {
+    if (repriseDiffereeTimer !== null) return;
+    repriseDiffereeTimer = setTimeout(() => {
+      repriseDiffereeTimer = null;
+      void onVisibilityRestored();
+    }, delaiReprise);
+    delaiReprise = Math.min(30_000, delaiReprise * 2);
+  };
+
   const onVisibilityRestored = async () => {
     if (typeof document !== 'undefined' && document.hidden) return;
     // ⛔ Ne relire l'instantané QUE si le bail de rétention a réellement péri. L'instantané est
@@ -953,6 +972,10 @@ export async function bootstrapPlayerApp(options = {}) {
           applyingRemote = false;
         }
       })();
+      reprise.then(
+        () => { delaiReprise = 2000; },
+        () => planifierNouvelleReprise()
+      );
       try {
         await withDeadline(reprise, 'resynchro au réveil');
       } catch (error) {
@@ -1039,6 +1062,7 @@ export async function bootstrapPlayerApp(options = {}) {
 
   const destroy = () => {
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
+    if (repriseDiffereeTimer !== null) clearTimeout(repriseDiffereeTimer);
     playerControls.detach();
     versionBadge.detach();
     handoutOverlay.detach();

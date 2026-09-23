@@ -360,3 +360,40 @@ test('D-5 : la tablette n’écrit l’instantané que si aucun MJ n’est prés
   expect(await ecrituresApres(false), 'sans MJ, la table persiste').toBe(1);
   await context.close();
 });
+
+
+// C5 (audit du 22/09/2026) — une resynchro qui échouait laissait la tablette sans écoute, et rien
+// ne réessayait avant le prochain `visibilitychange`. Or une tablette castée ne se masque jamais.
+test('C5 : une reprise échouée est réessayée seule, et la tablette rattrape l’état', async ({ browser }) => {
+  const { context, player } = await ouvrirLaTable(browser, 'reveil-echec');
+  await expect.poll(() => caseDuPion(player), { timeout: 5000 }).toBe('2,2');
+
+  await player.evaluate((suivant) => {
+    const wire = /** @type {any} */ (window).__RPG_TEST_WIRE__;
+    wire.snapshot = suivant;
+    wire.resyncFailures = 1;
+  }, S1);
+  await endormirPuisReveiller(player, true);
+
+  // Premier essai : échec. Le second part seul, sans nouveau réveil.
+  await expect.poll(() => resynchros(player), { timeout: 8000 }).toBe(2);
+  await expect.poll(() => caseDuPion(player), { timeout: 5000 }).toBe('5,5');
+  await context.close();
+});
+
+test('C5 (MJ) : une reprise échouée est réessayée seule', async ({ browser }) => {
+  const context = await browser.newContext();
+  const gm = await context.newPage();
+  await installBrowserTransport(gm, 'reveil-echec-mj', S0);
+  await gm.goto('/gm.html?session=reveil-echec-mj');
+  await waitForApp(gm);
+  await gm.evaluate((suivant) => {
+    const wire = /** @type {any} */ (window).__RPG_TEST_WIRE__;
+    wire.snapshot = suivant;
+    wire.resyncFailures = 1;
+  }, S1);
+  await endormirPuisReveiller(gm, true);
+  await expect.poll(() => resynchros(gm), { timeout: 8000 }).toBe(2);
+  await expect.poll(() => caseDuPion(gm), { timeout: 5000 }).toBe('5,5');
+  await context.close();
+});

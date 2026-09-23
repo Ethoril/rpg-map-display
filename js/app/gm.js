@@ -1183,6 +1183,19 @@ export async function bootstrapGMApp(options = {}) {
    * l'instantané est réécrit 250 ms après chaque mutation, donc le relire sans raison ferait
    * régresser l'état de façon permanente. Voir la même garde dans `player.js`.
    */
+  // Réessai d'une reprise ÉCHOUÉE, même règle que `player.js` (audit du 22/09, C5).
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let repriseDiffereeTimer = null;
+  let delaiReprise = 2000;
+  const planifierNouvelleReprise = () => {
+    if (repriseDiffereeTimer !== null) return;
+    repriseDiffereeTimer = setTimeout(() => {
+      repriseDiffereeTimer = null;
+      void onVisibilityRestored();
+    }, delaiReprise);
+    delaiReprise = Math.min(30_000, delaiReprise * 2);
+  };
+
   const onVisibilityRestored = async () => {
     if (typeof document !== 'undefined' && document.hidden) return;
     if (!transportExtended?.mayHaveMissedEvents?.()) return;
@@ -1206,6 +1219,10 @@ export async function bootstrapGMApp(options = {}) {
         applyingRemote = false;
       }
     })();
+    reprise.then(
+      () => { delaiReprise = 2000; },
+      () => planifierNouvelleReprise()
+    );
     try {
       await withDeadline(reprise, 'resynchro au réveil');
     } catch (error) {
