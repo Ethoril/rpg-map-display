@@ -45,6 +45,9 @@ import {
   normalizeSessionId,
   showEvictionOverlay,
   withDeadline,
+  attendreConnexion,
+  CONNEXION_DEADLINE_MS,
+  CLE_REPRISE_HORS_LIGNE,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
@@ -73,6 +76,7 @@ function defaultGmSessionId() {
  * @param {Transport} [options.transport]
  * @param {Record<string, any>} [options.firebaseConfig]
  * @param {string} [options.sessionId]
+ * @param {number} [options.connexionDelaiMs] Échéance de la connexion au démarrage (C4) ; les tests la raccourcissent
  */
 export async function bootstrapGMApp(options = {}) {
   const canvas =
@@ -900,17 +904,50 @@ export async function bootstrapGMApp(options = {}) {
   let transport = null;
   /** @type {ReturnType<typeof createGMPanel>|null} */
   let gmPanel = null;
+  // ── C4 : démarrage hors ligne — local, puis reprise (D-10, tranché le 23/09/2026) ─────────
+  //
+  // La connexion ne rejette jamais hors ligne : la page restait figée sur « Connexion
+  // Firebase… ». Passé l'échéance, on démarre en LOCAL avec la partie de ce poste et un bandeau
+  // « hors ligne », et la tentative continue. Quand elle aboutit, la page se RECHARGE et démarre
+  // en ligne — recâbler à chaud le transport dans les dizaines de fermetures qui le capturent
+  // serait bien plus risqué. Caméra et étage sont mémorisés localement : rien ne bouge.
+  // ⛔ Si le MJ a modifié la partie entre-temps, il fait autorité : au redémarrage, il POUSSE son
+  // état local au lieu de relire l'état partagé (voir `reprise` plus bas).
+  const tentative = connectSession({
+    injectedTransport: options.transport || null,
+    firebaseConfig: options.firebaseConfig || null,
+    sessionId,
+    role: 'gm',
+    loginHost: panelContainer,
+    onStatus: networkStatus.update,
+  });
+  const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
+  transport = connexion.transport;
+  /** Campagne chargée hors ligne, pour savoir au retour du réseau si le MJ l'a modifiée. */
+  let campagneHorsLigne = /** @type {string|null} */ (null);
+  if (connexion.delaiDepasse) {
+    networkStatus.update('offline');
+    tentative.then(
+      (tardif) => {
+        if (!tardif) return;
+        const modifiee = campagneHorsLigne !== null && JSON.stringify(store.getCampaign()) !== campagneHorsLigne;
+        try {
+          sessionStorage.setItem(CLE_REPRISE_HORS_LIGNE, modifiee ? 'pousser' : 'relire');
+        } catch {
+          // Sans sessionStorage, le redémarrage relit l'état partagé : le cas prudent.
+        }
+        location.reload();
+      },
+      () => {}
+    );
+  }
+  /** Consigne laissée par un démarrage hors ligne qui a retrouvé le réseau, lue une seule fois. */
+  let reprise = /** @type {string|null} */ (null);
   try {
-    transport = await connectSession({
-      injectedTransport: options.transport || null,
-      firebaseConfig: options.firebaseConfig || null,
-      sessionId,
-      role: 'gm',
-      loginHost: panelContainer,
-      onStatus: networkStatus.update,
-    });
+    reprise = sessionStorage.getItem(CLE_REPRISE_HORS_LIGNE);
+    sessionStorage.removeItem(CLE_REPRISE_HORS_LIGNE);
   } catch {
-    transport = null;
+    reprise = null;
   }
 
   // Une publication qui échoue doit se voir à la table, pas seulement dans la console : le badge
@@ -1190,7 +1227,11 @@ export async function bootstrapGMApp(options = {}) {
       const snapshot = /** @type {any} */ (await transport.snapshot());
       applyingRemote = true;
       try {
-        if (snapshot && (snapshot.campaign || snapshot.levels)) {
+        if (reprise === 'pousser') {
+          // Le MJ a modifié la partie hors ligne : son état local fait autorité. Il l'écrit, et le
+          // publie en `scene.load` — instantané absolu, rejouable — pour que la table le suive.
+          store.loadFromLocalStorage(sessionId);
+        } else if (snapshot && (snapshot.campaign || snapshot.levels)) {
           store.restoreFromSnapshot(snapshot, { sessionId, activeLevelId: etageMemorise ?? undefined });
         } else {
           store.loadFromLocalStorage(sessionId);
@@ -1204,10 +1245,15 @@ export async function bootstrapGMApp(options = {}) {
       networkStatus.update('error', error);
       store.loadFromLocalStorage(sessionId);
     }
+    if (reprise === 'pousser' && store.getCampaign()) {
+      scheduleSnapshot();
+      transport.publish({ type: 'scene.load', payload: createSnapshotPayload(), at: Date.now(), by: 'gm' });
+    }
   } else {
     store.loadFromLocalStorage(sessionId);
     const persistenceError = store.getLastPersistenceError();
     if (persistenceError) networkStatus.update('error', persistenceError);
+    if (connexion.delaiDepasse) campagneHorsLigne = JSON.stringify(store.getCampaign());
   }
 
   /**

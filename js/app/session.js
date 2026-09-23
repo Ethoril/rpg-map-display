@@ -76,7 +76,7 @@ export function normalizeSessionId(brut) {
  *
  * @param {'gm'|'players'} role
  * @param {string} [sessionId]
- * @returns {{element: HTMLElement, update: (status: 'local'|'auth'|'connecting'|'connected'|'warning'|'error', detail?: unknown) => void, remove: () => void}}
+ * @returns {{element: HTMLElement, update: (status: 'local'|'auth'|'connecting'|'connected'|'warning'|'error'|'offline', detail?: unknown) => void, remove: () => void}}
  */
 export function createNetworkStatus(role, sessionId = '') {
   const element = document.createElement('div');
@@ -96,13 +96,15 @@ export function createNetworkStatus(role, sessionId = '') {
         connected: 'Firebase connecté',
         warning: `Attention persistance — ${/** @type {any} */ (detail)?.message || detail || 'snapshot proche de la limite Firestore'}`,
         error: `Erreur réseau — ${/** @type {any} */ (detail)?.message || detail || 'inconnue'}`,
+        // C4 (D-10) : la partie de ce poste s'affiche, mais rien ne part ni n'arrive.
+        offline: 'Hors ligne — rien n’est partagé. Reconnexion en cours…',
       };
       const sessionSuffix = role === 'gm' && sessionId ? ` · session ${sessionId}` : '';
       element.textContent = `${messages[status]}${sessionSuffix}`;
       element.dataset.status = status;
       element.dataset.sessionId = sessionId;
       element.style.background =
-        status === 'error' ? '#8b1e1e' : status === 'warning' ? '#775510' : status === 'connected' ? '#174f2a' : '#3d3520';
+        status === 'error' || status === 'offline' ? '#8b1e1e' : status === 'warning' ? '#775510' : status === 'connected' ? '#174f2a' : '#3d3520';
       element.style.display =
         role === 'players' && status === 'connected' ? 'none' : 'block';
     },
@@ -245,6 +247,45 @@ export function showEvictionOverlay(options = {}) {
  * toujours et ne réclamerait jamais la vision au MJ.
  */
 export const RESYNC_DEADLINE_MS = 10_000;
+
+/**
+ * Échéance de la connexion au démarrage (audit du 22/09, C4 ; arbitrage D-10).
+ *
+ * ⛔ Hors ligne — le site en cache, le Wi-Fi coupé —, \`onDisconnect().remove()\` ne rejette jamais :
+ * le SDK met l'opération en file et attend le réseau. La page restait figée sur « Connexion
+ * Firebase… », plateau vide, pour toujours.
+ */
+export const CONNEXION_DEADLINE_MS = 10_000;
+
+/**
+ * Clé \`sessionStorage\` posée juste avant le rechargement qui suit une connexion tardive. Sa valeur
+ * dit au démarrage suivant s'il doit relire l'état partagé (\`relire\`) ou, côté MJ qui a modifié la
+ * partie hors ligne, pousser son état local (\`pousser\`).
+ */
+export const CLE_REPRISE_HORS_LIGNE = 'rpg_reprise_hors_ligne';
+
+/**
+ * Attend la connexion au plus \`deadlineMs\`. Distingue l'ÉCHÉANCE, où la tentative continue sa
+ * route et peut encore aboutir, d'un ÉCHEC, qui ne réessaiera pas.
+ *
+ * @param {Promise<Transport|null>} tentative
+ * @param {number} [deadlineMs]
+ * @returns {Promise<{transport: Transport|null, delaiDepasse: boolean}>}
+ */
+export function attendreConnexion(tentative, deadlineMs = CONNEXION_DEADLINE_MS) {
+  /** @type {ReturnType<typeof setTimeout>|undefined} */
+  let minuterie;
+  const echeance = new Promise((ok) => {
+    minuterie = setTimeout(() => ok({ transport: null, delaiDepasse: true }), deadlineMs);
+  });
+  const issue = tentative.then(
+    (transport) => ({ transport, delaiDepasse: false }),
+    () => ({ transport: null, delaiDepasse: false })
+  );
+  return /** @type {Promise<{transport: Transport|null, delaiDepasse: boolean}>} */ (
+    Promise.race([issue, echeance]).finally(() => clearTimeout(minuterie))
+  );
+}
 
 /**
  * Course entre un travail réseau et une échéance. L'échec de l'échéance rejette ; le travail,

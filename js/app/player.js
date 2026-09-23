@@ -25,7 +25,14 @@ import { withTemplatePreview } from '../input/templateHit.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
 import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
 import { VISION_REQUEST_EVENT } from '../core/constants.js';
-import { createNetworkStatus, connectSession, normalizeSessionId, withDeadline } from './session.js';
+import {
+  createNetworkStatus,
+  connectSession,
+  normalizeSessionId,
+  withDeadline,
+  attendreConnexion,
+  CONNEXION_DEADLINE_MS,
+} from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 import { listOtherGmClients } from '../state/presence.js';
@@ -276,6 +283,7 @@ async function setupMobileLocks() {
  * @param {Transport} [options.transport]
  * @param {Record<string, any>} [options.firebaseConfig]
  * @param {string} [options.sessionId]
+ * @param {number} [options.connexionDelaiMs] Échéance de la connexion au démarrage (C4) ; les tests la raccourcissent
  */
 export async function bootstrapPlayerApp(options = {}) {
   const cleanupMobileLocks = await setupMobileLocks();
@@ -707,17 +715,29 @@ export async function bootstrapPlayerApp(options = {}) {
   const networkStatus = createNetworkStatus('players', sessionId);
   /** @type {Transport|null} */
   let transport = null;
-  try {
-    transport = await connectSession({
-      injectedTransport: options.transport || null,
-      firebaseConfig: options.firebaseConfig || null,
-      sessionId,
-      role: 'players',
-      loginHost: document.body,
-      onStatus: networkStatus.update,
-    });
-  } catch {
-    transport = null;
+  // ── C4 : démarrage hors ligne — local, puis reprise (D-10) — même règle que `gm.js` ────────
+  //
+  // Passé l'échéance, la partie de ce poste s'affiche avec le bandeau « hors ligne », et la
+  // tentative continue. Quand elle aboutit, la page redémarre en ligne et RELIT l'état partagé :
+  // c'est le MJ qui fait autorité, la table ne pousse jamais le sien.
+  const tentative = connectSession({
+    injectedTransport: options.transport || null,
+    firebaseConfig: options.firebaseConfig || null,
+    sessionId,
+    role: 'players',
+    loginHost: document.body,
+    onStatus: networkStatus.update,
+  });
+  const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
+  transport = connexion.transport;
+  if (connexion.delaiDepasse) {
+    networkStatus.update('offline');
+    tentative.then(
+      (tardif) => {
+        if (tardif) location.reload();
+      },
+      () => {}
+    );
   }
 
   const transportExtended = /** @type {any} */ (transport);

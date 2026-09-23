@@ -397,3 +397,77 @@ test('C5 (MJ) : une reprise échouée est réessayée seule', async ({ browser }
   await expect.poll(() => caseDuPion(gm), { timeout: 5000 }).toBe('5,5');
   await context.close();
 });
+
+// C4 (audit du 22/09/2026 ; D-10) — démarrage hors ligne. La connexion ne rendait jamais la main :
+// page figée, plateau vide. Passé l'échéance, la partie de ce poste s'affiche avec un bandeau
+// « hors ligne » ; quand le réseau revient, la page redémarre en ligne. Le MJ qui a modifié la
+// partie hors ligne POUSSE son état ; sinon, il relit l'état partagé.
+for (const modifie of [true, false]) {
+  test(`C4 : démarrage hors ligne, puis retour du réseau — MJ ${modifie ? 'qui a modifié la partie' : 'qui n’a rien touché'}`, async ({ browser }) => {
+    const sessionId = `c4-${modifie ? 'pousse' : 'relit'}`;
+    const context = await browser.newContext();
+    const gm = await context.newPage();
+    await gm.addInitScript(([sid, local]) => {
+      if (sessionStorage.getItem('test_c4_init')) return;
+      sessionStorage.setItem('test_c4_init', '1');
+      sessionStorage.setItem('test_connexion_bloquee', '1');
+      localStorage.setItem(`rpg_campaign_${sid}`, JSON.stringify(local));
+    }, /** @type {const} */ ([sessionId, S0.campaign]));
+    // L'état partagé diffère de la copie locale : c'est ce qui rend le choix observable.
+    await installBrowserTransport(gm, sessionId, S1);
+    await gm.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(gm);
+
+    await expect(gm.locator('#network-status-gm')).toContainText('Hors ligne');
+    expect(await caseDuPion(gm), 'la partie de ce poste s’affiche').toBe('2,2');
+
+    if (modifie) {
+      await gm.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        store.moveTokenToCell('pc-1', { a: 7, b: 7 });
+      });
+    }
+
+    const rechargement = gm.waitForEvent('load');
+    await gm.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.debloquer());
+    await rechargement;
+    await waitForApp(gm);
+
+    await expect(gm.locator('#network-status-gm')).not.toContainText('Hors ligne');
+    if (modifie) {
+      await expect.poll(() => caseDuPion(gm), { timeout: 5000 }).toBe('7,7');
+      const scene = await gm.evaluate(() =>
+        /** @type {any} */ (window).__RPG_TEST_WIRE__.published.find((/** @type {any} */ e) => e.type === 'scene.load')
+      );
+      expect(scene?.payload?.campaign?.tokens?.[0]?.cell, 'l’état local est publié à la table').toEqual({ a: 7, b: 7 });
+    } else {
+      await expect.poll(() => caseDuPion(gm), { timeout: 5000 }).toBe('5,5');
+    }
+    await context.close();
+  });
+}
+
+test('C4 (tablette) : démarrage hors ligne, puis retour du réseau — la table relit l’état partagé', async ({ browser }) => {
+  const sessionId = 'c4-tablette';
+  const context = await browser.newContext();
+  const player = await context.newPage();
+  await player.addInitScript(([sid, local]) => {
+    if (sessionStorage.getItem('test_c4_init')) return;
+    sessionStorage.setItem('test_c4_init', '1');
+    sessionStorage.setItem('test_connexion_bloquee', '1');
+    localStorage.setItem(`rpg_campaign_${sid}`, JSON.stringify(local));
+  }, /** @type {const} */ ([sessionId, S0.campaign]));
+  await installBrowserTransport(player, sessionId, S1);
+  await player.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(player);
+
+  await expect(player.locator('#network-status-players')).toContainText('Hors ligne');
+  expect(await caseDuPion(player)).toBe('2,2');
+
+  const rechargement = player.waitForEvent('load');
+  await player.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.debloquer());
+  await rechargement;
+  await waitForApp(player);
+  await expect.poll(() => caseDuPion(player), { timeout: 5000 }).toBe('5,5');
+  await context.close();
+});

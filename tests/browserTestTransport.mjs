@@ -37,7 +37,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       });
 
       let documentHidden = false;
-      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void}} */
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void}} */
       const wire = {
         published: [],
         received: [],
@@ -60,6 +60,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         retenir: false,
         retenus: [],
         relacher: () => {},
+        debloquer: () => {},
       };
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => documentHidden });
       Object.defineProperty(document, 'visibilityState', {
@@ -78,6 +79,18 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         }
 
         async connect(/** @type {string} */ connectedSessionId) {
+          // Connexion BLOQUÉE (audit du 22/09, C4) : comme le vrai SDK hors ligne, elle ne rend la
+          // main ni en succès ni en échec, jusqu'à `wire.debloquer()`. Le drapeau vit dans
+          // sessionStorage, que le test pose ; `debloquer` l'efface, pour que le rechargement qui
+          // suit se connecte normalement.
+          if (sessionStorage.getItem('test_connexion_bloquee') === '1') {
+            await new Promise((ok) => {
+              wire.debloquer = () => {
+                sessionStorage.removeItem('test_connexion_bloquee');
+                ok(undefined);
+              };
+            });
+          }
           this.channel = new BroadcastChannel(`rpg-test-${connectedSessionId}`);
           const livrer = (/** @type {any} */ data) => {
             wire.received.push(data);
@@ -158,6 +171,8 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       /** @type {any} */ (window).__RPG_APP_OPTIONS__ = {
         sessionId: injectedSessionId,
         transport: new BrowserTestTransport(),
+        // Échéance de connexion raccourcie quand un test simule le hors ligne (C4).
+        ...(sessionStorage.getItem('test_connexion_bloquee') === '1' ? { connexionDelaiMs: 300 } : {}),
       };
     },
     { injectedSessionId: sessionId, injectedSnapshot: snapshot }
