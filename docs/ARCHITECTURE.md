@@ -215,6 +215,12 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   ├─ import-uvtt.mjs            [1a] CLI Node : .uvtt → maps/ + document de scène
 │   ├─ prepare-maps.mjs           [2]  CLI Node : scanne maps/*.uvtt, génère catalog.json
 │   ├─ resample.mjs               [1a] rééchantillonnage d'image (Node)
+│   ├─ extract-poster.mjs         [W]  première image d'un fond animé, encodée en WebP par la
+│                                      chaîne de resample.mjs ; importé par prepare-maps
+│   ├─ videoProbe.mjs             [W]  dimensions d'un fond animé sans décodage, pour prévenir
+│                                      au-delà du décodeur matériel ; importé par prepare-maps
+│   ├─ install-status-icons.mjs   [2]  installe les 14 icônes d'états depuis game-icons.net ;
+│                                      sa table fait autorité sur le vocabulaire de token.markers
 │   ├─ make-fixture.mjs           [1a] génère les fixtures de test
 │   ├─ stamp-version.mjs          [1a] écrit js/core/version.js
 │   ├─ serve.mjs                  [1a] serveur statique sans dépendance (tests + dev local).
@@ -339,16 +345,22 @@ mécaniquement (§4).
 | Module | Peut importer | Ne doit JAMAIS importer |
 |---|---|---|
 | `core/*` | rien (sauf `core/*`) | tout le reste |
-| `grid/*` | `core/*` | `render/*`, `state/*`, `transport/*`, `ui/*` |
+| `grid/*` | `core/*`, `movement/*` | `render/*`, `state/*`, `transport/*`, `ui/*` |
 | `transport/*` | `core/*` | `render/*`, `grid/*`, `ui/*` |
 | `state/*` | `core/*`, `grid/*`, `import/*` | `render/*`, `ui/*`, `transport/*` |
 | `import/*` | `core/*`, `grid/*` | `render/*`, `ui/*`, `transport/*`, `state/*` |
 | `movement/*` | `core/*`, `grid/*` | tout le reste |
 | `vision/*` | `core/*` | `grid/*`, `render/*`, `ui/*`, `state/*` |
-| `render/*` | `core/*`, `grid/*`, `state/*` | `transport/*`, `ui/*`, `import/*` |
+| `render/*` | `core/*`, `grid/*`, `state/*`, `vision/*`, `input/*` | `transport/*`, `ui/*`, `import/*` |
 | `input/*` | `core/*` | `render/*`, `state/*` |
 | `ui/*` | tout sauf `transport/*` en direct | `firebase/*` |
 | `app/*` | tout | — |
+
+> **Amendement D-7 (23/09/2026)** : la table rattrape deux dépendances réelles, saines et sans
+> effet sur les règles portantes. `render/* → vision/*, input/*` : le rendu dessine les polygones
+> de vision et la poignée d'un gabarit à la taille de sa zone de tap. `grid/* → movement/*` :
+> `cellsInRange`, dans le contrat de `GridAdapter`, délègue son Dijkstra à `movement/reachable.js`.
+> Le test d'architecture n°6 vérifie désormais une liste d'autorisations complète.
 
 > `state/* → import/*` a été **ajouté à T-13**. La table interdisait au consommateur désigné
 > d'atteindre `computeBlockedEdges`, dont T-08 gèle pourtant la signature « pour que
@@ -544,7 +556,10 @@ dégrader**. Ils sont écrits au lot 1a et ne doivent jamais être désactivés.
      `map_origin` (unités de case) en `offsetX`/`offsetY` (pixels). C'est le seul endroit où
      une quantité en cases devient légitimement une quantité en pixels, parce qu'elle
      *constitue* le repère que `GridAdapter` appliquera ensuite ;
-   - l'**application** dans `js/grid/*` — positionner quoi que ce soit passe par là.
+   - l'**application** dans `js/grid/*` — positionner quoi que ce soit passe par là ;
+   - la **mesure d'un pas** dans `js/import/gridPitch.js` et la **suggestion de calibrage** dans
+     `js/ui/gm/importPanel.js` : même famille que la définition du repère — ils divisent une
+     taille en pixels par une densité, et ne convertissent aucune position (D-7, 23/09/2026).
 
    Le test cible l'application à des positions, pas la mention du nom. Ne jamais renommer le
    champ pour faire passer le test.
@@ -630,11 +645,10 @@ lui, **est** éclairé : une pièce noire n'a pas à montrer une grille en plein
 `player.html` est autonome et paramétrable par l'URL :
 
 ```
-player.html?session=<id>&camera=follow
+player.html?session=<id>
 ```
 
-- Sans `camera=follow` : caméra locale libre.
-- Avec : la caméra suit celle publiée par la tablette (repli si le cast déçoit).
+Caméra locale libre, toujours : aucun suivi de caméra (D-6, 23/09/2026).
 
 CSS obligatoire dans `player.css` :
 

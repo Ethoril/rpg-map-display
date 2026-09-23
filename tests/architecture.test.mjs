@@ -145,16 +145,6 @@ test('5. Manifeste respecté (tout fichier de js/ et scripts/ figure dans ARCHIT
   }
   assert.ok(listes.has('js/app/gm.js'), 'lecture de l’arbre du §1 : js/app/gm.js introuvable, le format a dérivé');
 
-  // ⏳ Fichiers présents mais absents du manifeste, relevés par l'audit du 22/09 (D5). Leur
-  // inscription au §1 — ou leur retrait — est une décision du mainteneur. Cette liste ne doit
-  // que RÉTRÉCIR.
-  const enAttente = new Set([
-    'scripts/extract-poster.mjs',
-    'scripts/install-status-icons.mjs',
-    'scripts/measure-firestore-snapshots.mjs',
-    'scripts/videoProbe.mjs',
-  ]);
-
   /** @param {string} dir @returns {string[]} */
   const fichiers = (dir) =>
     fs.existsSync(dir)
@@ -165,12 +155,8 @@ test('5. Manifeste respecté (tout fichier de js/ et scripts/ figure dans ARCHIT
   const hors = [...fichiers(jsDir), ...fichiers(path.join(rootDir, 'scripts'))]
     .map(toRelativeJsPath)
     .filter((rel) => /\.(?:js|mjs)$/.test(rel))
-    .filter((rel) => !listes.has(rel) && !enAttente.has(rel));
+    .filter((rel) => !listes.has(rel));
   assert.deepEqual(hors, [], `Fichiers hors du manifeste ARCHITECTURE.md §1 : ${hors.join(', ')}`);
-
-  for (const rel of enAttente) {
-    assert.ok(!listes.has(rel), `${rel} est désormais au manifeste : le retirer de la liste d'attente`);
-  }
 });
 
 test("6. Règles d'importation (tableau §2 d'ARCHITECTURE.md vérifié fichier par fichier)", () => {
@@ -186,8 +172,6 @@ test("6. Règles d'importation (tableau §2 d'ARCHITECTURE.md vérifié fichier 
   /** Ce que chaque module a le droit d'importer, colonne « Peut importer » de la table §2. */
   const permis = /** @type {Record<string, string[]|null>} */ ({
     core: [],
-    // ⏳ `movement` : violation connue, H1 du plan d'audit — `grid/*` délègue `cellsInRange` à
-    // `movement/reachable.js`. À retirer quand H1 est tranché, pas à généraliser.
     grid: ['core', 'movement'],
     transport: ['core'],
     state: ['core', 'grid', 'import'],
@@ -195,15 +179,12 @@ test("6. Règles d'importation (tableau §2 d'ARCHITECTURE.md vérifié fichier 
     movement: ['core', 'grid'],
     vision: ['core'],
     input: ['core'],
-    // `render/*` importe `vision/*` et `input/templateHit.js`, que la table ne liste pas : il
-    // reste vérifié par ses interdits jusqu'à ce que la table soit amendée (plan d'audit, D4).
-    render: null,
+    render: ['core', 'grid', 'state', 'vision', 'input'],
     ui: null,
     app: null,
   });
   /** Interdits explicites, pour les modules sans liste d'autorisations. */
   const interdits = /** @type {Record<string, string[]>} */ ({
-    render: ['transport', 'ui', 'import', 'app'],
     ui: ['transport', 'app'],
     app: [],
   });

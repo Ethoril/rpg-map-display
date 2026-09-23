@@ -28,6 +28,7 @@ import { VISION_REQUEST_EVENT } from '../core/constants.js';
 import { createNetworkStatus, connectSession, normalizeSessionId, withDeadline } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
+import { listOtherGmClients } from '../state/presence.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 
@@ -423,7 +424,6 @@ export async function bootstrapPlayerApp(options = {}) {
   // casse ne doit pas décider silencieusement d'une autre session.
   const sessionId =
     options.sessionId || normalizeSessionId(urlParams.get('session')) || 'local-player';
-  const cameraFollow = urlParams.get('camera') === 'follow';
   store.setSessionId(sessionId);
 
   // ── UX-10 : la vue joueurs a SON étage affiché ────────────────────────────────────────────
@@ -730,6 +730,15 @@ export async function bootstrapPlayerApp(options = {}) {
     if (snapshotTimer !== null) clearTimeout(snapshotTimer);
     snapshotTimer = setTimeout(() => {
       snapshotTimer = null;
+      // ⛔ D-5 (tranché le 23/09/2026) : la tablette n'écrit l'instantané QUE si aucun MJ n'est
+      // présent. Tant qu'un MJ l'est, il reçoit chaque coup de la table et persiste seul : une
+      // tablette réveillée ne peut plus écraser son état avec des données périmées. Sans MJ — son
+      // onglet fermé, ou le temps de son F5 —, la table persiste, et aucun coup n'est perdu.
+      //
+      // ⚠ Fenêtre résiduelle : un coup joué dans la seconde où le MJ recharge, avant que le serveur
+      // n'ait retiré sa présence, n'est écrit par personne. La présence se lit au DÉPART de
+      // l'écriture, pas à sa programmation, pour la réduire au minimum.
+      if (listOtherGmClients().length > 0) return;
       const snapshot = createSnapshotPayload();
       const diagnostic = transportExtended.getSnapshotSizeDiagnostic?.(snapshot);
       if (diagnostic?.severity === 'warning') networkStatus.update('warning', diagnostic.message);
@@ -823,18 +832,11 @@ export async function bootstrapPlayerApp(options = {}) {
   if (transport) {
     unsubscribeEvents = transport.subscribe((event) => {
       if (transportExtended.isOwnEvent?.(event)) return;
-      if (cameraFollow && event.type === 'view.change') {
-        const payload = /** @type {any} */ (event.payload);
-        if (payload?.camera) {
-          camera.setPan(payload.camera.x, payload.camera.y);
-          cameraChoisie = true;
-          camera.setZoom(payload.camera.zoom);
-          requestRender();
-        }
-        return;
-      }
+      // ⛔ Plus de `view.change` (D-6, tranché le 23/09/2026) : chaque écran déplace et zoome sa
+      // vue indépendamment, toujours. Un événement de ce type encore présent dans la file d'une
+      // ancienne session est ignoré par `applyNetworkEvent`, qui ne le connaît pas.
       // Un ping n'est pas une mutation de l'état de jeu : il ne passe pas par `applyNetworkEvent`,
-      // qui le laisserait tomber silencieusement. Traité ici comme `view.change` juste au-dessus,
+      // qui le laisserait tomber silencieusement. Traité ici, à part,
       // pour la même raison — un effet local, sans persistance et sans rejeu. Un joueur qui rejoint
       // la séance ne doit surtout pas voir un vieux ping ressurgir.
       if (event.type === 'ping') {

@@ -32,7 +32,6 @@ import {
   SESSION_EVICT_GM_EVENT,
   VISION_REQUEST_EVENT,
   LIGHT_DEFAULT,
-  VIEW_PUBLISH_HZ,
 } from '../core/constants.js';
 
 import { createGMPanel } from '../ui/gm/panel.js';
@@ -1349,29 +1348,6 @@ export async function bootstrapGMApp(options = {}) {
     };
   }
 
-  // ── `view.change` limité à VIEW_PUBLISH_HZ (CdC §7 : « throttlé 10 Hz ») ─────────────────
-  //
-  // ⛔ Audit du 22/09, B6 : le pan en publiait un par image, la molette et le pincement du
-  // trackpad un par événement `wheel` — chacun un push RTDB. La caméra est lue AU DÉPART de la
-  // publication, jamais au moment où elle est demandée : la dernière position part toujours.
-  /** @type {ReturnType<typeof setTimeout>|null} */
-  let viewPublishTimer = null;
-  let lastViewPublishAt = -Infinity;
-  function scheduleViewPublish() {
-    if (!transport || viewPublishTimer !== null) return;
-    const attente = Math.max(0, lastViewPublishAt + 1000 / VIEW_PUBLISH_HZ - Date.now());
-    viewPublishTimer = setTimeout(() => {
-      viewPublishTimer = null;
-      lastViewPublishAt = Date.now();
-      transport?.publish({
-        type: 'view.change',
-        payload: { camera: { x: camera.x, y: camera.y, zoom: camera.zoom } },
-        at: lastViewPublishAt,
-        by: 'gm',
-      });
-    }, attente);
-  }
-
   /**
    * @param {import('../input/gestures.js').InputIntention} intention
    */
@@ -1419,7 +1395,6 @@ export async function bootstrapGMApp(options = {}) {
       );
       persistCamera();
       requestRender();
-      scheduleViewPublish();
       return;
     }
 
@@ -1430,7 +1405,6 @@ export async function bootstrapGMApp(options = {}) {
       camera.setPan(camera.x + before.x - after.x, camera.y + before.y - after.y);
       persistCamera();
       requestRender();
-      scheduleViewPublish();
       return;
     }
 

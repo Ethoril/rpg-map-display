@@ -35,11 +35,6 @@ export const DRAG_HOLD_MS = 150;
  */
 export const PING_DURATION_MS = 2000;
 
-/**
- * Fréquence maximale de publication de l'état de la caméra/vue sur le réseau (10 Hz, soit toutes les 100 ms).
- * Évite de saturer le canal temps réel tout en assurant une fluidité perçue suffisante.
- */
-export const VIEW_PUBLISH_HZ = 10;
 
 /**
  * Clé de `sessionStorage` mémorisant le code de session du MJ.

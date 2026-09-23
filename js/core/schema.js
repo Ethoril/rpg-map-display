@@ -1138,8 +1138,14 @@ export function validateCampaign(campaign) {
         token.sizeCells >= 1 &&
         (cell.a < 0 ||
           cell.b < 0 ||
-          cell.a + token.sizeCells > level.widthCells ||
-          cell.b + token.sizeCells > level.heightCells)
+          // ⭐ Hexagonal : seul l'ANCRAGE doit être dans la carte (D-8, tranché le 23/09/2026). La
+          // rosette, centrée sur lui, est rognée aux bords par `HexGrid.cellsOccupied` ; la
+          // vérifier comme un bloc carré ancré en haut à gauche acceptait un débordement à gauche
+          // et refusait le même à droite.
+          (level.grid?.type === 'hex'
+            ? cell.a >= level.widthCells || cell.b >= level.heightCells
+            : cell.a + token.sizeCells > level.widthCells ||
+              cell.b + token.sizeCells > level.heightCells))
       ) {
         errors.push(
           `Pion "${tokenId}" : position hors limites de l'étage "${token.levelId}"`

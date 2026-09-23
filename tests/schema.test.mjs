@@ -421,3 +421,19 @@ test('H3 : createLevel fusionne une grille et une ambiante partielles avec leurs
   assert.equal(level.ambient.baked, false);
   assert.deepEqual(validateCampaign(createCampaign({ levels: [level] })), []);
 });
+
+// D-8 (tranché le 23/09/2026) — en hexagonal, seul l'ancrage d'un pion doit être dans la carte :
+// la rosette est rognée aux bords. Le contrôle carré acceptait un grand pion en colonne 0 et
+// refusait le même en dernière colonne.
+test('D-8 : un grand pion hexagonal se pose en lisière, des deux côtés ; en carré rien ne change', () => {
+  const hex = createLevel({ id: 'hx', widthCells: 8, heightCells: 8, grid: { type: 'hex' } });
+  const carre = createLevel({ id: 'sq', widthCells: 8, heightCells: 8 });
+  /** @param {any} level @param {{a: number, b: number}} cell */
+  const erreurs = (level, cell) =>
+    validateCampaign(createCampaign({ levels: [level], tokens: [createToken({ id: 'g', levelId: level.id, cell, sizeCells: 2 })] }))
+      .filter((e) => /hors limites/.test(e));
+  assert.deepEqual(erreurs(hex, { a: 0, b: 3 }), []);
+  assert.deepEqual(erreurs(hex, { a: 7, b: 3 }), [], 'la dernière colonne aussi');
+  assert.equal(erreurs(hex, { a: 8, b: 3 }).length, 1, 'un ancrage hors carte reste refusé');
+  assert.equal(erreurs(carre, { a: 7, b: 3 }).length, 1, 'en carré, le bloc 2×2 doit tenir');
+});

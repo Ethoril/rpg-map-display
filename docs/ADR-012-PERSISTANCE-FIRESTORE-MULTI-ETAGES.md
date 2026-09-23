@@ -6,7 +6,8 @@ pas écrire une v3 partielle dans cette tranche.
 
 ## Mesure qui motive la décision
 
-La commande reproductible `node scripts/measure-firestore-snapshots.mjs` mesure le snapshot après
+La commande `node scripts/measure-firestore-snapshots.mjs` — retirée le 23/09/2026 (D-7), l'historique
+git la garde — mesurait le snapshot après
 l'encodage des murs exigé par Firestore. Elle produit les valeurs suivantes le 07/08/2026 :
 
 | Jeu de données | JSON UTF-8 encodé | Taille Firestore documentée | Estimation prudente appliquée |

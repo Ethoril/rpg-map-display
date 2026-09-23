@@ -248,14 +248,14 @@ sans refactor.
 
 ### URL joueur autonome (option de repli du cast)
 
-La vue joueurs est une URL indépendante :
-`…/player?session=<id>&camera=follow`
+La vue joueurs est une URL indépendante : `…/player?session=<id>`. Si le mirroring déçoit
+(latence, netteté du texte, coupures), on ouvre cette URL sur n'importe quel navigateur côté TV
+et on récupère un rendu natif 60 fps.
 
-- Sans `camera=follow` : caméra locale libre.
-- Avec : la caméra suit celle publiée par la tablette.
-
-Coût ~30 lignes. Si le mirroring déçoit (latence, netteté du texte, coupures), on ouvre
-cette URL sur n'importe quel navigateur côté TV et on récupère un rendu natif 60 fps.
+> **Amendement D-6 (23/09/2026)** : ⛔ **aucun suivi de caméra**, dans aucun sens. Chaque écran
+> déplace et zoome sa vue indépendamment. Le paramètre `camera=follow` et l'événement
+> `view.change` sont supprimés — le code faisait d'ailleurs l'inverse de ce que ce paragraphe
+> décrivait (la tablette suivait le MJ).
 Option conservée gratuitement, non utilisée par défaut.
 
 ---
@@ -782,7 +782,6 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `token.levelChange` | MJ, joueurs (liaison) | ponctuel |
 | `token.create` / `update` / `delete` | MJ | ponctuel |
 | `portal.toggle` | MJ, joueurs si autorisé | ponctuel — `{levelId, portalId, state}`, état **absolu** |
-| `view.change` | tablette | throttlé 10 Hz |
 | `level.select` | MJ, tablette | ponctuel |
 | `vision.update` | **Mac seul** | après chaque mouvement, throttlé |
 | `fog.update` | **Mac seul** | throttlé 1 Hz ou à la révélation |

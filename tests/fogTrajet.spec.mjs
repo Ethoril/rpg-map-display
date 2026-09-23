@@ -273,26 +273,4 @@ test('B1 : un pion MJ lâché sur une case occupée reste en place, sans erreur 
   await context.close();
 });
 
-// B6 (audit du 22/09/2026) — `view.change` est limité à 10 Hz (CdC §7). Trente pans émis d'un
-// coup ne publient qu'une ou deux fois, et la DERNIÈRE publication porte la caméra finale.
-test('B6 : trente pans d’affilée publient au plus deux view.change, dont le dernier est la caméra finale', async ({ browser }) => {
-  const context = await browser.newContext();
-  const gm = await context.newPage();
-  await installBrowserTransport(gm, 'b6-vue', SNAPSHOT);
-  await gm.goto('/gm.html?session=b6-vue');
-  await waitForApp(gm);
 
-  const bilan = await gm.evaluate(async () => {
-    const app = /** @type {any} */ (window).__RPG_APP__;
-    const wire = /** @type {any} */ (window).__RPG_TEST_WIRE__;
-    const avant = wire.published.filter((/** @type {any} */ e) => e.type === 'view.change').length;
-    for (let i = 0; i < 30; i++) app.pointerInput.emit({ type: 'panBy', deltaX: 3, deltaY: 0 });
-    await new Promise((ok) => setTimeout(ok, 300));
-    const vues = wire.published.filter((/** @type {any} */ e) => e.type === 'view.change').slice(avant);
-    return { n: vues.length, derniere: vues.at(-1)?.payload.camera.x, camera: app.camera.x };
-  });
-  expect(bilan.n).toBeGreaterThan(0);
-  expect(bilan.n).toBeLessThanOrEqual(2);
-  expect(bilan.derniere).toBe(bilan.camera);
-  await context.close();
-});

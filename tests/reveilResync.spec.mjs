@@ -296,3 +296,67 @@ test('B10 : un redimensionnement garde la caméra que la table a réglée', asyn
   expect(apres.x).toBeCloseTo(reglee.x, 6);
   await context.close();
 });
+
+// D-6 (tranché le 23/09/2026) — plus aucun suivi de caméra : chaque écran cadre seul. Le MJ ne
+// publie plus son cadrage, et une tablette ignore un `view.change` reçu, même ouverte avec
+// l'ancien `?camera=follow`.
+test('D-6 : le cadrage ne voyage plus, dans aucun sens', async ({ browser }) => {
+  const context = await browser.newContext();
+  const gm = await context.newPage();
+  await installBrowserTransport(gm, 'd6-cadrage', S0);
+  await gm.goto('/gm.html?session=d6-cadrage');
+  await waitForApp(gm);
+  const publies = await gm.evaluate(async () => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    for (let i = 0; i < 10; i++) app.pointerInput.emit({ type: 'panBy', deltaX: 5, deltaY: 0 });
+    app.pointerInput.emit({ type: 'pinchZoom', scaleFactor: 1.5, center: { screenX: 100, screenY: 100 } });
+    await new Promise((ok) => setTimeout(ok, 300));
+    return /** @type {any} */ (window).__RPG_TEST_WIRE__.published.filter((/** @type {any} */ e) => e.type === 'view.change').length;
+  });
+  expect(publies, 'le MJ ne publie plus son cadrage').toBe(0);
+
+  const player = await context.newPage();
+  await installBrowserTransport(player, 'd6-cadrage', S0);
+  await player.goto('/player.html?session=d6-cadrage&camera=follow');
+  await waitForApp(player);
+  const avant = await player.evaluate(() => /** @type {any} */ (window).__RPG_APP__.camera.zoom);
+  // Un ancien client MJ publierait encore ceci : on le publie à la main, par le vrai canal.
+  await gm.evaluate(() =>
+    /** @type {any} */ (window).__RPG_APP__.transport.publish({
+      type: 'view.change', payload: { camera: { x: 1, y: 1, zoom: 7 } }, at: Date.now(), by: 'gm',
+    })
+  );
+  await expect.poll(() => player.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.received.some((/** @type {any} */ e) => e.type === 'view.change'))).toBe(true);
+  await player.waitForTimeout(200);
+  expect(await player.evaluate(() => /** @type {any} */ (window).__RPG_APP__.camera.zoom)).toBe(avant);
+  await context.close();
+});
+
+// D-5 (tranché le 23/09/2026) — la tablette n'écrit l'instantané que si aucun MJ n'est présent.
+// Avant, elle le réécrivait à chaque mutation locale, et une tablette réveillée pouvait écraser
+// l'état du MJ avec des données périmées.
+test('D-5 : la tablette n’écrit l’instantané que si aucun MJ n’est présent', async ({ browser }) => {
+  const context = await browser.newContext();
+  const player = await context.newPage();
+  await installBrowserTransport(player, 'd5-ecriture', S0);
+  await player.goto('/player.html?session=d5-ecriture');
+  await waitForApp(player);
+
+  const ecrituresApres = (/** @type {boolean} */ mjPresent) =>
+    player.evaluate(async (present) => {
+      const [store, presence] = await Promise.all([import('../js/state/store.js'), import('../js/state/presence.js')]);
+      const w = /** @type {any} */ (window);
+      w.__ecritures = 0;
+      w.__RPG_APP__.transport.saveSnapshot = async () => { w.__ecritures++; };
+      presence.clearPresence();
+      if (present) presence.updatePresence('mj-1', { role: 'gm', at: Date.now(), build: 1, label: 'x' });
+      // Une vraie mutation de campagne, comme un déplacement joué à la table.
+      store.moveTokenToCell('pc-1', { a: 3, b: 3 }, { from: { a: 2, b: 2 }, to: { a: 3, b: 3 }, path: [], startedAt: Date.now() });
+      await new Promise((ok) => setTimeout(ok, 500));
+      return w.__ecritures;
+    }, mjPresent);
+
+  expect(await ecrituresApres(true), 'un MJ présent persiste seul').toBe(0);
+  expect(await ecrituresApres(false), 'sans MJ, la table persiste').toBe(1);
+  await context.close();
+});
