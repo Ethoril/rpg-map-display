@@ -691,6 +691,95 @@ export function createFirestoreV3TransitionParent(legacyV2, v3Parent) {
 }
 
 /**
+ * Empreinte 53 bits d'une chaîne (cyrb53) — déterministe, sans dépendance. Sert seulement à
+ * savoir si un document a changé : une collision coûterait une écriture manquée, d'où 53 bits.
+ *
+ * @param {string} texte
+ * @returns {string}
+ */
+function empreinte(texte) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/**
+ * Décide quels documents d'étage et de pion réécrire — audit du 22/09, C7 ; amendement de
+ * l'ADR-012 du 23/09/2026 (D-10).
+ *
+ * ⛔ Chaque sauvegarde réécrivait TOUS les documents : 2 + un par étage + un par pion. Avec
+ * 8 étages et 30 pions, un déplacement coûtait environ 40 écritures, et le forfait gratuit en
+ * autorise 20 000 par jour. Désormais le parent retient, pour chaque document, l'empreinte de son
+ * contenu et la RÉVISION à laquelle il a été écrit. Un document inchangé n'est pas réécrit et garde
+ * sa révision ; le lecteur vérifie chaque document contre la sienne. La garde d'incohérence de
+ * l'ADR-012 est intacte : un document d'une autre révision que celle annoncée est toujours refusé.
+ *
+ * Un parent précédent sans ces tables (sauvegarde d'avant le 23/09) fait tout réécrire une fois.
+ *
+ * @param {any} existingParent Parent actuellement en base, ou `null`
+ * @param {{parent: any, levels: Array<{id: string, data: any}>, tokens: Array<{id: string, data: any}>}} v3
+ * @returns {{parent: any, levels: Array<{id: string, data: any}>, tokens: Array<{id: string, data: any}>}}
+ *   Le parent à écrire, et les SEULS documents à réécrire.
+ */
+export function planFirestoreV3Write(existingParent, v3) {
+  const precedent =
+    existingParent?.schemaVersion === FIRESTORE_V3_SCHEMA_VERSION &&
+    existingParent.levelDigests && typeof existingParent.levelDigests === 'object' &&
+    existingParent.tokenDigests && typeof existingParent.tokenDigests === 'object'
+      ? existingParent
+      : null;
+  const revision = v3.parent.revision;
+
+  /**
+   * @param {Array<{id: string, data: any}>} entrees
+   * @param {'level'|'token'} champ
+   * @param {Record<string, any>|undefined} anciennesEmpreintes
+   * @param {Record<string, any>|undefined} anciennesRevisions
+   */
+  const planifier = (entrees, champ, anciennesEmpreintes, anciennesRevisions) => {
+    /** @type {Record<string, string>} */
+    const empreintes = {};
+    /** @type {Record<string, number>} */
+    const revisions = {};
+    /** @type {Array<{id: string, data: any}>} */
+    const aEcrire = [];
+    for (const entree of entrees) {
+      const e = empreinte(JSON.stringify(entree.data[champ]));
+      empreintes[entree.id] = e;
+      const ancienne = anciennesRevisions?.[entree.id];
+      if (precedent && anciennesEmpreintes?.[entree.id] === e && Number.isSafeInteger(ancienne)) {
+        revisions[entree.id] = ancienne;
+      } else {
+        revisions[entree.id] = revision;
+        aEcrire.push(entree);
+      }
+    }
+    return { empreintes, revisions, aEcrire };
+  };
+
+  const niveaux = planifier(v3.levels, 'level', precedent?.levelDigests, precedent?.levelRevisions);
+  const pions = planifier(v3.tokens, 'token', precedent?.tokenDigests, precedent?.tokenRevisions);
+  return {
+    parent: {
+      ...v3.parent,
+      levelDigests: niveaux.empreintes,
+      levelRevisions: niveaux.revisions,
+      tokenDigests: pions.empreintes,
+      tokenRevisions: pions.revisions,
+    },
+    levels: niveaux.aEcrire,
+    tokens: pions.aEcrire,
+  };
+}
+
+/**
  * Reconstitue le modèle v2 en mémoire depuis les documents v3. Le schéma applicatif reste v2 :
  * v3 est uniquement une disposition de persistance Firestore.
  *
@@ -711,9 +800,13 @@ export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
   if (!state || state.revision !== parent.revision) {
     throw new Error('Snapshot v3 incohérent : état global d’une autre révision');
   }
+  // Révision attendue PAR document (C7, amendement ADR-012 du 23/09/2026) ; un parent d'avant
+  // cet amendement n'a pas de table, et tous ses documents portent sa révision.
+  /** @param {Record<string, any>|undefined} table @param {string} id */
+  const attendue = (table, id) => (table && Number.isSafeInteger(table[id]) ? table[id] : parent.revision);
   const byId = new Map(
     levels
-      .filter((entry) => entry?.data?.revision === parent.revision && entry.data.level)
+      .filter((entry) => entry?.data?.revision === attendue(parent.levelRevisions, entry.id) && entry.data.level)
       .map((entry) => [entry.id, decodeSnapshotFromFirestore({ levels: [entry.data.level] }).levels[0]])
   );
   if (expected.some((/** @type {any} */ id) => !byId.has(id))) {
@@ -721,7 +814,7 @@ export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
   }
   const tokensById = new Map(
     tokens
-      .filter((entry) => entry?.data?.revision === parent.revision && entry.data.token)
+      .filter((entry) => entry?.data?.revision === attendue(parent.tokenRevisions, entry.id) && entry.data.token)
       .map((entry) => [entry.id, entry.data.token])
   );
   if (expectedTokens.some((/** @type {any} */ id) => !tokensById.has(id))) {
@@ -1660,13 +1753,15 @@ export class FirebaseTransport {
           // Une sauvegarde concurrente peut avoir déjà posé le parent v3 tout en laissant le
           // secours v2 en attente de nettoyage. Il doit alors survivre aussi à cette révision.
           const mustPreserveV2 = existingParent?.campaign && typeof existingParent.campaign === 'object';
+          // Seuls les documents modifiés sont réécrits (C7) ; le parent annonce la révision de chacun.
+          const plan = planFirestoreV3Write(existingParent, v3);
           const parentForBatch = mustPreserveV2
-            ? createFirestoreV3TransitionParent(existingParent, v3.parent)
-            : v3.parent;
+            ? createFirestoreV3TransitionParent(existingParent, plan.parent)
+            : plan.parent;
           const parentMeasure = measureFirestoreDocument(parentForBatch, `campaigns/${sessionId}`);
           if (parentMeasure.severity === 'error') throw new Error(parentMeasure.message);
-          for (const entry of v3.levels) transaction.set(doc(parentRef, 'levels', entry.id), entry.data);
-          for (const entry of v3.tokens) transaction.set(doc(parentRef, 'tokens', entry.id), entry.data);
+          for (const entry of plan.levels) transaction.set(doc(parentRef, 'levels', entry.id), entry.data);
+          for (const entry of plan.tokens) transaction.set(doc(parentRef, 'tokens', entry.id), entry.data);
           transaction.set(doc(parentRef, 'state', 'current'), v3.state);
           for (const entry of deletes) transaction.delete(entry);
           transaction.set(parentRef, parentForBatch);

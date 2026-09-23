@@ -43,6 +43,17 @@ Les sous-collections ne comptent pas dans la limite de 1 Mio de leur parent. Tou
 v3 gardent la même règle d'accès que `campaigns/{sessionId}` : les règles devront donc être étendues
 aux sous-chemins au moment de l'implémentation v3.
 
+> **Amendement du 23/09/2026 (audit C7, arbitrage D-10) — seuls les documents modifiés sont
+> réécrits.** Chaque sauvegarde réécrivait le parent, l'état global, CHAQUE étage et CHAQUE pion :
+> un déplacement coûtait `2 + étages + pions` écritures, environ 40 sur une campagne ordinaire.
+> Le parent porte désormais quatre tables : `levelDigests` et `tokenDigests` (empreinte du
+> contenu de chaque document), `levelRevisions` et `tokenRevisions` (révision à laquelle chacun
+> a été écrit). Un document dont l'empreinte n'a pas changé n'est pas réécrit et garde sa
+> révision. Le lecteur exige de chaque document la révision que le parent annonce POUR LUI, et la
+> garde d'incohérence reste donc entière : un document d'une autre révision est toujours refusé.
+> Un parent antérieur, sans ces tables, se lit comme avant (tout porte sa révision) et fait tout
+> réécrire une fois. Logique pure : `planFirestoreV3Write` (`js/transport/FirebaseTransport.js`).
+
 ## Chemin de migration précis
 
 1. Lire v2 comme aujourd'hui et reconstituer le modèle en mémoire ; détecter v3 par

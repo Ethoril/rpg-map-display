@@ -64,6 +64,19 @@ abonner();
     return true;
   },
   purge: () => transport.purgeEvents(),
+  /** Sauvegarde Firestore réelle d'un instantané (audit du 22/09, C7). */
+  sauver: async (/** @type {any} */ instantane) => {
+    await /** @type {any} */ (transport).saveSnapshot(instantane);
+    return true;
+  },
+  /** Relit l'instantané comme au démarrage. */
+  relire: () => /** @type {any} */ (transport).snapshot(),
+  /** Parent Firestore v3, lu au serveur. */
+  parentFirestore: async () => {
+    const { doc, getDoc } = await import('firebase/firestore');
+    const snap = await getDoc(doc(/** @type {any} */ (transport)._firestore, 'campaigns', params.sessionId));
+    return snap.exists() ? snap.data() : null;
+  },
   /** La resynchro du réveil, telle que l'application la déclenche (audit du 22/09, C6). */
   resync: async () => {
     await /** @type {any} */ (transport).resync();

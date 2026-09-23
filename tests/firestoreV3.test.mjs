@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  planFirestoreV3Write,
   FIRESTORE_BATCH_MAX_OPERATIONS,
   FIRESTORE_V3_SCHEMA_VERSION,
   createFirestoreV3TransitionParent,
@@ -174,4 +175,63 @@ test('la révision v3 est monotone depuis le parent transactionnel, jamais déri
     () => nextFirestoreV3Revision({ schemaVersion: FIRESTORE_V3_SCHEMA_VERSION, revision: 1.5 }),
     /révision entière/
   );
+});
+
+// C7 (audit du 22/09/2026 ; amendement ADR-012 du 23/09, D-10) — chaque sauvegarde réécrivait
+// TOUS les documents. Seuls les documents modifiés le sont désormais ; le parent annonce la
+// révision de chacun, et la garde d'incohérence reste entière.
+test('C7 : seuls les documents modifiés sont réécrits, et la lecture reste cohérente', () => {
+  const campagne = (/** @type {number} */ caseDuHeros) => ({
+    campaign: {
+      campaignId: 'c7', name: 'C7', links: [], settings: {}, templates: [],
+      levels: [{ id: 'rdc', walls: [] }, { id: 'cave', walls: [] }],
+      tokens: [
+        { id: 'heros', levelId: 'rdc', cell: { a: caseDuHeros, b: 0 } },
+        { id: 'garde', levelId: 'rdc', cell: { a: 9, b: 9 } },
+      ],
+    },
+    activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+  });
+
+  // Première sauvegarde : aucun parent précédent, tout s'écrit.
+  const v1 = splitSnapshotForFirestoreV3(campagne(1), 'c7', 1);
+  const plan1 = planFirestoreV3Write(null, v1);
+  assert.equal(plan1.levels.length, 2);
+  assert.equal(plan1.tokens.length, 2);
+
+  // Seconde sauvegarde : le héros a bougé, rien d'autre.
+  const v2 = splitSnapshotForFirestoreV3(campagne(2), 'c7', 2);
+  const plan2 = planFirestoreV3Write(plan1.parent, v2);
+  assert.deepEqual(plan2.levels, [], 'aucun étage réécrit');
+  assert.deepEqual(plan2.tokens.map((t) => t.id), ['heros'], 'seul le pion déplacé est réécrit');
+  assert.equal(plan2.parent.tokenRevisions.garde, 1, 'le pion inchangé garde sa révision');
+  assert.equal(plan2.parent.tokenRevisions.heros, 2);
+
+  // La base contient maintenant : étages et garde en révision 1, héros en révision 2.
+  const base = {
+    levels: plan1.levels,
+    tokens: /** @type {Array<{id: string, data: any}>} */ ([plan1.tokens.find((t) => t.id === 'garde'), plan2.tokens[0]]),
+  };
+  const lu = joinSnapshotFromFirestoreV3(plan2.parent, base.levels, base.tokens, v2.state);
+  assert.equal(lu.campaign.tokens.find((/** @type {any} */ t) => t.id === 'heros').cell.a, 2);
+  assert.equal(lu.campaign.levels.length, 2);
+
+  // ⛔ La garde reste entière : un document d'une autre révision que celle annoncée est refusé.
+  const perime = /** @type {Array<{id: string, data: any}>} */ ([plan1.tokens.find((t) => t.id === 'garde'), plan1.tokens.find((t) => t.id === 'heros')]);
+  assert.throws(() => joinSnapshotFromFirestoreV3(plan2.parent, base.levels, perime, v2.state), /incomplet/);
+});
+
+test('C7 : un parent d’avant l’amendement (sans tables) se relit, et fait tout réécrire une fois', () => {
+  const snap = {
+    campaign: { campaignId: 'x', name: 'x', links: [], settings: {}, templates: [],
+      levels: [{ id: 'rdc', walls: [] }], tokens: [{ id: 't', levelId: 'rdc', cell: { a: 0, b: 0 } }] },
+    activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+  };
+  const ancien = splitSnapshotForFirestoreV3(snap, 'x', 5);
+  // Lecture d'une sauvegarde d'avant le 23/09 : pas de tables, tout porte la révision du parent.
+  const lu = joinSnapshotFromFirestoreV3(ancien.parent, ancien.levels, ancien.tokens, ancien.state);
+  assert.equal(lu.campaign.tokens.length, 1);
+  const suivant = splitSnapshotForFirestoreV3(snap, 'x', 6);
+  const plan = planFirestoreV3Write(ancien.parent, suivant);
+  assert.equal(plan.levels.length + plan.tokens.length, 2, 'sans empreintes précédentes, tout est réécrit');
 });

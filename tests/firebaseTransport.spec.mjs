@@ -97,6 +97,12 @@ async function ouvrirClient(browser, sessionId, role) {
     /** @returns {Promise<Array<string|null>>} */
     curseurs: () => page.evaluate(() => /** @type {any} */ (window).__probe.curseurs()),
     resync: () => page.evaluate(() => /** @type {any} */ (window).__probe.resync()),
+    /** @param {any} instantane */
+    sauver: (instantane) => page.evaluate((i) => /** @type {any} */ (window).__probe.sauver(i), instantane),
+    /** @returns {Promise<any>} */
+    relire: () => page.evaluate(() => /** @type {any} */ (window).__probe.relire()),
+    /** @returns {Promise<any>} */
+    parentFirestore: () => page.evaluate(() => /** @type {any} */ (window).__probe.parentFirestore()),
     /** @returns {Promise<boolean>} */
     horlogePrete: () => page.evaluate(() => /** @type {any} */ (window).__probe.horlogePrete()),
   };
@@ -269,6 +275,50 @@ test('C6 : après une resynchro, le bail d’un client disparaît quand il se d�
     await expect
       .poll(() => mj.curseurs().then((c) => c.length), { timeout: 30000, message: 'le bail fantôme reste' })
       .toBe(1);
+  } finally {
+    await purgerQuandLesLeasesOntDisparu(mj);
+    await mj.context.close();
+  }
+});
+
+
+// C7 (audit du 22/09/2026 ; amendement ADR-012 du 23/09, D-10) — contre la vraie base : après un
+// déplacement, seul le pion déplacé est réécrit, et un client neuf relit l'état exact.
+test('C7 : deux sauvegardes, un pion déplacé — seul lui est réécrit, et la relecture est exacte', async ({ browser }) => {
+  test.skip(!complet, RAISON);
+
+  const sessionId = `test-ecritures-${Date.now()}`;
+  /** @param {number} a */
+  const instantane = (a) => ({
+    campaign: {
+      schemaVersion: 2, campaignId: sessionId, name: 'C7', links: [], settings: {}, templates: [],
+      levels: [{ id: 'rdc', name: 'RdC', order: 0, imageUrl: '', videoUrl: null, animatedOverlays: [],
+        pxPerCell: 100, widthCells: 12, heightCells: 8,
+        grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+        terrainCost: null, walls: [], portals: [], lights: [], ambient: { level: 1, baked: false } }],
+      tokens: ['heros', 'garde'].map((id, i) => ({
+        id, levelId: 'rdc', cell: { a: id === 'heros' ? a : 9, b: i }, sizeCells: 1, kind: 'pc', imageUrl: '',
+        borderColor: '#00ff00', label: id, hidden: false, visionBright: 6, visionDim: 8, emitsLight: null,
+        speedCells: 6, playerMovable: true, locked: false, elevation: 0, markers: [],
+      })),
+    },
+    activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+  });
+  const mj = await ouvrirClient(browser, sessionId, 'gm');
+  try {
+    await mj.sauver(instantane(1));
+    const p1 = await mj.parentFirestore();
+    await mj.sauver(instantane(2));
+    const p2 = await mj.parentFirestore();
+    expect(p2.revision).toBeGreaterThan(p1.revision);
+    expect(p2.tokenRevisions.garde, 'le pion inchangé n’est pas réécrit').toBe(p1.revision);
+    expect(p2.tokenRevisions.heros, 'le pion déplacé l’est').toBe(p2.revision);
+    expect(p2.levelRevisions.rdc, 'l’étage inchangé n’est pas réécrit').toBe(p1.revision);
+
+    const neuf = await ouvrirClient(browser, sessionId, 'players');
+    const lu = await neuf.relire();
+    expect(lu.campaign.tokens.find((/** @type {any} */ t) => t.id === 'heros').cell.a).toBe(2);
+    await neuf.context.close();
   } finally {
     await purgerQuandLesLeasesOntDisparu(mj);
     await mj.context.close();
