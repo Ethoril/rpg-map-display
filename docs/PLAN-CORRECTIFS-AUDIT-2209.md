@@ -210,7 +210,7 @@ Légende : ✅ confirmé à la lecture · ❔ plausible, à reproduire avant de 
   « ancrage dont le centre est ici », à ajouter à `GridAdapter`.
 - [x] **E6** `792e367` ✅ La poignée de gabarit est dessinée 1,5 fois plus petite que sa zone de tap
   sur la tablette : `ctx.getTransform()` inclut `stage.resolution` (`templates.js:88`).
-- [ ] **E7** ✅ Les bornes d'un pion sont vérifiées en carré même en hexagonal
+- [x] **E7** `62e4c08` (D-8 : ancrage seul en hexagonal) ✅ Les bornes d'un pion sont vérifiées en carré même en hexagonal
   (`schema.js:1133-1136`). Passer par `grid.cellsOccupied`.
   ⏳ **[DÉCISION]** : D-8.
 - [ ] **E8** ✅ La migration L-10 convertit case → pixel dans `schema.js:208-212`, sans le
@@ -272,7 +272,7 @@ un travail inutile, sans rien promettre de chiffré.
   ⏳ Non fait : mineurs.
 ### P7 — conformité et nettoyage
 
-- [ ] **H1** ✅ `grid/*` importe `movement/reachable.js` (`SquareGrid.js:3`, `HexGrid.js:3`),
+- [x] **H1** `62e4c08` (D-7 : table §2 amendée) ✅ `grid/*` importe `movement/reachable.js` (`SquareGrid.js:3`, `HexGrid.js:3`),
   interdit par `ARCHITECTURE.md` §2. `reachable.js:64-68` lit `grid.type` et calcule sur
   `a`/`b`. Il faut déplacer la règle « ne pas couper les coins » dans la grille.
   ⏳ **[DÉCISION]** : D-7, point 2.
@@ -295,7 +295,7 @@ un travail inutile, sans rien promettre de chiffré.
   ⏳ Partiel (`68808ba`). Gardés à dessein : `edgesOf`, qui appartient à l'interface normative
   du §3 ; `Camera.convergeTo`, testé et utile au suivi de caméra ; les branches `_liveQuery`,
   défensives ; l'appel à `diagnosticCanal` dans `diag.js`, dont le comptage aiderait à trancher C1.
-- [ ] **H6** **[DÉCISION]** Les règles Firebase accordent tout au compte technique sans
+- [x] **H6** — **tranché le 23/09 : laissé tel quel** (D-9). **[DÉCISION]** Les règles Firebase accordent tout au compte technique sans
   `email_verified`, et ne séparent pas MJ et tablette (`database.rules.json:5-6`,
   `firestore.rules:11`). Domaine console du mainteneur.
 - [ ] **H7** Faible : aucune CSP ni SRI sur les pages ; les actions CI sont épinglées par tag
@@ -334,3 +334,4 @@ un travail inutile, sans rien promettre de chiffré.
 | 22/09 | F1, F4, F5 | `dfbf365` | `map_size` non entier arrondi au-dessus ; décision E7 en **D-8** |
 | 23/09 | G1, G3–G5, G7 | `cc5c668` | aucun gain chiffré revendiqué : pas de mesure tablette |
 | 23/09 | H2–H5 | `68808ba` | `createLevel` étale ses overrides en premier |
+| 23/09 | D-5 à D-8 | `62e4c08` | arbitrages du mainteneur appliqués ; suivi de caméra supprimé (D-6) |
