@@ -1145,6 +1145,20 @@ seul pavage hexagonal.
 > un tiers alors que l'inscription par e-mail reste ouverte. ⛔ Ne pas rouvrir de ma propre
 > initiative.
 
+### D-10 ✅ Trois arbitrages réseau (audit du 22/09, C3, C4, C7)
+
+> ## ✅ TRANCHÉ le 23/09/2026
+>
+> - **C3 — deux coups vers la même case** : **le MJ arbitre**. Il garde son coup et renvoie au pion
+>   de la table sa case précédente par un `token.move` ordinaire. La tablette recule son pion et
+>   affiche le retour « case occupée ».
+> - **C4 — démarrage hors ligne** : **local, puis reprise**. Après une échéance, la dernière
+>   partie de ce poste s'affiche avec un bandeau « hors ligne — rien n'est partagé » ; la
+>   connexion continue d'être tentée, et quand elle aboutit l'état partagé est relu et le bandeau
+>   s'efface.
+> - **C7 — écritures Firestore** : **n'écrire que ce qui change**. Empreinte par document ; le
+>   format et la transaction de révision de l'ADR-012 restent intacts.
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
