@@ -88,9 +88,9 @@ test('10. le coût des lumières est rendu comme un écart, avec le verdict de b
   expect(texte).toContain('Écart, donc coût des lumières');
   expect(texte).toContain('Pire avec lumières');
   expect(texte).toContain('Pire sans lumière');
-  // La carte du village porte des lumières, le manoir n'en a aucune : les deux côtés de
+  // Une carte avec lumières (testnoncuite), une sans (manoir-rdc) : les deux côtés de
   // la comparaison doivent exister, sinon l'écart ne veut rien dire.
-  expect(texte).toMatch(/test_village_complet/);
+  expect(texte).toMatch(/testnoncuite/);
   expect(texte).toMatch(/manoir-rdc/);
   expect(erreurs).toEqual([]);
 });

@@ -36,7 +36,7 @@ test('MESURE — computeBlockedEdges sur testbig150 : index spatial contre force
       await import('../../js/import/blockedEdges.js');
     const { edgeKey } = await import('../../js/core/cellKey.js');
 
-    const scene = await (await fetch('/maps/generated/testbig150.scene.json')).json();
+    const scene = await (await fetch('/maps/generated/manoir-rdc.scene.json')).json();
     const level = scene.levels[0];
     const grid = gridFor(level);
 
@@ -90,7 +90,7 @@ test('MESURE — computeBlockedEdges sur testbig150 : index spatial contre force
 
   const facteur = mesure.bruteMs / mesure.median;
 
-  console.log('\n===== computeBlockedEdges — testbig150 =====');
+  console.log('\n===== computeBlockedEdges — manoir-rdc =====');
   console.log(`  étage                  : ${mesure.cases} cases, ${mesure.segments} segments de mur`);
   console.log(`  arêtes bloquées        : ${mesure.indexTaille} (index) / ${mesure.bruteTaille} (force brute)`);
   console.log(`  index spatial          : médiane ${mesure.median.toFixed(1)} ms  (min ${mesure.min.toFixed(1)}, max ${mesure.max.toFixed(1)}, 9 relevés)`);
@@ -103,6 +103,6 @@ test('MESURE — computeBlockedEdges sur testbig150 : index spatial contre force
   expect(mesure.indexTaille).toBe(mesure.bruteTaille);
   // Épinglé sur la valeur, pas seulement sur l'égalité : deux zéros satisferaient l'égalité, et
   // ce fichier deviendrait alors une mesure de rien du tout.
-  expect(mesure.indexTaille).toBe(2701);
+  expect(mesure.indexTaille).toBe(1409);
   expect(mesure.median).toBeGreaterThan(0);
 });

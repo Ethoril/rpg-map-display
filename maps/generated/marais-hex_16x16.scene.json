@@ -8,8 +8,6 @@
       "name": "Marais — HEX — 16x16",
       "order": 0,
       "imageUrl": "maps/generated/marais-hex_16x16.webp",
-      "videoUrl": null,
-      "animatedOverlays": [],
       "pxPerCell": 140,
       "widthCells": 16,
       "heightCells": 16,
@@ -21,14 +19,16 @@
         "opacity": 0.25,
         "visible": true
       },
-      "terrainCost": null,
       "walls": [],
       "portals": [],
       "lights": [],
       "ambient": {
         "level": 1,
         "baked": false
-      }
+      },
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
     }
   ],
   "links": [],

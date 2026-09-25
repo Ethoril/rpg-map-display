@@ -155,8 +155,8 @@ test('getRenderSnapshot partage une version figée, puis la remplace après muta
   assert.deepStrictEqual(first.selectedToken?.cell, { a: 2, b: 2 });
 });
 
-test('MESURE R2-01 — le snapshot de rendu testbig150 reste sous 2 ms par image', () => {
-  const scene = JSON.parse(fs.readFileSync('maps/generated/testbig150.scene.json', 'utf8'));
+test('MESURE R2-01 — le snapshot de rendu manoir-rdc reste sous 2 ms par image', () => {
+  const scene = JSON.parse(fs.readFileSync('maps/generated/manoir-rdc.scene.json', 'utf8'));
   loadCampaign(scene);
 
   // Chauffe la construction du premier instantané et les accès aux propriétés réellement lues
@@ -192,10 +192,10 @@ test('MESURE R2-01 — le snapshot de rendu testbig150 reste sous 2 ms par image
   assert.ok(checksum > 0, 'empêche une mesure sans lecture effective des données de rendu');
   assert.ok(
     worstMs < 2,
-    `snapshot de rendu trop lent sur testbig150 : médiane ${medianMs.toFixed(4)} ms, pire ${worstMs.toFixed(4)} ms`
+    `snapshot de rendu trop lent sur manoir-rdc : médiane ${medianMs.toFixed(4)} ms, pire ${worstMs.toFixed(4)} ms`
   );
   console.log(
-    `[R2-01] testbig150 — accès snapshot: médiane ${medianMs.toFixed(4)} ms/image, pire ${worstMs.toFixed(4)} ms/image (${batches}×${framesPerBatch})`
+    `[R2-01] manoir-rdc — accès snapshot: médiane ${medianMs.toFixed(4)} ms/image, pire ${worstMs.toFixed(4)} ms/image (${batches}×${framesPerBatch})`
   );
 });
 

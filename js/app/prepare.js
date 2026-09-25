@@ -216,6 +216,7 @@ btnPublish.addEventListener('click', () =>
         `dont ${r.preparedCount} refabriquée(s) et ${r.skippedCount} réutilisée(s).` +
         `\n${r.totalWalls} murs, ${r.totalPortals} portes, ${r.totalLights} lumières.${avert}`
     );
+    await rechargerCatalogueEtCartes();
   })
 );
 
@@ -735,6 +736,38 @@ selLinkLevel?.addEventListener('change', () => {
   chargerLevelMap(selLinkLevel.value);
 });
 
+/**
+ * Recharge les cartes du serveur, rafraîchit le tableau de la bibliothèque
+ * et met à jour le sélecteur de scène de l'éditeur de liaisons.
+ */
+async function rechargerCatalogueEtCartes() {
+  const cartes = await api('/api/maps');
+  afficherCartes(cartes.maps);
+
+  if (selLinkScene) {
+    const catalogData = await fetch('/maps/catalog.json')
+      .then((r) => r.json())
+      .catch(() => null);
+    if (catalogData && Array.isArray(catalogData.maps)) {
+      const prevVal = selLinkScene.value;
+      selLinkScene.replaceChildren(
+        ...catalogData.maps.map((/** @type {any} */ m) => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = `${m.name} (${m.id})`;
+          return opt;
+        })
+      );
+      if (catalogData.maps.some((/** @type {any} */ m) => m.id === prevVal)) {
+        selLinkScene.value = prevVal;
+      } else if (catalogData.maps.length > 0) {
+        selLinkScene.value = catalogData.maps[0].id;
+        chargerScenePourLiaisons(catalogData.maps[0].id);
+      }
+    }
+  }
+}
+
 // --- V-03 Recadrage des pions dans l'outil avec budget 256 Kio ---------------------
 
 /** @type {ReturnType<typeof createTokenMaker>|null} */
@@ -767,6 +800,7 @@ if (tokenMakerMount) {
         dire(`✓ Pion « ${entry.name} » (${id}) sauvegardé dans la bibliothèque (${r.imageUrl}).`);
       } catch (err) {
         dire(`✗ Erreur lors de la sauvegarde du pion : ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
       }
     },
   });
@@ -793,32 +827,12 @@ if (tokenMakerMount) {
     outil.classList.remove('cache');
     afficherDetails();
 
-    const cartes = await api('/api/maps');
-    afficherCartes(cartes.maps);
+    await rechargerCatalogueEtCartes();
 
     const biblio = await api('/api/tokens');
     afficherTokens(biblio.tokens);
     if (biblio.errors.length > 0) {
       dire(`⚠ Catalogue de pions invalide : ${biblio.errors.join(' ; ')}`);
-    }
-
-    // Charger les scènes publiées pour l'éditeur de liaisons
-    if (selLinkScene) {
-      const catalogData = await fetch('/maps/catalog.json').then((r) => r.json()).catch(() => null);
-      if (catalogData && Array.isArray(catalogData.maps)) {
-        selLinkScene.replaceChildren(
-          ...catalogData.maps.map((/** @type {any} */ m) => {
-            const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.textContent = `${m.name} (${m.id})`;
-            return opt;
-          })
-        );
-        if (catalogData.maps.length > 0) {
-          selLinkScene.value = catalogData.maps[0].id;
-          chargerScenePourLiaisons(catalogData.maps[0].id);
-        }
-      }
     }
 
     const illisibles = data.illisibles.length

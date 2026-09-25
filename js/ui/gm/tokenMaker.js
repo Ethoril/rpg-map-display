@@ -18,6 +18,22 @@ const MESSAGE_DRIVE_INUTILISABLE =
   'puis copiez son lien de partage.';
 
 /**
+ * Normalise une chaîne en identifiant de pion valide (kebab-case, minuscules, sans accent).
+ *
+ * @param {string} str
+ * @returns {string}
+ */
+export function slugifyTokenId(str) {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
  * @typedef {import('../../core/types.js').Token} Token
  */
 
@@ -26,7 +42,7 @@ const MESSAGE_DRIVE_INUTILISABLE =
  * @property {string|null} [defaultLevelId] LevelId actif à attribuer au pion généré (facultatif si hors campagne)
  * @property {number} [maxBytes] Plafond en octets (longueur dataUrl) pour l'encodage (défaut : TOKEN_IMAGE_MAX_BYTES)
  * @property {boolean} [requireLevelId] Si false, n'exige pas de levelId pour autoriser la génération
- * @property {(token: Token, dataUrl: string) => void} [onGenerate] Callback appelé lors de la génération
+ * @property {((token: Token, dataUrl: string) => void | Promise<any>)} [onGenerate] Callback appelé lors de la génération
  * @property {(token: Token, dataUrl: string) => void} [onDownload] Callback appelé lors du téléchargement
  */
 
@@ -508,9 +524,12 @@ export function createTokenMaker(container, options = {}) {
 
     const { dataUrl, size, reduced } = encodeWithinBudget(outCanvas);
 
-    const explicitId = idInput?.value.trim();
+    const explicitId = idInput?.value.trim() ? slugifyTokenId(idInput.value.trim()) : '';
+    if (idInput && explicitId && idInput.value !== explicitId) {
+      idInput.value = explicitId;
+    }
     const label = labelInput.value.trim() || 'Pion';
-    const tokenId = explicitId || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || identifiantAleatoire();
+    const tokenId = explicitId || slugifyTokenId(label) || identifiantAleatoire();
     // ⛔ `|| 10` avalait le ZÉRO : un pion qu'on voulait aveugle dans le noir ressortait à 10,
     // en silence. C'est exactement le réglage que D-3 rend utile, donc il doit passer.
     const visionSaisie = parseInt(visionDimInput?.value ?? '', 10);
@@ -578,7 +597,24 @@ export function createTokenMaker(container, options = {}) {
     }
 
     if (options.onGenerate) {
-      options.onGenerate(token, dataUrl);
+      const res = /** @type {any} */ (options.onGenerate(token, dataUrl));
+      if (res && typeof res.then === 'function') {
+        status.style.color = '#3498db';
+        status.textContent = 'Enregistrement en cours…';
+        btnGenerate.disabled = true;
+        res
+          .then(() => {
+            status.style.color = '#2ecc71';
+            status.textContent = `Pion « ${token.label} » (${token.id}) enregistré avec succès.`;
+          })
+          .catch((/** @type {any} */ err) => {
+            status.style.color = '#e74c3c';
+            status.textContent = `Erreur : ${err instanceof Error ? err.message : String(err)}`;
+          })
+          .finally(() => {
+            btnGenerate.disabled = false;
+          });
+      }
     }
 
     return { token, dataUrl };

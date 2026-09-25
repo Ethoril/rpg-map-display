@@ -24,14 +24,16 @@ import {
   prepareMap,
   prepareMaps,
   isSupportedSource,
+  isImageSource,
   filterSidecarImages,
   displayNameFromSlug,
+  cellDimensionsFromName,
   listScenes,
   renameScene,
   planMapDeletion,
   deleteMap,
 } from './prepare-maps.mjs';
-import { MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
+import { MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY, imageDimensions } from './resample.mjs';
 import { parseUvtt } from '../js/import/uvtt.js';
 import { validateLinks } from '../js/core/schema.js';
 import {
@@ -197,8 +199,49 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+/**
+ * Lit l'en-tête d'une source image décor.
+ *
+ * @param {string} file nom de fichier sous maps/
+ */
+async function readImageSourceHeader(file) {
+  const filePath = path.join(mapsDir, file);
+  const slug = path.basename(file, path.extname(file));
+  const stat = fs.statSync(filePath);
+  const { width, height } = await imageDimensions(filePath);
+  const dims = cellDimensionsFromName(slug, width, height);
+  /** @type {string[]} */
+  const warnings = [];
+  if (!dims) {
+    warnings.push(
+      `Densité inconnue : dimensions en cases introuvables dans le nom « ${file} » (${width}×${height} px)`
+    );
+  }
+  const cellsX = dims ? dims.widthCells : 0;
+  const cellsY = dims ? dims.heightCells : 0;
+  const densiteSource = dims ? dims.pxPerCell : 0;
+
+  return {
+    file,
+    slug,
+    name: displayNameFromSlug(slug),
+    bytes: stat.size,
+    cellsX,
+    cellsY,
+    densiteSource,
+    sourceWidth: width,
+    sourceHeight: height,
+    walls: 0,
+    portals: 0,
+    lights: 0,
+    declares: { walls: 0, portals: 0, lights: 0 },
+    bakedLighting: true,
+    warnings,
+  };
+}
+
 /** GET /api/sources — les cartes disponibles et les constantes en vigueur. */
-function apiSources() {
+async function apiSources() {
   // `filterSidecarImages` avant le filtre : c'est la présence de `minimal.json` qui disqualifie
   // `minimal.webp`, et filtrer d'abord la ferait disparaître avant qu'elle ait pu disqualifier.
   const files = fs.existsSync(mapsDir)
@@ -211,7 +254,11 @@ function apiSources() {
   const illisibles = [];
   for (const file of files) {
     try {
-      sources.push(readSourceHeader(file));
+      if (isImageSource(file)) {
+        sources.push(await readImageSourceHeader(file));
+      } else {
+        sources.push(readSourceHeader(file));
+      }
     } catch (err) {
       // Une source illisible ne doit pas vider la liste : elle se signale et les autres
       // restent utilisables.
@@ -476,6 +523,17 @@ function prepareTokenImage(id, dataUrl) {
   };
 }
 
+/** @param {string} str */
+function slugifyTokenId(str) {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 /**
  * POST /api/tokens/save — insère ou remplace une entrée, image comprise.
  *
@@ -485,6 +543,10 @@ function apiTokenSave(body) {
   const entry = body?.entry;
   if (!entry || typeof entry !== 'object') throw new Error('Entrée de pion manquante');
   if (!entry.id || typeof entry.id !== 'string') throw new Error('Identifiant de pion manquant');
+  const slugified = slugifyTokenId(entry.id);
+  if (slugified) {
+    entry.id = slugified;
+  }
   assertTokenId(entry.id);
 
   const { catalog } = readTokenCatalog();
@@ -640,7 +702,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && route === '/api/sources') {
-      return sendJson(res, 200, apiSources());
+      return sendJson(res, 200, await apiSources());
     }
     if (req.method === 'GET' && route === '/api/scene') {
       return sendJson(res, 200, apiScene(url.searchParams.get('id') ?? ''));

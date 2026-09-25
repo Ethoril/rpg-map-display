@@ -2,57 +2,6 @@
   "version": 1,
   "maps": [
     {
-      "id": "test_village_complet",
-      "name": "Village",
-      "sourceUrl": [
-        "maps/test_village_complet_00.dd2vtt",
-        "maps/test_village_complet_01.dd2vtt",
-        "maps/test_village_complet_02.dd2vtt"
-      ],
-      "sceneUrl": "maps/generated/test_village_complet.scene.json",
-      "imageUrl": "maps/generated/test_village_complet_00.webp",
-      "thumbUrl": "maps/generated/test_village_complet_00.thumb.webp",
-      "levels": [
-        {
-          "levelId": "test_village_complet_00",
-          "name": "Rez-de-chaussée",
-          "thumbUrl": "maps/generated/test_village_complet_00.thumb.webp",
-          "gridType": "square",
-          "source": "uvtt",
-          "updatedAt": 1786281934161
-        },
-        {
-          "levelId": "test_village_complet_01",
-          "name": "1er étage",
-          "thumbUrl": "maps/generated/test_village_complet_01.thumb.webp",
-          "gridType": "square",
-          "source": "uvtt",
-          "updatedAt": 1786281934270
-        },
-        {
-          "levelId": "test_village_complet_02",
-          "name": "2e étage",
-          "thumbUrl": "maps/generated/test_village_complet_02.thumb.webp",
-          "gridType": "square",
-          "source": "uvtt",
-          "updatedAt": 1786281934372
-        }
-      ],
-      "sourceHash": [
-        "sha256-490ae7239ad9fa0f7f6248d015161927500c0b4294f00083acf415e08f999c55",
-        "sha256-f31db0f11d85057cca4c46629ec18a39ee523a6d519970be9586fda956a7f29b",
-        "sha256-61eb212d516d97f05926c24802ef4749a6eb758f80773885ed34c2d163a506c8"
-      ],
-      "levelCount": 3,
-      "features": {
-        "walls": 253,
-        "portals": 147,
-        "lights": 114,
-        "bakedLighting": true,
-        "animated": false
-      }
-    },
-    {
       "id": "ferme-isolee",
       "name": "Carte_Combat _Ferme_isolée",
       "sourceUrl": "maps/ferme-isolee_38x28_hex.jpg",
@@ -130,33 +79,6 @@
         "portals": 0,
         "lights": 0,
         "bakedLighting": false,
-        "animated": false
-      }
-    },
-    {
-      "id": "testbig150",
-      "name": "Testbig150",
-      "sourceUrl": "maps/testbig150.dd2vtt",
-      "sceneUrl": "maps/generated/testbig150.scene.json",
-      "imageUrl": "maps/generated/testbig150.webp",
-      "thumbUrl": "maps/generated/testbig150.thumb.webp",
-      "levels": [
-        {
-          "levelId": "testbig150",
-          "name": "Testbig150",
-          "thumbUrl": "maps/generated/testbig150.thumb.webp",
-          "gridType": "square",
-          "source": "uvtt",
-          "updatedAt": 1785434474770
-        }
-      ],
-      "sourceHash": "sha256-47fea547f3690aaa9f5bcf6b4ce3c8b07e219eaa53402552a829ea88ebc34d28",
-      "levelCount": 1,
-      "features": {
-        "walls": 1338,
-        "portals": 141,
-        "lights": 185,
-        "bakedLighting": true,
         "animated": false
       }
     },
@@ -239,6 +161,60 @@
         "lights": 4,
         "bakedLighting": true,
         "animated": true
+      }
+    },
+    {
+      "id": "village hexa",
+      "name": "Village hexa",
+      "sourceUrl": "maps/village hexa.dd2vtt",
+      "sceneUrl": "maps/generated/village hexa.scene.json",
+      "imageUrl": "maps/generated/village hexa.webp",
+      "thumbUrl": "maps/generated/village hexa.thumb.webp",
+      "levels": [
+        {
+          "levelId": "village hexa",
+          "name": "Village hexa",
+          "thumbUrl": "maps/generated/village hexa.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1790183997080
+        }
+      ],
+      "sourceHash": "sha256-56d777fb8f94dbedd8dadfe0fbb4de91ecef6b4d977aefcfa60ee7bd7aeea9fe",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 0,
+        "lights": 0,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
+      "id": "village sans hexa",
+      "name": "Village sans hexa",
+      "sourceUrl": "maps/village sans hexa.dd2vtt",
+      "sceneUrl": "maps/generated/village sans hexa.scene.json",
+      "imageUrl": "maps/generated/village sans hexa.webp",
+      "thumbUrl": "maps/generated/village sans hexa.thumb.webp",
+      "levels": [
+        {
+          "levelId": "village sans hexa",
+          "name": "Village sans hexa",
+          "thumbUrl": "maps/generated/village sans hexa.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1790184024630
+        }
+      ],
+      "sourceHash": "sha256-849192ef9b9c62030734a70222720c8868a1efe2aae7a2391db98686641e6b2b",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 0,
+        "lights": 0,
+        "bakedLighting": true,
+        "animated": false
       }
     }
   ]

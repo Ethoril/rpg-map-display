@@ -233,19 +233,19 @@ test('Test de mutation : la modification du Set retourné depuis le cache ne cor
 // charge de la machine et n'a donc pas sa place dans la porte : elle a rougi une fois sur du code
 // juste, pendant un audit qui lançait deux suites en parallèle. Elle vit maintenant dans
 // `tests/mesures/blockedEdgesIndex.spec.mjs`, qui imprime des nombres et n'affirme aucun seuil.
-test('R-01 : computeBlockedEdges rend exactement 2701 arêtes sur testbig150', async () => {
+test('R-01 : computeBlockedEdges rend exactement 1409 arêtes sur manoir-rdc', async () => {
   const fs = await import('node:fs');
   assert.ok(
-    fs.existsSync('maps/generated/testbig150.scene.json'),
-    'la scène testbig150 est suivie par git : son absence est une anomalie, pas une raison de sauter le test'
+    fs.existsSync('maps/generated/manoir-rdc.scene.json'),
+    'la scène manoir-rdc est suivie par git : son absence est une anomalie, pas une raison de sauter le test'
   );
-  const campaignData = JSON.parse(fs.readFileSync('maps/generated/testbig150.scene.json', 'utf8'));
+  const campaignData = JSON.parse(fs.readFileSync('maps/generated/manoir-rdc.scene.json', 'utf8'));
   const level = campaignData.levels[0];
   const grid = gridFor(level);
 
   invalidateBlockedEdgesCache(level.id);
   const edges = computeBlockedEdges(level, grid);
-  assert.equal(edges.size, 2701, 'exactement 2701 arêtes bloquées sur testbig150');
+  assert.equal(edges.size, 1409, 'exactement 1409 arêtes bloquées sur manoir-rdc');
 });
 
 test('R-04a : computeBlockedEdges lève si l’adaptateur ne fournit pas allCells', () => {

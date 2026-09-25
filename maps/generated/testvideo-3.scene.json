@@ -6,10 +6,6 @@
     {
       "id": "testvideo-3",
       "name": "Testvideo — 3",
-      "order": 0,
-      "imageUrl": "maps/generated/testvideo-3.webp",
-      "videoUrl": "maps/generated/testvideo-3.webm",
-      "animatedOverlays": [],
       "pxPerCell": 140,
       "widthCells": 28,
       "heightCells": 19,
@@ -21,7 +17,6 @@
         "opacity": 0.25,
         "visible": true
       },
-      "terrainCost": null,
       "walls": [
         [
           {
@@ -275,7 +270,12 @@
       "ambient": {
         "level": 1,
         "baked": true
-      }
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/testvideo-3.webp",
+      "videoUrl": "maps/generated/testvideo-3.webm",
+      "animatedOverlays": [],
+      "terrainCost": null
     }
   ],
   "links": [],

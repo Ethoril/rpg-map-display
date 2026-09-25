@@ -6,10 +6,6 @@
     {
       "id": "manoir-rdc",
       "name": "Manoir — RDC",
-      "order": 0,
-      "imageUrl": "maps/generated/manoir-rdc.webp",
-      "videoUrl": null,
-      "animatedOverlays": [],
       "pxPerCell": 140,
       "widthCells": 48,
       "heightCells": 45,
@@ -21,7 +17,6 @@
         "opacity": 0.25,
         "visible": true
       },
-      "terrainCost": null,
       "walls": [
         [
           {
@@ -1900,7 +1895,12 @@
       "ambient": {
         "level": 0,
         "baked": false
-      }
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/manoir-rdc.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
     }
   ],
   "links": [],

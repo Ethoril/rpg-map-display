@@ -1,18 +1,16 @@
 {
   "schemaVersion": 2,
-  "campaignId": "campaign-ferme-isolee",
-  "name": "Carte_Combat _Ferme_isolée",
+  "campaignId": "campaign-village hexa",
+  "name": "Village hexa",
   "levels": [
     {
-      "id": "ferme-isolee",
-      "name": "Carte_Combat _Ferme_isolée",
-      "order": 0,
-      "imageUrl": "maps/generated/ferme-isolee.webp",
+      "id": "village hexa",
+      "name": "Village hexa",
       "pxPerCell": 140,
-      "widthCells": 38,
-      "heightCells": 28,
+      "widthCells": 21,
+      "heightCells": 21,
       "grid": {
-        "type": "hex",
+        "type": "square",
         "offsetX": 0,
         "offsetY": 0,
         "color": "#000000",
@@ -24,8 +22,10 @@
       "lights": [],
       "ambient": {
         "level": 1,
-        "baked": false
+        "baked": true
       },
+      "order": 0,
+      "imageUrl": "maps/generated/village hexa.webp",
       "videoUrl": null,
       "animatedOverlays": [],
       "terrainCost": null

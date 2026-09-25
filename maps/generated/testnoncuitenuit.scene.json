@@ -6,10 +6,6 @@
     {
       "id": "testnoncuitenuit",
       "name": "Testnoncuitenuit",
-      "order": 0,
-      "imageUrl": "maps/generated/testnoncuitenuit.webp",
-      "videoUrl": null,
-      "animatedOverlays": [],
       "pxPerCell": 140,
       "widthCells": 21,
       "heightCells": 14,
@@ -21,7 +17,6 @@
         "opacity": 0.25,
         "visible": true
       },
-      "terrainCost": null,
       "walls": [
         [
           {
@@ -707,7 +702,12 @@
       "ambient": {
         "level": 0,
         "baked": true
-      }
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/testnoncuitenuit.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
     }
   ],
   "links": [],

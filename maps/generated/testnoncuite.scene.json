@@ -6,10 +6,6 @@
     {
       "id": "testnoncuite",
       "name": "Testnoncuite",
-      "order": 0,
-      "imageUrl": "maps/generated/testnoncuite.webp",
-      "videoUrl": null,
-      "animatedOverlays": [],
       "pxPerCell": 140,
       "widthCells": 42,
       "heightCells": 42,
@@ -21,7 +17,6 @@
         "opacity": 0.25,
         "visible": true
       },
-      "terrainCost": null,
       "walls": [
         [
           {
@@ -1293,7 +1288,12 @@
       "ambient": {
         "level": 1,
         "baked": true
-      }
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/testnoncuite.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
     }
   ],
   "links": [],

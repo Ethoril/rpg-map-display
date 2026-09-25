@@ -444,14 +444,14 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
     await expect(gm.locator('.scene-library-status')).toContainText('chargée');
     await expect.poll(() => readScene(player)).toMatchObject({ campaignId: 'campaign-manoir-rdc' });
 
-    // Geste réel : clic sur « Charger » de la carte du village.
-    await gm.click('.scene-card[data-map-id="test_village_complet"] .scene-card-load');
+    // Geste réel : clic sur « Charger » de la carte testnoncuite.
+    await gm.click('.scene-card[data-map-id="testnoncuite"] .scene-card-load');
     await expect(gm.locator('.scene-library-status')).toContainText('chargée');
 
-    const attenduVillageJoueurs = {
-      campaignId: 'campaign-test_village_complet',
-      activeLevelId: 'test_village_complet_00',
-      imageUrl: 'maps/generated/test_village_complet_00.webp',
+    const attenduTestNonCuiteJoueurs = {
+      campaignId: 'campaign-testnoncuite',
+      activeLevelId: 'testnoncuite',
+      imageUrl: 'maps/generated/testnoncuite.webp',
     };
 
     // ⭐ L'assertion qui compte : ce que la vue JOUEURS affiche, pas le MJ.
@@ -465,9 +465,9 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
           imageUrl: scene.imageUrl,
         };
       })
-      .toEqual(attenduVillageJoueurs);
+      .toEqual(attenduTestNonCuiteJoueurs);
 
-    expect(await readScene(gm)).toMatchObject(attenduVillageJoueurs);
+    expect(await readScene(gm)).toMatchObject(attenduTestNonCuiteJoueurs);
     expect(gmErrors).toEqual([]);
 
     await context.close();

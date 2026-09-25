@@ -166,18 +166,18 @@ test('UX-07 critère 4 : aucun rendu ne lit ambient.color, vérifié par recherc
   }
 });
 
-test('MESURE R3 — testbig150, six PJ et huit sources restent un profil exécutable', () => {
-  const campaign = JSON.parse(fs.readFileSync('maps/generated/testbig150.scene.json', 'utf8'));
+test('MESURE R3 — manoir-rdc, six PJ et huit sources restent un profil exécutable', () => {
+  const campaign = JSON.parse(fs.readFileSync('maps/generated/manoir-rdc.scene.json', 'utf8'));
   const level = campaign.levels[0];
   level.ambient = { color: '#ffffff', level: 0, baked: false };
   level.lights = Array.from({ length: 8 }, (_, index) => ({
     id: `fixed-${index}`,
-    at: { cellX: 6 + index * 7, cellY: 10 + (index % 3) * 16 },
-    range: 8, intensity: 1, color: '#ffffff', shadows: true,
+    at: { cellX: 6 + index * 5, cellY: 10 + (index % 3) * 10 },
+    range: 8, intensity: 1, color: '#ffffff', shadows: true, on: true,
   }));
   const tokens = Array.from({ length: 6 }, (_, index) =>
     createToken({
-      id: `pc-${index}`, levelId: level.id, kind: 'pc', cell: { a: 5 + index * 9, b: 5 + (index % 3) * 18 },
+      id: `pc-${index}`, levelId: level.id, kind: 'pc', cell: { a: 5 + index * 6, b: 5 + (index % 3) * 8 },
       visionDim: 6, emitsLight: index % 2 ? { range: 5, intensity: 1, color: '#ffcc66' } : null,
     })
   );
@@ -186,7 +186,7 @@ test('MESURE R3 — testbig150, six PJ et huit sources restent un profil exécut
   fogLayer.updateVision(gridFor(level), level, tokens, { extractSegments: extractBlockedSegments });
   const elapsed = performance.now() - started;
   console.log(
-    `[R3] testbig150 — 6 PJ + 8 sources (+3 torches) : ${elapsed.toFixed(2)} ms, `
+    `[R3] manoir-rdc — 6 PJ + 8 sources (+3 torches) : ${elapsed.toFixed(2)} ms, `
     + `${fogLayer.getLosPolygons().length} lignes de vue + ${fogLayer.getNearPolygons().length} portées nocturnes`
   );
   assert.ok(Number.isFinite(elapsed));

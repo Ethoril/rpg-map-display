@@ -13,6 +13,66 @@
       "emitsLight": null,
       "borderColor": "#ff0000",
       "maxHp": 12
+    },
+    {
+      "id": "bhelgi",
+      "name": "Bhelgi",
+      "imageUrl": "maps/tokens/bhelgi.webp",
+      "kind": "pc",
+      "sizeCells": 1,
+      "speedCells": 3,
+      "visionDim": 10,
+      "emitsLight": null,
+      "borderColor": "#40e7d4",
+      "maxHp": 14
+    },
+    {
+      "id": "caelel",
+      "name": "Caelel",
+      "imageUrl": "maps/tokens/caelel.webp",
+      "kind": "pc",
+      "sizeCells": 1,
+      "speedCells": 3,
+      "visionDim": 10,
+      "emitsLight": null,
+      "borderColor": "#4054e7",
+      "maxHp": 18
+    },
+    {
+      "id": "wren",
+      "name": "Wren",
+      "imageUrl": "maps/tokens/wren.webp",
+      "kind": "pc",
+      "sizeCells": 1,
+      "speedCells": 3,
+      "visionDim": 10,
+      "emitsLight": null,
+      "borderColor": "#e25222",
+      "maxHp": 10
+    },
+    {
+      "id": "hellaya",
+      "name": "Hellaya",
+      "imageUrl": "maps/tokens/hellaya.webp",
+      "kind": "pc",
+      "sizeCells": 1,
+      "speedCells": 3,
+      "visionDim": 10,
+      "emitsLight": null,
+      "borderColor": "#19c844",
+      "maxHp": 12
+    },
+    {
+      "id": "hydre",
+      "name": "Fausse Hydre",
+      "imageUrl": "maps/tokens/hydre.webp",
+      "kind": "npc",
+      "sizeCells": 2,
+      "speedCells": 3,
+      "visionDim": 10,
+      "emitsLight": null,
+      "borderColor": "#c81988",
+      "maxHp": 76
     }
   ]
 }
