@@ -157,7 +157,7 @@ function collectCodeUrls() {
   const codeUrl = (raw) => {
     const url = new URL(raw, location.href);
     if (url.origin !== location.origin) return null;
-    return /\.(m?js|css)$/i.test(url.pathname) ? url.href : null;
+    return /\.(m?js|css|json)$/i.test(url.pathname) ? url.href : null;
   };
 
   // Resource Timing est la seule source qui recense les modules ES tirés par `import` :
@@ -166,6 +166,10 @@ function collectCodeUrls() {
     const url = codeUrl(entry.name);
     if (url) urls.add(url);
   }
+
+  // Purge explicite des catalogues de cartes et de pions
+  urls.add(new URL('maps/catalog.json', location.href).href);
+  urls.add(new URL('maps/tokens/catalog.json', location.href).href);
 
   // Repli : le tampon Resource Timing est borné (250 entrées par défaut) et peut avoir
   // débordé. Les points d'entrée déclarés dans le HTML, eux, sont toujours là.

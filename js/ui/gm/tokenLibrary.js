@@ -171,7 +171,7 @@ export async function createTokenLibrary(container, options = {}) {
 
   // Chargement du catalogue
   try {
-    const response = await fetch(catalogUrl);
+    const response = await fetch(catalogUrl, { cache: 'no-cache' });
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText} en chargeant ${catalogUrl}`);
     }

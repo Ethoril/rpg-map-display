@@ -231,7 +231,7 @@ export async function loadCatalog(catalogUrl, baseUrl = globalThis.location?.hre
 
   let response;
   try {
-    response = await fetch(resolvedUrl);
+    response = await fetch(resolvedUrl, { cache: 'no-cache' });
   } catch (err) {
     throw new Error(
       `loadCatalog: Erreur réseau en chargeant ${resolvedUrl}: ${err instanceof Error ? err.message : String(err)}`
