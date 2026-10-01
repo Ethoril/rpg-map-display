@@ -1872,6 +1872,32 @@ depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jo
 ⚠ **« Complet » ne veut pas dire « fini »** : ce qui est complet, c'est la liste des critères
 d'acceptation du §11.
 
+> ### ✅ Chantier C-10 — refonte de la vue MJ, livrée le 01/10/2026 (hors §11)
+>
+> Demande du mainteneur : la vue MJ était « fonctionnelle mais inesthétique et peu pratique ».
+> Étude sur maquettes, quatre arbitrages le jour même (trace en C-10 de `QUESTIONS-EN-ATTENTE.md`,
+> amendement au CdC §5.5), puis trois tranches :
+>
+> 1. **Trois zones** : barre du haut (code de table, étages, jour/nuit, Jouer/Préparer), **rail
+>    d'outils** à gauche, inspecteur à droite. Fog, Gabarits, Murs et Liaisons quittent les onglets
+>    pour des **palettes** posées sur la carte, qui gardent les règles de l'onglet (en changer
+>    désarme ; la bascule de mode jamais). Un outil armé : liseré de laiton et puce de rappel.
+> 2. **Thème** : variables dans `css/gm.css`, un seul accent, polices système ; les sous-modules
+>    n'ont plus de couleur en dur. `tokenMaker` et `linkEditor`, partagés avec `prepare.html`,
+>    gardent leur rendu là-bas grâce à des valeurs de repli.
+> 3. **Inspecteur** : sans sélection, la liste des pions de l'étage ; avec, la fiche en volets.
+>
+> Aucun fichier ajouté, aucun raccourci ajouté, tous les ids conservés. **Vérifié par mutation** :
+> puce d'armement, bascule de mode qui ne désarme pas, désarmement au changement de palette,
+> sélection depuis la liste, filtre par étage, tri.
+>
+> ⏳ **À éprouver à la table** :
+>
+> - la **palette** couvre le coin haut-gauche de la carte : un pion dessous ne se saisit pas tant
+>   qu'elle est ouverte (la fermer, ou recliquer son bouton du rail) ;
+> - la lisibilité du **liseré de laiton** comme signal « le prochain clic agit » ;
+> - la **largeur** de l'inspecteur (336 px) et du rail (60 px) sur l'écran du Mac.
+
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur, arbitrée le jour même en deux séances de choix multiples (trace en C-9 de

@@ -545,6 +545,15 @@ sources portées par les pions (`emitsLight`).
   éprouvés. ⭐ **Le Zero-UI n'est pas violé** : la contrainte porte sur la vue joueurs et sur la
   carte, pas sur le panneau MJ — qui est un poste clavier-souris et porte déjà dix onglets.
 
+  *Amendé le 01/10/2026 (C-10, refonte de la vue MJ).* Les dix onglets sont devenus trois zones :
+  un **rail d'outils** à gauche (Ping, Mesure, lampes, et quatre boutons de palette : Fog, Gabarits,
+  Murs, Liaisons), la carte au centre, un **inspecteur** à droite (Pions, Handouts en Jouer ;
+  Cartes, Image, Grille en Préparer ; le diagnostic UVTT est un volet repliable de Cartes). ⭐ Une
+  **palette** posée sur la carte est l'ancien onglet et en garde les règles : en ouvrir ou en
+  fermer une désarme l'outil, comme un changement d'onglet ; la bascule Jouer/Préparer ne désarme
+  jamais. Un outil armé se signale par un liseré de laiton autour de la carte et une puce de rappel.
+  Aucun raccourci clavier ajouté : Échap et P seulement.
+
   ⛔ La distance vient de **`grid.distance(a, b)`**, jamais d'un calcul en dur (interdiction n°7).
   C'est ce qui la fera fonctionner en hexagone sans une ligne de plus.
 - **Ping** — ~~deux doigts tap~~, marqueur animé ~2 s, **visible sur les trois postes**.

@@ -956,8 +956,13 @@ fiche du pion sinon. Un seul accent, le doré, réservé à ce qui est actif.
 > - **Polices** : celles du système seulement. Aucun fichier ni aucune dépendance ajoutés.
 > - **Raccourcis** : **aucun nouveau**. On garde Échap et P ; le rail se pilote à la souris.
 >
-> ⚠ **Encore ouvert** : le découpage en tranches, et ce qu'il faut ajouter au manifeste (un module
-> pour le rail, si `panel.js` ne peut pas l'héberger) — à signaler avant d'écrire, pas à improviser.
+> ✅ **Livré le 01/10/2026** en trois tranches (5d039af, 392f9bb, 99004ca), sans aucun fichier
+> ajouté : `panel.js` héberge le rail et les palettes. Détail et points à éprouver à la table :
+> `ETAT.md`, « Suite produit ».
+>
+> ⭐ **Appliqué sans nouvel arbitrage**, parce que le CdC le tranchait déjà : une palette est
+> l'ancien onglet, donc l'ouvrir, la fermer ou en changer désarme l'outil, comme le « désarmement au
+> changement d'onglet » du §5.5. Un clic d'onglet de l'inspecteur désarme toujours aussi.
 
 ---
 
