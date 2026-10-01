@@ -5,9 +5,8 @@ import { findHitPortal } from '../../input/portalHit.js';
 import { gridFor } from '../../grid/index.js';
 import { cellKey } from '../../core/cellKey.js';
 import { findPath } from '../../movement/path.js';
-import { computeBlockedEdges } from '../../import/blockedEdges.js';
-import { terrainCostRecordToMap } from '../../core/schema.js';
 import * as store from '../../state/store.js';
+import { movementRulesFor } from '../../state/selection.js';
 
 import { findHitTemplate, templateDragPose } from '../../input/templateHit.js';
 import {
@@ -213,6 +212,12 @@ export function bootstrapPlayerView(options) {
     // est déjà n'est jamais un déplacement vers une case occupée — la question ne s'y pose pas.
     if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
       const liaison = store.findLinkAtCell(activeLevel.id, targetCell);
+      // Chantier C-9 : monté, on ne prend aucune liaison depuis la tablette — on descend de
+      // cheval pour changer d'étage. Le MJ, lui, reste libre (glisser, sélecteur d'étage).
+      if (liaison && selectedToken.mounted === true) {
+        onDestinationRejected(targetCell, 'refused');
+        return;
+      }
       if (
         liaison &&
         selectedToken.kind === 'pc' &&
@@ -261,11 +266,13 @@ export function bootstrapPlayerView(options) {
       return;
     }
 
-    const blockedEdges = computeBlockedEdges(activeLevel, grid);
-    const terrainCostMap = terrainCostRecordToMap(activeLevel.terrainCost);
+    // ⛔ Les MÊMES règles que la zone atteignable (chantier C-9) : un masque calculé ici à part
+    // laisserait un pion monté traverser une porte ouverte pendant l'animation, la zone l'ayant
+    // pourtant contournée.
+    const { blockedEdges, terrainCost } = movementRulesFor(selectedToken, activeLevel);
     // Le coût de la cible est déjà dans la zone atteignable : il borne la recherche (G5).
     const path = findPath(
-      grid, selectedToken.cell, targetCell, blockedEdges, terrainCostMap,
+      grid, selectedToken.cell, targetCell, blockedEdges, terrainCost,
       reachableCells.get(cellKey(targetCell))
     );
     const startedAt = Date.now();

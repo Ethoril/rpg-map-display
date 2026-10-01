@@ -419,6 +419,15 @@ export const BADGE_RASTER_STEP_PX = 2;
 export const STATUS_ICON_CACHE_LIMIT = 128;
 
 /**
+ * Icône du pion monté (chantier C-9) : la tête de cheval de game-icons.net, normalisée comme les
+ * icônes d'état mais hors de `assets/icons/status/`, qui fait autorité sur les 14 marqueurs.
+ */
+export const MOUNTED_ICON_URL = 'assets/icons/mounted.svg';
+
+/** Monté, le budget de déplacement est doublé — décision du mainteneur du 01/10/2026. */
+export const MOUNTED_SPEED_MULTIPLIER = 2;
+
+/**
  * Demi-largeur de la capsule de désignation d'une porte, en cases.
  *
  * Elle valait **0,5**, soit une case entière de bande autour du segment, et c'était trop :

@@ -567,6 +567,35 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    case 'token.mounted': {
+      // Chantier C-9 — patron de `light.toggle`. Aucun filtre par vue : MJ et tablette
+      // l'appliquent tous deux, l'autorisation se fait à l'émission (CdC §7).
+      if (
+        !payload.tokenId || typeof payload.tokenId !== 'string' ||
+        typeof payload.mounted !== 'boolean'
+      ) {
+        console.error('Événement "token.mounted" refusé : payload malformé');
+        return false;
+      }
+      const token = campaign?.tokens.find((t) => t.id === payload.tokenId);
+      if (!token) {
+        console.error(`Événement "token.mounted" refusé : pion inconnu "${payload.tokenId}"`);
+        return false;
+      }
+      // État ABSOLU, donc rejouable : un pion déjà dans cet état ne mute rien.
+      if ((token.mounted === true) === payload.mounted) {
+        return false;
+      }
+      try {
+        store.setTokenMounted(payload.tokenId, payload.mounted);
+      } catch (err) {
+        console.error(
+          `Événement "token.mounted" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
     case 'light.place': {
       if (
         !payload.levelId || typeof payload.levelId !== 'string' ||

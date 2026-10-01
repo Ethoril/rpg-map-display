@@ -314,7 +314,7 @@ export function normalizeLevel(level) {
 
 /**
  * Normalise un pion hérité (CdC §6 & Chantier Q §1.1 / §3).
- * S'assure que markers est un tableau, et que hp et health ont des valeurs par défaut.
+ * S'assure que markers est un tableau, et que hp, health et mounted ont des valeurs par défaut.
  *
  * @param {any} token
  * @returns {any}
@@ -329,6 +329,10 @@ export function normalizeToken(token) {
   }
   if (token.health === undefined) {
     token.health = 'unharmed';
+  }
+  // Chantier C-9 : un pion enregistré avant la monture est à pied.
+  if (token.mounted === undefined) {
+    token.mounted = false;
   }
   // Les premières campagnes utilisaient parfois `false` pour « aucune lumière ».
   // Le contrat actuel est explicite : `null` ou un objet borné. La normalisation
@@ -591,6 +595,7 @@ export function createToken(overrides = {}) {
     markers: overrides.markers ?? [],
     hp: overrides.hp !== undefined ? overrides.hp : null,
     health: overrides.health ?? 'unharmed',
+    mounted: overrides.mounted ?? false,
     ...overrides,
   };
 }
@@ -1126,6 +1131,10 @@ export function validateCampaign(campaign) {
 
       if (token.health !== undefined && !HEALTH_STATE_SET.has(token.health)) {
         errors.push(`Pion "${tokenId}" : health invalide "${token.health}"`);
+      }
+
+      if (token.mounted !== undefined && typeof token.mounted !== 'boolean') {
+        errors.push(`Pion "${tokenId}" : mounted doit être un booléen`);
       }
 
       const level = enReserve ? null : levelsById.get(token.levelId);

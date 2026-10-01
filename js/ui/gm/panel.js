@@ -126,7 +126,9 @@ export function createGMPanel(container, options = {}) {
       n'est sélectionné, pour ne rien ajouter au bandeau du cas courant.
 
       ⛔ Elle ne porte QUE ce qui bouge en combat. L'édition complète — nom, image, taille, vitesse,
-      vision, marqueurs — reste dans l'onglet Pions, et il ne faut pas la dupliquer ici.
+      vision, marqueurs — reste dans l'onglet Pions, et il ne faut pas la dupliquer ici. Monter à
+      cheval ou en descendre en fait partie (chantier C-9) : le bouton « À cheval » vaut pour un PJ
+      comme pour un PNJ, et reste visible dès que la barre l'est.
 
       ⚠ L'interdiction n°4 de CONVENTIONS.md §8 — « ni barre de points de vie sur un PNJ » — porte
       sur le RENDU DU PION SUR LE CANVAS, pas sur le panneau MJ. C'est le chantier Q : anneau
@@ -150,6 +152,7 @@ export function createGMPanel(container, options = {}) {
         <button id="gm-vitals-health-wounded" type="button" data-health="wounded" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Blessé</button>
         <button id="gm-vitals-health-critical" type="button" data-health="critical" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Critique</button>
       </div>
+      <button id="gm-vitals-mounted" type="button" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">À cheval</button>
       <span id="gm-vitals-hint" style="font-size: 0.72rem; color: #8a7a96;"></span>
     </div>
 
@@ -1526,6 +1529,7 @@ export function createGMPanel(container, options = {}) {
   const vitalsHealthBtns = /** @type {HTMLButtonElement[]} */ (
     Array.from(container.querySelectorAll('#gm-vitals-health button[data-health]'))
   );
+  const vitalsMountedBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-vitals-mounted'));
 
   /**
    * Reflète le pion sélectionné dans la barre de vitalité.
@@ -1574,6 +1578,14 @@ export function createGMPanel(container, options = {}) {
         btn.style.borderColor = actif ? '#8a6a9a' : '#444';
       }
     }
+
+    if (vitalsMountedBtn) {
+      const monte = pion.mounted === true;
+      vitalsMountedBtn.setAttribute('aria-pressed', String(monte));
+      vitalsMountedBtn.style.background = monte ? '#5a3a6a' : '#1a1a1a';
+      vitalsMountedBtn.style.color = monte ? '#fff' : '#888';
+      vitalsMountedBtn.style.borderColor = monte ? '#8a6a9a' : '#444';
+    }
   }
 
   vitalsHpCurrent?.addEventListener(
@@ -1594,6 +1606,30 @@ export function createGMPanel(container, options = {}) {
       { signal: listeners.signal }
     );
   }
+
+  // Chantier C-9 : monter ou descendre de cheval. État ABSOLU publié, jamais « inverse-le » :
+  // `token.mounted` est rejouable, et c'est son seul écrivain.
+  vitalsMountedBtn?.addEventListener(
+    'click',
+    () => {
+      const pion = store.getSelectedToken();
+      if (!pion) return;
+      const suivant = !(pion.mounted === true);
+      try {
+        store.setTokenMounted(pion.id, suivant);
+      } catch (err) {
+        if (vitalsHint) vitalsHint.textContent = err instanceof Error ? err.message : String(err);
+        return;
+      }
+      transport?.publish({
+        type: 'token.mounted',
+        payload: { tokenId: pion.id, mounted: suivant },
+        at: Date.now(),
+        by: 'gm',
+      });
+    },
+    { signal: listeners.signal }
+  );
 
   tokenEditKind.addEventListener(
     'change',

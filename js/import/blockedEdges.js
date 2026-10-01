@@ -7,13 +7,49 @@ import { edgeKey } from '../core/cellKey.js';
 /** @typedef {import('../grid/GridAdapter.js').GridAdapter} GridAdapter */
 /** @typedef {{ x: number, y: number }} Point */
 
+/** @typedef {'closed'|'all'} PortalBlocking */
+
 /**
- * Cache privé du masque d'arêtes bloquées par étage (clé = levelId).
+ * Variantes du masque selon les portails qui bloquent : `'closed'` (les portails non ouverts,
+ * comportement historique) ou `'all'` (tous, quel que soit leur état — le pion monté du
+ * chantier C-9, qui ne franchit aucune porte).
+ *
+ * @type {ReadonlyArray<PortalBlocking>}
+ */
+const PORTAL_BLOCKING_VARIANTS = ['closed', 'all'];
+
+/**
+ * Cache privé du masque d'arêtes bloquées, par étage ET par variante (clé = `levelId|variante`).
+ * ⛔ Indexé par étage seul, le masque « toutes portes » d'un pion monté serait rendu à un pion à
+ * pied, ou l'inverse : la signature géométrique est la même pour les deux.
  * L'instance de Map reste encapsulée et non exposée à l'extérieur.
  *
  * @type {Map<string, { signature: string, edges: Set<string> }>}
  */
 const cache = new Map();
+
+/**
+ * @param {string} levelId
+ * @param {PortalBlocking} portals
+ * @returns {string}
+ */
+function cacheKey(levelId, portals) {
+  return `${levelId}|${portals}`;
+}
+
+/**
+ * Lève sur une variante inconnue : la rendre silencieusement `'closed'` laisserait un pion monté
+ * franchir les portes ouvertes.
+ *
+ * @param {unknown} portals
+ * @returns {PortalBlocking}
+ */
+function assertPortalBlocking(portals) {
+  if (portals !== 'closed' && portals !== 'all') {
+    throw new Error(`options.portals inconnu : "${String(portals)}" ('closed' ou 'all' attendu)`);
+  }
+  return portals;
+}
 
 let computeCount = 0;
 
@@ -104,7 +140,9 @@ function getGeometrySignature(level) {
  */
 export function invalidateBlockedEdgesCache(levelId) {
   if (levelId) {
-    cache.delete(levelId);
+    for (const portals of PORTAL_BLOCKING_VARIANTS) {
+      cache.delete(cacheKey(levelId, portals));
+    }
   } else {
     cache.clear();
   }
@@ -192,12 +230,15 @@ export function segmentsIntersect(A, B, C, D, eps = 1e-9) {
  * Extrait tous les segments d'obstacles (murs et portails non ouverts) d'un étage.
  * Si un GridAdapter est fourni, les coordonnées sont converties en pixels carte ({ p1, p2 }).
  * Sinon, elles restent en coordonnées de case ({ A, B }).
+ * Avec `portals = 'all'`, tout portail est un obstacle, quel que soit son état (chantier C-9).
  *
  * @param {Level} level
  * @param {GridAdapter} [grid]
+ * @param {PortalBlocking} [portals]
  * @returns {Array<any>}
  */
-export function extractBlockedSegments(level, grid) {
+export function extractBlockedSegments(level, grid, portals = 'closed') {
+  assertPortalBlocking(portals);
   if (!level) return [];
 
   /** @type {Array<any>} */
@@ -228,7 +269,7 @@ export function extractBlockedSegments(level, grid) {
 
   if (Array.isArray(level.portals)) {
     for (const portal of level.portals) {
-      if (portal && !isPortalOpen(portal)) {
+      if (portal && (portals === 'all' || !isPortalOpen(portal))) {
         if (grid) {
           segments.push({
             p1: grid.mapFromCellPoint(portal.a),
@@ -252,20 +293,26 @@ export function extractBlockedSegments(level, grid) {
  * Utilise un cache interne basé sur l'identifiant et l'empreinte géométrique de l'étage.
  * Retourne TOUJOURS une copie défensive (`new Set`) pour empêcher toute corruption externe du cache.
  *
+ * `options.portals` : `'closed'` (défaut) ou `'all'` — voir `PORTAL_BLOCKING_VARIANTS`. Une
+ * valeur inconnue lève.
+ *
  * @param {Level} level
  * @param {GridAdapter} grid
+ * @param {{ portals?: PortalBlocking }} [options]
  * @returns {Set<string>} Set de clés d'arêtes canoniques (obtenues via `edgeKey`)
  */
-export function computeBlockedEdges(level, grid) {
+export function computeBlockedEdges(level, grid, options = {}) {
   // Rendre un ensemble vide signifierait « aucune arête bloquée », donc **tous les murs
   // franchissables en silence**. Un argument manquant est une erreur de programmation : on lève.
   if (!level) throw new Error('level est requis pour computeBlockedEdges');
   if (!grid) throw new Error('grid (GridAdapter) est requis pour computeBlockedEdges');
 
+  const portals = assertPortalBlocking(options.portals ?? 'closed');
   const levelId = level.id || 'default';
+  const key = cacheKey(levelId, portals);
   const signature = getGeometrySignature(level);
 
-  const cached = cache.get(levelId);
+  const cached = cache.get(key);
   if (cached && cached.signature === signature) {
     return new Set(cached.edges);
   }
@@ -273,7 +320,7 @@ export function computeBlockedEdges(level, grid) {
   computeCount++;
 
   const blocked = new Set();
-  const rawSegments = extractBlockedSegments(level, grid);
+  const rawSegments = extractBlockedSegments(level, grid, portals);
 
   if (rawSegments.length > 0) {
     const width = level.widthCells;
@@ -421,7 +468,7 @@ export function computeBlockedEdges(level, grid) {
     }
   }
 
-  cache.set(levelId, {
+  cache.set(key, {
     signature,
     edges: new Set(blocked),
   });

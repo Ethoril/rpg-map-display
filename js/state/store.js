@@ -1529,6 +1529,8 @@ export function removeWall(levelId, wall) {
  *   un des deux.
  * - `imageUrl` — remplacer l'image, c'est repasser par le générateur : un champ texte libre
  *   n'y apporterait qu'un moyen de casser l'affichage.
+ * - `mounted` — un seul écrivain, `token.mounted` → `setTokenMounted` (chantier C-9, règle « un
+ *   champ, un écrivain » de l'amendement C-2).
  */
 const ALLOWED_TOKEN_PATCH_KEYS = new Set([
   'label',
@@ -1607,6 +1609,38 @@ export function updateToken(tokenId, patch) {
   assertValidCampaign(candidate, `Mise à jour du pion "${tokenId}"`);
   replaceCampaign(candidate);
   // `speedCells` et `sizeCells` sont dans ce patch : la zone atteignable en dépend (A4).
+  rafraichirZoneAtteignable();
+  notifySubscribers();
+}
+
+/**
+ * Met un pion à cheval ou le fait descendre — patron de `setLightState`, porté par
+ * `token.mounted` (chantier C-9). État **absolu**, jamais « inverse-le » : c'est le seul écrivain
+ * de `Token.mounted`, `updateToken` le refuse.
+ *
+ * @param {string} tokenId
+ * @param {boolean} mounted
+ * @returns {void}
+ */
+export function setTokenMounted(tokenId, mounted) {
+  if (typeof mounted !== 'boolean') {
+    throw new Error(`État de monture invalide : "${mounted}"`);
+  }
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+
+  const candidate = structuredClone(campaign);
+  const token = candidate.tokens.find((t) => t.id === tokenId);
+  if (!token) {
+    throw new Error(`Pion inconnu : "${tokenId}"`);
+  }
+
+  token.mounted = mounted;
+
+  assertValidCampaign(candidate, `Monture du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+  // Monté, le budget double et toute porte bloque : la zone atteignable en dépend (A4).
   rafraichirZoneAtteignable();
   notifySubscribers();
 }

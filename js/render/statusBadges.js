@@ -18,6 +18,7 @@ import {
   TOKEN_HP_BADGE_FONT_SIZE_PX,
   TOKEN_HP_BADGE_PADDING_X_PX,
   TOKEN_HP_BADGE_HEIGHT_PX,
+  MOUNTED_ICON_URL,
 } from '../core/constants.js';
 
 /**
@@ -28,7 +29,7 @@ import {
  * @typedef {'icons'|'category-dots'|'single-dot'} BadgeTier
  */
 
-/** @type {Set<string>} Set d'identifiants d'icônes ayant déjà émis une erreur de chargement pour journaliser une seule fois. */
+/** @type {Set<string>} Set des URL d'icônes ayant déjà émis une erreur de chargement pour journaliser une seule fois. */
 const loggedErrors = new Set();
 
 /**
@@ -60,15 +61,17 @@ export function getBadgeTier(tokenDiameterPx) {
 }
 
 /**
- * Trie les marqueurs selon l'ordre canonique et applique la règle des 3 emplacements (BADGE_ROW_SLOTS = 3).
+ * Trie les marqueurs selon l'ordre canonique et applique la règle des `slots` emplacements
+ * (par défaut BADGE_ROW_SLOTS = 3 ; 2 pour un pion monté, dont le cheval prend le dernier).
  *
- * - 1 à 3 marqueurs : 1 à 3 icônes, overflowCount = 0.
- * - 4+ marqueurs : 2 icônes + un compte '+N' (overflowCount = total - 2).
+ * - 1 à `slots` marqueurs : autant d'icônes, overflowCount = 0.
+ * - au-delà : `slots - 1` icônes + un compte '+N' (overflowCount = total - (slots - 1)).
  *
  * @param {StatusMarker[]} markers
+ * @param {number} [slots=BADGE_ROW_SLOTS]
  * @returns {{ visibleMarkers: StatusMarker[], overflowCount: number }}
  */
-export function filterAndSortMarkers(markers) {
+export function filterAndSortMarkers(markers, slots = BADGE_ROW_SLOTS) {
   if (!Array.isArray(markers) || markers.length === 0) {
     return { visibleMarkers: [], overflowCount: 0 };
   }
@@ -80,12 +83,12 @@ export function filterAndSortMarkers(markers) {
     return rankA - rankB;
   });
 
-  if (sorted.length <= BADGE_ROW_SLOTS) {
+  if (sorted.length <= slots) {
     return { visibleMarkers: sorted, overflowCount: 0 };
   }
 
-  // Plus de BADGE_ROW_SLOTS marqueurs : les 2 premiers emplacements sont des icônes, le 3ème est +N
-  const visibleCount = BADGE_ROW_SLOTS - 1;
+  // Plus de `slots` marqueurs : les `slots - 1` premiers emplacements sont des icônes, le dernier est +N
+  const visibleCount = slots - 1;
   return {
     visibleMarkers: sorted.slice(0, visibleCount),
     overflowCount: sorted.length - visibleCount,
@@ -297,23 +300,30 @@ export class StatusIconCache {
 
   /**
    * Précharge l'image SVG d'une icône.
+   *
+   * Sans `url`, l'icône est celle du marqueur d'état `id` (`assets/icons/status/<id>.svg`) ;
+   * le cheval du pion monté (chantier C-9) passe la sienne, `MOUNTED_ICON_URL`. Le cache est
+   * indexé par URL : un identifiant ne peut donc pas en masquer un autre.
+   *
    * @param {string} id
    * @param {(() => void)} [invalidate] Rappel facultatif d'invalidation du rendu
+   * @param {string} [url] URL explicite de l'icône
    * @returns {HTMLImageElement|null}
    */
-  getImage(id, invalidate) {
+  getImage(id, invalidate, url) {
     if (typeof Image === 'undefined') return null;
-    let img = this.imageElements.get(id);
+    const src = url ?? `assets/icons/status/${id}.svg`;
+    let img = this.imageElements.get(src);
     if (!img) {
       img = new Image();
-      img.src = `assets/icons/status/${id}.svg?v=${Date.now()}`;
+      img.src = `${src}?v=${Date.now()}`;
       img.onerror = () => {
-        if (!loggedErrors.has(id)) {
-          loggedErrors.add(id);
-          console.error(`[statusBadges] Impossible de charger l'icône d'état "${id}" (assets/icons/status/${id}.svg)`);
+        if (!loggedErrors.has(src)) {
+          loggedErrors.add(src);
+          console.error(`[statusBadges] Impossible de charger l'icône "${id}" (${src})`);
         }
       };
-      this.imageElements.set(id, img);
+      this.imageElements.set(src, img);
     }
 
     if (invalidate && !img.complete) {
@@ -330,12 +340,13 @@ export class StatusIconCache {
    * @param {string} id
    * @param {number} rasterPx Taille physique en pixels (arrondie au pas de 2px)
    * @param {(() => void)} [invalidate] Rappel facultatif d'invalidation du rendu
+   * @param {string} [url] URL explicite de l'icône — voir `getImage`
    * @returns {HTMLCanvasElement|null}
    */
-  getRasterCanvas(id, rasterPx, invalidate) {
+  getRasterCanvas(id, rasterPx, invalidate, url) {
     if (typeof document === 'undefined') return null;
 
-    const key = `${id}:${rasterPx}`;
+    const key = `${url ?? `assets/icons/status/${id}.svg`}:${rasterPx}`;
     if (this.rasterCache.has(key)) {
       const existing = /** @type {HTMLCanvasElement} */ (this.rasterCache.get(key));
       // Refresh LRU position
@@ -344,7 +355,7 @@ export class StatusIconCache {
       return existing;
     }
 
-    const img = this.getImage(id, invalidate);
+    const img = this.getImage(id, invalidate, url);
     if (!img || !img.complete || img.naturalWidth === 0) {
       return null;
     }
@@ -383,7 +394,39 @@ export function getSharedStatusIconCache() {
 }
 
 /**
+ * Disposition de la rangée d'un pion **monté** (chantier C-9), palier `'icons'`.
+ *
+ * Décision du mainteneur (01/10/2026) : le cheval prend le coin, la rangée de marqueurs garde 2
+ * places, et au-delà le compteur « +N » prend le relais. La rangée est disposée sur
+ * `BADGE_ROW_SLOTS` emplacements ; le cheval occupe le dernier (en bas à droite), les `itemCount`
+ * éléments de marqueurs (compteur compris, au plus `BADGE_ROW_SLOTS - 1`) les emplacements juste
+ * à sa gauche, collés à lui. Aucun chevauchement possible, par construction.
+ *
+ * @param {number} tokenWidthMap Largeur du pion sur la carte
+ * @param {number} itemCount Nombre d'éléments de marqueurs (icônes + compteur éventuel)
+ * @returns {{ badgeRadiusMap: number, horse: { x: number, y: number }, items: { x: number, y: number }[] }}
+ */
+export function computeMountedBadgeRowLayout(tokenWidthMap, itemCount) {
+  if (!Number.isInteger(itemCount) || itemCount < 0 || itemCount > BADGE_ROW_SLOTS - 1) {
+    throw new Error(
+      `Rangée montée : ${itemCount} élément(s) de marqueurs, au plus ${BADGE_ROW_SLOTS - 1} attendus`
+    );
+  }
+  const layout = computeBadgeRowLayout(tokenWidthMap, BADGE_ROW_SLOTS, BADGE_DIAMETER_RATIO);
+  const horseSlot = BADGE_ROW_SLOTS - 1;
+  return {
+    badgeRadiusMap: layout.badgeRadiusMap,
+    horse: layout.centers[horseSlot],
+    items: layout.centers.slice(horseSlot - itemCount, horseSlot),
+  };
+}
+
+/**
  * Rendu des marqueurs d'état au bas du pion en espace carte.
+ *
+ * Un pion monté (chantier C-9) porte en plus, au palier `'icons'` seulement, une tête de cheval au
+ * dernier emplacement de la rangée — même sans aucun marqueur. Aux paliers des points, rien ne
+ * change : pas de cheval, comme le badge d'élévation qui disparaît sur un petit pion.
  *
  * @param {CanvasRenderingContext2D} ctx Contexte canvas 2D
  * @param {Token} token Pion à restituer
@@ -396,7 +439,10 @@ export function getSharedStatusIconCache() {
  * @param {StatusIconCache} [options.iconCache] Cache d'icônes optionnel
  */
 export function drawStatusBadges(ctx, token, p0, options = {}) {
-  if (!ctx || !token || !token.markers || token.markers.length === 0) return;
+  if (!ctx || !token) return;
+  const markers = token.markers ?? [];
+  const mounted = token.mounted === true;
+  if (markers.length === 0 && !mounted) return;
 
   const { widthMap = 140, zoom = 1, resolution = 1, invalidate } = options;
   const safeZoom = zoom > 0 ? zoom : 1;
@@ -404,12 +450,28 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
   const tier = getBadgeTier(tokenDiameterPx);
   const iconCache = options.iconCache ?? getSharedStatusIconCache();
 
+  // Aux paliers des points, le cheval ne se dessine pas : sans marqueur, rien à faire.
+  if (tier !== 'icons' && markers.length === 0) return;
+
   ctx.save();
 
   if (tier === 'icons') {
-    const { visibleMarkers, overflowCount } = filterAndSortMarkers(token.markers);
+    const { visibleMarkers, overflowCount } = filterAndSortMarkers(
+      markers,
+      mounted ? BADGE_ROW_SLOTS - 1 : BADGE_ROW_SLOTS
+    );
     const totalCount = visibleMarkers.length + (overflowCount > 0 ? 1 : 0);
-    const layout = computeBadgeRowLayout(widthMap, totalCount, BADGE_DIAMETER_RATIO);
+    /** @type {{ badgeRadiusMap: number, centers: { x: number, y: number }[] }} */
+    let layout;
+    /** @type {{ x: number, y: number }|null} */
+    let horseCenter = null;
+    if (mounted) {
+      const mountedLayout = computeMountedBadgeRowLayout(widthMap, totalCount);
+      layout = { badgeRadiusMap: mountedLayout.badgeRadiusMap, centers: mountedLayout.items };
+      horseCenter = mountedLayout.horse;
+    } else {
+      layout = computeBadgeRowLayout(widthMap, totalCount, BADGE_DIAMETER_RATIO);
+    }
     const badgeDiameterScreen = tokenDiameterPx * BADGE_DIAMETER_RATIO;
     const rawRasterPx = badgeDiameterScreen * resolution;
     const rasterPx = Math.max(12, Math.round(rawRasterPx / BADGE_RASTER_STEP_PX) * BADGE_RASTER_STEP_PX);
@@ -466,8 +528,29 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
       ctx.textBaseline = 'middle';
       ctx.fillText(`+${overflowCount}`, cx, cy);
     }
+
+    // Tête de cheval du pion monté, au dernier emplacement (chantier C-9). Même style qu'un badge
+    // de marqueur ; tant que l'icône charge, le disque seul tient la place.
+    if (horseCenter) {
+      const cx = p0.x + horseCenter.x;
+      const cy = p0.y + horseCenter.y;
+      const r = layout.badgeRadiusMap;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5 / safeZoom;
+      ctx.stroke();
+
+      const rasterCanvas = iconCache.getRasterCanvas('mounted', rasterPx, invalidate, MOUNTED_ICON_URL);
+      if (rasterCanvas) {
+        ctx.drawImage(rasterCanvas, cx - r, cy - r, r * 2, r * 2);
+      }
+    }
   } else if (tier === 'category-dots') {
-    const categories = getCategoryDots(token.markers);
+    const categories = getCategoryDots(markers);
     const layout = computeBadgeRowLayout(widthMap, categories.length, BADGE_DOT_DIAMETER_RATIO);
 
     for (let i = 0; i < categories.length; i++) {

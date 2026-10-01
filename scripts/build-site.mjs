@@ -27,6 +27,9 @@ export const SITE_MANIFEST = Object.freeze({
     'diag.html',
     'attributions.html',
     'firebase-config.js',
+    // Tête de cheval du pion monté (chantier C-9). Hors de `assets/icons/status/`, qui fait
+    // autorité sur les 14 marqueurs : sans cette ligne, Pages servirait une 404 sur le cheval.
+    'assets/icons/mounted.svg',
   ]),
   runtimeEntryModules: Object.freeze([
     'js/app/gm.js',

@@ -186,6 +186,9 @@
  * @property {import('./constants.js').StatusMarker[]} markers
  * @property {{ current: number, max: number }|null} hp
  * @property {'unharmed'|'wounded'|'critical'} health
+ * @property {boolean} [mounted] À cheval (chantier C-9, 01/10/2026). Monté, le pion voit son budget de
+ *   déplacement doublé et ne franchit, depuis la tablette, aucun portail quel que soit son état, ni
+ *   aucune liaison. Absent = à pied. Seul écrivain : `token.mounted` → `store.setTokenMounted`.
  * @property {TokenMove} [move]
  */
 
