@@ -37,7 +37,7 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
 
     // Basculer sur le mode Préparer, puis sur l'onglet Murs et armer l'éditeur
     await page.click('#gm-mode-prep');
-    await page.click('button[data-tab="wall-editor"]');
+    await page.click('#gm-rail-wall-editor');
     await page.click('#wall-btn-arm');
 
     // Tap près du portail
@@ -154,7 +154,7 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
 
     // Armer l'éditeur
     await page.click('#gm-mode-prep');
-    await page.click('button[data-tab="wall-editor"]');
+    await page.click('#gm-rail-wall-editor');
     await page.click('#wall-btn-arm');
 
     // Emuler deux taps pour poser deux sommets
@@ -189,7 +189,7 @@ test.describe('Tranche L-07 — Éditeur minimal de murs (E2E)', () => {
     await waitForApp(page);
 
     // Sur la vue joueurs, vérifier l'absence d'éléments UI d'édition de murs
-    const wallEditorBtn = page.locator('button[data-tab="wall-editor"]');
+    const wallEditorBtn = page.locator('#gm-rail-wall-editor');
     await expect(wallEditorBtn).toHaveCount(0);
   });
 

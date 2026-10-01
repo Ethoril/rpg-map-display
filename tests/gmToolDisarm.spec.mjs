@@ -37,7 +37,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
 
   test('2. Touche Échap (Escape) désarme l\'outil actif et rend la saisie de pion', async ({ page }) => {
     // Armer le pinceau de fog
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
 
     const activeBeforeEsc = await page.evaluate(() => {
@@ -58,7 +58,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
 
   test('3. Exclusion mutuelle des 3 paires d\'outils', async ({ page }) => {
     // Armer Fog
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
     let tool = await page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
     expect(tool).toBe('fog-reveal');
@@ -80,28 +80,25 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     expect(tool).toBe('template-place');
   });
 
-  test('4. La marque .gm-tab-active-tool apparaît sur l\'onglet de l\'outil armé et disparaît au désarmement', async ({ page }) => {
+  test('4. La marque .gm-tool-armed apparaît sur le bouton du rail de l\'outil armé et disparaît au désarmement', async ({ page }) => {
     // Armer Fog
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
 
-    const hasMarkArmed = await page.evaluate(() => {
-      const btn = document.querySelector('button[data-tab="fog-tools"]');
-      return btn ? btn.classList.contains('gm-tab-active-tool') : false;
-    });
-    expect(hasMarkArmed).toBe(true);
+    await expect(page.locator('#gm-rail-fog-tools')).toHaveClass(/gm-tool-armed/);
+    // Palette ouverte et outil armé sont deux états distincts, portés par deux marques.
+    await expect(page.locator('#gm-rail-fog-tools')).toHaveAttribute('aria-pressed', 'true');
 
-    // Changer d'onglet vers Pions (ce qui désarme l'outil)
+    // Changer d'onglet de l'inspecteur vers Pions (ce qui désarme l'outil, A3)…
     await page.click('button[data-tab="token-maker"]');
 
-    const hasMarkDisarmed = await page.evaluate(() => {
-      const btn = document.querySelector('button[data-tab="fog-tools"]');
-      return btn ? btn.classList.contains('gm-tab-active-tool') : false;
-    });
-    expect(hasMarkDisarmed).toBe(false);
+    await expect(page.locator('#gm-rail-fog-tools')).not.toHaveClass(/gm-tool-armed/);
+    // …sans fermer la palette.
+    await expect(page.locator('#gm-tool-palette')).toBeVisible();
+    await expect(page.locator('#gm-rail-fog-tools')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('5. Abandon du tracé de mur au changement d\'onglet', async ({ page }) => {
+  test('5. Abandon du tracé de mur au changement de palette', async ({ page }) => {
     // Initialiser le nombre de murs
     const initialWallCount = await page.evaluate(async () => {
       const store = await import('../js/state/store.js');
@@ -109,19 +106,23 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
       return lvl?.walls?.length ?? 0;
     });
 
-    // Aller sur l'onglet Murs et armer
-    await page.click('#gm-mode-prep');
-    await page.click('button[data-tab="wall-editor"]');
+    // Ouvrir la palette Murs et armer
+    await page.click('#gm-rail-wall-editor');
     await page.click('#wall-btn-arm');
 
-    // Cliquer sur le canvas pour ajouter un premier sommet
+    // Cliquer sur le canvas pour ajouter un premier sommet — à droite de la palette, qui couvre
+    // le coin haut-gauche de la carte et prendrait le clic.
     const board = page.locator('#board');
     const box = await board.boundingBox();
     if (!box) throw new Error('canvas boundingBox est null');
-    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.2);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+    const brouillon = () =>
+      page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.wallEditor?.getDraft().length);
+    expect(await brouillon(), 'le clic doit avoir posé un sommet, sinon l’abandon ne prouve rien').toBe(1);
 
-    // Changer d'onglet vers Liaisons
-    await page.click('button[data-tab="link-editor"]');
+    // Changer de palette vers Liaisons
+    await page.click('#gm-rail-link-editor');
+    expect(await brouillon(), 'le tracé en cours est abandonné').toBe(0);
 
     // Vérifier qu'aucun mur n'a été créé
     const finalWallCount = await page.evaluate(async () => {
@@ -133,7 +134,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     expect(finalWallCount).toBe(initialWallCount);
   });
 
-  test('UX-03 — un outil survit à la bascule de mode, agit encore, et le bandeau le dit', async ({ page }) => {
+  test('UX-03 — un outil survit à la bascule de mode, agit encore, et le rappel le dit', async ({ page }) => {
     // ⭐ Ce test lève deux réserves de la relecture d'UX-03, et il n'existait pas.
     //
     // 1. La survie de l'outil n'était prouvée que sur `getActiveToolName()`, c'est-à-dire sur
@@ -142,10 +143,10 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     //    cassé. On mesure donc ici son EFFET — le pinceau peint-il encore ?
     // 2. La séquence réellement dangereuse n'était jouée par aucun test : armer dans un mode,
     //    basculer de mode, et toucher la carte SANS passer par un onglet. C'est celle-là qui se
-    //    produira en séance, et c'est la seule que le bandeau protège.
+    //    produira en séance.
     //
     // ⛔ Le comportement figé ici est VOULU, pas subi : le mainteneur a explicitement demandé que
-    // l'outil survive à la bascule, parce qu'il prépare parfois en cours de partie. Le bandeau est
+    // l'outil survive à la bascule, parce qu'il prépare parfois en cours de partie. Le rappel est
     // la contrepartie. Ne pas « corriger » ce test en faisant désarmer la bascule.
     // ⚠ Deux libellés, pas un : `fogTools.updateUI` écrit « Annuler (n) » quand la pile porte
     // quelque chose et « Annuler » tout court quand elle est vide. Une sonde qui n'attend que la
@@ -162,42 +163,59 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     const toolName = () =>
       page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
 
-    // Mode Jouer, l'onglet Fog lui appartient : on arme, et le bandeau n'a rien à dire.
-    await page.click('button[data-tab="fog-tools"]');
+    // C-10 : le rappel d'outil armé est visible DÈS qu'un outil est armé, quel que soit le mode,
+    // et la palette comme le rail restent à l'écran à travers la bascule.
+    const banner = page.locator('#gm-active-tool-banner');
+
+    // Mode Jouer : on arme, et le rappel le dit aussitôt, liseré de la carte compris.
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
     expect(await toolName()).toBe('fog-reveal');
-    await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#gm-active-tool-text')).toContainText('Brouillard');
+    await expect(page.locator('#canvas-container')).toHaveClass(/gm-armed/);
     const avant = await undoCount();
     expect(avant, 'la pile d’undo du fog doit être lisible').toBeGreaterThanOrEqual(0);
 
-    // Bascule vers Préparer : l'onglet Fog disparaît, l'outil reste armé, le bandeau prend le
-    // relais de l'indicateur d'onglet — qui n'est plus visible.
+    // Bascule vers Préparer : l'outil reste armé, le rappel reste, la palette et son bouton du
+    // rail restent à l'écran avec la marque d'outil armé.
     await page.click('#gm-mode-prep');
     expect(await toolName()).toBe('fog-reveal');
-    await expect(page.locator('#gm-active-tool-banner')).toBeVisible();
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#gm-tool-palette')).toBeVisible();
+    await expect(page.locator('#gm-rail-fog-tools')).toHaveClass(/gm-tool-armed/);
 
-    // ⭐ L'EFFET, et non l'étiquette : un coup de pinceau sur la carte empile bien un undo.
+    // ⭐ L'EFFET, et non l'étiquette : un coup de pinceau sur la carte empile bien un undo. Le
+    // point visé est à droite de la palette, qui couvre le coin haut-gauche de la carte.
     const board = page.locator('#board');
     const box = await board.boundingBox();
     if (!box) throw new Error('canvas boundingBox est null');
-    await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.35);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
     await expect.poll(undoCount, { timeout: 8000 }).toBeGreaterThan(avant);
 
-    // Le bouton du bandeau est la porte de sortie : elle doit marcher depuis l'autre mode.
+    // Le bouton du rappel est la porte de sortie : elle doit marcher depuis l'autre mode.
     await page.click('#gm-disarm-active-tool');
     expect(await toolName()).toBe('none');
-    await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
+    await expect(banner).toBeHidden();
+    await expect(page.locator('#canvas-container')).not.toHaveClass(/gm-armed/);
 
-    // Et l'amendement A3 tient toujours par-dessus toute cette plomberie : un clic d'ONGLET
-    // désarme, même quand l'outil vient d'un autre mode que celui affiché.
+    // Et l'amendement A3 tient toujours par-dessus toute cette plomberie : un clic d'ONGLET de
+    // l'inspecteur désarme, même quand l'outil vient d'un autre mode que celui affiché.
     await page.click('#gm-mode-play');
-    await page.click('button[data-tab="fog-tools"]');
     await page.click('#fog-btn-tool-reveal');
     await page.click('#gm-mode-prep');
     expect(await toolName()).toBe('fog-reveal');
-    await page.click('button[data-tab="wall-editor"]');
+    await page.click('button[data-tab="scene-library"]');
     expect(await toolName()).toBe('none');
-    await expect(page.locator('#gm-active-tool-banner')).toBeHidden();
+    await expect(banner).toBeHidden();
+
+    // Ouvrir une autre palette, c'est changer d'onglet d'outil : elle désarme aussi.
+    await page.click('#fog-btn-tool-reveal');
+    expect(await toolName()).toBe('fog-reveal');
+    await page.click('#gm-rail-wall-editor');
+    expect(await toolName()).toBe('none');
+    await expect(banner).toBeHidden();
+    await expect(page.locator('#gm-palette-title')).toHaveText('Murs');
   });
 
   test('UX-04 — la barre de vitalité : chiffres pour un PJ, crans pour un PNJ, sans désarmer', async ({ page }) => {
@@ -287,7 +305,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
     // ── Et surtout : la barre ne désarme aucun outil ──────────────────────────────────────
     // C'est la raison pour laquelle la bascule automatique vers l'onglet Pions a été écartée :
     // elle passerait par `activateTab`, donc par `disarmActiveTool`.
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
     expect(await outilArme()).toBe('fog-reveal');
     await page.click('#gm-vitals-health-wounded');
@@ -304,7 +322,7 @@ test.describe('CORRECTIF — Désarmement des outils MJ & Indicateur d\'outil ac
   });
 
   test('6. Recliquer le bouton d\'outil actif le désarme (Critère 7 & Amendement A4)', async ({ page }) => {
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
 
     let activeTool = await page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
@@ -411,7 +429,7 @@ test.describe('UX-08 — Un pion créé se pose là où l\'on tape', () => {
   });
 
   test('Critère 2 : armer la pose d\'un pion désarme l\'outil précédent, et réciproquement', async ({ page }) => {
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
     expect(await outilActif(page)).toBe('fog-reveal');
 
@@ -422,8 +440,8 @@ test.describe('UX-08 — Un pion créé se pose là où l\'on tape', () => {
       'le pinceau de fog doit avoir été désarmé'
     ).toBe('none');
 
-    // Réciproquement : armer le fog abandonne la pose du pion.
-    await page.click('button[data-tab="fog-tools"]');
+    // Réciproquement : armer le fog abandonne la pose du pion. La palette Fog est restée ouverte
+    // (un onglet de l'inspecteur ne la ferme pas) : la recliquer la fermerait.
     await page.click('#fog-btn-tool-reveal');
     expect(await outilActif(page)).toBe('fog-reveal');
     expect(

@@ -194,7 +194,7 @@ async function prepare(page, session) {
   await page.goto(`/gm.html?session=${session}`);
   await waitForApp(page);
   await page.setViewportSize({ width: 900, height: 900 });
-  await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+  await page.click('#gm-rail-fog-tools');
   await page.click('#fog-btn-reveal-all');
   // Les indicateurs de porte se dessinent SOUS le fog : sans révélation, tout ce qui suit
   // mesurerait du noir. La preuve que le geste a porté est prise dans le DOM — la pile d'undo

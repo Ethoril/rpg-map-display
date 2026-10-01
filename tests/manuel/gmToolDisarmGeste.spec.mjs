@@ -221,7 +221,9 @@ test.describe('GESTE R1-08 — Désarmement des outils MJ, glisser réel bloquan
         id: 'hero-disarm-1',
         label: 'Héro',
         levelId: 'level-disarm-1',
-        cell: { a: 4, b: 4 },
+        // C-10 : à droite de la palette d'outil, qui reste ouverte après le changement d'onglet et
+        // couvre le coin haut-gauche de la carte — en (4, 4), le glisser partait SUR la palette.
+        cell: { a: 12, b: 4 },
         speedCells: 5,
       });
 
@@ -580,14 +582,10 @@ test.describe('GESTE R1-08 — Désarmement des outils MJ, glisser réel bloquan
     }) => {
       const depart = await getTokenCell(page);
 
-      if (outil.onglet === 'wall-editor') {
-        await page.click('#gm-mode-prep');
-      }
-      await page.click(`button[data-tab="${outil.onglet}"]`);
+      // C-10 : l'outil s'arme depuis sa palette, ouverte par le rail dans les deux modes ; le
+      // changement d'onglet est celui de l'inspecteur, qui désarme (A3) sans fermer la palette.
+      await page.click(`#gm-rail-${outil.onglet}`);
       await page.click(outil.armer);
-      if (outil.onglet === 'wall-editor') {
-        await page.click('#gm-mode-play');
-      }
       await page.click('button[data-tab="token-maker"]');
 
       const outilApres = await page.evaluate(() => {

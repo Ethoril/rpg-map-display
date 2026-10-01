@@ -9,7 +9,7 @@ test('MJ crée, oriente puis supprime une liaison sans éditer le JSON', async (
     store.loadCampaign(schema.createCampaign({ levels: [schema.createLevel({ id: 'rdc', name: 'RDC' }), schema.createLevel({ id: 'et1', name: 'Étage 1' })] }));
   });
   await page.click('#gm-mode-prep');
-  await page.click('#gm-tab-link-editor');
+  await page.click('#gm-rail-link-editor');
   await page.click('#link-arm');
   await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.gmPanel.linkEditor.setEndpointA('rdc', { a: 2, b: 3 }));
 

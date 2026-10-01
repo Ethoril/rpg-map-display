@@ -194,8 +194,9 @@ test.describe('U-04 — Bibliothèque de cartes MJ', () => {
     expect(counters).toContain('2'); // portes
     expect(counters).toContain('1'); // lumières
 
-    // Plan §7 : aucun champ URL, aucun sélecteur de fichier dans ce parcours
-    const pane = page.locator('#tab-content-scene-library');
+    // Plan §7 : aucun champ URL, aucun sélecteur de fichier dans ce parcours. Le diagnostic UVTT,
+    // replié en bas du volet Cartes depuis C-10, porte le sien : la garde vise la bibliothèque.
+    const pane = page.locator('#scene-library-mount');
     await expect(pane.locator('input[type="text"]')).toHaveCount(0);
     await expect(pane.locator('input[type="file"]')).toHaveCount(0);
   });

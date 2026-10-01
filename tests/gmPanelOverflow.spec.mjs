@@ -39,8 +39,10 @@ const SNAPSHOT = {
   activeHandout: null,
 };
 
-const ONGLETS_JOUER = ['Pions', 'Handouts', '🌫️ Fog', '📐 Gabarits'];
-const ONGLETS_PREPARER = ['📂 Cartes', 'UVTT', 'Image', '🧱 Murs', '↕ Liaisons', 'Grille'];
+const ONGLETS_JOUER = ['Pions', 'Handouts'];
+const ONGLETS_PREPARER = ['Cartes', 'Image', 'Grille'];
+// C-10 : les quatre anciens onglets d'outil sont des palettes posées sur la carte.
+const PALETTES = ['fog-tools', 'template-tools', 'wall-editor', 'link-editor'];
 
 // 1024 est la largeur basse annoncée tenue par la phase R0 ; 1440 est le poste du MJ.
 for (const largeur of [1024, 1440]) {
@@ -107,8 +109,43 @@ for (const largeur of [1024, 1440]) {
         .toBeLessThan(1);
     }
 
-    // ⛔ Contrôle des 10 onglets réellement visités sur les 2 modes
-    expect(vus.length, `onglets réellement visités : ${vus.join(', ')}`).toBe(10);
+    // ⛔ Contrôle des 5 onglets réellement visités sur les 2 modes
+    expect(vus.length, `onglets réellement visités : ${vus.join(', ')}`).toBe(5);
+
+    // 2 bis. Les palettes, une à une : rien ne dépasse à droite de la palette elle-même.
+    for (const nom of PALETTES) {
+      await page.click(`#gm-rail-${nom}`);
+      await expect(page.locator(`#palette-${nom}`)).toBeVisible();
+      await page.waitForTimeout(250);
+      const { debordement, coupable } = await page.evaluate(() => {
+        const palette = /** @type {HTMLElement} */ (document.getElementById('gm-tool-palette'));
+        const rp = palette.getBoundingClientRect();
+        let pire = 0;
+        let fautif = '';
+        for (const el of palette.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          const depassement = r.right - rp.right;
+          if (depassement > pire) {
+            pire = depassement;
+            fautif = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}`;
+          }
+        }
+        return { debordement: pire, coupable: fautif };
+      });
+      vus.push(nom);
+      expect(debordement, `palette « ${nom} » — ${coupable} dépasse de ${Math.round(debordement)} px`)
+        .toBeLessThan(1);
+    }
+    expect(vus.length, `onglets et palettes réellement visités : ${vus.join(', ')}`).toBe(9);
+
+    // 2 ter. La barre du haut ne déborde pas horizontalement.
+    const barre = await page.evaluate(() => {
+      const topbar = /** @type {HTMLElement} */ (document.getElementById('gm-topbar'));
+      return { scroll: topbar.scrollWidth, client: topbar.clientWidth };
+    });
+    expect(barre.scroll, `barre du haut : ${barre.scroll} px de contenu pour ${barre.client} px`)
+      .toBeLessThanOrEqual(barre.client);
 
     // 3. UX-04 — la barre de vitalité, VISIBLE, dans ses deux formes.
     //

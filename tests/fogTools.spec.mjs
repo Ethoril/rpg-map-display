@@ -120,7 +120,7 @@ test('Tout révéler et Tout masquer modifient le fog côté joueurs', async ({ 
   await setupGM(page, sessionId);
 
   // Basculer sur l'onglet Fog
-  await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+  await page.click('#gm-rail-fog-tools');
 
   // Tout masquer
   await page.click('#fog-btn-hide-all');
@@ -149,7 +149,7 @@ test('Pinceau armé : neutralise le drag de pion', async ({ page }) => {
   const sessionId = `fog-brush-drag-${Date.now()}`;
   await setupGM(page, sessionId);
 
-  await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+  await page.click('#gm-rail-fog-tools');
 
   // Armer le pinceau Révéler
   await page.click('#fog-btn-tool-reveal');
@@ -166,7 +166,7 @@ test('Vérification A6 : Aucun fog.paint ni fog.reset émis sur le réseau', asy
   const sessionId = `fog-events-check-${Date.now()}`;
   await setupGM(page, sessionId);
 
-  await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+  await page.click('#gm-rail-fog-tools');
   await page.click('#fog-btn-hide-all');
   await expect(page.locator('#fog-btn-undo')).not.toBeDisabled({ timeout: 5000 });
 
@@ -187,7 +187,7 @@ test('Annuler (Undo) restaure le masque précédent et se grise après mouvement
   const sessionId = `fog-undo-spec-${Date.now()}`;
   await setupGM(page, sessionId);
 
-  await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+  await page.click('#gm-rail-fog-tools');
 
   // Révéler d'abord pour avoir un masque initial non vide
   await page.click('#fog-btn-reveal-all');

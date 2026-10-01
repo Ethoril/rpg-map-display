@@ -10,11 +10,11 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await waitForApp(page);
 
     // Clic sur l'onglet Gabarits
-    const tabButton = page.locator('button[data-tab="template-tools"]');
+    const tabButton = page.locator('#gm-rail-template-tools');
     await expect(tabButton).toBeVisible();
     await tabButton.click();
 
-    const pane = page.locator('#tab-content-template-tools');
+    const pane = page.locator('#palette-template-tools');
     await expect(pane).toBeVisible();
 
     // Vérifier l'option cône
@@ -62,7 +62,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
 
     // Armer l'éditeur de murs
     await page.click('#gm-mode-prep');
-    await page.click('button[data-tab="wall-editor"]');
+    await page.click('#gm-rail-wall-editor');
     await page.click('#wall-btn-arm');
 
     let wallArmed = await page.evaluate(async () => {
@@ -73,7 +73,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
 
     // Basculer sur le mode Jouer, puis sur Gabarits et armer les gabarits
     await page.click('#gm-mode-play');
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
     await page.click('#tpl-toggle-arm');
 
     const templateArmed = await page.evaluate(async () => {
@@ -114,7 +114,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       store.loadCampaign(campaign);
     });
 
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
     await page.selectOption('#tpl-shape', 'cone');
     await page.click('#tpl-toggle-arm');
 
@@ -197,7 +197,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       store.loadCampaign(schema.createCampaign({ levels: [level] }));
     });
 
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
 
     // Les trois réglages jamais éprouvés, chacun par son vrai contrôle.
     await page.fill('#tpl-radius', '7');
@@ -233,7 +233,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await installBrowserTransport(page, sessionId, null);
     await page.goto(`/gm.html?session=${sessionId}`);
     await waitForApp(page);
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
 
     const config = () =>
       page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.gmPanel.templateTools.getConfig());
@@ -411,7 +411,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await page.goto(`/gm.html?session=${sessionId}`);
     await waitForApp(page);
 
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
     await expect(page.locator('#tpl-list .tpl-row')).toHaveCount(2);
 
     await page.click('.tpl-remove[data-template-id="tpl-cible"]');
@@ -509,7 +509,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
    */
   async function preparerSonde(page) {
     await page.setViewportSize({ width: 900, height: 900 });
-    await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-reveal-all');
     await expect(page.locator('#fog-btn-undo')).toHaveText(/Annuler \((?!0\))\d+\)/);
     await page.evaluate(async () => {
@@ -591,7 +591,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await installBrowserTransport(page, sessionId, snapshotLigne([], [], []));
     await page.goto(`/gm.html?session=${sessionId}`);
     await waitForApp(page);
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
 
     // L'option était grisée depuis le lot 2 : « Ligne (bientôt) ».
     await expect(page.locator('#tpl-shape option[value="line"]')).not.toBeDisabled();
@@ -809,7 +809,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await installBrowserTransport(page, sessionId, snapshotLigne([], [pion], []));
     await page.goto(`/gm.html?session=${sessionId}`);
     await waitForApp(page);
-    await page.click('button[data-tab="template-tools"]');
+    await page.click('#gm-rail-template-tools');
     await page.selectOption('#tpl-shape', 'line');
 
     /** @param {{x: number, y: number}} mapPos */
@@ -931,7 +931,7 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     await page.setViewportSize({ width: 900, height: 900 });
 
     // 1. Révéler le fog pour lever la brume (protocole portalIndicator.spec.mjs)
-    await page.click('.gm-tab-btn[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-reveal-all');
     await expect(page.locator('#fog-btn-undo')).toHaveText(/Annuler \((?!0\))\d+\)/);
 

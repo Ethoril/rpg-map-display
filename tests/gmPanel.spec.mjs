@@ -73,18 +73,18 @@ async function setupGMView(page) {
 }
 
 test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
-  test('les dix onglets restent accessibles sans débordement à 1280 et 1024 px', async ({ page }) => {
+  test('les cinq onglets restent accessibles sans débordement à 1280 et 1024 px', async ({ page }) => {
     for (const width of [1280, 1024]) {
       await page.setViewportSize({ width, height: 800 });
       await setupGMView(page);
 
-      // Mode Jouer (4 onglets visibles)
+      // Mode Jouer (2 onglets visibles)
       const layoutPlay = await page.evaluate(() => {
         const header = /** @type {HTMLElement} */ (document.querySelector('.gm-tabs-header'));
         const panel = /** @type {HTMLElement} */ (document.querySelector('#gm-panel'));
         const headerRect = header.getBoundingClientRect();
         const tabs = [...header.querySelectorAll('.gm-tab-btn')]
-          .filter((tab) => /** @type {HTMLElement} */ (tab).style.display !== 'none')
+          .filter((tab) => !/** @type {HTMLElement} */ (tab).hidden)
           .map((tab) => {
             const rect = tab.getBoundingClientRect();
             return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
@@ -93,7 +93,7 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
           documentFits: document.documentElement.scrollWidth <= window.innerWidth,
           panelFits: panel.scrollWidth <= panel.clientWidth,
           headerFits: header.scrollWidth <= header.clientWidth,
-          allTabsVisible: tabs.length === 4 && tabs.every(
+          allTabsVisible: tabs.length === 2 && tabs.every(
             (tab) =>
               tab.left >= headerRect.left &&
               tab.right <= headerRect.right &&
@@ -104,14 +104,14 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
       });
       expect(layoutPlay).toEqual({ documentFits: true, panelFits: true, headerFits: true, allTabsVisible: true });
 
-      // Mode Préparer (6 onglets visibles)
+      // Mode Préparer (3 onglets visibles)
       await page.click('#gm-mode-prep');
       const layoutPrep = await page.evaluate(() => {
         const header = /** @type {HTMLElement} */ (document.querySelector('.gm-tabs-header'));
         const panel = /** @type {HTMLElement} */ (document.querySelector('#gm-panel'));
         const headerRect = header.getBoundingClientRect();
         const tabs = [...header.querySelectorAll('.gm-tab-btn')]
-          .filter((tab) => /** @type {HTMLElement} */ (tab).style.display !== 'none')
+          .filter((tab) => !/** @type {HTMLElement} */ (tab).hidden)
           .map((tab) => {
             const rect = tab.getBoundingClientRect();
             return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
@@ -120,7 +120,7 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
           documentFits: document.documentElement.scrollWidth <= window.innerWidth,
           panelFits: panel.scrollWidth <= panel.clientWidth,
           headerFits: header.scrollWidth <= header.clientWidth,
-          allTabsVisible: tabs.length === 6 && tabs.every(
+          allTabsVisible: tabs.length === 3 && tabs.every(
             (tab) =>
               tab.left >= headerRect.left &&
               tab.right <= headerRect.right &&
@@ -135,9 +135,9 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
 
   test('les onglets exposent leur relation aux panneaux et se pilotent au clavier', async ({ page }) => {
     await setupGMView(page);
-    await expect(page.locator('.gm-tab-btn')).toHaveCount(10);
+    await expect(page.locator('.gm-tab-btn')).toHaveCount(5);
     const visibleTabs = page.getByRole('tab');
-    await expect(visibleTabs).toHaveCount(4);
+    await expect(visibleTabs).toHaveCount(2);
     await expect(page.locator('.gm-tabs-header')).toHaveAttribute('role', 'tablist');
     await expect(page.locator('#gm-tab-token-maker')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#tab-content-token-maker')).toHaveAttribute(
@@ -156,7 +156,8 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
   test('un nom ou avertissement UVTT hostile reste du texte, y compris après chargement', async ({ page }) => {
     await setupGMView(page);
     await page.click('#gm-mode-prep');
-    await page.click('.gm-tab-btn[data-tab="import-uvtt"]');
+    await page.click('.gm-tab-btn[data-tab="scene-library"]');
+    await page.click('#gm-uvtt-diag summary');
     const hostile = '<img data-r0-xss="uvtt" src=x>';
     const uvtt = JSON.stringify({
       name: hostile,
@@ -197,9 +198,10 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
   }) => {
     await setupGMView(page);
 
-    // Basculer sur le mode Préparer puis sur l'onglet UVTT
+    // Basculer sur le mode Préparer, l'onglet Cartes, puis ouvrir le diagnostic UVTT
     await page.click('#gm-mode-prep');
-    await page.click('.gm-tab-btn[data-tab="import-uvtt"]');
+    await page.click('.gm-tab-btn[data-tab="scene-library"]');
+    await page.click('#gm-uvtt-diag summary');
 
     // U-06 : plus aucune URL à saisir dans ce parcours
     await expect(page.locator('#uvtt-canonical-url')).toHaveCount(0);
@@ -259,7 +261,8 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     });
 
     await page.click('#gm-mode-prep');
-    await page.click('.gm-tab-btn[data-tab="import-uvtt"]');
+    await page.click('.gm-tab-btn[data-tab="scene-library"]');
+    await page.click('#gm-uvtt-diag summary');
     await page.setInputFiles('#uvtt-file-input', {
       name: 'minimal.uvtt',
       mimeType: 'application/json',
@@ -874,19 +877,20 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
 });
 
 test.describe('UX-03 — Modes Jouer et Préparer', () => {
-  test('1. Mode Jouer (défaut) affiche 4 onglets, mode Préparer affiche 6 onglets', async ({ page }) => {
+  test('1. Mode Jouer (défaut) affiche 2 onglets, mode Préparer en affiche 3, et les 4 palettes restent au rail', async ({ page }) => {
     await setupGMView(page);
+    const palettes = ['#gm-rail-fog-tools', '#gm-rail-template-tools', '#gm-rail-wall-editor', '#gm-rail-link-editor'];
 
     // Par défaut : mode Jouer
     await expect(page.locator('#gm-mode-play')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#gm-mode-prep')).toHaveAttribute('aria-pressed', 'false');
 
     const playTabs = page.locator('.gm-tab-btn:visible');
-    await expect(playTabs).toHaveCount(4);
+    await expect(playTabs).toHaveCount(2);
     await expect(page.locator('#gm-tab-token-maker')).toBeVisible();
     await expect(page.locator('#gm-tab-handouts')).toBeVisible();
-    await expect(page.locator('#gm-tab-fog-tools')).toBeVisible();
-    await expect(page.locator('#gm-tab-template-tools')).toBeVisible();
+    for (const id of palettes) await expect(page.locator(id)).toBeVisible();
+    await expect(page.locator('#gm-rail [data-palette]')).toHaveCount(4);
 
     // Basculer en mode Préparer
     await page.click('#gm-mode-prep');
@@ -894,17 +898,15 @@ test.describe('UX-03 — Modes Jouer et Préparer', () => {
     await expect(page.locator('#gm-mode-prep')).toHaveAttribute('aria-pressed', 'true');
 
     const prepTabs = page.locator('.gm-tab-btn:visible');
-    await expect(prepTabs).toHaveCount(6);
+    await expect(prepTabs).toHaveCount(3);
     await expect(page.locator('#gm-tab-scene-library')).toBeVisible();
-    await expect(page.locator('#gm-tab-import-uvtt')).toBeVisible();
     await expect(page.locator('#gm-tab-import-image')).toBeVisible();
-    await expect(page.locator('#gm-tab-wall-editor')).toBeVisible();
-    await expect(page.locator('#gm-tab-link-editor')).toBeVisible();
     await expect(page.locator('#gm-tab-grid-settings')).toBeVisible();
+    for (const id of palettes) await expect(page.locator(id)).toBeVisible();
 
     // Revenir en mode Jouer
     await page.click('#gm-mode-play');
-    await expect(page.locator('.gm-tab-btn:visible')).toHaveCount(4);
+    await expect(page.locator('.gm-tab-btn:visible')).toHaveCount(2);
   });
 
   test('2. Un outil armé en mode Jouer reste armé lors du passage en Préparer et du retour en Jouer (Critère 2 & 7)', async ({
@@ -912,44 +914,45 @@ test.describe('UX-03 — Modes Jouer et Préparer', () => {
   }) => {
     await setupGMView(page);
 
-    // Armer le fog en mode Jouer
-    await page.click('#gm-tab-fog-tools');
+    // Armer le fog en mode Jouer : le rappel apparaît dès l'armement (C-10), quel que soit le mode
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
 
     let activeTool = await page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
     expect(activeTool).toBe('fog-reveal');
+    const banner = page.locator('#gm-active-tool-banner');
+    await expect(banner).toBeVisible();
 
-    // Basculer en mode Préparer : l'outil DOIT rester armé, et le bandeau d'alerte/rappel doit apparaître (Critère 7)
+    // Basculer en mode Préparer : l'outil DOIT rester armé, et le rappel rester à l'écran (Critère 7)
     await page.click('#gm-mode-prep');
 
     activeTool = await page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
     expect(activeTool).toBe('fog-reveal');
 
-    const banner = page.locator('#gm-active-tool-banner');
     await expect(banner).toBeVisible();
     await expect(page.locator('#gm-active-tool-text')).toContainText('Brouillard');
 
-    // Revenir en mode Jouer : l'outil est toujours armé, le bandeau disparaît et l'onglet porte .gm-tab-active-tool
+    // Revenir en mode Jouer : l'outil est toujours armé, le rappel reste, et le bouton du rail porte .gm-tool-armed
     await page.click('#gm-mode-play');
 
     activeTool = await page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());
     expect(activeTool).toBe('fog-reveal');
-    await expect(banner).not.toBeVisible();
-    await expect(page.locator('#gm-tab-fog-tools')).toHaveClass(/gm-tab-active-tool/);
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#gm-rail-fog-tools')).toHaveClass(/gm-tool-armed/);
   });
 
-  test('3. Désarmer un outil depuis le bandeau de rappel en mode Préparer (Critère 7)', async ({ page }) => {
+  test('3. Désarmer un outil depuis le rappel en mode Préparer (Critère 7)', async ({ page }) => {
     await setupGMView(page);
 
     // Armer le fog en mode Jouer
-    await page.click('#gm-tab-fog-tools');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
 
     // Basculer en mode Préparer
     await page.click('#gm-mode-prep');
     await expect(page.locator('#gm-active-tool-banner')).toBeVisible();
 
-    // Désarmer depuis le bouton du bandeau
+    // Désarmer depuis le bouton du rappel
     await page.click('#gm-disarm-active-tool');
 
     const activeTool = await page.evaluate(() => (/** @type {any} */ (window)).__RPG_APP__?.gmPanel?.getActiveToolName());

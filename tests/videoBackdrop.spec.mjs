@@ -66,7 +66,13 @@ async function ouvrir(browser, vue, snap) {
 
 /**
  * Nombre de pixels du canvas portant une **couleur de carte**, sur 25 échantillons
- * pris au centre.
+ * pris dans le quart haut-gauche du canvas (15 % à 35 %).
+ *
+ * ⚠ Plus au centre depuis C-10 : le canvas MJ, rétréci par le rail et la barre du haut
+ * (884 × 672 à 1280 × 720), place la tour ronde de la carte d'essai sous la grille
+ * d'échantillons, et l'un d'eux tombait sur un indicateur de porte — dessiné par le
+ * canvas, vidéo ou pas. Le quart haut-gauche est du sable nu : rien que la couche de
+ * fond n'y peint.
  *
  * ⛔ Ne pas mesurer la transparence : le voile de fog du MJ peint du noir à alpha 128
  * par-dessus, donc rien n'est transparent même quand le fond n'a pas été dessiné.
@@ -81,10 +87,10 @@ const pixelsPortantLaCarte = (/** @type {import('@playwright/test').Page} */ pag
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
     const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
     let colores = 0;
-    for (let fx = 0.3; fx <= 0.7; fx += 0.1) {
-      for (let fy = 0.3; fy <= 0.7; fy += 0.1) {
-        const x = Math.floor(canvas.width * fx);
-        const y = Math.floor(canvas.height * fy);
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) {
+        const x = Math.floor(canvas.width * (0.15 + i * 0.05));
+        const y = Math.floor(canvas.height * (0.15 + j * 0.05));
         const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
         if (r !== 0 || g !== 0 || b !== 0) colores++;
       }

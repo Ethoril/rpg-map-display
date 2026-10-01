@@ -228,7 +228,7 @@ test('armer le ping désarme l’outil précédent, et changer d’onglet désar
 
   const outil = () => mj.evaluate(() => /** @type {any} */ (window).__RPG_APP__.gmPanel.getActiveToolName());
 
-  await mj.click('button[data-tab="template-tools"]');
+  await mj.click('#gm-rail-template-tools');
   await mj.click('#tpl-toggle-arm');
   expect(await outil()).toBe('template-place');
 
@@ -236,9 +236,9 @@ test('armer le ping désarme l’outil précédent, et changer d’onglet désar
   expect(await outil(), 'armer le ping doit désarmer les gabarits').toBe('ping');
   await expect(mj.locator('#tpl-toggle-arm')).toHaveText(/désarmé/i);
 
-  // Le ping vit hors des onglets, mais il reste un outil armé : changer d'onglet doit le rendre.
-  await mj.click('button[data-tab="fog-tools"]');
-  expect(await outil(), 'changer d’onglet doit désarmer le ping').toBe('none');
+  // Le ping vit hors des palettes, mais il reste un outil armé : changer de palette doit le rendre.
+  await mj.click('#gm-rail-fog-tools');
+  expect(await outil(), 'changer de palette doit désarmer le ping').toBe('none');
   await expect(mj.locator('#gm-ping-arm')).toHaveAttribute('aria-pressed', 'false');
 
   expect(erreurs).toEqual([]);

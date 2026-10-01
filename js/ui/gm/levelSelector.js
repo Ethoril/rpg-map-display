@@ -36,11 +36,11 @@ export function createLevelSelector(container, options) {
   const listeners = new AbortController();
 
   container.innerHTML = `
-    <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Étage</span>
-    <select id="gm-level-select" style="flex: 1; min-width: 0; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;"></select>
-    <button id="gm-level-show" type="button" title="Publie cet étage sur la tablette des joueurs" style="flex-shrink: 0; white-space: nowrap; padding: 0.35rem 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;">Emmener la table</button>
-    <button id="gm-level-delete" type="button" title="Retire cet étage de la campagne, avec ses pions et ses liaisons" style="flex-shrink: 0; white-space: nowrap; padding: 0.35rem 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;">Supprimer l'étage</button>
-    <span id="gm-level-status" style="font-size: 0.7rem; color: #888;"></span>
+    <span class="gm-h gm-h--inline">Étage</span>
+    <select id="gm-level-select"></select>
+    <button id="gm-level-show" type="button" class="gm-btn--sm" title="Publie cet étage sur la tablette des joueurs">Emmener la table</button>
+    <button id="gm-level-delete" type="button" class="gm-btn--ghost gm-btn--sm" title="Retire cet étage de la campagne, avec ses pions et ses liaisons">Supprimer l'étage</button>
+    <span id="gm-level-status" class="gm-muted"></span>
   `;
 
   const levelSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#gm-level-select'));
@@ -67,10 +67,10 @@ export function createLevelSelector(container, options) {
       if (!cible || cible === options.getActiveLevelId()) return;
       try {
         options.onSelectLevel(cible);
-        levelStatus.style.color = '#888';
+        levelStatus.className = 'gm-muted';
         levelStatus.textContent = '';
       } catch (err) {
-        levelStatus.style.color = '#e74c3c';
+        levelStatus.className = 'gm-err';
         levelStatus.textContent = err instanceof Error ? err.message : String(err);
         update();
       }
@@ -90,7 +90,7 @@ export function createLevelSelector(container, options) {
       if (!actif || !options.onShowLevel) return;
       try {
         options.onShowLevel(actif);
-        levelStatus.style.color = '#888';
+        levelStatus.className = 'gm-muted';
         // ⚠ **Honnête, pas optimiste.** L'étage affiché par la tablette ne circule pas vers le
         // MJ — rien ne le lui dirait s'il se trompait de route ou perdait la connexion entre
         // la publication et l'écran. Le statut n'annonce donc que ce que CE poste vient de
@@ -99,7 +99,7 @@ export function createLevelSelector(container, options) {
         const nom = options.getLevels().find((l) => l.id === actif)?.name || actif;
         levelStatus.textContent = `publié : ${nom}`;
       } catch (err) {
-        levelStatus.style.color = '#e74c3c';
+        levelStatus.className = 'gm-err';
         levelStatus.textContent = err instanceof Error ? err.message : String(err);
       }
     },
@@ -118,7 +118,7 @@ export function createLevelSelector(container, options) {
       if (!actif) return;
       const etages = options.getLevels();
       if (etages.length <= 1) {
-        levelStatus.style.color = '#e74c3c';
+        levelStatus.className = 'gm-err';
         levelStatus.textContent = "Impossible : c'est le dernier étage.";
         return;
       }
@@ -146,10 +146,10 @@ export function createLevelSelector(container, options) {
       if (!window.confirm(lignes.join('\n'))) return;
       try {
         options.onDeleteLevel?.(actif);
-        levelStatus.style.color = '#888';
+        levelStatus.className = 'gm-muted';
         levelStatus.textContent = `étage « ${nom} » retiré`;
       } catch (err) {
-        levelStatus.style.color = '#e74c3c';
+        levelStatus.className = 'gm-err';
         levelStatus.textContent = err instanceof Error ? err.message : String(err);
       }
     },
@@ -174,7 +174,7 @@ export function createLevelSelector(container, options) {
     // garde-fou juste en dessous (désactivation + titre) reste écrit pour le cas où cette barre
     // deviendrait visible à un seul étage ; il ne comble pas ce trou-là, qui est signalé au
     // mainteneur plutôt que résolu ici en déplaçant la barre.
-    container.style.display = etages.length > 1 ? 'flex' : 'none';
+    container.hidden = etages.length <= 1;
     deleteLevelBtn.disabled = etages.length <= 1;
     deleteLevelBtn.title =
       etages.length <= 1

@@ -1,31 +1,106 @@
-/* Styles de la Vue MJ — rpg-map-display */
+/* Styles de la Vue MJ — rpg-map-display
+ *
+ * Refonte C-10 (01/10/2026). Trois zones : le rail d'outils à gauche, la carte au centre, l'inspecteur
+ * à droite ; une barre fine en haut. ⭐ Un seul accent, le laiton, et il veut dire « actif » : outil
+ * armé, palette ouverte, onglet courant, bouton enfoncé. Le reste est sourd et chaud, pour que la
+ * carte soit la seule chose colorée de l'écran.
+ *
+ * ⛔ Toute couleur passe par une variable ci-dessous. Une couleur en dur dans un module est une
+ * régression : c'est exactement ce qui avait produit six accents différents avant C-10.
+ */
+:root {
+  --gm-sol: #15120f;
+  --gm-panneau: #201b17;
+  --gm-releve: #2a241e;
+  --gm-creux: #120f0d;
+  --gm-trait: #3a322a;
+  --gm-trait-fort: #4a4036;
+  --gm-texte: #ece4d6;
+  --gm-texte-2: #a89b88;
+  --gm-texte-3: #958978;
+  --gm-laiton: #d9a84e;
+  --gm-laiton-vif: #ecc777;
+  --gm-laiton-fond: rgba(217, 168, 78, 0.15);
+  --gm-sur-laiton: #15120f;
+  --gm-sang: #e6876f;
+  --gm-sang-fond: rgba(210, 105, 79, 0.16);
+  --gm-sang-trait: #7a3e30;
+  --gm-vert: #9cc39d;
+  --gm-vert-fond: rgba(141, 180, 142, 0.14);
+  --gm-vert-trait: #4e6b4f;
+  --gm-info: #8fb3d6;
+  --gm-r: 6px;
+  --gm-r-lg: 10px;
+  --gm-police: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI',
+    system-ui, sans-serif;
+  --gm-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --gm-rail: 60px;
+  --gm-haut: 48px;
+  --gm-inspecteur: 336px;
+  color-scheme: dark;
+}
+
 html, body {
   margin: 0;
   padding: 0;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #121212;
-  color: #eeeeee;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--gm-sol);
+  color: var(--gm-texte);
+  font-family: var(--gm-police);
+  font-size: 13px;
+  line-height: 1.35;
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* ── Les trois zones ────────────────────────────────────────────────────────────────────────── */
+
 #gm-app {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--gm-rail) minmax(0, 1fr) var(--gm-inspecteur);
+  grid-template-rows: var(--gm-haut) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
 
-#canvas-container {
-  flex: 1;
+#gm-topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
   min-width: 0;
-  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 0 14px;
+  background: var(--gm-panneau);
+  border-bottom: 1px solid var(--gm-trait);
+  z-index: 10;
+}
+
+#gm-rail {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0;
+  overflow-y: auto;
+  background: var(--gm-panneau);
+  border-right: 1px solid var(--gm-trait);
+  z-index: 10;
+}
+
+#canvas-container {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
   position: relative;
   overflow: hidden;
-  background: #0d0d0d;
+  background: var(--gm-sol);
 }
 
 #board {
@@ -60,107 +135,825 @@ html, body {
 }
 
 #gm-panel {
-  width: 360px;
-  min-width: 320px;
-  max-width: 420px;
+  grid-column: 3;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
-  background: #1e1e1e;
-  border-left: 1px solid #333333;
+  background: var(--gm-panneau);
+  border-left: 1px solid var(--gm-trait);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   z-index: 10;
 }
 
-/* Les neuf outils doivent rester directement atteignables, même sur un écran 1024 px. */
+/* ── Le liseré de laiton : un outil est armé, le prochain clic sur la carte agit ─────────────── */
+
+#canvas-container.gm-armed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 2px var(--gm-laiton);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Le rappel de l'outil armé, posé en haut de la carte. */
+.gm-armed-chip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - 24px);
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 12px;
+  background: var(--gm-panneau);
+  border: 1px solid var(--gm-laiton);
+  border-radius: var(--gm-r-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.gm-armed-chip-text {
+  font-weight: 600;
+  color: var(--gm-laiton);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gm-armed-chip-hint {
+  color: var(--gm-texte-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── La palette d'outil : ce qui était un onglet, posé sur la carte ─────────────────────────── */
+
+.gm-palette {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 7;
+  width: 300px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--gm-panneau);
+  border: 1px solid var(--gm-trait-fort);
+  border-radius: var(--gm-r-lg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  user-select: none;
+}
+
+.gm-palette[hidden] {
+  display: none;
+}
+
+.gm-palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--gm-trait);
+}
+
+.gm-palette-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gm-palette-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+}
+
+.gm-palette-pane[hidden] {
+  display: none;
+}
+
+/* ── Barre du haut ──────────────────────────────────────────────────────────────────────────── */
+
+.gm-session-code-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#gm-session-code {
+  font-family: var(--gm-mono);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  color: var(--gm-texte);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gm-vsep {
+  width: 1px;
+  height: 24px;
+  background: var(--gm-trait);
+  flex-shrink: 0;
+}
+
+#gm-level-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+
+.gm-topbar-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#gm-light-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+#gm-baked-warning {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--gm-laiton-vif);
+}
+
+.gm-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Rail d'outils ─────────────────────────────────────────────────────────────────────────── */
+
+.gm-rail-btn {
+  width: 52px;
+  min-height: 46px;
+  padding: 4px 2px 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #bdb09c;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.gm-rail-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.gm-rail-label {
+  font-size: 10px;
+  line-height: 1.1;
+  color: var(--gm-texte-2);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.gm-rail-btn:hover:not(:disabled) {
+  background: var(--gm-releve);
+  filter: none;
+}
+
+/* Palette ouverte : bouton enfoncé, sans laiton plein. */
+.gm-rail-btn[aria-pressed='true'] {
+  background: var(--gm-releve);
+  color: var(--gm-texte);
+  box-shadow: inset 0 0 0 1px var(--gm-trait-fort);
+}
+
+.gm-rail-btn[aria-pressed='true'] .gm-rail-label {
+  color: var(--gm-texte);
+}
+
+/* Outil armé : le laiton. */
+.gm-rail-btn.gm-tool-armed {
+  background: var(--gm-laiton-fond);
+  color: var(--gm-laiton);
+  box-shadow: inset 0 0 0 1px var(--gm-laiton);
+}
+
+.gm-rail-btn.gm-tool-armed .gm-rail-label {
+  color: var(--gm-laiton);
+}
+
+.gm-rail-sep {
+  width: 30px;
+  height: 1px;
+  margin: 6px 0;
+  background: var(--gm-trait);
+  flex-shrink: 0;
+}
+
+/* ── Inspecteur ────────────────────────────────────────────────────────────────────────────── */
+
 .gm-tabs-header {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  background: #2a2a2a;
-  border-bottom: 1px solid #333;
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  background: var(--gm-panneau);
+  border-bottom: 1px solid var(--gm-trait);
+  flex-shrink: 0;
 }
 
 .gm-tab-btn {
   min-width: 0;
-  padding: 0.55rem 0.25rem;
-  font-size: 0.8rem;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.2;
   overflow-wrap: anywhere;
-  background: #2a2a2a;
-  color: #aaa;
+  background: transparent;
+  color: var(--gm-texte-2);
   border: none;
   border-bottom: 2px solid transparent;
+  border-radius: 0;
   cursor: pointer;
 }
 
 .gm-tab-btn.active {
-  background: #333;
-  color: #fff;
-  border-bottom-color: #4a90e2;
+  background: transparent;
+  color: var(--gm-texte);
+  border-bottom-color: var(--gm-laiton);
+}
+
+.gm-tab-btn:hover:not(.active) {
+  color: var(--gm-texte);
+  filter: none;
+}
+
+.gm-tabs-content {
+  min-width: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px 18px;
+}
+
+.gm-panel-footer {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  color: var(--gm-texte-3);
+  text-align: center;
+  border-top: 1px solid var(--gm-trait);
+  flex-shrink: 0;
+}
+
+.gm-panel-attributions {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--gm-info);
+  flex-shrink: 0;
+}
+
+/* ── Composants partagés par tous les modules du panneau ────────────────────────────────────── */
+
+.gm-section {
+  margin: 0 0 16px;
+  padding: 12px;
+  background: var(--gm-releve);
+  border: 1px solid var(--gm-trait);
+  border-radius: var(--gm-r-lg);
+}
+
+.gm-section--flat {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.gm-h {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gm-texte-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.gm-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gm-texte);
+}
+
+.gm-muted {
+  color: var(--gm-texte-2);
+  font-size: 12px;
+}
+
+.gm-hint {
+  margin: 4px 0 0;
+  color: var(--gm-texte-3);
+  font-size: 12px;
+}
+
+.gm-status {
+  margin: 6px 0 0;
+  min-height: 1em;
+  font-size: 12px;
+  color: var(--gm-texte-2);
+}
+
+.gm-ok {
+  color: var(--gm-vert);
+}
+
+.gm-err {
+  color: var(--gm-sang);
+}
+
+.gm-warn {
+  color: var(--gm-laiton-vif);
+}
+
+.gm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gm-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.gm-field > label,
+.gm-field > .gm-field-label {
+  color: #bdb09c;
+  min-width: 0;
+}
+
+.gm-field > input[type='number'] {
+  width: 84px;
+  text-align: right;
+}
+
+.gm-field > select,
+.gm-field > input[type='text'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 190px;
+}
+
+.gm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--gm-sur-laiton);
+  background: var(--gm-laiton);
+  border-radius: 4px;
+}
+
+details.gm-disclosure {
+  border-top: 1px solid var(--gm-trait);
+}
+
+details.gm-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+
+details.gm-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.gm-disclosure > summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--gm-texte-2);
+  border-bottom: 1.5px solid var(--gm-texte-2);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+details.gm-disclosure[open] > summary::after {
+  transform: rotate(45deg);
+}
+
+details.gm-disclosure > .gm-disclosure-body {
+  padding: 0 0 12px;
+}
+
+.gm-h--inline {
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* Un bloc de section qui en suit un autre, filet au-dessus. */
+.gm-subsection {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--gm-trait);
+}
+
+/* Case à cocher ou bouton radio suivi de son libellé. */
+.gm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--gm-texte);
+}
+
+.gm-field > input[type='range'] {
+  flex: 0 1 140px;
+  min-width: 0;
+}
+
+/* ── Ajouts C-10, tranche 1 : barre du haut, rappel d'outil, inspecteur ──────────────────────── */
+
+#gm-level-bar:not([hidden]) {
+  display: flex;
+  align-items: center;
+}
+
+#gm-level-select {
+  flex: 0 1 180px;
+  min-width: 60px;
+  min-height: 28px;
+  padding: 2px 6px;
+}
+
+#gm-level-show,
+#gm-level-delete {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+#gm-level-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.gm-seg > button svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+
+/* Le rappel suit la même classe que le liseré : un outil armé, les deux apparaissent ensemble. */
+#canvas-container.gm-armed .gm-armed-chip {
+  display: flex;
+}
+
+.gm-armed-chip-hint:empty {
+  display: none;
+}
+
+/* Sans quoi l'ellipse ne joue jamais : un élément flexible ne descend pas sous son contenu. */
+.gm-armed-chip-text,
+.gm-armed-chip-hint {
+  min-width: 0;
+}
+
+/* Palette ouverte : le rappel se pose à sa droite au lieu de passer dessous. */
+#canvas-container:has(> .gm-palette:not([hidden])) .gm-armed-chip {
+  left: 324px;
+  transform: none;
+  box-sizing: border-box;
+  max-width: calc(100% - 336px);
+}
+
+#gm-vitals-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 10px 0;
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+#gm-vitals-bar[hidden],
+#gm-vitals-hp[hidden],
+#gm-vitals-health[hidden] {
+  display: none;
+}
+
+#gm-vitals-label {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#gm-vitals-hp,
+#gm-vitals-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#gm-vitals-hp-current {
+  width: 64px;
+  text-align: right;
+}
+
+#gm-vitals-hp-max {
+  font-family: var(--gm-mono);
+  color: var(--gm-texte-2);
+}
+
+#gm-vitals-hint {
+  margin: 0;
+}
+
+#gm-vitals-hint:empty {
+  display: none;
+}
+
+.gm-hp-pair {
+  flex-wrap: nowrap;
+}
+
+.gm-hp-pair > input {
+  width: 56px;
+  text-align: right;
+}
+
+.gm-marker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.gm-reserve-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--gm-trait);
+  border-radius: var(--gm-r);
+}
+
+.gm-reserve-swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--gm-texte);
+}
+
+.gm-reserve-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+#gm-uvtt-diag {
+  margin-top: 16px;
+}
+
+/* ── Contrôles ─────────────────────────────────────────────────────────────────────────────── */
+
+input[type='number'],
+input[type='text'],
+input[type='url'],
+input[type='search'],
+textarea,
+select {
+  font: inherit;
+  min-height: 32px;
+  padding: 5px 8px;
+  background: var(--gm-creux);
+  color: var(--gm-texte);
+  border: 1px solid var(--gm-trait);
+  border-radius: var(--gm-r);
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type='number']:focus,
+input[type='text']:focus,
+input[type='url']:focus,
+input[type='search']:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--gm-laiton);
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--gm-texte-3);
+}
+
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--gm-laiton);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+input[type='color'] {
+  width: 40px;
+  height: 28px;
+  padding: 2px;
+  background: var(--gm-creux);
+  border: 1px solid var(--gm-trait);
+  border-radius: var(--gm-r);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.5;
+}
+
+/* Bouton par défaut : tout <button> du panneau a un habillage, même celui qu'un module oublie. */
+button {
+  font: inherit;
+  font-weight: 600;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--gm-texte);
+  background: var(--gm-releve);
+  border: 1px solid var(--gm-trait);
+  border-radius: var(--gm-r);
+  cursor: pointer;
+  transition: background 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--gm-trait-fort);
+  filter: brightness(1.12);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--gm-laiton-vif);
+  outline-offset: 2px;
 }
 
 .gm-tab-btn:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 3px solid #f5a623;
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
-.gm-tabs-content {
-  min-width: 0;
+/* Un bouton enfoncé (bascule, cran, réglage choisi) prend le laiton. */
+button[aria-pressed='true']:not(.gm-rail-btn) {
+  background: var(--gm-laiton-fond);
+  color: var(--gm-laiton);
+  border-color: var(--gm-laiton);
 }
 
-/* Controls and Inputs */
-input[type="number"],
-input[type="text"],
-select {
-  font: inherit;
-  padding: 0.4rem 0.6rem;
-  background: #2a2a2a;
-  color: #ffffff;
-  border: 1px solid #444444;
-  border-radius: 4px;
-  box-sizing: border-box;
+.gm-btn--primary {
+  background: var(--gm-laiton);
+  color: var(--gm-sur-laiton);
+  border-color: var(--gm-laiton);
 }
 
-input[type="number"]:focus,
-input[type="text"]:focus,
-select:focus {
-  border-color: #4a90e2;
-  outline: none;
+.gm-btn--danger {
+  background: var(--gm-sang-fond);
+  color: var(--gm-sang);
+  border-color: var(--gm-sang-trait);
 }
 
-button {
-  font: inherit;
-  font-weight: 600;
-  border-radius: 4px;
-  transition: background 0.15s ease-in-out;
+.gm-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--gm-texte-2);
 }
 
-button:hover:not(:disabled) {
-  filter: brightness(1.15);
+.gm-btn--ghost:hover:not(:disabled) {
+  color: var(--gm-texte);
+  background: var(--gm-releve);
 }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.gm-btn--sm {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.gm-btn--block {
+  width: 100%;
+}
+
+/* Groupe de boutons exclusifs : Jour/Nuit, Jouer/Préparer, Révéler/Masquer… */
+.gm-seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  gap: 2px;
+  background: var(--gm-creux);
+  border: 1px solid var(--gm-trait);
+  border-radius: 8px;
+}
+
+.gm-seg > button {
+  min-height: 28px;
+  padding: 0 11px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--gm-r);
+  color: var(--gm-texte-2);
+}
+
+.gm-seg > button[aria-pressed='true'] {
+  background: var(--gm-releve);
+  color: var(--gm-texte);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--gm-trait-fort);
+}
+
+a {
+  color: var(--gm-info);
+}
+
+code,
+kbd {
+  font-family: var(--gm-mono);
 }
 
 /* Scrollbar customization */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #181818;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333333;
-  border-radius: 3px;
+  background: var(--gm-trait);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444444;
+  background: var(--gm-trait-fort);
 }

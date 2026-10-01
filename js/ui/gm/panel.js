@@ -64,59 +64,192 @@ export function createGMPanel(container, options = {}) {
   const listeners = new AbortController();
 
   container.className = 'gm-panel-root';
-  container.style.display = 'flex';
-  container.style.flexDirection = 'column';
-  container.style.height = '100%';
-  container.style.background = '#1e1e1e';
-  container.style.color = '#eee';
-  container.style.fontFamily = 'system-ui, sans-serif';
 
-  container.innerHTML = `
-    <!-- Barre de session : le code à dicter, et le sélecteur de mode Jouer / Préparer -->
-    <div class="gm-session-bar" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; padding: 0.6rem 0.75rem; background: #232323; border-bottom: 1px solid #333;">
-      <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Session</span>
-      <code id="gm-session-code" style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: 0.1em; color: #4a90e2; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></code>
-      
-      <!-- Sélecteur de mode : Jouer / Préparer (UX-03) -->
-      <div id="gm-mode-selector" role="group" aria-label="Mode du panneau" style="display: inline-flex; flex-shrink: 0; border-radius: 4px; overflow: hidden; border: 1px solid #444;">
-        <button id="gm-mode-play" type="button" aria-pressed="true" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #2e7d32; color: #fff; border: none; cursor: pointer;">Jouer</button>
-        <button id="gm-mode-prep" type="button" aria-pressed="false" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #1a1a1a; color: #888; border: none; border-left: 1px solid #444; cursor: pointer;">Préparer</button>
-      </div>
+  // ── Les trois zones de C-10 ──────────────────────────────────────────────────────────────
+  //
+  // Le panneau ne vit plus seulement dans son conteneur : la barre du haut, le rail d'outils et
+  // la palette posée sur la carte sont des zones sœurs, que gm.html fournit. Elles se cherchent
+  // dans le document du conteneur ; si l'une manque, elle est créée en tête du conteneur pour que
+  // le panneau reste montable seul — mise en page dégradée, mais aucun identifiant perdu.
+  const doc = container.ownerDocument;
+  /** @type {HTMLElement[]} */
+  const zonesCreees = [];
 
-      <button id="gm-evict-others" style="margin-left: auto; flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Déconnecte les autres écrans MJ de cette session">Autres MJ</button>
-      <button id="gm-leave-session" style="flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.75rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">Quitter la session</button>
+  /**
+   * @param {string} id
+   * @param {string} tag
+   * @returns {HTMLElement}
+   */
+  function zone(id, tag) {
+    const existante = doc.getElementById(id);
+    if (existante) return existante;
+    const creee = doc.createElement(tag);
+    creee.id = id;
+    zonesCreees.push(creee);
+    return creee;
+  }
+
+  /**
+   * Icône de trait, 24 unités, couleur du texte : elle suit l'état du bouton sans règle à part.
+   * @param {string} traces
+   */
+  const icone = (traces) =>
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${traces}</svg>`;
+
+  const LAMPE = '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>';
+
+  /**
+   * @param {{id: string, label: string, title: string, traces: string, aria?: string, palette?: string}} b
+   */
+  const boutonDuRail = (b) => `
+      <button id="${b.id}" type="button" class="gm-rail-btn" aria-pressed="false"${
+        b.palette ? ` data-palette="${b.palette}" aria-controls="gm-tool-palette"` : ''
+      } aria-label="${b.aria ?? b.label}" title="${b.title}">${icone(b.traces)}<span class="gm-rail-label">${b.label}</span></button>`;
+
+  const SEPARATEUR_DU_RAIL = '<span class="gm-rail-sep" aria-hidden="true"></span>';
+
+  const topbar = zone('gm-topbar', 'header');
+  const rail = zone('gm-rail', 'nav');
+  if (!rail.hasAttribute('aria-label')) rail.setAttribute('aria-label', 'Outils du meneur de jeu');
+  const canvasContainer = zone('canvas-container', 'div');
+
+  const BAKED_WARNING_TEXT = '⚠ Éclairage annoncé cuit — assombrir pourrait doubler';
+
+  topbar.innerHTML = `
+    <div class="gm-session-code-group">
+      <span class="gm-h gm-h--inline">Table</span>
+      <code id="gm-session-code"></code>
     </div>
+    <span class="gm-vsep" aria-hidden="true"></span>
+    <!--
+      Barre d'étage — Lot 3, S-02.
 
-    <!-- Rappel d'outil armé hors mode (UX-03 Critère 7) -->
-    <div id="gm-active-tool-banner" style="display: none; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.75rem; background: #3a2810; border-bottom: 1px solid #7a4f10; font-size: 0.8rem; color: #f5a623;">
-      <span id="gm-active-tool-text" style="font-weight: 500;">⚡ Outil armé</span>
-      <button id="gm-disarm-active-tool" type="button" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; background: #5a3810; color: #fff; border: 1px solid #9a6520; border-radius: 3px; cursor: pointer;">Désarmer</button>
-    </div>
-
-    <div id="gm-light-bar" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.75rem; background: #2a2518; border-bottom: 1px solid #4d4224;">
-      <span style="font-size: 0.78rem; color: #ead59a; white-space: nowrap;">Ambiance</span>
+      Hors des onglets, et c'est délibéré : changer d'étage est une action de séance, faite en
+      cours de jeu et depuis n'importe quel outil. Elle est masquée tant que la campagne n'a qu'un
+      seul étage, pour ne rien ajouter au bandeau du cas courant.
+    -->
+    <div id="gm-level-bar" hidden></div>
+    <span class="gm-topbar-spacer"></span>
+    <div id="gm-light-bar">
       <!-- ⛔ Bascule à DEUX états, pas un curseur (UX-07). Le curseur offrait 21 positions dont
            le moteur ne distinguait que deux : fogLayer ne lit que "baked ou level > 0", donc
            0,05 et 1,00 étaient rigoureusement indistinguables. L'interface dit désormais ce que
            le moteur fait. ⛔ La pénombre graduée est écartée : c'est le seul chemin de l'audit
            où une erreur ferait voir aux joueurs ce qu'ils ne devraient pas voir. -->
-      <div id="gm-ambient-toggle" role="group" aria-label="Ambiance lumineuse" style="display: inline-flex; flex-shrink: 0; border-radius: 4px; overflow: hidden; border: 1px solid #6a5620;">
-        <button id="gm-ambient-day" type="button" aria-pressed="true" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #e0ad32; color: #241b06; border: none; cursor: pointer;">☀ Jour</button>
-        <button id="gm-ambient-night" type="button" aria-pressed="false" style="padding: 0.3rem 0.65rem; font-size: 0.75rem; font-weight: bold; background: #1a1a1a; color: #888; border: none; border-left: 1px solid #6a5620; cursor: pointer;">🌙 Nuit</button>
+      <div id="gm-ambient-toggle" class="gm-seg" role="group" aria-label="Ambiance lumineuse">
+        <button id="gm-ambient-day" type="button" aria-pressed="true">${icone(
+          '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+        )}Jour</button>
+        <button id="gm-ambient-night" type="button" aria-pressed="false">${icone(
+          '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'
+        )}Nuit</button>
       </div>
-      <span id="gm-baked-warning" role="status" style="display: none; font-size: 0.75rem; color: #ffd166;">⚠ Éclairage annoncé cuit — assombrir pourrait doubler</span>
+      <span id="gm-baked-warning" role="status" hidden title="${BAKED_WARNING_TEXT}">${BAKED_WARNING_TEXT}</span>
     </div>
+    <!-- Sélecteur de mode : Jouer / Préparer (UX-03). Il ne gouverne plus que les onglets de
+         l'inspecteur : les outils du rail sont là dans les deux modes. -->
+    <div id="gm-mode-selector" class="gm-seg" role="group" aria-label="Mode du panneau">
+      <button id="gm-mode-play" type="button" aria-pressed="true">Jouer</button>
+      <button id="gm-mode-prep" type="button" aria-pressed="false">Préparer</button>
+    </div>
+    <div class="gm-topbar-actions">
+      <button id="gm-evict-others" type="button" class="gm-btn--ghost gm-btn--sm" title="Déconnecte les autres écrans MJ de cette session">Autres MJ</button>
+      <button id="gm-leave-session" type="button" class="gm-btn--ghost gm-btn--sm" title="Quitter la session : la campagne reste enregistrée">Quitter</button>
+    </div>
+  `;
 
-    <!--
-      Barre d'étage — Lot 3, S-02.
+  // ⛔ Aucun raccourci clavier ici (arbitrage C-10) : seuls Échap et P existent.
+  rail.innerHTML = `${boutonDuRail({
+    id: 'gm-rail-select',
+    label: 'Choisir',
+    title: 'Ranger l’outil armé et fermer la palette',
+    traces: '<path d="M5 3l14 8-6.2 1.8L11 19z"/>',
+  })}
+    ${SEPARATEUR_DU_RAIL}
+    ${boutonDuRail({
+      id: 'gm-ping-arm',
+      label: 'Ping',
+      title: 'Armer le ping, puis cliquer sur la carte : un marqueur apparaît 2 s sur les trois écrans',
+      traces: '<circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="12" r="7"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/>',
+    })}
+    ${boutonDuRail({
+      id: 'gm-measure-arm',
+      label: 'Mesure',
+      title: 'Armer la mesure, puis cliquer deux points sur la carte',
+      traces: '<path d="M3 16L16 3l5 5L8 21z"/><path d="M7 12l2 2M10 9l2 2M13 6l2 2"/>',
+    })}
+    ${boutonDuRail({
+      id: 'gm-light-place-arm',
+      label: 'Lampe',
+      aria: 'Poser une lampe',
+      title: 'Armer la pose de lampe, puis taper une case : une lampe allumée y naît',
+      traces: LAMPE,
+    })}
+    ${boutonDuRail({
+      id: 'gm-light-delete-arm',
+      label: 'Ôter lampe',
+      aria: 'Ôter une lampe',
+      title: 'Armer la suppression de lampe, puis taper une lampe pour la retirer',
+      traces: `${LAMPE}<path d="M4 4l16 16"/>`,
+    })}
+    ${SEPARATEUR_DU_RAIL}
+    ${boutonDuRail({
+      id: 'gm-rail-fog-tools',
+      palette: 'fog-tools',
+      label: 'Fog',
+      title: 'Ouvrir la palette du brouillard',
+      traces: '<path d="M7 17h10a4 4 0 0 0 .4-8A6 6 0 0 0 6 10.5 3.3 3.3 0 0 0 7 17z"/><path d="M4 21h16"/>',
+    })}
+    ${boutonDuRail({
+      id: 'gm-rail-template-tools',
+      palette: 'template-tools',
+      label: 'Gabarits',
+      title: 'Ouvrir la palette des gabarits',
+      traces: '<circle cx="12" cy="12" r="8" stroke-dasharray="3 2.4"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/>',
+    })}
+    ${boutonDuRail({
+      id: 'gm-rail-wall-editor',
+      palette: 'wall-editor',
+      label: 'Murs',
+      title: 'Ouvrir la palette des murs',
+      traces: '<path d="M3 6h18v12H3zM3 12h18M9 6v6M15 12v6"/>',
+    })}
+    ${boutonDuRail({
+      id: 'gm-rail-link-editor',
+      palette: 'link-editor',
+      label: 'Liaisons',
+      title: 'Ouvrir la palette des liaisons d’escalier',
+      traces: '<path d="M4 20h4v-4h4v-4h4V8h4"/>',
+    })}
+  `;
 
-      Hors des onglets, et c'est délibéré : changer d'étage est une action de séance, faite en
-      cours de jeu et depuis n'importe quel outil. L'enfouir dans un onglet obligerait le MJ à
-      quitter son pinceau de fog ou son éditeur de murs pour monter d'un niveau. Elle est masquée
-      tant que la campagne n'a qu'un seul étage, pour ne rien ajouter au bandeau du cas courant.
-    -->
-    <div id="gm-level-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #202832; border-bottom: 1px solid #333;"></div>
+  // La palette est l'ancien onglet d'outil, posé sur la carte : elle en hérite les règles de
+  // désarmement (voir setPalette plus bas). Le rappel d'outil armé est posé sur la carte aussi.
+  const paletteHost = doc.createElement('div');
+  paletteHost.innerHTML = `
+    <section id="gm-tool-palette" class="gm-palette" hidden aria-labelledby="gm-palette-title">
+      <div class="gm-palette-head">
+        <h2 id="gm-palette-title" class="gm-palette-title"></h2>
+        <button id="gm-palette-close" type="button" class="gm-btn--ghost gm-btn--sm" aria-label="Fermer la palette">Fermer</button>
+      </div>
+      <div class="gm-palette-body">
+        <div id="palette-fog-tools" class="gm-palette-pane" hidden><div id="fog-tools-mount"></div></div>
+        <div id="palette-template-tools" class="gm-palette-pane" hidden><div id="template-tools-mount"></div></div>
+        <div id="palette-wall-editor" class="gm-palette-pane" hidden><div id="wall-editor-mount"></div></div>
+        <div id="palette-link-editor" class="gm-palette-pane" hidden><div id="link-editor-mount"></div></div>
+      </div>
+    </section>
+    <div id="gm-active-tool-banner" class="gm-armed-chip" role="status">
+      <span id="gm-active-tool-text" class="gm-armed-chip-text"></span>
+      <span id="gm-ping-hint" class="gm-armed-chip-hint"></span>
+      <button id="gm-disarm-active-tool" type="button" class="gm-btn--sm">Ranger · Échap</button>
+    </div>
+  `;
+  const palette = /** @type {HTMLElement} */ (paletteHost.querySelector('#gm-tool-palette'));
+  const armedChip = /** @type {HTMLElement} */ (paletteHost.querySelector('#gm-active-tool-banner'));
+  canvasContainer.append(palette, armedChip);
 
+  container.innerHTML = `
     <!--
       Barre de vitalité du pion sélectionné — UX-04.
 
@@ -140,130 +273,126 @@ export function createGMPanel(container, options = {}) {
       ⛔ Aucun backtick dans ce commentaire : il vit dans un template literal, et la chaîne se
       terminerait là. Le symptôme est un waitForApp qui expire, pas une erreur de syntaxe lisible.
     -->
-    <div id="gm-vitals-bar" style="display: none; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; background: #2b2230; border-bottom: 1px solid #46374f;">
-      <span id="gm-vitals-label" style="font-size: 0.78rem; color: #d9c2e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9rem;"></span>
-      <div id="gm-vitals-hp" style="display: none; align-items: center; gap: 0.35rem;">
-        <label for="gm-vitals-hp-current" style="font-size: 0.72rem; color: #a892b8; white-space: nowrap;">PV</label>
-        <input id="gm-vitals-hp-current" type="number" min="0" style="width: 3.4rem; min-width: 0; padding: 0.3rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-        <span id="gm-vitals-hp-max" style="font: 0.75rem ui-monospace, monospace; color: #a892b8; white-space: nowrap;"></span>
+    <div id="gm-vitals-bar" class="gm-section" hidden>
+      <span id="gm-vitals-label"></span>
+      <div id="gm-vitals-hp" hidden>
+        <label for="gm-vitals-hp-current" class="gm-muted">PV</label>
+        <input id="gm-vitals-hp-current" type="number" min="0" />
+        <span id="gm-vitals-hp-max"></span>
       </div>
-      <div id="gm-vitals-health" role="group" aria-label="État de santé du PNJ" style="display: none; align-items: center; gap: 0.3rem;">
-        <button id="gm-vitals-health-unharmed" type="button" data-health="unharmed" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Indemne</button>
-        <button id="gm-vitals-health-wounded" type="button" data-health="wounded" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Blessé</button>
-        <button id="gm-vitals-health-critical" type="button" data-health="critical" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Critique</button>
+      <div id="gm-vitals-health" role="group" aria-label="État de santé du PNJ" hidden>
+        <button id="gm-vitals-health-unharmed" type="button" class="gm-btn--sm" data-health="unharmed" aria-pressed="false">Indemne</button>
+        <button id="gm-vitals-health-wounded" type="button" class="gm-btn--sm" data-health="wounded" aria-pressed="false">Blessé</button>
+        <button id="gm-vitals-health-critical" type="button" class="gm-btn--sm" data-health="critical" aria-pressed="false">Critique</button>
       </div>
-      <button id="gm-vitals-mounted" type="button" aria-pressed="false" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer;">À cheval</button>
-      <span id="gm-vitals-hint" style="font-size: 0.72rem; color: #8a7a96;"></span>
+      <button id="gm-vitals-mounted" type="button" class="gm-btn--sm" aria-pressed="false">À cheval</button>
+      <span id="gm-vitals-hint" class="gm-hint"></span>
     </div>
 
-    <!--
-      Barre des gestes de séance — Lot 4, le ping (CdC §5.5) et la mesure (G-03).
-    -->
-    <div class="gm-session-tools-bar" style="display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 0.4rem 0.6rem; padding: 0.5rem 0.75rem; background: #2a2a20; border-bottom: 1px solid #444;">
-      <span style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Séance</span>
-      <button id="gm-ping-arm" type="button" aria-pressed="false" title="Armer le ping, puis cliquer sur la carte : un marqueur apparaît 2 s sur les trois écrans" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #facc15; border: 1px solid #6b5a12; border-radius: 4px; cursor: pointer;">📍 Ping</button>
-      <button id="gm-measure-arm" type="button" aria-pressed="false" title="Armer la mesure, puis cliquer deux points sur la carte" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; cursor: pointer;">📏 Mesurer</button>
-      <button id="gm-light-place-arm" type="button" aria-pressed="false" title="Armer la pose de lampe, puis taper une case : une lampe allumée y naît" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #fbbf24; border: 1px solid #78350f; border-radius: 4px; cursor: pointer;">💡 Poser</button>
-      <button id="gm-light-delete-arm" type="button" aria-pressed="false" title="Armer la suppression de lampe, puis taper une lampe pour la retirer" style="padding: 0.35rem 0.7rem; font-size: 0.78rem; background: #1a1a1a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 4px; cursor: pointer;">🗑️ Lampe</button>
-      <span id="gm-ping-hint" style="font-size: 0.7rem; color: #888;"></span>
-    </div>
-
-    <!-- Barre d'onglets du panneau MJ -->
-    <div class="gm-tabs-header" role="tablist" aria-label="Outils du meneur de jeu">
-      <!-- Mode Jouer (4 onglets) -->
+    <!-- Onglets de l'inspecteur : le mode n'en gouverne plus que la liste (C-10). -->
+    <div class="gm-tabs-header" role="tablist" aria-label="Inspecteur du meneur de jeu">
+      <!-- Mode Jouer (2 onglets) -->
       <button class="gm-tab-btn active" type="button" id="gm-tab-token-maker" role="tab" data-tab="token-maker" aria-controls="tab-content-token-maker" aria-selected="true" tabindex="0">Pions</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-handouts" role="tab" data-tab="handouts" aria-controls="tab-content-handouts" aria-selected="false" tabindex="-1">Handouts</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-fog-tools" role="tab" data-tab="fog-tools" aria-controls="tab-content-fog-tools" aria-selected="false" tabindex="-1">🌫️ Fog</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-template-tools" role="tab" data-tab="template-tools" aria-controls="tab-content-template-tools" aria-selected="false" tabindex="-1">📐 Gabarits</button>
-      <!-- Mode Préparer (6 onglets) -->
-      <button class="gm-tab-btn" type="button" id="gm-tab-scene-library" role="tab" data-tab="scene-library" aria-controls="tab-content-scene-library" aria-selected="false" tabindex="-1" style="display: none;">📂 Cartes</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-import-uvtt" role="tab" data-tab="import-uvtt" aria-controls="tab-content-import-uvtt" aria-selected="false" tabindex="-1" style="display: none;">UVTT</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-import-image" role="tab" data-tab="import-image" aria-controls="tab-content-import-image" aria-selected="false" tabindex="-1" style="display: none;">Image</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-wall-editor" role="tab" data-tab="wall-editor" aria-controls="tab-content-wall-editor" aria-selected="false" tabindex="-1" style="display: none;">🧱 Murs</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-link-editor" role="tab" data-tab="link-editor" aria-controls="tab-content-link-editor" aria-selected="false" tabindex="-1" style="display: none;">↕ Liaisons</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-grid-settings" role="tab" data-tab="grid-settings" aria-controls="tab-content-grid-settings" aria-selected="false" tabindex="-1" style="display: none;">Grille</button>
+      <!-- Mode Préparer (3 onglets) -->
+      <button class="gm-tab-btn" type="button" id="gm-tab-scene-library" role="tab" data-tab="scene-library" aria-controls="tab-content-scene-library" aria-selected="false" tabindex="-1" hidden>Cartes</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-import-image" role="tab" data-tab="import-image" aria-controls="tab-content-import-image" aria-selected="false" tabindex="-1" hidden>Image</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-grid-settings" role="tab" data-tab="grid-settings" aria-controls="tab-content-grid-settings" aria-selected="false" tabindex="-1" hidden>Grille</button>
     </div>
 
     <!-- Conteneurs de contenu des onglets -->
-    <div class="gm-tabs-content" style="flex: 1; overflow-y: auto; padding: 1rem;">
+    <div class="gm-tabs-content">
       <div id="tab-content-token-maker" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-token-maker">
-        <div class="token-elevation-section" style="margin-bottom: 1.5rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Pion sélectionné</h3>
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <label for="token-elevation" style="font-size: 0.85rem; color: #aaa;">Élévation :</label>
-            <input type="number" id="token-elevation" class="token-elevation-input" value="0" disabled style="width: 80px; padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-            <span id="token-elevation-label" style="font-size: 0.8rem; color: #888;">(aucun pion sélectionné)</span>
+        <div class="token-elevation-section gm-section">
+          <h3 class="gm-title">Pion sélectionné</h3>
+          <div class="gm-field">
+            <label for="token-elevation">Élévation</label>
+            <input type="number" id="token-elevation" class="token-elevation-input" value="0" disabled />
           </div>
+          <p id="token-elevation-label" class="gm-hint">(aucun pion sélectionné)</p>
 
-          <div id="token-edit-fields" style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.75rem; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333;">
-            <label for="token-edit-label" style="font-size: 0.85rem; color: #aaa;">Nom :</label>
-            <input type="text" id="token-edit-label" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-
-            <label for="token-edit-kind" style="font-size: 0.85rem; color: #aaa;">Type :</label>
-            <select id="token-edit-kind" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;">
-              <option value="pc">PJ (Joueur)</option>
-              <option value="npc">PNJ (Non-Joueur)</option>
-            </select>
-
-            <label for="token-edit-border-color" style="font-size: 0.85rem; color: #aaa;">Bordure :</label>
-            <input type="color" id="token-edit-border-color" disabled style="padding: 0; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; height: 2rem;" />
-
-            <label for="token-edit-size-cells" style="font-size: 0.85rem; color: #aaa;">Taille (cases) :</label>
-            <input type="number" id="token-edit-size-cells" min="1" max="4" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-
-            <label for="token-edit-speed-cells" style="font-size: 0.85rem; color: #aaa;">Vitesse (cases) :</label>
-            <input type="number" id="token-edit-speed-cells" min="1" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-
-            <label for="token-edit-hidden" style="font-size: 0.85rem; color: #aaa;">Masqué aux joueurs :</label>
-            <input type="checkbox" id="token-edit-hidden" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
-
-            <label for="token-edit-player-movable" style="font-size: 0.85rem; color: #aaa;">Déplaçable par les joueurs :</label>
-            <input type="checkbox" id="token-edit-player-movable" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
-
-            <label for="token-edit-locked" style="font-size: 0.85rem; color: #aaa;">Verrouillé :</label>
-            <input type="checkbox" id="token-edit-locked" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
-
-            <label for="token-edit-vision-dim" style="font-size: 0.85rem; color: #aaa;">Vision dans le noir (cases) :</label>
-            <input type="number" id="token-edit-vision-dim" min="0" max="60" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-
-            <label for="token-edit-torch" style="font-size: 0.85rem; color: #aaa;">Porte une torche :</label>
-            <input type="checkbox" id="token-edit-torch" disabled style="justify-self: start; width: 1.1rem; height: 1.1rem;" />
-
-            <label for="token-edit-torch-range" style="font-size: 0.85rem; color: #aaa;">Portée (cases) :</label>
-            <input type="number" id="token-edit-torch-range" min="1" max="20" disabled style="padding: 0.4rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-
-            <label for="token-hp-current" style="font-size: 0.85rem; color: #aaa;">PV (courant / max) :</label>
-            <div style="display: flex; align-items: center; gap: 0.4rem;">
-              <input type="number" id="token-hp-current" min="0" disabled placeholder="—" style="width: 55px; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
-              <span style="color: #888;">/</span>
-              <input type="number" id="token-hp-max" min="1" disabled placeholder="—" style="width: 55px; padding: 0.35rem; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;" />
+          <div id="token-edit-fields" class="gm-stack gm-subsection">
+            <div class="gm-field">
+              <label for="token-edit-label">Nom</label>
+              <input type="text" id="token-edit-label" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-kind">Type</label>
+              <select id="token-edit-kind" disabled>
+                <option value="pc">PJ (Joueur)</option>
+                <option value="npc">PNJ (Non-Joueur)</option>
+              </select>
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-border-color">Bordure</label>
+              <input type="color" id="token-edit-border-color" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-size-cells">Taille (cases)</label>
+              <input type="number" id="token-edit-size-cells" min="1" max="4" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-speed-cells">Vitesse (cases)</label>
+              <input type="number" id="token-edit-speed-cells" min="1" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-hidden">Masqué aux joueurs</label>
+              <input type="checkbox" id="token-edit-hidden" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-player-movable">Déplaçable par les joueurs</label>
+              <input type="checkbox" id="token-edit-player-movable" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-locked">Verrouillé</label>
+              <input type="checkbox" id="token-edit-locked" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-vision-dim">Vision dans le noir (cases)</label>
+              <input type="number" id="token-edit-vision-dim" min="0" max="60" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-torch">Porte une torche</label>
+              <input type="checkbox" id="token-edit-torch" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-edit-torch-range">Portée (cases)</label>
+              <input type="number" id="token-edit-torch-range" min="1" max="20" disabled />
+            </div>
+            <div class="gm-field">
+              <label for="token-hp-current">PV (courant / max)</label>
+              <div class="gm-row gm-hp-pair">
+                <input type="number" id="token-hp-current" min="0" disabled placeholder="—" />
+                <span class="gm-muted">/</span>
+                <input type="number" id="token-hp-max" min="1" disabled placeholder="—" />
+              </div>
             </div>
           </div>
 
-          <div id="token-health-section" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333; display: none;">
-            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #4a90e2;">État de santé (PNJ)</h4>
-            <div id="token-health-radios" style="display: flex; gap: 0.75rem; font-size: 0.8rem; color: #ccc;">
-              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+          <div id="token-health-section" class="gm-subsection" hidden>
+            <h4 class="gm-h">État de santé (PNJ)</h4>
+            <div id="token-health-radios" class="gm-row">
+              <label class="gm-check">
                 <input type="radio" name="token-health-group" id="token-health-unharmed" value="unharmed" disabled />
                 <span>Indemne</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+              <label class="gm-check">
                 <input type="radio" name="token-health-group" id="token-health-wounded" value="wounded" disabled />
                 <span>Blessé</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+              <label class="gm-check">
                 <input type="radio" name="token-health-group" id="token-health-critical" value="critical" disabled />
                 <span>Mal en point</span>
               </label>
             </div>
           </div>
 
-          <div id="token-markers-section" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #333;">
-            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #4a90e2;">Marqueurs d'état</h4>
-            <div id="token-markers-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 0.5rem; font-size: 0.8rem;">
+          <div id="token-markers-section" class="gm-subsection">
+            <h4 class="gm-h">Marqueurs d'état</h4>
+            <div id="token-markers-grid" class="gm-marker-grid">
               ${STATUS_MARKER_IDS.map(
                 (id) => `
-                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer; color: #ccc;">
+                <label class="gm-check">
                   <input type="checkbox" class="token-marker-checkbox" value="${id}" disabled />
                   <span>${STATUS_MARKER_LABEL_FR[id]}</span>
                 </label>
@@ -272,31 +401,32 @@ export function createGMPanel(container, options = {}) {
             </div>
           </div>
 
-          <p id="token-edit-status" style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #888; min-height: 1rem;"></p>
+          <p id="token-edit-status" class="gm-status"></p>
 
-          <button id="btn-reserve-token" disabled style="margin-top: 0.5rem; width: 100%; padding: 0.5rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;" title="Retire le pion du plateau sans le supprimer : il garde ses points de vie, ses marqueurs et son nom.">
-            Ranger en réserve
-          </button>
+          <div class="gm-stack gm-subsection">
+            <button id="btn-reserve-token" type="button" class="gm-btn--block" disabled title="Retire le pion du plateau sans le supprimer : il garde ses points de vie, ses marqueurs et son nom.">
+              Ranger en réserve
+            </button>
+            <button id="btn-delete-token" type="button" class="gm-btn--danger gm-btn--block" disabled>
+              Supprimer ce pion
+            </button>
+          </div>
 
-          <button id="btn-delete-token" disabled style="margin-top: 0.5rem; width: 100%; padding: 0.5rem; background: #5f2530; color: #fff; border: 1px solid #7a2f3c; border-radius: 4px; cursor: pointer;">
-            Supprimer ce pion
-          </button>
-
-          <div id="gm-reserve-drawer" style="display: none; border-top: 1px solid #444; margin-top: 0.75rem; padding-top: 0.75rem;">
-            <strong style="font-size: 0.85rem;">Réserve</strong>
-            <p style="margin: 0.2rem 0 0.45rem 0; font-size: 0.72rem; color: #888;">
+          <div id="gm-reserve-drawer" class="gm-subsection" hidden>
+            <h4 class="gm-h">Réserve</h4>
+            <p class="gm-hint">
               Pions retirés du plateau, avec leur état. « Poser » arme la pose : tapez ensuite la carte.
             </p>
-            <p id="gm-reserve-stacking-notice" style="display: none; margin: 0 0 0.45rem 0; font-size: 0.72rem; color: #e0b040;"></p>
-            <div id="gm-reserve-list" style="display: grid; gap: 0.35rem;"></div>
+            <p id="gm-reserve-stacking-notice" class="gm-hint gm-warn" hidden></p>
+            <div id="gm-reserve-list" class="gm-stack"></div>
           </div>
         </div>
-        <div class="token-library-section" style="margin-bottom: 1.5rem;">
-          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Bibliothèque de pions</h3>
+        <div class="token-library-section gm-section gm-section--flat">
+          <h3 class="gm-title">Bibliothèque de pions</h3>
           <div id="token-library-mount"></div>
         </div>
-        <div class="token-maker-section" style="border-top: 1px solid #333; padding-top: 1rem;">
-          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">Créer un pion</h3>
+        <div class="token-maker-section gm-section gm-section--flat">
+          <h3 class="gm-title">Créer un pion</h3>
           <div id="token-maker-mount"></div>
         </div>
       </div>
@@ -305,61 +435,50 @@ export function createGMPanel(container, options = {}) {
         <div id="handouts-mount"></div>
       </div>
 
-      <div id="tab-content-fog-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-fog-tools" hidden>
-        <div id="fog-tools-mount"></div>
-      </div>
-
-      <div id="tab-content-template-tools" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-template-tools" hidden>
-        <div id="template-tools-mount"></div>
-      </div>
-
       <div id="tab-content-scene-library" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-scene-library" hidden>
         <div id="scene-library-mount"></div>
-      </div>
-
-      <div id="tab-content-import-uvtt" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-uvtt" hidden>
-        <div id="import-uvtt-mount"></div>
+        <!-- Le diagnostic UVTT n'est plus un onglet (C-10) : il ferme le volet Cartes. -->
+        <details id="gm-uvtt-diag" class="gm-disclosure">
+          <summary>Diagnostic d'import UVTT</summary>
+          <div class="gm-disclosure-body"><div id="import-uvtt-mount"></div></div>
+        </details>
       </div>
 
       <div id="tab-content-import-image" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-import-image" hidden>
         <div id="import-image-mount"></div>
       </div>
 
-      <div id="tab-content-wall-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-wall-editor" hidden>
-        <div id="wall-editor-mount"></div>
-      </div>
-
-      <div id="tab-content-link-editor" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-link-editor" hidden>
-        <div id="link-editor-mount"></div>
-      </div>
-
       <div id="tab-content-grid-settings" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-grid-settings" hidden>
-        <div class="grid-settings-form" style="display: flex; flex-direction: column; gap: 1rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-          <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Réglages de la Grille</h3>
+        <div class="grid-settings-form gm-section gm-stack">
+          <h3 class="gm-title">Réglages de la grille</h3>
 
-          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <label class="gm-check">
             <input type="checkbox" id="grid-visible" checked />
             <span>Grille visible</span>
           </label>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center;">
-            <label for="grid-type">Type de grille :</label>
-            <!-- width:100% et min-width:0 ne sont pas cosmétiques. Un select se dimensionne sur sa
-                 plus longue option et, dans une piste de grille, déborde au lieu de se réduire. Le
-                 13/08/2026 l'option « Hexagonale (pointe en haut) » a fait sortir le panneau de
+          <div class="gm-field">
+            <label for="grid-type">Type de grille</label>
+            <!-- min-width:0 (posé par .gm-field) n'est pas cosmétique. Un select se dimensionne sur
+                 sa plus longue option et, dans une piste de grille, déborde au lieu de se réduire.
+                 Le 13/08/2026 l'option « Hexagonale (pointe en haut) » a fait sortir le panneau de
                  15 px : invisible sur le poste du mainteneur, rouge sur le runner CI dont les
                  fontes sont plus larges. La contrainte tient quelle que soit la fonte, là où
                  raccourcir le libellé n'aurait protégé que jusqu'au prochain libellé. -->
-            <select id="grid-type" style="width: 100%; min-width: 0;"
+            <select id="grid-type"
                     title="Le pavage de l’étage actif. Pointe en haut, rangées impaires décalées. Les imports UVTT sont carrés ; l’hexagone se pose sur une carte-décor.">
               <option value="square">Carrée</option>
               <option value="hex">Hexagonale</option>
             </select>
+          </div>
 
-            <label for="grid-color">Couleur :</label>
+          <div class="gm-field">
+            <label for="grid-color">Couleur</label>
             <input type="color" id="grid-color" value="#000000" />
+          </div>
 
-            <label for="grid-opacity">Opacité (<span id="grid-opacity-val">0.25</span>) :</label>
+          <div class="gm-field">
+            <label for="grid-opacity">Opacité (<span id="grid-opacity-val">0.25</span>)</label>
             <input type="range" id="grid-opacity" min="0" max="1" step="0.05" value="0.25" />
           </div>
         </div>
@@ -367,11 +486,14 @@ export function createGMPanel(container, options = {}) {
     </div>
 
     <!-- Pied de panneau : Affichage de la version -->
-    <div class="gm-panel-footer" style="padding: 0.5rem 1rem; background: #181818; border-top: 1px solid #333; font-size: 0.75rem; color: #777; text-align: center;"></div>
-    <a href="./attributions.html" style="padding: 0 1rem 0.55rem; background: #181818; color: #8bbdf0; font-size: 0.75rem; text-align: center;">Attributions</a>
+    <div class="gm-panel-footer"></div>
+    <a class="gm-panel-attributions" href="./attributions.html">Attributions</a>
   `;
 
-  const sessionCode = /** @type {HTMLElement} */ (container.querySelector('#gm-session-code'));
+  // Après le gabarit du conteneur, qui les aurait effacées : voir zone().
+  container.prepend(...zonesCreees);
+
+  const sessionCode = /** @type {HTMLElement} */ (topbar.querySelector('#gm-session-code'));
   sessionCode.textContent = sessionId || '—';
 
   const footerEl = /** @type {HTMLElement} */ (container.querySelector('.gm-panel-footer'));
@@ -382,27 +504,16 @@ export function createGMPanel(container, options = {}) {
   }
 
   // --- Gestion des modes « Jouer » et « Préparer » (UX-03) ---
-  const playModeBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-mode-play'));
-  const prepModeBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-mode-prep'));
-  const activeToolBanner = /** @type {HTMLElement|null} */ (container.querySelector('#gm-active-tool-banner'));
-  const activeToolText = container.querySelector('#gm-active-tool-text');
-  const disarmActiveToolBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-disarm-active-tool'));
+  const playModeBtn = /** @type {HTMLButtonElement|null} */ (topbar.querySelector('#gm-mode-play'));
+  const prepModeBtn = /** @type {HTMLButtonElement|null} */ (topbar.querySelector('#gm-mode-prep'));
+  const activeToolText = armedChip.querySelector('#gm-active-tool-text');
+  const activeToolHint = armedChip.querySelector('#gm-ping-hint');
+  const disarmActiveToolBtn = /** @type {HTMLButtonElement|null} */ (armedChip.querySelector('#gm-disarm-active-tool'));
 
   /** @type {Record<'play'|'prep', string[]>} */
   const MODE_TABS = {
-    play: ['token-maker', 'handouts', 'fog-tools', 'template-tools'],
-    prep: ['scene-library', 'import-uvtt', 'import-image', 'wall-editor', 'link-editor', 'grid-settings'],
-  };
-
-  /** @type {Record<string, string>} */
-  const TOOL_TAB_MAP = {
-    'fog-reveal': 'fog-tools',
-    'fog-hide': 'fog-tools',
-    'wall-draw': 'wall-editor',
-    'wall-delete': 'wall-editor',
-    'link-place': 'link-editor',
-    'template-place': 'template-tools',
-    'token-place': 'token-maker',
+    play: ['token-maker', 'handouts'],
+    prep: ['scene-library', 'import-image', 'grid-settings'],
   };
 
   /** @type {Record<string, string>} */
@@ -414,7 +525,57 @@ export function createGMPanel(container, options = {}) {
     'link-place': 'Liaisons (Poser)',
     'template-place': 'Gabarits (Poser)',
     'token-place': 'Pion (Poser)',
+    ping: 'Ping',
+    measure: 'Mesure',
+    'light-place': 'Poser une lampe',
+    'light-delete': 'Ôter une lampe',
   };
+
+  /**
+   * L'indice des gestes sans cible visible. Le pinceau de fog et l'éditeur de murs changent le
+   * curseur sur la carte ; le ping, la mesure et les lampes ne changent rien tant qu'on n'a pas
+   * cliqué, d'où cette ligne dans le rappel d'outil armé.
+   *
+   * @type {Record<string, string>}
+   */
+  const TOOL_HINTS = {
+    ping: 'Cliquez sur la carte',
+    measure: 'Cliquer 2 points sur la carte',
+    'light-place': 'Taper une case pour y poser une lampe',
+    'light-delete': 'Taper une lampe pour la supprimer',
+  };
+
+  /**
+   * Le bouton du rail qui porte le liseré de laiton quand l'outil est armé. ⚠ Aucun pour
+   * token-place : la pose d'un pion s'arme depuis l'inspecteur, pas depuis le rail.
+   *
+   * @type {Record<string, string>}
+   */
+  const TOOL_RAIL_BUTTON = {
+    'fog-reveal': 'gm-rail-fog-tools',
+    'fog-hide': 'gm-rail-fog-tools',
+    'template-place': 'gm-rail-template-tools',
+    'wall-draw': 'gm-rail-wall-editor',
+    'wall-delete': 'gm-rail-wall-editor',
+    'link-place': 'gm-rail-link-editor',
+    ping: 'gm-ping-arm',
+    measure: 'gm-measure-arm',
+    'light-place': 'gm-light-place-arm',
+    'light-delete': 'gm-light-delete-arm',
+  };
+
+  /** @type {Record<string, string>} */
+  const PALETTE_TITLES = {
+    'fog-tools': 'Fog',
+    'template-tools': 'Gabarits',
+    'wall-editor': 'Murs',
+    'link-editor': 'Liaisons d’escalier',
+  };
+
+  const railButtons = /** @type {HTMLButtonElement[]} */ (Array.from(rail.querySelectorAll('.gm-rail-btn')));
+  const paletteButtons = railButtons.filter((b) => b.dataset.palette);
+  const paletteTitle = /** @type {HTMLElement} */ (palette.querySelector('#gm-palette-title'));
+  const palettePanes = /** @type {HTMLElement[]} */ (Array.from(palette.querySelectorAll('.gm-palette-pane')));
 
   /** @type {'play'|'prep'} */
   let currentMode = 'play';
@@ -480,81 +641,42 @@ export function createGMPanel(container, options = {}) {
   /** @type {ReturnType<typeof createFogTools>|null} */
   let fogTools = null;
 
+  /**
+   * Le rappel d'outil armé (C-10) : visible dès qu'un outil est armé, quel que soit le mode, et
+   * la carte prend son liseré de laiton en même temps. Les deux suivent la seule classe
+   * gm-armed du conteneur de la carte (voir css/gm.css).
+   */
   function updateActiveToolBanner() {
-    if (!activeToolBanner) return;
-    const ownerTab = TOOL_TAB_MAP[activeToolName];
-    const isHiddenByMode = Boolean(ownerTab && !MODE_TABS[currentMode].includes(ownerTab));
-
-    if (isHiddenByMode) {
-      activeToolBanner.style.display = 'flex';
-      if (activeToolText) {
-        activeToolText.textContent = `⚡ Outil armé : ${TOOL_LABELS[activeToolName] || activeToolName}`;
-      }
-    } else {
-      activeToolBanner.style.display = 'none';
-    }
+    const armed = activeToolName !== 'none';
+    canvasContainer.classList.toggle('gm-armed', armed);
+    if (activeToolText) activeToolText.textContent = armed ? TOOL_LABELS[activeToolName] || activeToolName : '';
+    if (activeToolHint) activeToolHint.textContent = TOOL_HINTS[activeToolName] ?? '';
   }
 
   disarmActiveToolBtn?.addEventListener('click', () => {
     disarmActiveTool();
   }, { signal: listeners.signal });
 
-  function updateTabToolIndicators() {
-    tabButtons.forEach((btn) => {
-      const tabName = btn.getAttribute('data-tab');
-      let isToolTabArmed = false;
-
-      if (tabName === 'fog-tools' && (activeToolName === 'fog-reveal' || activeToolName === 'fog-hide')) {
-        isToolTabArmed = true;
-      } else if (tabName === 'wall-editor' && (activeToolName === 'wall-draw' || activeToolName === 'wall-delete')) {
-        isToolTabArmed = true;
-      } else if (tabName === 'link-editor' && activeToolName === 'link-place') {
-        isToolTabArmed = true;
-      } else if (tabName === 'template-tools' && activeToolName === 'template-place') {
-        isToolTabArmed = true;
-      }
-
-      if (isToolTabArmed) {
-        btn.classList.add('gm-tab-active-tool');
-        /** @type {HTMLElement} */ (btn).style.boxShadow = 'inset 0 -3px 0 #f5a623';
-      } else {
-        btn.classList.remove('gm-tab-active-tool');
-        /** @type {HTMLElement} */ (btn).style.boxShadow = 'none';
-      }
-    });
+  function updateRailToolIndicators() {
+    const armedBtnId = TOOL_RAIL_BUTTON[activeToolName];
+    for (const btn of railButtons) btn.classList.toggle('gm-tool-armed', btn.id === armedBtnId);
   }
 
   function getActiveToolName() {
     return activeToolName;
   }
 
-  /**
-   * Reflète l'état d'armement du ping sur son bouton.
-   *
-   * L'indice textuel est là parce que l'armement d'un outil sans cible visible est invisible : le
-   * pinceau de fog et l'éditeur de murs changent le curseur sur la carte, le ping ne change rien
-   * tant qu'on n'a pas cliqué.
-   */
+  /** Reflète l'état d'armement du ping sur son bouton ; l'indice vit dans le rappel d'outil armé. */
   function updatePingButton() {
-    const btn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-ping-arm'));
-    const hint = container.querySelector('#gm-ping-hint');
+    const btn = /** @type {HTMLButtonElement|null} */ (rail.querySelector('#gm-ping-arm'));
     if (!btn) return;
-    const armed = activeToolName === 'ping';
-    btn.setAttribute('aria-pressed', armed ? 'true' : 'false');
-    btn.style.background = armed ? '#facc15' : '#1a1a1a';
-    btn.style.color = armed ? '#1a1a1a' : '#facc15';
-    if (hint) hint.textContent = armed ? 'Cliquez sur la carte' : '';
+    btn.setAttribute('aria-pressed', activeToolName === 'ping' ? 'true' : 'false');
   }
 
   function updateMeasureButton() {
-    const btn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-measure-arm'));
-    const hint = container.querySelector('#gm-ping-hint');
+    const btn = /** @type {HTMLButtonElement|null} */ (rail.querySelector('#gm-measure-arm'));
     if (!btn) return;
-    const armed = activeToolName === 'measure';
-    btn.setAttribute('aria-pressed', armed ? 'true' : 'false');
-    btn.style.background = armed ? '#3b82f6' : '#1a1a1a';
-    btn.style.color = armed ? '#ffffff' : '#60a5fa';
-    if (hint) hint.textContent = armed ? 'Cliquer 2 points sur la carte' : '';
+    btn.setAttribute('aria-pressed', activeToolName === 'measure' ? 'true' : 'false');
   }
 
   /**
@@ -564,26 +686,10 @@ export function createGMPanel(container, options = {}) {
    * mutation vit dans `js/app/gm.js` (comme `wall-delete`).
    */
   function updateLightToolButtons() {
-    const placeBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-light-place-arm'));
-    const deleteBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-light-delete-arm'));
-    const hint = container.querySelector('#gm-ping-hint');
-    const placeArmed = activeToolName === 'light-place';
-    const deleteArmed = activeToolName === 'light-delete';
-    if (placeBtn) {
-      placeBtn.setAttribute('aria-pressed', placeArmed ? 'true' : 'false');
-      placeBtn.style.background = placeArmed ? '#fbbf24' : '#1a1a1a';
-      placeBtn.style.color = placeArmed ? '#1a1a1a' : '#fbbf24';
-    }
-    if (deleteBtn) {
-      deleteBtn.setAttribute('aria-pressed', deleteArmed ? 'true' : 'false');
-      deleteBtn.style.background = deleteArmed ? '#f87171' : '#1a1a1a';
-      deleteBtn.style.color = deleteArmed ? '#1a1a1a' : '#f87171';
-    }
-    if (hint) {
-      if (placeArmed) hint.textContent = 'Taper une case pour y poser une lampe';
-      else if (deleteArmed) hint.textContent = 'Taper une lampe pour la supprimer';
-      else if (activeToolName !== 'ping' && activeToolName !== 'measure') hint.textContent = '';
-    }
+    const placeBtn = /** @type {HTMLButtonElement|null} */ (rail.querySelector('#gm-light-place-arm'));
+    const deleteBtn = /** @type {HTMLButtonElement|null} */ (rail.querySelector('#gm-light-delete-arm'));
+    placeBtn?.setAttribute('aria-pressed', activeToolName === 'light-place' ? 'true' : 'false');
+    deleteBtn?.setAttribute('aria-pressed', activeToolName === 'light-delete' ? 'true' : 'false');
   }
 
   /**
@@ -644,7 +750,7 @@ export function createGMPanel(container, options = {}) {
       if (templateTools?.isArmed()) templateTools?.disarm();
     }
 
-    updateTabToolIndicators();
+    updateRailToolIndicators();
     updateActiveToolBanner();
     requestRender();
   }
@@ -652,6 +758,54 @@ export function createGMPanel(container, options = {}) {
   function disarmActiveTool() {
     setActiveTool('none');
   }
+
+  // --- Palette d'outil (C-10) ---
+  //
+  // ⭐ La palette EST l'ancien onglet d'outil, et elle en hérite la règle du CdC : désarmement au
+  // changement d'onglet. L'ouvrir, en ouvrir une autre ou la fermer désarme l'outil armé — c'est
+  // ce désarmement qui abandonne un tracé de mur en cours, exactement comme le faisait le
+  // changement d'onglet (wallEditor.setArmed(false) vide le brouillon). Une seule ouverte à la fois.
+  //
+  // ⛔ Ce qui ne la ferme PAS : Échap (il désarme seulement), la bascule de mode (qui ne désarme
+  // jamais, C-1), un clic d'onglet de l'inspecteur (qui désarme, A3), ni l'armement d'un geste du
+  // rail (l'exclusivité mutuelle reste celle de setActiveTool).
+
+  /** @type {string|null} */
+  let openPaletteName = null;
+
+  /** @param {string|null} name */
+  function showPalette(name) {
+    openPaletteName = name;
+    palette.hidden = name === null;
+    paletteTitle.textContent = name ? PALETTE_TITLES[name] ?? '' : '';
+    for (const pane of palettePanes) pane.hidden = pane.id !== `palette-${name}`;
+    for (const btn of paletteButtons) {
+      btn.setAttribute('aria-pressed', String(name !== null && btn.dataset.palette === name));
+    }
+  }
+
+  /** @param {string|null} name La palette à ouvrir, ou `null` pour la fermer */
+  function setPalette(name) {
+    if (activeToolName !== 'none') disarmActiveTool();
+    showPalette(name);
+  }
+
+  for (const btn of paletteButtons) {
+    btn.addEventListener(
+      'click',
+      () => {
+        const name = btn.dataset.palette ?? null;
+        setPalette(openPaletteName === name ? null : name);
+      },
+      { signal: listeners.signal }
+    );
+  }
+  palette
+    .querySelector('#gm-palette-close')
+    ?.addEventListener('click', () => setPalette(null), { signal: listeners.signal });
+  rail
+    .querySelector('#gm-rail-select')
+    ?.addEventListener('click', () => setPalette(null), { signal: listeners.signal });
 
   /**
    * Routine privée de bascule visuelle d'onglet (inaccessible depuis l'extérieur).
@@ -705,25 +859,15 @@ export function createGMPanel(container, options = {}) {
     if (mode !== 'play' && mode !== 'prep') return;
     currentMode = mode;
 
-    if (playModeBtn) {
-      playModeBtn.setAttribute('aria-pressed', String(mode === 'play'));
-      playModeBtn.style.background = mode === 'play' ? '#2e7d32' : '#1a1a1a';
-      playModeBtn.style.color = mode === 'play' ? '#fff' : '#888';
-    }
-
-    if (prepModeBtn) {
-      prepModeBtn.setAttribute('aria-pressed', String(mode === 'prep'));
-      prepModeBtn.style.background = mode === 'prep' ? '#2e7d32' : '#1a1a1a';
-      prepModeBtn.style.color = mode === 'prep' ? '#fff' : '#888';
-    }
+    playModeBtn?.setAttribute('aria-pressed', String(mode === 'play'));
+    prepModeBtn?.setAttribute('aria-pressed', String(mode === 'prep'));
 
     const allowedTabs = MODE_TABS[mode];
 
     // Afficher ou masquer les boutons d'onglets
     tabButtons.forEach((btn) => {
       const tabName = btn.dataset.tab;
-      const isAllowed = Boolean(tabName && allowedTabs.includes(tabName));
-      btn.style.display = isAllowed ? '' : 'none';
+      btn.hidden = !(tabName && allowedTabs.includes(tabName));
     });
 
     // Vérifier si l'onglet actuellement sélectionné est visible dans le nouveau mode
@@ -743,8 +887,6 @@ export function createGMPanel(container, options = {}) {
     } else {
       currentActiveBtn.tabIndex = 0;
     }
-
-    updateActiveToolBanner();
   }
 
   playModeBtn?.addEventListener('click', () => setMode('play'), { signal: listeners.signal });
@@ -757,7 +899,7 @@ export function createGMPanel(container, options = {}) {
     btn.addEventListener(
       'keydown',
       /** @param {KeyboardEvent} event */ (event) => {
-        const visibleTabs = Array.from(tabButtons).filter((b) => b.style.display !== 'none');
+        const visibleTabs = Array.from(tabButtons).filter((b) => !b.hidden);
         const currentIndex = visibleTabs.indexOf(/** @type {HTMLButtonElement} */ (btn));
         if (currentIndex === -1) return;
         let nextIndex = currentIndex;
@@ -788,7 +930,7 @@ export function createGMPanel(container, options = {}) {
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
   const handoutsMount = /** @type {HTMLElement} */ (container.querySelector('#handouts-mount'));
-  const fogToolsMount = /** @type {HTMLElement} */ (container.querySelector('#fog-tools-mount'));
+  const fogToolsMount = /** @type {HTMLElement} */ (palette.querySelector('#fog-tools-mount'));
 
   createImportPanel(uvttMount, { mode: 'uvtt' });
   const importPanelImage = createImportPanel(imageMount, {
@@ -799,9 +941,9 @@ export function createGMPanel(container, options = {}) {
 
   const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
 
-  const wallEditorMount = /** @type {HTMLElement} */ (container.querySelector('#wall-editor-mount'));
-  const linkEditorMount = /** @type {HTMLElement} */ (container.querySelector('#link-editor-mount'));
-  const templateToolsMount = /** @type {HTMLElement} */ (container.querySelector('#template-tools-mount'));
+  const wallEditorMount = /** @type {HTMLElement} */ (palette.querySelector('#wall-editor-mount'));
+  const linkEditorMount = /** @type {HTMLElement} */ (palette.querySelector('#link-editor-mount'));
+  const templateToolsMount = /** @type {HTMLElement} */ (palette.querySelector('#template-tools-mount'));
 
   // Initialisation du composant FogTools
   fogTools = fogToolsMount
@@ -939,7 +1081,7 @@ export function createGMPanel(container, options = {}) {
       .catch((err) => {
         console.error('Erreur lors du chargement de la bibliothèque de pions :', err);
         tokenLibraryMount.innerHTML = `
-          <div style="padding: 0.75rem; background: #3a1a1a; color: #e07070; border-radius: 4px; border: 1px solid #5a3a3a;">
+          <div class="gm-section gm-err">
             ✗ Erreur : Impossible de charger la bibliothèque de pions.
           </div>
         `;
@@ -956,7 +1098,7 @@ export function createGMPanel(container, options = {}) {
     .catch((err) => {
       console.error('Erreur lors du chargement de la bibliothèque de cartes :', err);
       sceneLibraryMount.innerHTML = `
-        <div style="padding: 1rem; background: #3a1a1a; color: #e07070; border-radius: 4px; border: 1px solid #5a3a3a;">
+        <div class="gm-section gm-err">
           ✗ Erreur : Impossible de charger la bibliothèque de cartes.
         </div>
       `;
@@ -1032,7 +1174,7 @@ export function createGMPanel(container, options = {}) {
   // dont l'état ne bouge qu'au moment où on le regarde suffit, là où un abonnement de plus
   // serait un abonnement de plus à défaire.
   const evictOthersBtn = /** @type {HTMLButtonElement} */ (
-    container.querySelector('#gm-evict-others')
+    topbar.querySelector('#gm-evict-others')
   );
 
   function refreshEvictButton() {
@@ -1040,8 +1182,6 @@ export function createGMPanel(container, options = {}) {
     const others = getOtherGmSessions();
     evictOthersBtn.textContent = others.length === 0 ? 'Aucun autre MJ' : `Autres MJ (${others.length})`;
     evictOthersBtn.disabled = others.length === 0;
-    evictOthersBtn.style.opacity = others.length === 0 ? '0.5' : '1';
-    evictOthersBtn.style.cursor = others.length === 0 ? 'default' : 'pointer';
   }
 
   evictOthersBtn?.addEventListener(
@@ -1081,7 +1221,7 @@ export function createGMPanel(container, options = {}) {
   // campagne qu'on vient de quitter. La page est déchargée juste après de toute façon, et
   // les données restent en place pour qui retape le code.
   const leaveSessionBtn = /** @type {HTMLButtonElement} */ (
-    container.querySelector('#gm-leave-session')
+    topbar.querySelector('#gm-leave-session')
   );
   leaveSessionBtn?.addEventListener(
     'click',
@@ -1201,7 +1341,7 @@ export function createGMPanel(container, options = {}) {
     const signature = JSON.stringify([enReserve, store.getStackingNormalizationReport()]);
     if (signature === signatureReserve) return;
     signatureReserve = signature;
-    reserveDrawer.style.display = enReserve.length > 0 ? 'block' : 'none';
+    reserveDrawer.hidden = enReserve.length === 0;
 
     // ⭐ Le chargement peut avoir envoyé des pions en réserve dans le dos du mainteneur (une
     // case, un pion — C-6) ; le `console.warn` de `resolveStackedTokens` est invisible sans les
@@ -1216,9 +1356,9 @@ export function createGMPanel(container, options = {}) {
           normalises.length === 1
             ? `1 pion envoyé en réserve au chargement (${noms}) : une case ne porte plus qu'un pion.`
             : `${normalises.length} pions envoyés en réserve au chargement (${noms}) : une case ne porte plus qu'un pion.`;
-        reserveStackingNotice.style.display = 'block';
+        reserveStackingNotice.hidden = false;
       } else {
-        reserveStackingNotice.style.display = 'none';
+        reserveStackingNotice.hidden = true;
       }
     }
 
@@ -1232,14 +1372,14 @@ export function createGMPanel(container, options = {}) {
         const ligne = document.createElement('div');
         ligne.className = 'gm-reserve-row';
         ligne.dataset.tokenId = pion.id;
-        ligne.style.cssText =
-          'display: flex; gap: 0.4rem; align-items: center; padding: 0.3rem 0.35rem; border: 1px solid #444; border-radius: 4px;';
 
         const pastille = document.createElement('span');
-        pastille.style.cssText = `width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid #fff; background: ${pion.borderColor};`;
+        pastille.className = 'gm-reserve-swatch';
+        // La couleur du pion est une donnée, pas un choix de thème : elle seule reste en ligne.
+        pastille.style.background = pion.borderColor;
 
         const texte = document.createElement('span');
-        texte.style.cssText = 'flex: 1; font-size: 0.75rem; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+        texte.className = 'gm-reserve-text';
         // ⛔ **Interdiction n°4 : JAMAIS de PV chiffrés pour un PNJ**, et l'ordre des branches est
         // tout ce qui la tient. Un PNJ *porte* souvent des `hp` — le panneau les édite — mais ce
         // qu'on en montre est l'état de santé à trois crans, sans jamais dériver l'un de l'autre
@@ -1256,10 +1396,8 @@ export function createGMPanel(container, options = {}) {
 
         const poser = document.createElement('button');
         poser.type = 'button';
-        poser.className = 'gm-reserve-place';
+        poser.className = 'gm-reserve-place gm-btn--sm';
         poser.dataset.tokenId = pion.id;
-        poser.style.cssText =
-          'padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #2a3242; color: #a8c0e0; border: 1px solid #3d4a60; border-radius: 4px; cursor: pointer;';
         poser.textContent = 'Poser';
         poser.addEventListener('click', () => {
           // ⭐ Exactement l'armement d'UX-08, avec la même exclusivité mutuelle : sortir un pion
@@ -1318,7 +1456,7 @@ export function createGMPanel(container, options = {}) {
       tokenHpCurrent.value = '';
       tokenHpMax.value = '';
       tokenHpCurrent.disabled = true;
-      tokenHealthSection.style.display = 'none';
+      tokenHealthSection.hidden = true;
       for (const radio of healthRadios) {
         radio.checked = false;
         radio.disabled = true;
@@ -1340,9 +1478,9 @@ export function createGMPanel(container, options = {}) {
     }
 
     if (selectedToken.kind === 'pc') {
-      tokenHealthSection.style.display = 'none';
+      tokenHealthSection.hidden = true;
     } else {
-      tokenHealthSection.style.display = 'block';
+      tokenHealthSection.hidden = false;
       const hpNull = selectedToken.hp === null || selectedToken.hp === undefined;
       const currentHealth = selectedToken.health || 'unharmed';
       for (const radio of healthRadios) {
@@ -1403,13 +1541,13 @@ export function createGMPanel(container, options = {}) {
     try {
       store.updateToken(selectedToken.id, patch);
     } catch (err) {
-      tokenEditStatus.style.color = '#e74c3c';
+      tokenEditStatus.className = 'gm-status gm-err';
       tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
       updateTokenEditUIFromStore();
       return;
     }
 
-    tokenEditStatus.style.color = '#2ecc71';
+    tokenEditStatus.className = 'gm-status gm-ok';
     tokenEditStatus.textContent = 'Modification appliquée.';
 
     transport?.publish({
@@ -1428,7 +1566,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const value = tokenEditLabel.value.trim();
       if (!value) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'Le nom ne peut pas être vide.';
         updateTokenEditUIFromStore();
         return;
@@ -1543,10 +1681,10 @@ export function createGMPanel(container, options = {}) {
     if (!vitalsBar) return;
     const pion = store.getSelectedToken();
     if (!pion) {
-      vitalsBar.style.display = 'none';
+      vitalsBar.hidden = true;
       return;
     }
-    vitalsBar.style.display = 'flex';
+    vitalsBar.hidden = false;
     if (vitalsLabel) vitalsLabel.textContent = pion.label || pion.id;
 
     // ⚠ Une variable locale, et pas un booléen `sansPv` : le typage ne suit pas le rétrécissement
@@ -1554,8 +1692,8 @@ export function createGMPanel(container, options = {}) {
     const pv = pion.hp ?? null;
     const estPj = pion.kind === 'pc';
 
-    if (vitalsHpGroup) vitalsHpGroup.style.display = estPj && pv ? 'flex' : 'none';
-    if (vitalsHealthGroup) vitalsHealthGroup.style.display = !estPj && pv ? 'flex' : 'none';
+    if (vitalsHpGroup) vitalsHpGroup.hidden = !(estPj && pv);
+    if (vitalsHealthGroup) vitalsHealthGroup.hidden = !(!estPj && pv);
     if (vitalsHint) {
       vitalsHint.textContent = pv ? '' : 'Aucun point de vie défini — voir l’onglet Pions';
     }
@@ -1573,18 +1711,12 @@ export function createGMPanel(container, options = {}) {
       for (const btn of vitalsHealthBtns) {
         const actif = btn.dataset.health === courant;
         btn.setAttribute('aria-pressed', String(actif));
-        btn.style.background = actif ? '#5a3a6a' : '#1a1a1a';
-        btn.style.color = actif ? '#fff' : '#888';
-        btn.style.borderColor = actif ? '#8a6a9a' : '#444';
       }
     }
 
     if (vitalsMountedBtn) {
       const monte = pion.mounted === true;
       vitalsMountedBtn.setAttribute('aria-pressed', String(monte));
-      vitalsMountedBtn.style.background = monte ? '#5a3a6a' : '#1a1a1a';
-      vitalsMountedBtn.style.color = monte ? '#fff' : '#888';
-      vitalsMountedBtn.style.borderColor = monte ? '#8a6a9a' : '#444';
     }
   }
 
@@ -1656,7 +1788,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const value = parseInt(tokenEditSizeCells.value, 10);
       if (!Number.isInteger(value) || value < 1) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La taille doit être un entier au moins égal à 1.';
         updateTokenEditUIFromStore();
         return;
@@ -1672,7 +1804,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const value = parseFloat(tokenEditSpeedCells.value);
       if (!Number.isFinite(value) || value < 1) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La vitesse doit valoir au moins 1 case.';
         updateTokenEditUIFromStore();
         return;
@@ -1706,7 +1838,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const value = parseInt(tokenEditVisionDim.value, 10);
       if (!Number.isInteger(value) || value < 0 || value > 60) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La vision dans le noir doit être un entier entre 0 et 60 cases.';
         updateTokenEditUIFromStore();
         return;
@@ -1744,7 +1876,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const value = parseInt(tokenEditTorchRange.value, 10);
       if (!Number.isInteger(value) || value < 1 || value > 20) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La portée de la torche doit être un entier entre 1 et 20 cases.';
         updateTokenEditUIFromStore();
         return;
@@ -1785,7 +1917,7 @@ export function createGMPanel(container, options = {}) {
       try {
         if (!store.reserveToken(tokenId)) return;
       } catch (err) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
         return;
       }
@@ -1795,7 +1927,7 @@ export function createGMPanel(container, options = {}) {
         at: Date.now(),
         by: 'gm',
       });
-      tokenEditStatus.style.color = '#2ecc71';
+      tokenEditStatus.className = 'gm-status gm-ok';
       tokenEditStatus.textContent = 'Pion rangé en réserve, avec son état.';
     },
     { signal: listeners.signal }
@@ -1816,7 +1948,7 @@ export function createGMPanel(container, options = {}) {
       try {
         store.removeToken(tokenId);
       } catch (err) {
-        tokenEditStatus.style.color = '#e74c3c';
+        tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
         return;
       }
@@ -1835,9 +1967,9 @@ export function createGMPanel(container, options = {}) {
   updateReserveDrawer();
 
   // ── Ambiance lumineuse (Lot 3, S-05) ──────────────────────────────────────────────────
-  const ambientDayBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-ambient-day'));
-  const ambientNightBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-ambient-night'));
-  const bakedWarning = /** @type {HTMLElement} */ (container.querySelector('#gm-baked-warning'));
+  const ambientDayBtn = /** @type {HTMLButtonElement} */ (topbar.querySelector('#gm-ambient-day'));
+  const ambientNightBtn = /** @type {HTMLButtonElement} */ (topbar.querySelector('#gm-ambient-night'));
+  const bakedWarning = /** @type {HTMLElement} */ (topbar.querySelector('#gm-baked-warning'));
 
   function updateLightBarFromStore() {
     const level = store.getRenderSnapshot().activeLevel;
@@ -1870,13 +2002,9 @@ export function createGMPanel(container, options = {}) {
       [ambientNightBtn, !isDay],
     ])) {
       btn.setAttribute('aria-pressed', String(actif));
-      btn.style.background = actif ? '#e0ad32' : '#1a1a1a';
-      btn.style.color = actif ? '#241b06' : '#888';
       btn.disabled = disabled;
-      btn.style.cursor = disabled ? 'default' : 'pointer';
-      btn.style.opacity = disabled ? '0.55' : '1';
     }
-    bakedWarning.style.display = baked ? 'inline' : 'none';
+    bakedWarning.hidden = !baked;
   }
 
   /** @param {boolean} day */
@@ -1904,7 +2032,7 @@ export function createGMPanel(container, options = {}) {
   ambientNightBtn.addEventListener('click', () => setAmbientDay(false), { signal: listeners.signal });
 
   // ── Barre d'étage (Lot 3, S-02) ──────────────────────────────────────────────────────────
-  const levelBarMount = /** @type {HTMLElement|null} */ (container.querySelector('#gm-level-bar'));
+  const levelBarMount = /** @type {HTMLElement|null} */ (topbar.querySelector('#gm-level-bar'));
   const levelSelector = levelBarMount
     ? createLevelSelector(levelBarMount, {
         getLevels: () => store.getLevelSummaries(),
@@ -1962,13 +2090,13 @@ export function createGMPanel(container, options = {}) {
 
   // Le ping passe par `setActiveTool`, donc désarmer un autre outil est gratuit : c'est
   // l'exclusivité mutuelle existante qui s'en charge, pas un traitement particulier ici.
-  const pingArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-ping-arm'));
+  const pingArmBtn = /** @type {HTMLButtonElement} */ (rail.querySelector('#gm-ping-arm'));
   pingArmBtn.addEventListener(
     'click',
     () => setActiveTool(activeToolName === 'ping' ? 'none' : 'ping'),
     { signal: listeners.signal }
   );
-  const measureArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-measure-arm'));
+  const measureArmBtn = /** @type {HTMLButtonElement} */ (rail.querySelector('#gm-measure-arm'));
   measureArmBtn.addEventListener(
     'click',
     () => setActiveTool(activeToolName === 'measure' ? 'none' : 'measure'),
@@ -1978,13 +2106,13 @@ export function createGMPanel(container, options = {}) {
 
   // Même patron que le ping/la mesure ci-dessus : l'armement passe par `setActiveTool`, qui
   // garantit à lui seul l'exclusivité mutuelle avec tout autre outil MJ (⛔ brief C-2 §2).
-  const lightPlaceArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-light-place-arm'));
+  const lightPlaceArmBtn = /** @type {HTMLButtonElement} */ (rail.querySelector('#gm-light-place-arm'));
   lightPlaceArmBtn.addEventListener(
     'click',
     () => setActiveTool(activeToolName === 'light-place' ? 'none' : 'light-place'),
     { signal: listeners.signal }
   );
-  const lightDeleteArmBtn = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-light-delete-arm'));
+  const lightDeleteArmBtn = /** @type {HTMLButtonElement} */ (rail.querySelector('#gm-light-delete-arm'));
   lightDeleteArmBtn.addEventListener(
     'click',
     () => setActiveTool(activeToolName === 'light-delete' ? 'none' : 'light-delete'),
@@ -2103,6 +2231,11 @@ export function createGMPanel(container, options = {}) {
       tokenLibrary?.destroy();
       handouts?.destroy();
       container.replaceChildren();
+      topbar.replaceChildren();
+      rail.replaceChildren();
+      palette.remove();
+      armedChip.remove();
+      canvasContainer.classList.remove('gm-armed');
     },
   };
 }

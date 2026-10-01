@@ -142,7 +142,7 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     }, FAKE_LEVEL);
 
     // Armer un autre outil d'abord (motif de tests/gmToolDisarm.spec.mjs).
-    await page.click('button[data-tab="fog-tools"]');
+    await page.click('#gm-rail-fog-tools');
     await page.click('#fog-btn-tool-reveal');
     let tool = await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.getActiveToolName());
     expect(tool).toBe('fog-reveal');
