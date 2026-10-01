@@ -157,6 +157,15 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
   // Et la bibliothèque affichée se rafraîchit avec ce que le serveur a répondu : sans cela, le
   // mainteneur ne saurait pas si son enregistrement a abouti.
   await expect(page.locator('#tokens-liste')).toContainText('Sonde de vision');
+
+  // C-11 — le pion enregistré quitte le formulaire : un second clic ne doit pas le réécrire en
+  // croyant en créer un autre. Le dossier reste, pour enchaîner une série au même endroit.
+  await expect(page.locator('#token-id')).toHaveValue('');
+  await expect(page.locator('#token-label')).toHaveValue('Pion');
+  await expect(page.locator('#btn-generate-token')).toBeDisabled();
+  await expect(page.locator('#fabrique-titre')).toHaveText('Nouveau pion');
+  await expect(page.locator('#token-folder')).toHaveValue('  Sondes   de test ');
+  await expect(page.locator('#btn-nouveau-pion')).toBeEnabled();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -353,7 +362,7 @@ test('C-11 — « Nouveau pion » vide le formulaire du pion édité, identifian
 
   await page.goto('/prepare.html#pions');
   await expect(page.locator('#outil')).not.toHaveClass(/cache/);
-  await expect(page.locator('#btn-nouveau-pion')).toBeDisabled();
+  await expect(page.locator('#btn-nouveau-pion')).toBeEnabled();
 
   // Rangement : le pion sans dossier à découvert, l'autre dans son dossier, proposé à la saisie.
   await expect(page.locator('.pions-dossier[data-folder="Joueurs"]')).toContainText('Elysia');
@@ -372,5 +381,5 @@ test('C-11 — « Nouveau pion » vide le formulaire du pion édité, identifian
   await expect(page.locator('#token-folder')).toHaveValue('');
   await expect(page.locator('#token-vision-dim')).toHaveValue('1');
   await expect(page.locator('#btn-generate-token')).toHaveText('Générer & enregistrer pion');
-  await expect(page.locator('#btn-nouveau-pion')).toBeDisabled();
+  await expect(page.locator('#btn-nouveau-pion')).toBeEnabled();
 });

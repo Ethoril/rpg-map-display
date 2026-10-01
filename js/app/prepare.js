@@ -324,7 +324,6 @@ const dossiersReplies = new Set();
 function modeFabrique(nom) {
   fabriqueTitre.textContent = nom === null ? 'Nouveau pion' : `Modifier « ${nom} »`;
   fabriqueTitre.classList.toggle('edition', nom !== null);
-  btnNouveauPion.disabled = nom === null;
 }
 
 /** @param {any[]} tokens */
@@ -1036,7 +1035,16 @@ if (tokenMakerMount) {
 
         const r = await api('/api/tokens/save', { entry, imageDataUrl: dataUrl });
         afficherTokens(r.tokens);
-        dire(`✓ Pion « ${entry.name} » (${id}) sauvegardé dans la bibliothèque (${r.imageUrl}).`);
+        // Le pion enregistré quitte le formulaire : le laisser à gauche invitait à le réécrire
+        // en croyant en créer un autre (signalé par le mainteneur, 01/10/2026). Le dossier reste,
+        // pour enchaîner une série de pions rangés au même endroit.
+        prepTokenMaker?.resetForm();
+        modeFabrique(null);
+        dire(
+          `✓ Pion « ${entry.name} » (${id}) sauvegardé dans la bibliothèque (${r.imageUrl}).
+` +
+            'Le formulaire est prêt pour le pion suivant ; « Éditer » le rouvre.'
+        );
       } catch (err) {
         dire(`✗ Erreur lors de la sauvegarde du pion : ${err instanceof Error ? err.message : String(err)}`);
         throw err;

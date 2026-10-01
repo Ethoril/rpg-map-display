@@ -638,7 +638,9 @@ export function createTokenMaker(container, options = {}) {
             status.textContent = `Erreur : ${err instanceof Error ? err.message : String(err)}`;
           })
           .finally(() => {
-            btnGenerate.disabled = false;
+            // Pas `false` d'office : l'appelant a pu vider le formulaire après l'enregistrement
+            // (l'outil de préparation le fait), et un bouton actif sans image ne générerait rien.
+            btnGenerate.disabled = !loadedImage;
           });
       }
     }
