@@ -75,11 +75,11 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     }
 
     // 3. Remplir le formulaire pion
-    // kind: pc, couleur: #ff0000, sizeCells: 2, speedCells: 3
+    // kind: pc, bordure Bleu acier (#4f7ea8), sizeCells: 2, speedCells: 3
     // ⛔ Plus de choix de forme depuis le 01/10/2026 : le pion est toujours rond.
     await expect(page.locator('#token-maker-root #token-shape')).toHaveCount(0);
     await page.selectOption('#token-maker-root #token-kind', 'pc');
-    await page.fill('#token-maker-root #token-border-color', '#ff0000');
+    await page.click('#token-maker-root .gm-swatch[data-color="#4f7ea8"]');
     await page.fill('#token-maker-root #token-size-cells', '2');
     await page.fill('#token-maker-root #token-speed-cells', '3');
     await page.fill('#token-maker-root #token-label', 'Guerrier Rouge');
@@ -104,7 +104,7 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(token.levelId).toBe('level-test');
     expect(token.sizeCells).toBe(2);
     expect(token.speedCells).toBe(3);
-    expect(token.borderColor).toBe('#ff0000');
+    expect(token.borderColor).toBe('#4f7ea8');
     expect(token.label).toBe('Guerrier Rouge');
     expect(token.hidden).toBe(false);
     expect(token.playerMovable).toBe(true);
@@ -163,7 +163,7 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     await expect(page.locator('#token-maker-root #btn-generate-token')).toBeEnabled();
 
     await page.selectOption('#token-maker-root #token-kind', 'npc');
-    await page.fill('#token-maker-root #token-border-color', '#00ff00');
+    await page.click('#token-maker-root .gm-swatch[data-color="#6f9a6b"]');
     await page.fill('#token-maker-root #token-size-cells', '1');
     await page.fill('#token-maker-root #token-speed-cells', '4');
     await page.fill('#token-maker-root #token-label', 'Gobelin');
@@ -183,7 +183,7 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(tokenResult.token.playerMovable).toBe(false);
     expect(tokenResult.token.sizeCells).toBe(1);
     expect(tokenResult.token.speedCells).toBe(4);
-    expect(tokenResult.token.borderColor).toBe('#00ff00');
+    expect(tokenResult.token.borderColor).toBe('#6f9a6b');
 
     // Le pion est rond : le coin de l'image est transparent, le haut de la bordure ne l'est pas.
     // Un carré revenu par erreur peindrait le coin. Le centre aussi est opaque :
@@ -402,4 +402,39 @@ test('F5 : une image illisible est signalée, et une URL https n’est pas racin
   );
   await expect.poll(() => demandees.some((u) => u === 'https://images.example.test/heros.png')).toBe(true);
   expect(demandees.some((u) => u.includes('/https://'))).toBe(false);
+});
+
+test('C-11 — seize pastilles de bordure ; « Vider » revient à la première, une bordure hors palette éditée est gardée', async ({
+  page,
+}) => {
+  await setupTokenMaker(page);
+  const pastilles = page.locator('#token-maker-root .gm-swatch');
+  const valeur = () => page.inputValue('#token-maker-root #token-border-color');
+
+  await expect(pastilles).toHaveCount(16);
+  expect(await valeur()).toBe('#a8402f');
+  await expect(pastilles.first()).toHaveAttribute('aria-checked', 'true');
+
+  // Un pion d'avant la palette : sa bordure paraît en dix-septième pastille, et n'est pas remplacée.
+  await page.evaluate(() =>
+    /** @type {any} */ (window).__tokenMakerInstance.populateFromToken({
+      id: 'ancien',
+      name: 'Ancien',
+      kind: 'npc',
+      borderColor: '#123456',
+      sizeCells: 1,
+      speedCells: 3,
+      visionDim: 1,
+    })
+  );
+  await expect(pastilles).toHaveCount(17);
+  await expect(page.locator('#token-maker-root .gm-swatch[data-color="#123456"]')).toHaveAttribute(
+    'aria-checked',
+    'true'
+  );
+  expect(await valeur()).toBe('#123456');
+
+  await page.click('#token-maker-root #btn-reset-token');
+  expect(await valeur()).toBe('#a8402f');
+  await expect(pastilles).toHaveCount(16);
 });

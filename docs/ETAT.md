@@ -1927,8 +1927,12 @@ d'acceptation du §11.
 > attrapé en route : l'image de test, minuscule et transparente, rendait le coin du pion
 > transparent même sans découpe ronde.
 >
+> Puis la **bordure** se choisit parmi seize pastilles sourdes, dans le fabricant comme dans la
+> fiche de pion ; une bordure hors palette déjà posée reste, en dix-septième pastille.
+>
 > ⏳ **À éprouver** sur une carte neuve, au double-clic sur `outil-cartes.cmd`, et à la table : la
-> recherche et les dossiers repliés de la bibliothèque MJ.
+> recherche et les dossiers repliés de la bibliothèque MJ, la lisibilité des seize bordures sur la
+> TV.
 
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >

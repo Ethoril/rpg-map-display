@@ -8,6 +8,7 @@ import {
   TOKEN_IMAGE_MAX_BYTES,
   identifiantAleatoire,
 } from '../../core/schema.js';
+import { TOKEN_BORDER_PALETTE, TOKEN_BORDER_DEFAULT } from '../../core/constants.js';
 
 /**
  * Message du lien Drive qui ne désigne aucun fichier — mot pour mot celui des handouts et du
@@ -16,6 +17,68 @@ import {
 const MESSAGE_DRIVE_INUTILISABLE =
   "Ce lien Google Drive ne désigne pas un fichier (un dossier ?). Ouvrez l'image dans Drive, " +
   'puis copiez son lien de partage.';
+
+/**
+ * Remplace un champ de couleur par les seize pastilles de `TOKEN_BORDER_PALETTE`.
+ *
+ * Le champ reste la source de vérité : il devient caché, une pastille y écrit sa couleur et
+ * émet `input` puis `change`, comme le ferait le sélecteur natif — les écouteurs existants
+ * n'ont rien à savoir. Qui écrit `value` ou `disabled` par programme appelle `refresh()`.
+ *
+ * Une couleur hors palette (pion créé avant, ou ailleurs) n'est **jamais remplacée en silence** :
+ * elle paraît en dix-septième pastille, « couleur actuelle », tant qu'elle est celle du champ.
+ *
+ * @param {HTMLInputElement} input
+ * @returns {{ refresh: () => void }}
+ */
+export function mountBorderSwatches(input) {
+  input.type = 'hidden';
+  const rangee = document.createElement('div');
+  rangee.className = 'gm-swatches';
+  rangee.setAttribute('role', 'radiogroup');
+  rangee.setAttribute('aria-label', 'Couleur de bordure');
+  input.after(rangee);
+
+  /**
+   * @param {string} color
+   * @param {string} nom
+   */
+  function pastille(color, nom) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'gm-swatch';
+    b.dataset.color = color;
+    b.title = nom;
+    b.setAttribute('aria-label', nom);
+    b.style.setProperty('--swatch', color);
+    b.addEventListener('click', () => {
+      if (input.disabled || input.value.toLowerCase() === color) return;
+      input.value = color;
+      refresh();
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    return b;
+  }
+
+  function refresh() {
+    const actuelle = input.value.toLowerCase();
+    const horsPalette = actuelle !== '' && !TOKEN_BORDER_PALETTE.some((c) => c.color === actuelle);
+    rangee.replaceChildren(
+      ...TOKEN_BORDER_PALETTE.map((c) => pastille(c.color, c.nom)),
+      ...(horsPalette ? [pastille(actuelle, `Couleur actuelle (${actuelle}), hors palette`)] : [])
+    );
+    for (const b of rangee.querySelectorAll('button')) {
+      const choisie = /** @type {HTMLElement} */ (b).dataset.color === actuelle;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(choisie));
+      /** @type {HTMLButtonElement} */ (b).disabled = input.disabled;
+    }
+  }
+
+  refresh();
+  return { refresh };
+}
 
 /**
  * Normalise une chaîne en identifiant de pion valide (kebab-case, minuscules, sans accent).
@@ -87,7 +150,7 @@ export function createTokenMaker(container, options = {}) {
         </select>
 
         <label for="token-border-color" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Couleur bordure :</label>
-        <input type="color" id="token-border-color" value="#e74c3c" style="background: var(--gm-releve, #252525); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; height: 36px; padding: 2px; cursor: pointer; width: 100%;" />
+        <input type="color" id="token-border-color" value="${TOKEN_BORDER_DEFAULT}" />
 
         <label for="token-size-cells" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Taille (cases) :</label>
         <input type="number" id="token-size-cells" min="1" max="8" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
@@ -132,6 +195,7 @@ export function createTokenMaker(container, options = {}) {
   const idInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-id'));
   const kindSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#token-kind'));
   const colorInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-border-color'));
+  const pastilles = mountBorderSwatches(colorInput);
   const sizeCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-size-cells'));
   const speedCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-speed-cells'));
   const visionDimInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-vision-dim'));
@@ -592,7 +656,8 @@ export function createTokenMaker(container, options = {}) {
     if (idInput) idInput.value = t.id || '';
     labelInput.value = t.name || t.label || '';
     kindSelect.value = t.kind || 'npc';
-    colorInput.value = t.borderColor || '#e74c3c';
+    colorInput.value = t.borderColor || TOKEN_BORDER_DEFAULT;
+    pastilles.refresh();
     sizeCellsInput.value = String(t.sizeCells ?? 1);
     speedCellsInput.value = String(t.speedCells ?? 3);
     if (visionDimInput) visionDimInput.value = String(t.visionDim ?? 1);
@@ -628,7 +693,8 @@ export function createTokenMaker(container, options = {}) {
     if (idInput) idInput.value = '';
     labelInput.value = 'Pion';
     kindSelect.value = 'npc';
-    colorInput.value = '#e74c3c';
+    colorInput.value = TOKEN_BORDER_DEFAULT;
+    pastilles.refresh();
     sizeCellsInput.value = '1';
     speedCellsInput.value = '3';
     if (visionDimInput) visionDimInput.value = '1';

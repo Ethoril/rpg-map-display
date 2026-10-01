@@ -884,6 +884,36 @@ details.gm-disclosure > .gm-disclosure-body {
   margin-bottom: 4px;
 }
 
+/* Couleur de bordure d'un pion : seize pastilles au lieu d'un sélecteur complet (C-11). La couleur
+ * de chaque pastille est une donnée (`TOKEN_BORDER_PALETTE`), posée en `--swatch` ; le laiton
+ * marque la pastille choisie, comme tout ce qui est actif. */
+/* En rangée qui revient à la ligne, jamais en grille fixe : huit pastilles de front élargissaient
+ * le formulaire de l'inspecteur MJ (336 px) au-delà de sa colonne. */
+.gm-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 234px;
+  min-width: 0;
+}
+
+.gm-swatch,
+.gm-swatch:hover:not(:disabled) {
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--swatch);
+  border: 2px solid var(--gm-trait);
+  filter: none;
+}
+
+.gm-swatch[aria-checked='true'] {
+  border-color: var(--gm-sol);
+  box-shadow: 0 0 0 2px var(--gm-laiton);
+}
+
 /* Bibliothèque de pions rangée par dossier (C-11) : la recherche en tête, un volet par dossier. */
 .token-library-search {
   width: 100%;

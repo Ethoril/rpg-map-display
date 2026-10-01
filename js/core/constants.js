@@ -757,3 +757,35 @@ export const TOKEN_SELECTION_OFFSET_SCREEN_PX = 4;
 export const CHASSE_BEVEL_LINE_SCREEN_PX = 1;
 
 
+
+/**
+ * Les seize couleurs de bordure de pion proposées au MJ (C-11, 01/10/2026) — des teintes sourdes,
+ * « pas flashy », à la place d'un sélecteur de couleur complet. Données, pas thème : elles
+ * marquent un pion sur la carte, elles ne suivent pas l'interface.
+ *
+ * ⚠ Une bordure hors palette reste valide (`isValidHexColor`) : les pions déjà créés gardent la
+ * leur, et le sélecteur l'affiche comme « couleur actuelle » plutôt que de la remplacer.
+ *
+ * @type {ReadonlyArray<{ color: string, nom: string }>}
+ */
+export const TOKEN_BORDER_PALETTE = Object.freeze([
+  { color: '#a8402f', nom: 'Rouge brique' },
+  { color: '#c0673f', nom: 'Terre cuite' },
+  { color: '#c9973a', nom: 'Ocre' },
+  { color: '#b0a33f', nom: 'Moutarde' },
+  { color: '#77863c', nom: 'Olive' },
+  { color: '#6f9a6b', nom: 'Sauge' },
+  { color: '#3f6e4a', nom: 'Vert forêt' },
+  { color: '#3d7f7c', nom: 'Sarcelle' },
+  { color: '#4f7ea8', nom: 'Bleu acier' },
+  { color: '#34507f', nom: 'Bleu nuit' },
+  { color: '#5a4f8f', nom: 'Indigo' },
+  { color: '#7d4a7a', nom: 'Prune' },
+  { color: '#b0697a', nom: 'Vieux rose' },
+  { color: '#6e4f36', nom: 'Brun' },
+  { color: '#6b7178', nom: 'Ardoise' },
+  { color: '#d8cfbd', nom: 'Ivoire' },
+]);
+
+/** Bordure d'un pion neuf : la première de la palette. */
+export const TOKEN_BORDER_DEFAULT = TOKEN_BORDER_PALETTE[0].color;

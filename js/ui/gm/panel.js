@@ -1,6 +1,6 @@
 // @ts-check
 import { createImportPanel } from './importPanel.js';
-import { createTokenMaker } from './tokenMaker.js';
+import { createTokenMaker, mountBorderSwatches } from './tokenMaker.js';
 import { createSceneLibrary } from './sceneLibrary.js';
 import { createTokenLibrary } from './tokenLibrary.js';
 import { createHandouts } from './handouts.js';
@@ -1340,6 +1340,7 @@ export function createGMPanel(container, options = {}) {
   const tokenEditLabel = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-label'));
   const tokenEditKind = /** @type {HTMLSelectElement} */ (container.querySelector('#token-edit-kind'));
   const tokenEditBorderColor = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-border-color'));
+  const tokenEditBorderSwatches = mountBorderSwatches(tokenEditBorderColor);
   const tokenEditSizeCells = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-size-cells'));
   const tokenEditSpeedCells = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-speed-cells'));
   const tokenEditHidden = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-hidden'));
@@ -1636,6 +1637,7 @@ export function createGMPanel(container, options = {}) {
     tokenSheet.hidden = disabled;
     updateSheetSummaries(selectedToken);
     for (const control of tokenEditControls) control.disabled = disabled;
+    tokenEditBorderSwatches.refresh();
     btnDeleteToken.disabled = disabled;
     btnReserveToken.disabled = disabled;
 
@@ -1694,6 +1696,7 @@ export function createGMPanel(container, options = {}) {
     ])) {
       if (document.activeElement !== control) control.value = value;
     }
+    tokenEditBorderSwatches.refresh();
     tokenEditHidden.checked = Boolean(selectedToken.hidden);
     tokenEditPlayerMovable.checked = Boolean(selectedToken.playerMovable);
     tokenEditLocked.checked = Boolean(selectedToken.locked);

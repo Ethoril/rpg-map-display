@@ -796,6 +796,51 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     ).toBe(1);
   });
 
+  test('C-11 — la bordure se choisit parmi seize pastilles, et une couleur hors palette n’est pas écrasée', async ({
+    page,
+  }) => {
+    await setupGMView(page);
+    await page.click('.gm-tab-btn[data-tab="token-maker"]');
+    const pastilles = page.locator('#token-edit-border-color + .gm-swatches button');
+
+    // Sans sélection, les pastilles sont désactivées comme le reste de la fiche.
+    await expect(pastilles).toHaveCount(16);
+    await expect(pastilles.first()).toBeDisabled();
+
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const schema = await import('../js/core/schema.js');
+      store.loadCampaign(
+        schema.createCampaign({
+          campaignId: 'c-bordure',
+          name: 'Campagne',
+          levels: [schema.createLevel({ id: 'l1', name: 'Niveau 1' })],
+          tokens: [
+            schema.createToken({ id: 't1', levelId: 'l1', cell: { a: 2, b: 2 }, label: 'Mage', borderColor: '#123456' }),
+          ],
+        })
+      );
+      store.setSelection('t1');
+    });
+
+    // La couleur d'avant la palette paraît en dix-septième pastille, choisie.
+    await expect(pastilles).toHaveCount(17);
+    await expect(page.locator('#token-edit-border-color + .gm-swatches [data-color="#123456"]')).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    const bordure = () =>
+      page.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken()?.borderColor);
+    expect(await bordure()).toBe('#123456');
+
+    const acier = page.locator('#token-edit-border-color + .gm-swatches [data-color="#4f7ea8"]');
+    await acier.evaluate((b) => /** @type {HTMLElement} */ (b).closest('details')?.setAttribute('open', ''));
+    await acier.click();
+    await expect.poll(bordure).toBe('#4f7ea8');
+    await expect(acier).toHaveAttribute('aria-checked', 'true');
+    await expect(pastilles).toHaveCount(16);
+  });
+
   test('Synchronisation 2 vraies pages : édition puis suppression du pion via token.update et token.delete', async ({
     context,
   }) => {

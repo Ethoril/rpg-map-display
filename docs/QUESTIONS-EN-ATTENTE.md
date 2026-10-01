@@ -993,6 +993,10 @@ pli.
 >   `maps/tokens/catalog.json` (absent = sans dossier). Dans la vue MJ, un volet repliable par
 >   dossier, replié par défaut, et une **recherche par nom** qui traverse les dossiers ; dans
 >   l'outil, les mêmes volets, dépliés par défaut. Pas de renommage de dossier en bloc.
+> - **Bordure parmi seize couleurs** sourdes (`TOKEN_BORDER_PALETTE`), « pas flashy », au lieu du
+>   sélecteur complet — fabricant et fiche de pion. ⭐ Appliqué sans nouvel arbitrage, par la règle
+>   n°4 : une bordure hors palette déjà posée n'est jamais remplacée, elle paraît en dix-septième
+>   pastille tant qu'elle est celle du pion.
 
 ### C-12 Les tests quittent le pool `maps/` — consigne du mainteneur, 01/10/2026
 
