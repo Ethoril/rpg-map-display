@@ -340,6 +340,12 @@ MJ. Les PNJ ont un état Visible / Masqué (préparation d'embuscades).
   >
   > Un marqueur reste **un affichage et rien d'autre** : aucun n'altère la vision, le
   > déplacement ou un gabarit. Le jeu reste dans la tête du MJ.
+- `mounted` — **à cheval** (chantier C-9, décision du mainteneur du 01/10/2026). Booléen, absent
+  = à pied. Ce n'est **pas** un quinzième marqueur, et pour deux raisons : le jeu de marqueurs est
+  clos (Q7), et un marqueur n'altère jamais le déplacement — or celui-ci le change. Ses règles sont
+  au §5.3bis, « Pion monté ». Une tête de cheval occupe le **dernier** emplacement de la rangée de
+  badges, en bas à droite du pion ; les marqueurs n'y ont plus que deux places, et le compteur
+  « +N » prend le relais au-delà.
 
 ### 5.3bis Modèle de déplacement — style jeu de plateau
 
@@ -351,6 +357,20 @@ Décision structurante, reprise de l'implémentation `shadowrunbank` (`reachable
 2. Tap sur une case atteignable → déplacement validé et commité.
 3. Tap sur le vide → désélection.
 4. Le drag à un doigt reste donc **entièrement dédié au pan de la carte**.
+
+**Bande de sélection** (chantier C-9, demandée par le mainteneur le 01/10/2026). Tant qu'un pion
+est sélectionné — donc tant que sa zone est affichée —, une bande verticale apparaît sur le **bord
+droit** de l'écran, et disparaît avec la sélection. De haut en bas :
+
+- le bouton **monter / descendre** : une tête de cheval quand le pion est à pied, la même **barrée**
+  quand il est monté, pour dire « quitter le cheval » ;
+- les **badges d'état** du pion, un par marqueur, sans plafond. Un appui sur un badge affiche son
+  **nom** quelques secondes.
+
+C'est la cinquième dérogation à la vue joueurs sans interface (`CONVENTIONS.md` §8, interdiction
+n°2) : son contenu est fixé là, et un bouton de plus s'y décide comme toute dérogation. Elle ne
+s'ouvre que sur un pion que la tablette a le droit de déplacer, puisque c'est le seul qu'elle sache
+sélectionner.
 
 **Vue MJ (souris) — drag conservé**, sans contrainte d'atteignabilité, avec seuil de
 ~150 ms pour distinguer tap et drag. Le MJ garde ainsi le placement libre hors grille
@@ -366,6 +386,28 @@ pions. Restriction toujours active côté joueurs, jamais côté MJ.
 
 Le Dijkstra étant déjà pondéré, un **terrain difficile** (`terrainCost` par case, §6) est
 un ajout quasi gratuit. Hors périmètre pour l'instant, mais la porte reste ouverte.
+
+#### Pion monté (chantier C-9, 01/10/2026)
+
+Décision du mainteneur. Un pion **monté** (`token.mounted === true`, §5.3) :
+
+- a un budget de **`2 × speedCells`** (`MOUNTED_SPEED_MULTIPLIER`). La vitesse saisie reste la
+  vitesse **à pied** : un pion à 6 garde 6 dans l'éditeur, sa zone passe à 12 ;
+- ne franchit **aucun portail, quel que soit son état** — ouvert, fermé ou verrouillé, portes
+  doubles comprises. « Un cheval ne passe pas les portes » : aucune exception de largeur, le MJ
+  gardant le glisser libre pour une porte cochère ;
+- ⛔ la règle vaut pour la zone **et** pour le chemin animé, qui lisent **la même fonction**
+  (`movementRulesFor`). Le chemin d'un coup joué à la tablette est recalculé à part ; s'il ignorait
+  la règle, le plus court passerait par une porte ouverte que la zone avait refusée, et le
+  brouillard se révélerait derrière elle (§5.4, révélation le long du chemin) ;
+- ne prend **aucune liaison** depuis la tablette (§5.2) : on descend de cheval pour changer
+  d'étage. Retaper sa case posée sur une liaison est refusé, avec le retour « refusé » ;
+- comme toute restriction de déplacement, rien de cela ne contraint le **MJ**, dont le glisser
+  reste libre.
+
+Monter ou descendre ne déplace **rien** : la zone d'un pion sélectionné se recalcule, c'est tout.
+La bascule se fait côté MJ dans la barre de vitalité, côté joueurs dans la bande de sélection
+(plus haut, « Vue joueurs »), et circule par `token.mounted` (§7, amendement C-9).
 
 **Abstraction de grille (obligatoire dès le lot 1)**, même logique que `Transport` :
 
@@ -654,6 +696,7 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
     playerMovable: true, locked: false,
     elevation: 0,                       // badge affiché, sans effet géométrique
     markers: [],                        // ['poisoned', 'prone', …] — jeu clos à 14 marqueurs
+    mounted: false,                     // à cheval : budget ×2, aucun portail ni liaison (§5.3bis, C-9)
     hp: null,                           // ou { current: 14, max: 28 } (Chantier Q)
     health: 'unharmed'                  // 'unharmed'|'wounded'|'critical' (PNJ uniquement)
   }],
@@ -792,6 +835,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `handout.show` / `handout.hide` | MJ | ponctuel |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
+| `token.mounted` | MJ, **joueurs** | ponctuel — `{ tokenId, mounted }`, état **absolu**, seul écrivain de `mounted`, voir l'amendement C-9 |
 | `token.reserve` | MJ | ponctuel — `{ tokenId }`, voir l amendement UX-14 |
 | `level.replace` | MJ | ponctuel — `{ levelId, patch }`, voir l amendement UX-13 |
 | `wall.add` / `wall.remove` | MJ | ponctuel — invalide le masque d'arêtes |
@@ -892,6 +936,24 @@ réécrit par `saveSnapshot` à chaque mutation.
 > à l'état déjà atteint ne change rien — même profil que `token.reserve` et `portal.toggle`.
 
 > **Amendement UX-13 (18/08/2026)** : `level.replace` porte `{ levelId, patch }` et remplace le contenu d'un étage existant sur place (`imageUrl`, dimensions, pas de grille, géométrie vidée). Contrairement à `level.add`, il ne crée pas d'étage et s'applique immédiatement pour quiconque affichait déjà cet étage. Les pions de l'étage sont déplacés en réserve via autant d'événements `token.reserve` distincts, et le brouillard de l'étage est réinitialisé.
+
+> **Amendement C-9 (01/10/2026) — `token.mounted`, le pion monté.** Décision du mainteneur : un
+> pion est **à pied** ou **monté** (§5.3, §5.3bis). `token.mounted` porte `{ tokenId, mounted }`, et
+> fait cela, et rien d'autre :
+>
+> - ⭐ **un seul écrivain** : `mounted` n'est **pas** dans la liste blanche de `token.update`. C'est
+>   la règle de l'amendement C-2, pour la même raison : deux chemins vers un même champ finissent
+>   par ne plus se rejoindre ;
+> - **état absolu**, jamais « inverse-le », donc **rejeu inoffensif** : un pion déjà dans l'état visé
+>   rend `false` sans muter — même profil que `light.toggle` ;
+> - émis par le **MJ** (barre de vitalité) **et par les joueurs** (bande de sélection, §5.3bis).
+>   L'autorisation se fait à l'émission, comme pour les portes : la tablette ne sélectionne que les
+>   PJ qu'elle a le droit de déplacer, et ne bascule donc que ceux-là ;
+> - il ne déplace **aucun** pion et ne change l'étage de personne.
+>
+> ⚠ **Le modèle gagne un champ** : `Token.mounted`, booléen. Son absence dans une campagne déjà sur
+> disque vaut **à pied** — une campagne existante ne se refuse jamais, elle se normalise
+> (précédents `health` et `Light.on`).
 
 ### Règles
 

@@ -902,6 +902,33 @@ en information donnée à la table.
 
 ⛔ **Hors périmètre du brief UX en cours** — ne pas l'y glisser.
 
+### C-9 ✅ Le pion monté — demande du mainteneur, 01/10/2026
+
+> ## ✅ TRANCHÉ le 01/10/2026, en séance de choix multiples
+>
+> Un pion est **à pied** (comportement d'avant, inchangé) ou **monté**. Le détail qui fait foi est au
+> CdC §5.3, §5.3bis « Pion monté » et « Bande de sélection », §6 et §7 (amendement C-9) ; ce qui
+> suit ne fait que tracer les choix.
+>
+> - **Modèle** : un champ `mounted`, booléen, absent = à pied. Pas un quinzième marqueur (Q7 est
+>   clos, et un marqueur n'altère jamais le déplacement).
+> - **Monté** : budget de déplacement **× 2** ; **aucun portail** franchi, quel que soit son état,
+>   portes doubles comprises et sans exception de largeur ; **aucune liaison** depuis la tablette.
+>   Le MJ garde son glisser libre.
+> - **Icône** : tête de cheval de game-icons.net, CC BY 3.0, dans `assets/icons/mounted.svg` (hors de
+>   `status/`). ⚠ Le dessin de Delapouite a été préféré à celui de Lorc **par Claude** : sa crinière
+>   pleine reste lisible à 16 px, là où les rayures de Lorc deviennent du bruit. À revoir à la table
+>   si besoin, le changer ne coûte qu'un fichier.
+> - **Coin bas-droit** : le cheval prend le dernier emplacement de la rangée de badges ; les
+>   marqueurs n'ont plus que deux places, puis le compteur « +N ».
+> - **Bascule** : le MJ par un bouton de la barre de vitalité ; les joueurs par la **bande de
+>   sélection**, verticale, sur le **bord droit**, qui n'existe que tant qu'un pion est sélectionné.
+>   En haut le bouton monter / descendre (cheval, ou cheval barré), puis les badges d'état du pion ;
+>   un appui sur un badge donne son nom. C'est la 5e dérogation de `CONVENTIONS.md` §8 n°2.
+> - **Réseau** : un événement dédié, `token.mounted { tokenId, mounted }`, état absolu, émis par le
+>   MJ et les joueurs ; `mounted` reste hors de la liste blanche de `token.update`.
+> - **Fichier** : la bande vit dans `js/ui/player/selectionStrip.js`.
+
 ---
 
 ## D. Décisions produit encore ouvertes

@@ -279,7 +279,7 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, l'indicateur d'état des portes,
    les pions, le fog, le sélecteur d'étage et les gabarits s'affichent.
 
-   > **Quatre dérogations, et quatre seulement** (cf. `STACK.md` §5bis) :
+   > **Cinq dérogations, et cinq seulement** (cf. `STACK.md` §5bis) :
    > - **Overlay de version au chargement** — 4 s puis disparition totale,
    >   `pointer-events: none`, rappelable par tap à trois doigts. Rien de persistant, rien
    >   de tapable.
@@ -302,6 +302,12 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    >   session est persistée, et plus rien n'apparaît aux rechargements suivants. Elle ne
    >   s'affiche que si aucune session valide n'existe, et rien d'autre ne doit l'accompagner —
    >   ni message d'accueil, ni bouton de déconnexion, ni indicateur de compte.
+   > - **Bande de sélection** (chantier C-9, demandée par le mainteneur le 01/10/2026) — verticale,
+   >   sur le bord droit, elle n'existe **que tant qu'un pion est sélectionné** et disparaît avec la
+   >   sélection. Elle porte le bouton monter / descendre de cheval, puis les badges d'état du pion ;
+   >   un appui sur un badge affiche son nom quelques secondes. Son contenu est **fixé ici** :
+   >   un bouton de plus s'y ajoute sur décision du mainteneur, comme toute dérogation. Détail au
+   >   CdC §5.3bis.
    >
    > Toute autre exception se demande. Elle ne se décide pas.
 3. **Ne jamais afficher un pion dans une zone explorée mais hors vision courante.** Cela

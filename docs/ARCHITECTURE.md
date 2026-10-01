@@ -191,7 +191,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   └─ player/
 │   │       ├─ bootstrap.js       [1a] montage de la vue joueurs
 │   │       ├─ handoutOverlay.js  [1b] plein écran d'image révélée
-│   │       └─ levelSelector.js   [3]  sélecteur d'étage joueurs
+│   │       ├─ levelSelector.js   [3]  sélecteur d'étage joueurs
+│   │       └─ selectionStrip.js [C-9] bande de sélection, bord droit, tant qu'un pion est
+│   │                                  sélectionné : monter / descendre, badges d'état et leur
+│   │                                  nom — 5e dérogation de CONVENTIONS.md §8 n°2
 │   │
 │   └─ app/
 │       ├─ runtimeConfig.js       [1a] résolution de la configuration Firebase Web publique
@@ -238,10 +241,15 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 ├─ fixtures/                      [1a] cf. docs/FIXTURES.md
 ├─ maps/                          [1a] images traitées, commitées
 ├─ assets/
-│   └─ icons/status/              [2]  les 14 icônes d'états, une par valeur de
-│                                      `token.markers`. Le nom de fichier EST l'identifiant.
-│                                      Provenance, licence et normalisation : SOURCES.md du
-│                                      dossier. Contenu clos — cf. CdC §12 Q7
+│   ├─ icons/status/              [2]  les 14 icônes d'états, une par valeur de
+│   │                                  `token.markers`. Le nom de fichier EST l'identifiant.
+│   │                                  Provenance, licence et normalisation : SOURCES.md du
+│   │                                  dossier. Contenu clos — cf. CdC §12 Q7
+│   └─ icons/mounted.svg        [C-9] tête de cheval du pion monté — game-icons.net
+│                                      `delapouite/horse-head`, CC BY 3.0, crédit dans
+│                                      attributions.html. Mêmes normalisations que les icônes
+│                                      d'états, mais HORS de status/ : elle n'est pas un
+│                                      marqueur, et ce dossier-là est clos
 ├─ tests/                         [1a] deux familles, deux exécuteurs :
 │                                      *.test.mjs → node:test (logique pure)
 │                                      *.spec.mjs → Playwright (navigateur, vrai Canvas)
