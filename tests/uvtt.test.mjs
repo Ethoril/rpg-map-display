@@ -217,9 +217,15 @@ test('bornes — ⭐ toute carte réelle PRÉSENTE passe les plafonds', (t) => {
   // ⛔ **Mais on ne se contente pas d'ignorer** : ce qui est là est vérifié, toujours. Sur le
   // runner c'est une carte, sur le poste du mainteneur c'est le corpus entier — et c'est là que le
   // resserrage d'un plafond se ferait attraper.
-  const cartes = fs
-    .readdirSync('maps')
-    .filter((n) => /\.(dd2vtt|uvtt|df2vtt)$/i.test(n));
+  //
+  // L'export de référence figé (`fixtures/exports/`) d'abord, puis ce que le pool `maps/` contient
+  // ce jour-là — le pool seul n'est pas une garantie, le mainteneur y supprime des cartes.
+  const cartes = ['fixtures/exports', 'maps'].flatMap((dossier) =>
+    fs
+      .readdirSync(dossier)
+      .filter((n) => /\.(dd2vtt|uvtt|df2vtt)$/i.test(n))
+      .map((n) => path.join(dossier, n))
+  );
 
   if (cartes.length === 0) {
     t.skip('aucune carte réelle sur cette machine : les plafonds ne peuvent pas être éprouvés ici');
@@ -228,7 +234,7 @@ test('bornes — ⭐ toute carte réelle PRÉSENTE passe les plafonds', (t) => {
 
   for (const nom of cartes) {
     assert.doesNotThrow(
-      () => parseUvtt(fs.readFileSync(path.join('maps', nom), 'utf-8')),
+      () => parseUvtt(fs.readFileSync(nom, 'utf-8')),
       `« ${nom} » est une carte réelle du dépôt : un plafond qui la refuse est un plafond faux`
     );
   }

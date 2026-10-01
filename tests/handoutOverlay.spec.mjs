@@ -409,7 +409,7 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
 
     await ouvrirOngletHandouts(pageGM);
     await ajouter(pageGM, './maps/minimal.webp', 'Première');
-    await ajouter(pageGM, './maps/marais-hex_16x16.jpg', 'Seconde');
+    await ajouter(pageGM, './fixtures/images/seconde-image.webp', 'Seconde');
 
     await reveler(pageGM, 'Première');
     await expect(pagePlayer.locator('#handout-overlay img')).toHaveAttribute(
@@ -423,7 +423,7 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
     // est plus — pas deux images superposées, pas une image restée derrière.
     await expect(pagePlayer.locator('#handout-overlay img')).toHaveAttribute(
       'src',
-      './maps/marais-hex_16x16.jpg'
+      './fixtures/images/seconde-image.webp'
     );
     await expect(pagePlayer.locator('#handout-overlay')).toHaveCount(1);
     await expect(pagePlayer.locator('#handout-overlay img')).toHaveCount(1);
@@ -452,7 +452,7 @@ test.describe('Chantier H — Révélation d\'image (Handouts)', () => {
 
     await ouvrirOngletHandouts(pageGM);
     await ajouter(pageGM, './maps/minimal.webp', 'Affichée');
-    await ajouter(pageGM, './maps/marais-hex_16x16.jpg', 'Rangée');
+    await ajouter(pageGM, './fixtures/images/seconde-image.webp', 'Rangée');
 
     await reveler(pageGM, 'Affichée');
     await expect(pagePlayer.locator('#handout-overlay')).toBeVisible();

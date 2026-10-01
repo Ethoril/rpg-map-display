@@ -20,7 +20,7 @@ import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs'
  * On vérifie donc l'invariant — rien ne dépasse — onglet par onglet.
  */
 
-const scene = JSON.parse(fs.readFileSync('maps/generated/testvideo-3.scene.json', 'utf8'));
+const scene = JSON.parse(fs.readFileSync('fixtures/scenes/testvideo-3.scene.json', 'utf8'));
 const niveau = scene.levels[0];
 
 const SNAPSHOT = {

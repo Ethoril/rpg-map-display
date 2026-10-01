@@ -2,6 +2,16 @@
 import { test, expect } from '@playwright/test';
 
 /**
+ * Le catalogue de test : trois scènes figées dans `fixtures/scenes/`. ⛔ Jamais le vrai
+ * `maps/catalog.json` — c'est le pool du mainteneur, qui y supprime des cartes (01/10/2026).
+ *
+ * @param {import('@playwright/test').Page | import('@playwright/test').BrowserContext} cible
+ */
+async function servirCatalogueDeTest(cible) {
+  await cible.route('**/maps/catalog.json', (route) => route.fulfill({ path: 'fixtures/scenes/catalog.json' }));
+}
+
+/**
  * Sections 7 et 7bis de `diag.html` — le fond animé.
  *
  * Ces boutons existent pour fermer la dernière porte ouverte du CdC §12 : « la tablette
@@ -40,15 +50,20 @@ test('7bis. la lecture réelle mesure la cadence par le critère du produit', as
   page.on('pageerror', (e) => erreurs.push(e.message));
   // 8 s au lieu des 60 s du protocole : on vérifie ici que le bouton mesure et conclut,
   // pas la tenue du décodeur — celle-là ne se mesure que sur la tablette.
+  // La vidéo lue est une fixture de 10 s en 320×216, servie à l'URL que la page demande : le test
+  // juge que le bouton lit, mesure et conclut, pas le décodage de la vraie carte du pool.
+  await page.route('**/maps/generated/testvideo-3.webm', (route) =>
+    route.fulfill({ path: 'fixtures/videos/diag-court.webm', contentType: 'video/webm' })
+  );
   await page.goto('/diag.html?duree=8');
 
   await page.click('#btn-video-lecture');
   await expect.poll(() => page.textContent('#sortie'), { timeout: 90000 }).toContain('VERDICT');
 
   const texte = /** @type {string} */ (await page.textContent('#sortie'));
-  // La résolution décodée doit être celle de la carte : si la vidéo n'a pas été lue,
+  // La résolution décodée doit être celle de la vidéo servie : si elle n'a pas été lue,
   // le test doit rougir plutôt que d'afficher un verdict sur du vide.
-  expect(texte).toContain('4200×2850');
+  expect(texte).toContain('320×216');
   expect(texte).toContain('Cadence relative');
   expect(texte).toContain('seuil produit : 50 %');
   expect(erreurs).toEqual([]);
@@ -77,6 +92,7 @@ test('10. le coût des lumières est rendu comme un écart, avec le verdict de b
   /** @type {string[]} */
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(e.message));
+  await servirCatalogueDeTest(page);
   await page.goto('/diag.html');
 
   await page.click('#btn-lumieres');

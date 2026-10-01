@@ -238,8 +238,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   └─ build-site.mjs             [R1] paquet GitHub Pages déterministe dans `_site`, par
 │                                      liste blanche ; ne bundle ni ne transforme le runtime
 │
-├─ fixtures/                      [1a] cf. docs/FIXTURES.md
-├─ maps/                          [1a] images traitées, commitées
+├─ fixtures/                      [1a] cf. docs/FIXTURES.md — dont scenes/, exports/,
+│                                      videos/ [C-12] : copies figées dont les tests vivent
+├─ maps/                          [1a] images traitées, commitées. ⛔ Le POOL du mainteneur :
+│                                      aucun test ne le lit (FIXTURES.md §2bis)
 ├─ assets/
 │   ├─ icons/status/              [2]  les 14 icônes d'états, une par valeur de
 │   │                                  `token.markers`. Le nom de fichier EST l'identifiant.

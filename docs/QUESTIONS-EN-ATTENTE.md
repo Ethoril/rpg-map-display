@@ -994,6 +994,22 @@ pli.
 >   dossier, replié par défaut, et une **recherche par nom** qui traverse les dossiers ; dans
 >   l'outil, les mêmes volets, dépliés par défaut. Pas de renommage de dossier en bloc.
 
+### C-12 Les tests quittent le pool `maps/` — consigne du mainteneur, 01/10/2026
+
+Sa suppression de `manoir-rdc` depuis l'outil a fait rougir quatre unitaires : « il faut vraiment
+que tu arrêtes de baser des tests sur des maps du pool, parce qu'elles sont toutes susceptibles
+d'être supprimées un jour ».
+
+> ## ✅ TRANCHÉ le 01/10/2026, en séance de choix multiples
+>
+> - Les scènes dont les tests vivent sont **figées dans `fixtures/scenes/`**, avec un catalogue de
+>   test que les e2e servent à la place du vrai.
+> - La vidéo de `diag.html` §7bis est remplacée, dans le test, par une **petite vidéo figée**
+>   (`fixtures/videos/diag-court.webm`).
+> - Le garde-fou « au moins un vrai export versionné » se reporte sur **`fixtures/exports/`**.
+>
+> Règle et inventaire : `FIXTURES.md` §2bis.
+
 ---
 
 ## D. Décisions produit encore ouvertes

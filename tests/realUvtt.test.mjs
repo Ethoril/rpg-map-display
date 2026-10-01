@@ -31,9 +31,14 @@ import {
 // ⚠ Il ne s'ignore plus qu'en l'absence des deux, ce qui n'arrive pas sur un dépôt intact. Si cette
 // raison réapparaît un jour, c'est que `maps/` a perdu ses exports — et c'est un défaut, pas une
 // configuration.
+//
+// ⛔ **Révisé le 01/10/2026 : `maps/` n'est plus une garantie.** C'est le pool du mainteneur, qui y
+// supprime des cartes depuis l'outil de préparation — il a supprimé `manoir-rdc.uvtt`, et ce garde-fou
+// a rougi pour une raison qui n'était pas un défaut. L'export de référence est désormais figé dans
+// `fixtures/exports/` ; `maps/` reste lu, en plus, pour éprouver ce que le pool contient ce jour-là.
 
 /** Dossiers fouillés, du plus fiable au plus optionnel. */
-const DOSSIERS = ['maps', 'fixtures/real'];
+const DOSSIERS = ['fixtures/exports', 'maps', 'fixtures/real'];
 
 /** @type {{ dossier: string, nom: string, chemin: string }[]} */
 const fichiers = [];
@@ -132,10 +137,10 @@ test('les exports UVTT réels se parsent et produisent une campagne valide', { s
  * son tour.
  */
 test('au moins un export VTT réel versionné est trouvé (le test ci-dessus ne doit jamais s\'ignorer)', () => {
-  const versionnes = fichiers.filter((f) => f.dossier === 'maps');
+  const versionnes = fichiers.filter((f) => f.dossier === 'fixtures/exports');
   assert.ok(
     versionnes.length > 0,
-    `aucun export VTT réel trouvé dans maps/ — le test de parsing réel s'ignorerait donc, ` +
+    `aucun export VTT réel trouvé dans fixtures/exports/ — le test de parsing réel s'ignorerait donc, ` +
       `et le format ne serait plus validé que par des fixtures synthétiques. ` +
       `Fichiers vus : ${fichiers.map((f) => `${f.dossier}/${f.nom}`).join(', ') || '(aucun)'}`
   );

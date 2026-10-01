@@ -16,6 +16,10 @@ irrégularités qu'aucune fixture synthétique ne reproduit : polylignes de murs
 dégénérées, portails à cheval sur deux cloisons, `map_origin` non entier, cloisons
 manquantes, listes de lumières vides, variantes de casse dans les clés.
 
+> ⛔ **Révisé le 01/10/2026** : l'export versionné de référence vit désormais dans
+> `fixtures/exports/`, et non plus dans `maps/` — le pool du mainteneur, qui l'a supprimé. Voir
+> §2bis. Le paragraphe ci-dessous garde l'histoire du garde-fou, qui reste valable.
+
 **Le parsing réel est désormais validé partout, y compris en CI — corrigé le 06/08/2026.**
 `tests/realUvtt.test.mjs` parse à chaque `test:unit` les exports réels **versionnés** de `maps/`,
 soit `manoir-rdc.uvtt` et `testbig150.dd2vtt`. Coût mesuré : environ 260 ms pour 27 Mo, sur les
@@ -87,9 +91,45 @@ fixtures/
 │  ├─ offset-origin.json
 │  └─ no-geometry.json
 ├─ images/
-│  └─ checker-10x8.png          damier généré, 1 case = 1 carreau
+│  ├─ checker-10x8.png          damier généré, 1 case = 1 carreau
+│  └─ seconde-image.webp        image quelconque de 3 Ko, figée (C-12) : « une autre image »
+│                               des e2e de handouts et de remplacement d'étage
+├─ scenes/                      copies FIGÉES de scènes publiées (C-12, cf. §2bis)
+│  ├─ catalog.json              catalogue de test : les trois scènes ci-dessous, sceneUrl
+│  │                            vers ce dossier, vignettes vers maps/minimal.webp
+│  ├─ manoir-rdc.scene.json     131 murs, 40 portes, 0 lumière — R-01 (1409 arêtes), R2-01,
+│  │                            R3, L-10, banc des arêtes bloquées
+│  ├─ testnoncuite.scene.json   29 lumières — l'autre côté de l'écart de diag §10
+│  └─ testvideo-3.scene.json    étage à fond animé — débordement du panneau MJ
+├─ exports/
+│  └─ manoir-rdc.uvtt           vrai export Dungeondraft (4,8 Mo), figé : garde-fou de
+│                               realUvtt.test.mjs et plafonds de uvtt.test.mjs
+├─ videos/
+│  └─ diag-court.webm           VP9 320×216, 10 s, 149 Ko, enregistrée par Chromium —
+│                               servie à la place de testvideo-3.webm par diagVideo §7bis
 └─ real/                        13 exports .dd2vtt réels, NON RECONSTITUABLES (cf. §1)
 ```
+
+## 2bis. ⛔ Aucun test ne lit le pool `maps/`
+
+`maps/` est le **pool du mainteneur** : il y dépose et y supprime des cartes depuis l'outil de
+préparation. Le 01/10/2026, sa suppression de `manoir-rdc` a fait rougir quatre unitaires qui la
+lisaient comme une fixture — pour une raison qui n'était pas un défaut. Sa consigne : « il faut
+vraiment que tu arrêtes de baser des tests sur des maps du pool, parce qu'elles sont toutes
+susceptibles d'être supprimées un jour ».
+
+D'où la règle : **un test lit `fixtures/`, ou intercepte la requête** (route Playwright). Les
+fichiers de `scenes/`, `exports/` et `videos/` ont été repris de l'historique git le jour même ;
+ils ne sont **pas régénérés** et ne suivent plus les cartes dont ils viennent — c'est voulu, une
+fixture qui bouge avec le pool n'en est pas une.
+
+Exceptions assumées, parce qu'elles ne sont pas des cartes : `maps/minimal.json`,
+`maps/minimal.webp` et `maps/tokens/goblin.webp`, fixtures historiques versionnées sous `maps/`.
+`tests/sitePackage.test.mjs` lit aussi le vrai `maps/catalog.json`, et c'est son sujet : il vérifie
+que le paquet publié contient tout ce que le catalogue publié référence.
+
+`maps/` reste lu **en plus** par `realUvtt.test.mjs` et par le test des plafonds de `uvtt.test.mjs`,
+pour éprouver ce que le pool contient ce jour-là — jamais comme garantie.
 
 ---
 

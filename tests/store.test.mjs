@@ -156,7 +156,7 @@ test('getRenderSnapshot partage une version figée, puis la remplace après muta
 });
 
 test('MESURE R2-01 — le snapshot de rendu manoir-rdc reste sous 2 ms par image', () => {
-  const scene = JSON.parse(fs.readFileSync('maps/generated/manoir-rdc.scene.json', 'utf8'));
+  const scene = JSON.parse(fs.readFileSync('fixtures/scenes/manoir-rdc.scene.json', 'utf8'));
   loadCampaign(scene);
 
   // Chauffe la construction du premier instantané et les accès aux propriétés réellement lues

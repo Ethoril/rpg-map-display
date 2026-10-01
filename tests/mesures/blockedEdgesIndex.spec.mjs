@@ -36,7 +36,7 @@ test('MESURE — computeBlockedEdges sur testbig150 : index spatial contre force
       await import('../../js/import/blockedEdges.js');
     const { edgeKey } = await import('../../js/core/cellKey.js');
 
-    const scene = await (await fetch('/maps/generated/manoir-rdc.scene.json')).json();
+    const scene = await (await fetch('/fixtures/scenes/manoir-rdc.scene.json')).json();
     const level = scene.levels[0];
     const grid = gridFor(level);
 

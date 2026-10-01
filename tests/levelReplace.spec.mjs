@@ -135,7 +135,7 @@ const makeSnapshot = () => ({
       // ⚠ **L'ancienne carte doit être une AUTRE image que la nouvelle.** Avec la même URL des
       // deux côtés, aucune assertion ne peut distinguer « la carte a été remplacée » de « rien
       // ne s'est passé » — et c'est ce qui a laissé passer le critère 5 en faux vert.
-      etage('rdc', 'Rez-de-chaussée', 10, 8, 'maps/marais-hex_16x16.jpg'),
+      etage('rdc', 'Rez-de-chaussée', 10, 8, 'fixtures/images/seconde-image.webp'),
       etage('et1', 'Étage 1', 12, 10, 'maps/minimal.webp'),
     ],
   },

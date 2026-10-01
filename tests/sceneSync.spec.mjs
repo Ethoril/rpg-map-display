@@ -419,12 +419,14 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
   test('« Charger » le village réel bascule la vue joueurs, pas seulement le MJ', async ({
     browser,
   }) => {
-    // Scénario rapporté en séance : le vrai catalogue (8 cartes), la vraie
-    // scène village (3 étages, 253 murs, 114 lumières), et la table déjà
-    // posée sur une AUTRE carte avant le clic. Aucune interception de
-    // maps/catalog.json ni de maps/generated/*.scene.json : ce sont les
-    // fichiers réels servis par scripts/serve.mjs, pas la fixture minimale.
+    // Scénario rapporté en séance : de vraies scènes publiées, et la table déjà posée sur une
+    // AUTRE carte avant le clic. ⛔ Révisé le 01/10/2026 : le catalogue et les scènes ne sont plus
+    // ceux du pool `maps/`, que le mainteneur vide à volonté, mais leurs copies figées de
+    // `fixtures/scenes/` — mêmes géométries, mêmes identifiants.
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await context.route('**/maps/catalog.json', (route) =>
+      route.fulfill({ path: 'fixtures/scenes/catalog.json' })
+    );
     const sessionId = `scene-village-${Date.now()}`;
 
     // ⛔ Les FONDS, eux, sont servis par le test — leurs octets seulement, jamais leur URL, que
@@ -436,7 +438,7 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
     // Dans les douze échecs reproduits, la vue joueurs avait basculé en moins de 50 ms ; c'est
     // `readScene` qui attendait derrière ces décodages, et l'échéance de 5 s tombait pendant la
     // lecture. Ce test juge le câblage de l'écran joueurs, pas le décodage d'un fond : les
-    // vignettes, petites, restent les vraies.
+    // vignettes sont celles du catalogue de test (`maps/minimal.webp`).
     const fondLeger = fs.readFileSync(new URL('../maps/minimal.webp', import.meta.url));
     await context.route(/\/maps\/generated\/[^/]+(?<!\.thumb)\.webp$/, (route) =>
       route.fulfill({ status: 200, contentType: 'image/webp', body: fondLeger })

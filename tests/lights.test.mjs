@@ -167,7 +167,7 @@ test('UX-07 critère 4 : aucun rendu ne lit ambient.color, vérifié par recherc
 });
 
 test('MESURE R3 — manoir-rdc, six PJ et huit sources restent un profil exécutable', () => {
-  const campaign = JSON.parse(fs.readFileSync('maps/generated/manoir-rdc.scene.json', 'utf8'));
+  const campaign = JSON.parse(fs.readFileSync('fixtures/scenes/manoir-rdc.scene.json', 'utf8'));
   const level = campaign.levels[0];
   level.ambient = { color: '#ffffff', level: 0, baked: false };
   level.lights = Array.from({ length: 8 }, (_, index) => ({

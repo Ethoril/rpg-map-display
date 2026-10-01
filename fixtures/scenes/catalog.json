@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "maps": [
+    {
+      "id": "manoir-rdc",
+      "name": "Manoir — RDC",
+      "sourceUrl": "maps/manoir-rdc.uvtt",
+      "sceneUrl": "fixtures/scenes/manoir-rdc.scene.json",
+      "imageUrl": "maps/generated/manoir-rdc.webp",
+      "thumbUrl": "maps/minimal.webp",
+      "levels": [
+        {
+          "levelId": "manoir-rdc",
+          "name": "Manoir — RDC",
+          "thumbUrl": "maps/minimal.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1784982066985
+        }
+      ],
+      "sourceHash": "sha256-223ecc42a8c27214e125c8aaca8138243d6decca2e204463998193b5c1b5a23a",
+      "levelCount": 1,
+      "features": {
+        "walls": 131,
+        "portals": 40,
+        "lights": 0,
+        "bakedLighting": false,
+        "animated": false
+      }
+    },
+    {
+      "id": "testnoncuite",
+      "name": "Testnoncuite",
+      "sourceUrl": "maps/testnoncuite.dd2vtt",
+      "sceneUrl": "fixtures/scenes/testnoncuite.scene.json",
+      "imageUrl": "maps/generated/testnoncuite.webp",
+      "thumbUrl": "maps/minimal.webp",
+      "levels": [
+        {
+          "levelId": "testnoncuite",
+          "name": "Testnoncuite",
+          "thumbUrl": "maps/minimal.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1787828875862
+        }
+      ],
+      "sourceHash": "sha256-385b5aebc5e7a5689b35c6045b3354dd9fa9ca5ee17742bedd0400a52869d483",
+      "levelCount": 1,
+      "features": {
+        "walls": 48,
+        "portals": 31,
+        "lights": 29,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
+      "id": "testvideo-3",
+      "name": "Testvideo — 3",
+      "sourceUrl": "maps/testvideo-3.dd2vtt",
+      "sceneUrl": "fixtures/scenes/testvideo-3.scene.json",
+      "imageUrl": "maps/generated/testvideo-3.webp",
+      "thumbUrl": "maps/minimal.webp",
+      "levels": [
+        {
+          "levelId": "testvideo-3",
+          "name": "Testvideo — 3",
+          "thumbUrl": "maps/minimal.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1786428184720
+        }
+      ],
+      "sourceHash": "sha256-dc54ea70259cd81515d36237d1f01140875d2f719a86f7ada17c69e9ef31ef94",
+      "levelCount": 1,
+      "features": {
+        "walls": 14,
+        "portals": 4,
+        "lights": 4,
+        "bakedLighting": true,
+        "animated": true
+      }
+    }
+  ]
+}

@@ -236,10 +236,10 @@ test('Test de mutation : la modification du Set retourné depuis le cache ne cor
 test('R-01 : computeBlockedEdges rend exactement 1409 arêtes sur manoir-rdc', async () => {
   const fs = await import('node:fs');
   assert.ok(
-    fs.existsSync('maps/generated/manoir-rdc.scene.json'),
-    'la scène manoir-rdc est suivie par git : son absence est une anomalie, pas une raison de sauter le test'
+    fs.existsSync('fixtures/scenes/manoir-rdc.scene.json'),
+    'la fixture manoir-rdc est versionnée dans fixtures/scenes/ : son absence est une anomalie, pas une raison de sauter le test'
   );
-  const campaignData = JSON.parse(fs.readFileSync('maps/generated/manoir-rdc.scene.json', 'utf8'));
+  const campaignData = JSON.parse(fs.readFileSync('fixtures/scenes/manoir-rdc.scene.json', 'utf8'));
   const level = campaignData.levels[0];
   const grid = gridFor(level);
 

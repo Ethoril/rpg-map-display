@@ -13,7 +13,7 @@ import * as store from '../js/state/store.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 
 test('Occlusion par les murs (L-10) : manoir-rdc à l\'origine {x: 4410, y: 4410}, sweep produit un polygone découpé par les obstacles', () => {
-  const scenePath = path.resolve('maps/generated/manoir-rdc.scene.json');
+  const scenePath = path.resolve('fixtures/scenes/manoir-rdc.scene.json');
   assert.equal(fs.existsSync(scenePath), true, 'Fichier de scène manoir-rdc.scene.json requis');
 
   const campaignData = JSON.parse(fs.readFileSync(scenePath, 'utf8'));

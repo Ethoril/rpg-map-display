@@ -2,6 +2,16 @@
 import { test, expect } from '@playwright/test';
 
 /**
+ * Le catalogue de test : trois scènes figées dans `fixtures/scenes/`. ⛔ Jamais le vrai
+ * `maps/catalog.json` — c'est le pool du mainteneur, qui y supprime des cartes (01/10/2026).
+ *
+ * @param {import('@playwright/test').Page | import('@playwright/test').BrowserContext} cible
+ */
+async function servirCatalogueDeTest(cible) {
+  await cible.route('**/maps/catalog.json', (route) => route.fulfill({ path: 'fixtures/scenes/catalog.json' }));
+}
+
+/**
  * Le banc « cartes publiées » lit le vrai catalogue et la vraie géométrie.
  *
  * Ce test ne mesure aucune performance et n'en coche aucune (interdiction n°14) : il
@@ -14,6 +24,7 @@ test('6bis — le banc mesure sur la géométrie publiée et annonce ses limites
   const erreurs = [];
   page.on('pageerror', (err) => erreurs.push(err.message));
 
+  await servirCatalogueDeTest(page);
   await page.goto('/diag.html');
   await page.click('#btn-sweep-reel');
 
