@@ -1,4 +1,5 @@
 // @ts-check
+import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
@@ -425,6 +426,21 @@ test.describe('U-05 — remplacement de scène synchronisé', () => {
     // fichiers réels servis par scripts/serve.mjs, pas la fixture minimale.
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const sessionId = `scene-village-${Date.now()}`;
+
+    // ⛔ Les FONDS, eux, sont servis par le test — leurs octets seulement, jamais leur URL, que
+    // l'assertion lit dans le store. Rouge intermittent sous charge diagnostiqué le 01/10/2026 :
+    // `manoir-rdc.webp` (6720 × 6300) et `testnoncuite.webp` (5880 × 5880) coûtent à CHAQUE page,
+    // à chaque changement de carte, deux décodages complets et synchrones sur le fil principal —
+    // `createImageBitmap` de la doublure dans `image.onload`, puis le premier `drawImage` pleine
+    // taille —, de 0,3 à 0,6 s chacun au repos sur le poste Windows, et proportionnels à la charge.
+    // Dans les douze échecs reproduits, la vue joueurs avait basculé en moins de 50 ms ; c'est
+    // `readScene` qui attendait derrière ces décodages, et l'échéance de 5 s tombait pendant la
+    // lecture. Ce test juge le câblage de l'écran joueurs, pas le décodage d'un fond : les
+    // vignettes, petites, restent les vraies.
+    const fondLeger = fs.readFileSync(new URL('../maps/minimal.webp', import.meta.url));
+    await context.route(/\/maps\/generated\/[^/]+(?<!\.thumb)\.webp$/, (route) =>
+      route.fulfill({ status: 200, contentType: 'image/webp', body: fondLeger })
+    );
 
     const player = await openPlayer(context, sessionId);
 

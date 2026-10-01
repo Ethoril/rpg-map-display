@@ -242,6 +242,22 @@ laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 > dérivée de la constante et non choisie. L'absence est réelle — sonde à l'appui, le couloir
 > reste noir sur 10 s — elle est maintenant aussi **prouvée**.
 
+> ✅ **Intermittence de `sceneSync.spec.mjs:418` — diagnostiquée et corrigée le 1er octobre 2026.**
+> Défaut du test, pas de l'application, et **antérieur à C-9** : 2 rouges sur 4 `verify` sous forte
+> charge sur le poste Windows. Les fonds réels (`manoir-rdc.webp`, `testnoncuite.webp`, 35 à
+> 42 Mpx) coûtent à chaque page, par changement de carte, deux décodages complets et synchrones sur
+> le fil principal — la doublure dans `image.onload`, puis le premier `drawImage` pleine taille —,
+> de 0,3 à 0,6 s chacun au repos. La lecture du test attendait derrière eux et l'échéance de 5 s
+> tombait pendant la lecture, alors que le store joueurs avait basculé en moins de 50 ms.
+>
+> Reproduit à volonté en bridant la **seule** page joueurs (`Emulation.setCPUThrottlingRate` ×5) :
+> **6 échecs sur 6 sur `bfc7c3c`, 6 sur 6 sur `93e5e3d`** ; brider les deux pages ne reproduit pas,
+> le test se cadençant sur le MJ. Le test sert désormais les octets de `maps/minimal.webp` pour les
+> fonds, jamais leurs URL : **6 sur 6 verts** sous le même bridage, marge mesurée jusqu'à ×20. Trois
+> mutations tuées, dont la table déjà posée qui ne bascule plus. ⚠ Non traité : la doublure de
+> `createThumbnailAsync` fige la vue à chaque chargement de carte — voulu par le chantier P, à
+> mesurer sur la tablette seulement si un gel se remarque en séance.
+
 Depuis R1-08, `test:e2e` garde le projet `chromium` et les scénarios de geste réel sont
 exécutés ensuite via le projet `manuel` (`pnpm run test:gestes`) dans `pnpm run verify` — trois
 dans `gmToolDisarmGeste.spec.mjs`, et depuis le 01/10/2026 un quatrième,
