@@ -92,5 +92,14 @@ test.describe('G-03 — Mesure de distance au geste (E2E)', () => {
     const events = await page.evaluate(() => /** @type {any} */ (window).__PUBLISHED_EVENTS__ || []);
     const measureEvents = events.filter((/** @type {any} */ e) => e.type === 'measure' || e.type === 'ping');
     expect(measureEvents, 'aucun événement de mesure ou ping ne doit être publié').toEqual([]);
+
+    // ⭐ Échap efface la mesure affichée (arbitrage du 01/10/2026) — par la vraie touche, l'outil
+    // étant déjà désarmé : c'est le cas qui ne laissait aucun moyen de la retirer.
+    await page.keyboard.press('Escape');
+    const measureAfterEscape = await page.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      return app.getCurrentMeasure?.();
+    });
+    expect(measureAfterEscape, 'Échap doit effacer la mesure posée').toBeNull();
   });
 });

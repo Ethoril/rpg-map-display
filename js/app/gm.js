@@ -2040,6 +2040,13 @@ export async function bootstrapGMApp(options = {}) {
         gmPanel?.disarmActiveTool?.();
         requestRender();
       }
+      // Échap efface aussi la mesure affichée (arbitrage du 01/10/2026) : sans lui, rien ne la
+      // retirait, seule une nouvelle mesure sur le même étage la remplaçait. C'est le même geste
+      // « je range » que pour un outil armé.
+      if (currentMeasure) {
+        currentMeasure = null;
+        requestRender();
+      }
     }
     if (e.key === 'p' || e.key === 'P') {
       frameProbe.toggleOverlay();

@@ -540,7 +540,7 @@ sources portées par les pions (`emitsLight`).
   endroit du code où une erreur se paie à chaque geste de la séance.
 
   Le chantier X a ouvert la voie sûre : un **bouton armé dans la barre de séance MJ**, hors des
-  onglets, sur le modèle du ping. Armer, cliquer deux points, lire la distance, se désarmer. Il
+  onglets, sur le modèle du ping. Armer, cliquer deux points, lire la distance, se désarmer. La mesure reste affichée jusqu'à Échap ou à la mesure suivante (arbitré le 01/10/2026). Il
   hérite de l'exclusivité mutuelle des outils et du désarmement au changement d'onglet, déjà
   éprouvés. ⭐ **Le Zero-UI n'est pas violé** : la contrainte porte sur la vue joueurs et sur la
   carte, pas sur le panneau MJ — qui est un poste clavier-souris et porte déjà dix onglets.
