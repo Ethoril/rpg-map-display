@@ -929,6 +929,36 @@ en information donnée à la table.
 >   MJ et les joueurs ; `mounted` reste hors de la liste blanche de `token.update`.
 > - **Fichier** : la bande vit dans `js/ui/player/selectionStrip.js`.
 
+### C-10 Refonte de la vue MJ — demande du mainteneur, 01/10/2026
+
+Le constat du mainteneur : la vue MJ est « parfaitement fonctionnelle mais très inesthétique et
+relativement peu pratique ». L'étude, avec ses quatre maquettes, est sur le canevas « Refonte de la
+vue MJ » (artifact privé du mainteneur). Ce qu'elle a relevé : environ 280 px de bandeaux avant le
+premier réglage utile ; des outils qui s'arment à deux endroits (barre « Séance » et onglets) ; une
+fiche de pion de 13 champs dans 360 px, affichée même sans pion ; environ 550 styles écrits en ligne,
+aucune variable CSS, six couleurs d'accent.
+
+La proposition : **trois zones**. À gauche, un rail d'outils ; les réglages de l'outil armé
+s'affichent dans une barre posée sur la carte, entourée d'un liseré doré tant qu'un clic va agir. En
+haut, une barre fine : code de table, étages (l'œil marque celui que voient les joueurs), jour/nuit,
+Jouer/Préparer. À droite, un inspecteur qui suit la sélection : la scène quand rien n'est choisi, la
+fiche du pion sinon. Un seul accent, le doré, réservé à ce qui est actif.
+
+> ## ✅ TRANCHÉ le 01/10/2026, en séance de choix multiples
+>
+> - **Révision de C-1 (audit UX)** : Fog, Gabarits, Murs et Liaisons cessent d'être des onglets et
+>   deviennent des **outils du rail**, réglés depuis la barre posée sur la carte. **Aucune fonction
+>   n'est retirée.** Les onglets restants sont Pions et Handouts en Jouer, puis Cartes, Importer,
+>   Pions et Grille en Préparer. Les deux modes, et la bascule en un geste sans rien perdre,
+>   demeurent.
+> - **Diagnostic d'import UVTT** : ce n'est plus un onglet, c'est un lien discret dans Préparer ›
+>   Cartes.
+> - **Polices** : celles du système seulement. Aucun fichier ni aucune dépendance ajoutés.
+> - **Raccourcis** : **aucun nouveau**. On garde Échap et P ; le rail se pilote à la souris.
+>
+> ⚠ **Encore ouvert** : le découpage en tranches, et ce qu'il faut ajouter au manifeste (un module
+> pour le rail, si `panel.js` ne peut pas l'héberger) — à signaler avant d'écrire, pas à improviser.
+
 ---
 
 ## D. Décisions produit encore ouvertes
