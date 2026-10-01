@@ -16,6 +16,7 @@ import {
   SITE_MANIFEST,
   siteDir,
 } from '../scripts/build-site.mjs';
+import { MOUNTED_ICON_URL, STATUS_MARKER_IDS } from '../js/core/constants.js';
 
 /** @param {string} directory @param {string} [root] @returns {string[]} */
 function filesBelow(directory, root = directory) {
@@ -170,4 +171,18 @@ test('R1-06b : TOUT ce que le catalogue publié référence est réellement dans
   // ⛔ Sans cette ligne, le test passerait aussi sur un catalogue SANS aucune vignette — donc sur
   // le défaut d'origine, où la tranche A avait livré le code sans jamais republier.
   assert.ok(vignettesVues > 0, 'le catalogue publié doit porter des vignettes ; relancer maps:prepare');
+});
+
+test('C-9 : toute icône que le runtime charge par URL est dans le paquet', () => {
+  // ⛔ Même point aveugle que R1-06b, sur les icônes. Le premier test compare le paquet à la
+  // liste blanche ; retirer `assets/icons/mounted.svg` de `rootFiles` retirait donc l'attendu avec
+  // lui, et le site restait vert avec une 404 sur chaque pion monté — mutation constatée le
+  // 01/10/2026. Celui-ci part des URL que le RUNTIME charge, l'autre source.
+  const attendu = new Set(expectedManifest());
+  const chargees = [
+    MOUNTED_ICON_URL,
+    ...STATUS_MARKER_IDS.map((id) => `assets/icons/status/${id}.svg`),
+  ];
+  const manquantes = chargees.filter((url) => !attendu.has(url));
+  assert.deepEqual(manquantes, [], `chargées par le runtime mais absentes du paquet :\n  ${manquantes.join('\n  ')}`);
 });
