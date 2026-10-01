@@ -18,6 +18,7 @@ import {
   TOKEN_HP_BADGE_FONT_SIZE_PX,
   TOKEN_HP_BADGE_PADDING_X_PX,
   TOKEN_HP_BADGE_HEIGHT_PX,
+  TOKEN_HP_BADGE_INSET_RATIO,
   MOUNTED_ICON_URL,
 } from '../core/constants.js';
 
@@ -266,10 +267,12 @@ export function computeHpBadgeLayout(tokenWidthMap, zoom, current, max) {
   const heightMap = TOKEN_HP_BADGE_HEIGHT_PX / safeZoom;
   const paddingXMap = TOKEN_HP_BADGE_PADDING_X_PX / safeZoom;
 
-  // Ancrage au coin haut-gauche du pion : le coin bas-droit de la pastille touche (-padding, -padding).
-  // La pastille croît ainsi vers le haut et la gauche (-X, -Y) pour ne pas recouvrir le portrait.
-  const badgeX = -paddingXMap;
-  const badgeY = -paddingXMap;
+  // Ancrage au coin haut-gauche du pion. Le coin bas-droit de la pastille se pose sur le bord du
+  // portrait rond, là où la diagonale le croise (`TOKEN_HP_BADGE_INSET_RATIO` de la largeur), et la
+  // pastille croît vers le haut et la gauche. ⚠ Elle était posée hors de la case, à (-padding,
+  // -padding) : jugée trop éloignée du pion à l'usage (mainteneur, 01/10/2026).
+  const badgeX = tokenWidthMap * TOKEN_HP_BADGE_INSET_RATIO;
+  const badgeY = tokenWidthMap * TOKEN_HP_BADGE_INSET_RATIO;
 
   return {
     visible: true,

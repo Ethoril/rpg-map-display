@@ -317,11 +317,14 @@ test('C-9 rendu : la tête de cheval d’un pion monté sans marqueur atteint le
   await expect
     .poll(async () => {
       const m = await mesurer();
-      return m ? m.clairs > m.total * 0.1 && m.sombres > m.total * 0.1 : false;
+      // Sombres à 5 % et non plus 10 % : la bande sombre de la châsse, qui entourait le disque et
+      // gonflait ce compte, a été retirée le 01/10/2026 (C-14). Mesuré sans elle : 83 clairs et
+      // 13 sombres sur 144. Le témoin « à pied » ci-dessous garde la sonde honnête.
+      return m ? m.clairs > m.total * 0.1 && m.sombres > m.total * 0.05 : false;
     }, { timeout: 8000 })
     .toBe(true);
 
   // Témoin : à pied, le même emplacement ne porte pas ce badge — sans quoi la sonde ne prouverait rien.
   const a = /** @type {{ clairs: number, sombres: number, total: number }} */ (aPied);
-  expect(a.clairs > a.total * 0.1 && a.sombres > a.total * 0.1, JSON.stringify(a)).toBe(false);
+  expect(a.clairs > a.total * 0.1 && a.sombres > a.total * 0.05, JSON.stringify(a)).toBe(false);
 });

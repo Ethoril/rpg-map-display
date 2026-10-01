@@ -215,6 +215,22 @@ test('Q-d 1. computeHpBadgeLayout reste toujours visible sans seuil de dispariti
   }
 });
 
+test('Q-d 2. Le cartouche touche le pion : son coin bas-droit se pose sur le bord du portrait rond (01/10/2026)', () => {
+  // Il était posé hors de la case, à (-padding, -padding) — « un peu trop éloigné » à l'usage.
+  for (const largeur of [70, 140, 280]) {
+    for (const zoom of [0.5, 1, 2]) {
+      const { badgeX, badgeY } = computeHpBadgeLayout(largeur, zoom, 12, 28);
+      // Coin bas-droit du cartouche, relatif au centre du pion.
+      const dx = badgeX - largeur / 2;
+      const dy = badgeY - largeur / 2;
+      const distance = Math.hypot(dx, dy);
+      assert.ok(badgeX > 0 && badgeY > 0, `dans la case (largeur ${largeur}, zoom ${zoom})`);
+      // À moins d'un huitième de rayon du bord, côté intérieur : il mord le portrait sans le couvrir.
+      assert.ok(distance <= largeur / 2 && distance >= (largeur / 2) * 0.875, `sur le bord : ${distance} pour un rayon ${largeur / 2}`);
+    }
+  }
+});
+
 // ── 5. Étape Q-f : Bibliothèque de pions & tokenCatalog ───────────────────
 
 test('Q-f 1. validateTokenCatalog valide maxHp', () => {

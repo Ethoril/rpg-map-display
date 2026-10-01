@@ -1,18 +1,14 @@
 // @ts-check
 
 import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
-import { computeSocketLayout } from '../tokenSocket.js';
 import {
   TOKEN_BORDER_SCREEN_PX,
   TOKEN_SELECTION_RING_SCREEN_PX,
   TOKEN_SELECTION_OFFSET_SCREEN_PX,
-  CHASSE_BEVEL_LINE_SCREEN_PX,
 } from '../../core/constants.js';
 import {
   computeElevationBadgeLayout,
   drawStatusBadges,
-  computeProportionalRing,
-  computeStateRing,
   computeHpBadgeLayout,
 } from '../statusBadges.js';
 
@@ -300,18 +296,20 @@ export class TokensLayer {
     const resolution = options?.resolution && options.resolution > 0 ? options.resolution : 1;
     const isPlayerView = options?.isPlayerView === true;
 
-    // ── Chantier R — Calcul de la disposition de la châsse ──────────────────────
-    const socketLayout = computeSocketLayout(width, zoom, {
-      kind: token.kind,
-      hp: token.hp,
-      health: token.health,
-    });
+    // ⛔ Plus aucune barre d'état autour du pion (01/10/2026, demande du mainteneur) : ni la
+    // châsse du Chantier R (bande, arc de PV, anneau d'état, encoches), ni l'anneau fin de repli
+    // du Chantier Q. Seul le cartouche chiffré reste. Le portrait reprend donc tout le rayon.
+    // `tokenSocket.js` et les anneaux de `statusBadges.js` restent en place, dormants : le
+    // mainteneur reviendra sur la représentation des PV « quand il aura une meilleure idée ».
+    // Le liseré se trace entièrement en dedans : centré sur le bord, il débordait à moitié dans
+    // la case voisine, et dans son brouillard.
+    const imageRadius = width / 2 - TOKEN_BORDER_SCREEN_PX / (2 * zoom);
 
-    // 1. Découpe & Dessin de l'illustration (réduite à socketLayout.imageRadius)
+    // 1. Découpe & Dessin de l'illustration (réduite à imageRadius)
     ctx.save();
     if (token.hidden) ctx.globalAlpha = 0.45;
     ctx.beginPath();
-    ctx.ellipse(centerX, centerY, socketLayout.imageRadius, socketLayout.imageRadius, 0, 0, Math.PI * 2);
+    ctx.ellipse(centerX, centerY, imageRadius, imageRadius, 0, 0, Math.PI * 2);
     ctx.clip();
 
     if (imageEntry?.status === 'ready' && imageEntry.image) {
@@ -340,98 +338,11 @@ export class TokensLayer {
     }
     ctx.restore();
 
-    // 2. Châsse des pions (palier 'full' ou 'reduced')
-    if (socketLayout.tier !== 'none') {
-      ctx.save();
-      if (token.hidden) ctx.globalAlpha = 0.45;
-
-      // (a) Anneau de fond neutre sombre (#1e293b)
-      if (socketLayout.band) {
-        const bandWidthMap = socketLayout.band.outerRadius - socketLayout.band.innerRadius;
-        const midRadius = (socketLayout.band.innerRadius + socketLayout.band.outerRadius) / 2;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, midRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = socketLayout.band.color;
-        ctx.lineWidth = bandWidthMap;
-        ctx.stroke();
-      }
-
-      // (b) Arc de PV PJ
-      if (socketLayout.hpArc) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, socketLayout.hpArc.radius, socketLayout.hpArc.startAngle, socketLayout.hpArc.endAngle);
-        ctx.strokeStyle = socketLayout.hpArc.color;
-        ctx.lineWidth = socketLayout.hpArc.thicknessMap;
-        ctx.stroke();
-      }
-
-      // (c) Anneau d'état PNJ blessé/critique
-      if (socketLayout.stateRing) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, socketLayout.stateRing.radius, socketLayout.stateRing.startAngle, socketLayout.stateRing.endAngle);
-        ctx.strokeStyle = socketLayout.stateRing.color;
-        ctx.lineWidth = socketLayout.stateRing.thicknessMap;
-        ctx.stroke();
-      }
-
-      // (d) Encoches PNJ
-      if (socketLayout.stateMarks) {
-        ctx.strokeStyle = socketLayout.stateMarks.color;
-        ctx.lineWidth = socketLayout.stateMarks.thicknessMap;
-        for (const angle of socketLayout.stateMarks.angles) {
-          const rInner = socketLayout.stateMarks.radius - socketLayout.stateMarks.lengthMap / 2;
-          const rOuter = socketLayout.stateMarks.radius + socketLayout.stateMarks.lengthMap / 2;
-          ctx.beginPath();
-          ctx.moveTo(centerX + rInner * Math.cos(angle), centerY + rInner * Math.sin(angle));
-          ctx.lineTo(centerX + rOuter * Math.cos(angle), centerY + rOuter * Math.sin(angle));
-          ctx.stroke();
-        }
-      }
-
-      // (e) Biseau plat extérieur
-      if (socketLayout.bevel) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, socketLayout.bevel.outerRadius - CHASSE_BEVEL_LINE_SCREEN_PX / (2 * zoom), 0, Math.PI * 2);
-        ctx.strokeStyle = socketLayout.bevel.darkColor;
-        ctx.lineWidth = CHASSE_BEVEL_LINE_SCREEN_PX / zoom;
-        ctx.stroke();
-      }
-
-      // (f) Séparateur sombre image ↔ châsse
-      if (socketLayout.separator) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, socketLayout.separator.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = socketLayout.separator.color;
-        ctx.lineWidth = socketLayout.separator.thicknessMap;
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    } else if (socketLayout.tier === 'none' && token.hp !== null && token.hp !== undefined) {
-      // ── Repli du palier 'none' (brief §4.4) ──────────────────────────────────
-      // Sous 24px d'écran, pas de châsse : repli sur l'anneau fin du Chantier Q.
-      const ringLayout =
-        token.kind === 'pc'
-          ? computeProportionalRing(width, zoom, token.hp)
-          : computeStateRing(width, zoom, token.health);
-
-      if (ringLayout.visible) {
-        ctx.save();
-        if (token.hidden) ctx.globalAlpha = 0.45;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, ringLayout.radiusMap, ringLayout.startAngle, ringLayout.endAngle);
-        ctx.strokeStyle = ringLayout.color;
-        ctx.lineWidth = ringLayout.lineWidthMap;
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
     // 3.5. Liseré d'identité du pion (tracé à imageRadius, épaisseur écran TOKEN_BORDER_SCREEN_PX)
     ctx.save();
     if (token.hidden) ctx.globalAlpha = 0.45;
     ctx.beginPath();
-    ctx.ellipse(centerX, centerY, socketLayout.imageRadius, socketLayout.imageRadius, 0, 0, Math.PI * 2);
+    ctx.ellipse(centerX, centerY, imageRadius, imageRadius, 0, 0, Math.PI * 2);
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
     ctx.stroke();

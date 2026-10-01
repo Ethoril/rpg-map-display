@@ -68,10 +68,12 @@ const FAKE_PNJ = {
  * Échantillonne le pixel au centre exact de la pastille chiffrée d'un pion après rendu du frameLoop.
  * @param {import('@playwright/test').Page} page
  * @param {string} tokenId
+ * @param {{ current: number, max: number }} [hpPourPosition] PV qui fixent la place de la pastille,
+ *   pour sonder au même endroit un pion qui n'en a pas
  * @returns {Promise<[number, number, number, number]>}
  */
-async function sampleHpBadgePixel(page, tokenId) {
-  return page.evaluate(async (id) => {
+async function sampleHpBadgePixel(page, tokenId, hpPourPosition) {
+  return page.evaluate(async ([id, hpForce]) => {
     const app = /** @type {any} */ (window).__RPG_APP__;
     if (!app || !app.canvas || !app.camera) throw new Error('App non initialisée');
     if (app.vision && typeof app.vision.recompute === 'function') app.vision.recompute();
@@ -83,14 +85,15 @@ async function sampleHpBadgePixel(page, tokenId) {
     const { computeHpBadgeLayout } = await import('../js/render/statusBadges.js');
     const campaign = store.getCampaign();
     const token = campaign?.tokens.find((/** @type {any} */ t) => t.id === id);
-    if (!token || !token.hp) throw new Error('Token ou hp non trouvé: ' + id);
+    const hp = token?.hp ?? hpForce;
+    if (!token || !hp) throw new Error('Token ou hp non trouvé: ' + id);
     const level = campaign?.levels.find((/** @type {any} */ l) => l.id === token.levelId);
     const pxPerCell = level?.pxPerCell ?? 140;
     const zoom = app.camera.zoom ?? 1;
 
     const p0Map = { x: token.cell.a * pxPerCell, y: token.cell.b * pxPerCell };
     ctx.save();
-    const hpBadge = computeHpBadgeLayout(token.sizeCells * pxPerCell, zoom, token.hp.current, token.hp.max);
+    const hpBadge = computeHpBadgeLayout(token.sizeCells * pxPerCell, zoom, hp.current, hp.max);
     ctx.font = `bold ${hpBadge.fontSizeMap}px sans-serif`;
     const textMetrics = ctx.measureText(hpBadge.text);
     const textWidthMap = textMetrics.width;
@@ -109,57 +112,7 @@ async function sampleHpBadgePixel(page, tokenId) {
 
     const data = ctx.getImageData(canvasX, canvasY, 1, 1).data;
     return [data[0], data[1], data[2], data[3]];
-  }, tokenId);
-}
-
-/**
- * Échantillonne le pixel au sommet exact de l'anneau de santé d'un pion après rendu du frameLoop.
- * @param {import('@playwright/test').Page} page
- * @param {string} tokenId
- * @returns {Promise<[number, number, number, number]>}
- */
-async function sampleHealthRingPixel(page, tokenId) {
-  return page.evaluate(async (id) => {
-    const app = /** @type {any} */ (window).__RPG_APP__;
-    if (!app || !app.canvas || !app.camera) throw new Error('App non initialisée');
-    if (app.vision && typeof app.vision.recompute === 'function') app.vision.recompute();
-    if (typeof app.invalidate === 'function') app.invalidate();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-
-    const ctx = app.canvas.getContext('2d');
-    const store = await import('../js/state/store.js');
-    const { computeProportionalRing, computeStateRing } = await import('../js/render/statusBadges.js');
-    const campaign = store.getCampaign();
-    const token = campaign?.tokens.find((/** @type {any} */ t) => t.id === id);
-    if (!token) throw new Error('Token non trouvé: ' + id);
-    const level = campaign?.levels.find((/** @type {any} */ l) => l.id === token.levelId);
-    const pxPerCell = level?.pxPerCell ?? 140;
-    const zoom = app.camera.zoom ?? 1;
-    const widthMap = token.sizeCells * pxPerCell;
-
-    const ring = token.kind === 'pc' ? computeProportionalRing(widthMap, zoom, token.hp) : computeStateRing(widthMap, zoom, token.health);
-    const centerMap = { x: (token.cell.a + token.sizeCells / 2) * pxPerCell, y: (token.cell.b + token.sizeCells / 2) * pxPerCell };
-    const ringTopMap = { x: centerMap.x, y: centerMap.y - ring.radiusMap };
-
-    const topScreen = app.camera.mapToScreen(ringTopMap);
-    const resolution = app.stage?.resolution ?? 1;
-    const canvasX = Math.round(topScreen.screenX * resolution);
-    const canvasY = Math.round(topScreen.screenY * resolution);
-
-    let bestPixel = [0, 0, 0, 0];
-    let maxVal = -1;
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const data = ctx.getImageData(canvasX + dx, canvasY + dy, 1, 1).data;
-        const val = Math.max(data[0], data[1], data[2]);
-        if (val > maxVal) {
-          maxVal = val;
-          bestPixel = [data[0], data[1], data[2], data[3]];
-        }
-      }
-    }
-    return [bestPixel[0], bestPixel[1], bestPixel[2], bestPixel[3]];
-  }, tokenId);
+  }, /** @type {[string, any]} */ ([tokenId, hpPourPosition ?? null]));
 }
 
 test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
@@ -190,6 +143,21 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
 
     const pagePlayer = await context.newPage();
     await installBrowserTransport(pagePlayer, sessionId, snapshot);
+    // Tout texte écrit sur un canvas de la vue joueurs est relevé.
+    await pagePlayer.addInitScript(() => {
+      const ecrire = CanvasRenderingContext2D.prototype.fillText;
+      /** @type {any} */ (window).__textesDessines = [];
+      /**
+       * @param {string} texte
+       * @param {number} x
+       * @param {number} y
+       * @param {number} [largeurMax]
+       */
+      CanvasRenderingContext2D.prototype.fillText = function (texte, x, y, largeurMax) {
+        /** @type {any} */ (window).__textesDessines.push(String(texte));
+        return largeurMax === undefined ? ecrire.call(this, texte, x, y) : ecrire.call(this, texte, x, y, largeurMax);
+      };
+    });
     await pagePlayer.goto(`/player.html?session=${sessionId}`);
     await waitForApp(pagePlayer);
 
@@ -210,65 +178,17 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
     expect(gmPixel[1]).toBeLessThan(60);
     expect(gmPixel[2]).toBeLessThan(60);
 
-    // Côté Joueurs : la pastille 12/140 N'EST PAS dessinée pour un PNJ.
-    // Le pixel sur player.html n'est pas le fond sombre du badge (isPlayerPixelDarkBadge === false)
-    const isPlayerPixelDarkBadge = playerPixel[3] > 180 && playerPixel[0] < 60 && playerPixel[1] < 60 && playerPixel[2] < 60;
-    expect(isPlayerPixelDarkBadge).toBe(false);
-
+    // Côté Joueurs : la pastille 12/140 N'EST PAS dessinée pour un PNJ. ⚠ Depuis que la pastille
+    // mord le bord du pion (01/10/2026), « le pixel n'est pas sombre » ne prouvait plus rien : le
+    // fond sous elle peut l'être. On regarde donc ce que la vue joueurs ÉCRIT sur son canvas — le
+    // texte de la pastille ne doit jamais y passer, alors que celui du PJ, lui, y passe.
+    const textesJoueurs = () => pagePlayer.evaluate(() => /** @type {string[]} */ (/** @type {any} */ (window).__textesDessines));
+    // Le PJ d'abord : sa pastille prouve que la vue joueurs a bien dessiné des pastilles.
+    await expect.poll(textesJoueurs).toContain('28/28');
+    const textes = await textesJoueurs();
+    expect(textes).not.toContain('12/140');
     // Les pixels lus sur les deux canvas sont réels et distincts
     expect(gmPixel).not.toEqual(playerPixel);
-  });
-
-  test('2. Critère 6 : Un PJ à plein et un PNJ critical côte à côte (Sonde de pixels canvas)', async ({ context }) => {
-    const sessionId = `test-hp-c6-${Date.now()}`;
-    const pnjCritical = { ...FAKE_PNJ, id: 'boss-critical', cell: { a: 5, b: 2 }, health: 'critical' };
-    const snapshot = {
-      campaign: {
-        schemaVersion: 2,
-        campaignId: 'hp-c6-campaign',
-        name: 'Campagne PV C6',
-        levels: [FAKE_LEVEL],
-        links: [],
-        tokens: [{ ...FAKE_PJ, cell: { a: 2, b: 2 } }, pnjCritical],
-        templates: [],
-        settings: {},
-      },
-      activeLevelId: FAKE_LEVEL.id,
-      selectedTokenId: null,
-    };
-
-    const pageGM = await context.newPage();
-    await installBrowserTransport(pageGM, sessionId, snapshot);
-    await pageGM.goto(`/gm.html?session=${sessionId}`);
-    await waitForApp(pageGM);
-
-    // Attendre que les anneaux soient rendus sur le canvas MJ
-    await expect
-      .poll(async () => {
-        const pjPixel = await sampleHealthRingPixel(pageGM, 'hero-1');
-        const pnjPixel = await sampleHealthRingPixel(pageGM, 'boss-critical');
-        // PJ a l'anneau bleu royal #2563eb (Bleu prédominant)
-        const isPjBlue = pjPixel[3] > 0 && pjPixel[2] > pjPixel[0];
-        // PNJ a l'anneau rouge critical #ef4444 (Rouge prédominant)
-        const isPnjRed = pnjPixel[3] > 0 && pnjPixel[0] > pnjPixel[2];
-        return isPjBlue && isPnjRed;
-      })
-      .toBe(true);
-
-    const pjPixel = await sampleHealthRingPixel(pageGM, 'hero-1');
-    const pnjPixel = await sampleHealthRingPixel(pageGM, 'boss-critical');
-
-    // Mesure réelle des pixels du canvas :
-    // PJ (bleu royal #2563eb) : la composante Bleu est prédominante (B > R)
-    expect(pjPixel[3]).toBeGreaterThan(0);
-    expect(pjPixel[2]).toBeGreaterThan(pjPixel[0]);
-
-    // PNJ Critical (rouge #ef4444) : la composante Rouge est prédominante (R > B)
-    expect(pnjPixel[3]).toBeGreaterThan(0);
-    expect(pnjPixel[0]).toBeGreaterThan(pnjPixel[2]);
-
-    // Les deux pixels canvas mesurés sont distincts
-    expect(pjPixel).not.toEqual(pnjPixel);
   });
 
   test('3. Critères 9 et 10 : Inspecteur MJ (plancher, vidage, max abaissé, radios exclusives, masquage sur PJ, grisage si hp null)', async ({ context }) => {
@@ -441,25 +361,28 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
    * **bien** un anneau quand le MJ en annonce un. Sans lui, « aucun anneau » pourrait n'être que
    * l'aveu d'une sonde qui regarde à côté.
    */
-  test('5. Critère 13 par le comportement : un boss à 12/140 annoncé « Indemne » n\'affiche aucun anneau', async ({
+  test('5. Aucune barre d’état autour des pions : un pion à PV dessine les mêmes pixels qu’un pion sans PV', async ({
     context,
   }) => {
     /**
-     * Échantillonne l'anneau **à l'endroit où il serait s'il était dessiné**, sans consulter
-     * `health` : le rayon ne se déduit que du diamètre et du zoom. Une sonde qui demanderait sa
-     * position à `computeStateRing(…, token.health)` — comme le fait `sampleHealthRingPixel` — se
-     * placerait au centre du pion pour un état « Indemne », et ne pourrait rien constater.
+     * ⛔ Décision du mainteneur, 01/10/2026 : les barres d'état qui entouraient les pions sont
+     * retirées — châsse du Chantier R (bande, arc de PV, anneau d'état, encoches) et anneau fin
+     * de repli du Chantier Q. Seul le cartouche chiffré reste.
+     *
+     * Le constat ne se fie à aucune couleur : le même pion, au même endroit, est rendu une fois
+     * avec des PV et un état « Mal en point », une fois sans PV ni état. Là où passaient la bande
+     * et l'anneau — juste dans le bord du portrait et juste au-dehors —, les pixels doivent être
+     * identiques. Une barre revenue, quelle que soit sa teinte, les ferait différer.
      *
      * @param {import('@playwright/test').Page} page
      * @param {string} tokenId
-     * @returns {Promise<[number, number, number, number]>}
      */
-    async function sampleAnnulusPixel(page, tokenId) {
+    async function sonderCouronne(page, tokenId) {
       return page.evaluate(async (id) => {
         const app = /** @type {any} */ (window).__RPG_APP__;
         if (typeof app.invalidate === 'function') app.invalidate();
         await new Promise((resolve) => requestAnimationFrame(resolve));
-
+        await new Promise((resolve) => requestAnimationFrame(resolve));
         const ctx = app.canvas.getContext('2d');
         const store = await import('../js/state/store.js');
         const campaign = store.getCampaign();
@@ -468,71 +391,49 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
         const level = campaign?.levels.find((/** @type {any} */ l) => l.id === token.levelId);
         const pxPerCell = level?.pxPerCell ?? 140;
         const zoom = app.camera.zoom ?? 1;
-        const widthMap = token.sizeCells * pxPerCell;
-
-        // Même rayon que `computeProportionalRing` / `computeStateRing`, recalculé ici sans eux.
-        const radiusMap = widthMap / 2 + 1.5 / zoom;
-        const centerMap = {
+        const rayon = (token.sizeCells * pxPerCell) / 2;
+        const centre = {
           x: (token.cell.a + token.sizeCells / 2) * pxPerCell,
           y: (token.cell.b + token.sizeCells / 2) * pxPerCell,
         };
-        const topScreen = app.camera.mapToScreen({ x: centerMap.x, y: centerMap.y - radiusMap });
         const resolution = app.stage?.resolution ?? 1;
-        const canvasX = Math.round(topScreen.screenX * resolution);
-        const canvasY = Math.round(topScreen.screenY * resolution);
-
-        // Le pixel le plus rouge du voisinage : les deux couleurs d'état sont franchement rouges
-        // (#c2410c et #ef4444), et l'anti-aliasing peut décaler le trait d'un pixel.
-        let best = [0, 0, 0, 0];
-        let maxRougeur = -1e9;
-        for (let dx = -2; dx <= 2; dx++) {
-          for (let dy = -2; dy <= 2; dy++) {
-            const d = ctx.getImageData(canvasX + dx, canvasY + dy, 1, 1).data;
-            const rougeur = d[0] - Math.max(d[1], d[2]);
-            if (rougeur > maxRougeur) {
-              maxRougeur = rougeur;
-              best = [d[0], d[1], d[2], d[3]];
-            }
+        /** @type {number[]} */
+        const pixels = [];
+        // Trois rayons (dans la bande de la châsse, sur le bord, dans l'anneau de repli) et
+        // trois angles (haut, droite, bas) : loin du cartouche, posé au coin haut-gauche.
+        for (const ecart of [-5 / zoom, -2 / zoom, 1.5 / zoom]) {
+          for (const angle of [-Math.PI / 2, 0, Math.PI / 2]) {
+            const ecran = app.camera.mapToScreen({
+              x: centre.x + (rayon + ecart) * Math.cos(angle),
+              y: centre.y + (rayon + ecart) * Math.sin(angle),
+            });
+            const d = ctx.getImageData(Math.round(ecran.screenX * resolution), Math.round(ecran.screenY * resolution), 1, 1).data;
+            pixels.push(d[0], d[1], d[2], d[3]);
           }
         }
-        return [best[0], best[1], best[2], best[3]];
+        return pixels;
       }, tokenId);
     }
 
     /**
-     * Un anneau d'état est-il là ? Le critère est la **rougeur**, pas la clarté.
-     *
-     * ⚠ Mesuré, et c'est ce qui a fait échouer la première version de ce test : l'anneau se dessine
-     * **sous le fog**, et le voile du MJ le divise par deux. Un anneau « mal en point » #ef4444
-     * (239, 68, 68) arrive à l'écran en (119, 34, 34) — un seuil absolu sur le rouge à 150 ne
-     * voyait donc jamais l'anneau, alors qu'il était bel et bien là. La différence entre les
-     * canaux, elle, survit au voile : 85 pour un anneau présent, 1 sans anneau. C'est aussi
-     * pourquoi le test 2 ci-dessus se contente de « rouge > bleu ».
-     *
-     * @param {[number, number, number, number]} p
-     */
-    const estAnneauEtat = (p) => p[0] - Math.max(p[1], p[2]) > 40;
-
-    /**
-     * @param {string} health
+     * @param {any} pion
      * @param {string} suffixe
      */
-    const ouvrirMJ = async (health, suffixe) => {
-      const sessionId = `test-hp-c13-${suffixe}-${Date.now()}`;
+    const ouvrirMJ = async (pion, suffixe) => {
+      const sessionId = `test-hp-sans-barre-${suffixe}-${Date.now()}`;
       const snapshot = {
         campaign: {
           schemaVersion: 2,
-          campaignId: 'hp-c13-campaign',
-          name: 'Campagne PV C13',
+          campaignId: 'hp-sans-barre',
+          name: 'Campagne sans barre',
           levels: [FAKE_LEVEL],
           links: [],
-          // Le boss du scénario du mainteneur : très bas en PV, et ce qu'il en annonce varie.
-          tokens: [{ ...FAKE_PNJ, hp: { current: 12, max: 140 }, health }],
+          tokens: [pion],
           templates: [],
           settings: {},
         },
         activeLevelId: FAKE_LEVEL.id,
-        // Aucune sélection : l'anneau blanc de sélection passe dans la même couronne.
+        // Aucune sélection : l'anneau blanc de sélection passerait dans la même couronne.
         selectedTokenId: null,
       };
       const page = await context.newPage();
@@ -542,19 +443,23 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
       return page;
     };
 
-    // 1. Garde-fou : annoncé « Mal en point », l'anneau est là, et la sonde le voit.
-    const pageCritical = await ouvrirMJ('critical', 'critical');
-    await expect
-      .poll(async () => estAnneauEtat(await sampleAnnulusPixel(pageCritical, 'boss-1')))
-      .toBe(true);
-    const pixelCritical = await sampleAnnulusPixel(pageCritical, 'boss-1');
-
-    // 2. Le constat : annoncé « Indemne » à 12/140, aucun anneau. Une dérivation depuis les PV
-    //    en dessinerait un — 12/140 est bas quel que soit le seuil qu'on imagine.
-    const pageUnharmed = await ouvrirMJ('unharmed', 'unharmed');
-    const pixelUnharmed = await sampleAnnulusPixel(pageUnharmed, 'boss-1');
-
-    expect(estAnneauEtat(pixelUnharmed)).toBe(false);
-    expect(pixelUnharmed).not.toEqual(pixelCritical);
+    for (const [nom, avecPv] of /** @type {[string, any][]} */ ([
+      ['PJ entamé', { ...FAKE_PJ, hp: { current: 7, max: 20 } }],
+      ['PNJ mal en point', { ...FAKE_PNJ, hp: { current: 12, max: 140 }, health: 'critical' }],
+    ])) {
+      const sansPv = { ...avecPv, hp: null, health: 'unharmed' };
+      const pageAvec = await ouvrirMJ(avecPv, `avec-${avecPv.id}`);
+      const pageSans = await ouvrirMJ(sansPv, `sans-${avecPv.id}`);
+      // Le rendu se stabilise d'abord (images, fog) : on compare deux sondes successives égales.
+      await expect.poll(async () => JSON.stringify(await sonderCouronne(pageSans, sansPv.id))).toBe(
+        JSON.stringify(await sonderCouronne(pageSans, sansPv.id))
+      );
+      const attendu = await sonderCouronne(pageSans, sansPv.id);
+      await expect
+        .poll(async () => JSON.stringify(await sonderCouronne(pageAvec, avecPv.id)), { message: nom })
+        .toBe(JSON.stringify(attendu));
+      await pageAvec.close();
+      await pageSans.close();
+    }
   });
 });

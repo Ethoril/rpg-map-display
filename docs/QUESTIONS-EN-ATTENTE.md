@@ -998,6 +998,25 @@ pli.
 >   n°4 : une bordure hors palette déjà posée n'est jamais remplacée, elle paraît en dix-septième
 >   pastille tant qu'elle est celle du pion.
 
+### C-14 Les barres d'état autour des pions sont retirées — demande du mainteneur, 01/10/2026
+
+« Je ne suis toujours pas satisfait de la représentation des points de vie autour des pions » :
+
+> ## ✅ TRANCHÉ le 01/10/2026 — provisoire, à rouvrir
+>
+> - **Plus aucune barre d'état autour des pions** : ni la châsse du Chantier R (bande, arc de PV des
+>   PJ, anneau d'état des PNJ, encoches), ni l'anneau fin de repli du Chantier Q. Le portrait
+>   reprend tout le rayon du pion.
+> - **Seuls les cartouches chiffrés restent**, avec la règle de visibilité inchangée : ceux des PJ
+>   sont vus par les joueurs, ceux des PNJ par le MJ seul.
+> - Les cartouches sont **rapprochés** : leur coin bas-droit se pose sur le bord du portrait
+>   (`TOKEN_HP_BADGE_INSET_RATIO`), au lieu de flotter hors de la case.
+>
+> ⏳ **À rouvrir** : « on reviendra sur ces questions un jour, quand j'aurai eu une meilleure idée ».
+> `js/render/tokenSocket.js` et les anneaux de `statusBadges.js` restent en place, dormants, avec
+> leurs tests. ⚠ L'état « Indemne / Blessé / Mal en point » des PNJ se règle toujours dans la fiche
+> mais ne se voit plus nulle part sur la carte.
+
 ### C-12 Les tests quittent le pool `maps/` — consigne du mainteneur, 01/10/2026
 
 Sa suppression de `manoir-rdc` depuis l'outil a fait rougir quatre unitaires : « il faut vraiment

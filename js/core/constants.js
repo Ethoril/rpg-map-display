@@ -376,6 +376,13 @@ export const TOKEN_HP_BADGE_FONT_SIZE_PX = 11;
 export const TOKEN_HP_BADGE_PADDING_X_PX = 4;
 export const TOKEN_HP_BADGE_HEIGHT_PX = 16;
 
+/**
+ * Où le cartouche de PV touche le pion, en part de la largeur du pion : son coin bas-droit se pose
+ * là où la diagonale du coin haut-gauche croise le portrait rond — (1 − 1/√2) / 2 ≈ 0,146 — un peu
+ * en dedans, pour qu'il morde le bord au lieu de flotter à côté (01/10/2026).
+ */
+export const TOKEN_HP_BADGE_INSET_RATIO = 0.18;
+
 
 /**
  * Géométrie des badges. **Toutes ces valeurs sont en pixels ÉCRAN**, jamais en pixels carte :
