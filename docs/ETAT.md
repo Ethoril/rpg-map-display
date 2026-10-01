@@ -1898,6 +1898,28 @@ d'acceptation du §11.
 > - la lisibilité du **liseré de laiton** comme signal « le prochain clic agit » ;
 > - la **largeur** de l'inspecteur (336 px) et du rail (60 px) sur l'écran du Mac.
 
+> ### ✅ Chantier C-11 — refonte de l'outil de préparation, livrée le 01/10/2026 (hors §11)
+>
+> Demande du mainteneur : l'outil « on dirait un outil de 1986 ». Trois arbitrages par sélecteurs
+> (trace en C-11 de `QUESTIONS-EN-ATTENTE.md`). La longue page en six sections devient **trois
+> ateliers** sous une barre du haut — **Cartes**, **Liaisons**, **Pions** — avec « Publier le
+> catalogue » toujours visible et l'atelier courant gardé dans l'adresse (`#pions`).
+>
+> - **Cartes** : la liste des sources et la bibliothèque **ne font qu'une**. Une carte se choisit à
+>   gauche (vignette, publiée ou non) ; sa fiche à droite porte les faits de la source, la
+>   comparaison de réglages, Renommer et Supprimer.
+> - **Liaisons** : la carte prend toute la hauteur, l'éditeur une colonne fixe.
+> - **Pions** : le fabricant à gauche, la bibliothèque en cartes à droite, liseré à la couleur du pion.
+> - **Journal** : une barre d'état en bas, qui se déplie d'elle-même sur un message de plusieurs
+>   lignes (inventaire de suppression, avertissements de publication).
+>
+> Le thème est celui de C-10 : `prepare.html` charge `css/gm.css` et ne pose aucune couleur en dur,
+> les marques de liaison sur la carte comprises. Aucun fichier ajouté. Corrigé en passant : au
+> démarrage, l'avertissement « catalogue de pions invalide » était écrasé aussitôt écrit.
+> **Vérifié par mutation** : un atelier qui ne s'ouvre plus fait rougir les deux e2e qui le pilotent.
+>
+> ⏳ **À éprouver** sur une carte neuve, au double-clic sur `outil-cartes.cmd`.
+
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur, arbitrée le jour même en deux séances de choix multiples (trace en C-9 de

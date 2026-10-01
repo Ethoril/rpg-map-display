@@ -964,6 +964,26 @@ fiche du pion sinon. Un seul accent, le doré, réservé à ce qui est actif.
 > l'ancien onglet, donc l'ouvrir, la fermer ou en changer désarme l'outil, comme le « désarmement au
 > changement d'onglet » du §5.5. Un clic d'onglet de l'inspecteur désarme toujours aussi.
 
+
+### C-11 Refonte de l'outil de préparation — demande du mainteneur, 01/10/2026
+
+Le constat : « on dirait un outil de 1986 ». Une page claire, en six sections empilées, où la même
+carte paraissait deux fois (sélecteur de source, puis bibliothèque) et où le journal vivait sous le
+pli.
+
+> ## ✅ TRANCHÉ le 01/10/2026, en séance de choix multiples
+>
+> - **Structure** : trois ateliers — Cartes, Liaisons, Pions — sous une barre du haut, au lieu d'une
+>   page à faire défiler.
+> - **Cartes** : la liste des sources et la bibliothèque fusionnent en une seule liste ; la fiche de
+>   la carte choisie porte faits, comparaison de réglages, renommer et supprimer.
+> - **Journal** : une barre d'état fixe, dépliable, plutôt que des notifications qui s'effacent.
+>
+> ✅ **Livré le 01/10/2026** sans fichier ajouté. Détail : `ETAT.md`, « Suite produit ».
+>
+> ⭐ **Appliqué sans nouvel arbitrage** : le thème et les polices de C-10, par cohérence ; le
+> renommage et la suppression gardent leurs boîtes de dialogue natives, éprouvées par les e2e.
+
 ---
 
 ## D. Décisions produit encore ouvertes

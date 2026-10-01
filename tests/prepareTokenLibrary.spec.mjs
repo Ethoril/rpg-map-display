@@ -105,6 +105,8 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
 
   await page.goto('/prepare.html');
   await expect(page.locator('#outil')).not.toHaveClass(/cache/);
+  // Le fabricant vit dans l'atelier Pions : un champ caché ne se remplit pas.
+  await page.click('#onglet-pions');
 
   // Une vraie image du dépôt plutôt qu'un pixel inventé : le générateur la décode, la recadre et
   // la réencode réellement. Une fixture d'un seul pixel « vérifierait » un redimensionnement qui
@@ -249,6 +251,7 @@ test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalo
 
   await page.goto('/prepare.html');
   await expect(page.locator('#outil')).not.toHaveClass(/cache/);
+  await page.click('#onglet-liaisons');
 
   // La scène du catalogue est sélectionnée et ses deux étages remontent dans l'éditeur.
   await expect(page.locator('#link-scene-select')).toHaveValue(SCENE_ID);

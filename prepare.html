@@ -19,147 +19,474 @@
     }
   }
   </script>
+  <!--
+    Le thème de la vue MJ (C-10) : variables `--gm-*`, boutons et contrôles. Le même fichier,
+    pas une copie — tokenMaker et linkEditor, partagés avec gm.html, le lisent déjà. Ce qui suit
+    ne fait que disposer l'outil et ne pose aucune couleur en dur.
+  -->
+  <link rel="stylesheet" href="./css/gm.css">
   <style>
-    :root { color-scheme: dark light; }
-    body { margin: 0; padding: 1rem; font: 15px/1.5 system-ui, sans-serif; max-width: 1100px; }
-    h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
-    h2 { font-size: .95rem; margin: 1.5rem 0 .5rem; }
-    p.aide { margin: 0 0 1rem; opacity: .75; }
-    button { font: inherit; padding: .55rem .9rem; margin: 0 .4rem .4rem 0; min-height: 40px; }
-    button:disabled { opacity: .45; }
-    label { display: inline-block; margin: 0 1rem .5rem 0; }
-    select, input { font: inherit; padding: .3rem; }
-    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid; border-color: color-mix(in srgb, currentColor 25%, transparent); }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .alerte { border: 2px solid crimson; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; }
-    .alerte code { font-weight: bold; }
-    .cache { display: none; }
-    #variantes { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
-    .variante { border: 1px solid currentColor; border-radius: 4px; padding: .6rem; flex: 1 1 320px; }
-    .variante h3 { font-size: .9rem; margin: 0 0 .4rem; }
-    .variante dl { display: grid; grid-template-columns: auto 1fr; gap: 0 .6rem; margin: 0 0 .5rem; font-size: .85rem; }
-    .variante dt { opacity: .7; }
+    body {
+      display: grid;
+      grid-template-rows: var(--gm-haut) minmax(0, 1fr) auto;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    .cache { display: none !important; }
+    code { font-size: 0.92em; color: var(--gm-texte); }
+
+    /* ── Barre du haut ─────────────────────────────────────────────────────────────────────── */
+    #prep-haut {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 0 12px 0 16px;
+      background: var(--gm-panneau);
+      border-bottom: 1px solid var(--gm-trait);
+      min-width: 0;
+    }
+    .prep-titre { display: flex; flex-direction: column; line-height: 1.15; flex-shrink: 0; }
+    .prep-titre strong { font-size: 14px; letter-spacing: 0.01em; }
+    .prep-titre span { font-size: 11px; color: var(--gm-texte-3); }
+    #prep-ateliers { display: flex; gap: 2px; height: 100%; }
+    #prep-ateliers button {
+      height: 100%;
+      min-height: 0;
+      padding: 0 14px;
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      color: var(--gm-texte-2);
+    }
+    #prep-ateliers button[aria-selected='true'] {
+      color: var(--gm-texte);
+      border-bottom-color: var(--gm-laiton);
+    }
+    #prep-ateliers button:focus-visible { outline-offset: -2px; }
+    .prep-ressort { flex: 1; }
+    .prep-local {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--gm-texte-2);
+      white-space: nowrap;
+    }
+    .prep-local::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--gm-vert);
+    }
+    .prep-publier { display: flex; align-items: center; gap: 10px; }
+    .prep-publier label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gm-texte-2); white-space: nowrap; }
+
+    /* ── Ateliers ──────────────────────────────────────────────────────────────────────────── */
+    #outil { min-height: 0; overflow: hidden; }
+    .atelier { height: 100%; min-height: 0; display: grid; }
+    .atelier[hidden] { display: none; }
+    .colonne { min-height: 0; overflow: auto; }
+    .aide { margin: 0; color: var(--gm-texte-2); font-size: 12px; line-height: 1.5; max-width: 72ch; }
+    .surtitre {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gm-texte-3);
+    }
+
+    /* Cartes : la liste à gauche, la carte choisie à droite. `#cartes-liste` les englobe sans
+       peser sur la grille : renommer et supprimer y vivent, avec la liste qu'ils modifient. */
+    #cartes-liste { display: contents; }
+    #atelier-cartes { grid-template-columns: 300px minmax(0, 1fr); }
+    #cartes-index {
+      background: var(--gm-panneau);
+      border-right: 1px solid var(--gm-trait);
+      display: flex;
+      flex-direction: column;
+    }
+    #cartes-index > ul { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+    #cartes-index > .aide { padding: 10px 14px 14px; margin-top: auto; border-top: 1px solid var(--gm-trait); }
+    .carte-item {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+      min-height: 0;
+      padding: 6px 8px 6px 6px;
+      text-align: left;
+      font-weight: 400;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--gm-r);
+    }
+    .carte-item:hover:not(:disabled) { background: var(--gm-releve); filter: none; border-color: transparent; }
+    .carte-item[aria-current='true'] { background: var(--gm-laiton-fond); border-color: var(--gm-laiton); }
+    .carte-item .vignette {
+      width: 64px;
+      height: 44px;
+      border-radius: 4px;
+      background: var(--gm-creux);
+      border: 1px solid var(--gm-trait);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      color: var(--gm-texte-3);
+    }
+    .carte-item .vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .carte-item strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .carte-item .meta { display: block; font-size: 11px; color: var(--gm-texte-3); }
+    .carte-item .meta .publiee { color: var(--gm-vert); }
+    .carte-item .meta .brouillon { color: var(--gm-laiton); }
+    .cartes-vide { padding: 18px 14px; color: var(--gm-texte-2); font-size: 12px; }
+
+    #carte-fiche { padding: 22px 28px 40px; display: flex; flex-direction: column; gap: 26px; }
+    .fiche-tete { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .fiche-tete > div:first-child { flex: 1; min-width: 240px; }
+    .fiche-tete h2 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+    .fiche-tete .ident { margin: 4px 0 0; font-family: var(--gm-mono); font-size: 12px; color: var(--gm-texte-3); }
+    .fiche-actions { display: flex; gap: 6px; }
+    .fiche-source { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gm-texte-2); }
+    .fiche-source select { min-width: 280px; max-width: 100%; }
+
+    #details { border-collapse: collapse; width: 100%; max-width: 860px; }
+    #details th, #details td { text-align: left; vertical-align: top; padding: 7px 0; border-bottom: 1px solid var(--gm-trait); }
+    #details th { width: 170px; padding-right: 16px; font-weight: 500; color: var(--gm-texte-2); }
+    #details td { font-variant-numeric: tabular-nums; }
+    #details tr:last-child th, #details tr:last-child td { border-bottom: 0; }
+    .inventaire {
+      margin: 0;
+      padding: 12px 14px;
+      white-space: pre-wrap;
+      font-family: var(--gm-mono);
+      font-size: 12px;
+      background: var(--gm-sang-fond);
+      border: 1px solid var(--gm-sang-trait);
+      border-radius: var(--gm-r);
+      max-width: 860px;
+    }
+
+    .bloc { display: flex; flex-direction: column; gap: 12px; }
+    .bloc > h3 { margin: 0; font-size: 14px; font-weight: 650; }
+    .reglages { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+    .reglages label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--gm-texte-2); }
+    .reglages label span.unite { color: var(--gm-texte-3); }
+    #variantes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    #variantes:empty { display: none; }
+    .variante {
+      background: var(--gm-panneau);
+      border: 1px solid var(--gm-trait);
+      border-radius: var(--gm-r-lg);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .variante h3 { margin: 0; font-size: 12px; font-family: var(--gm-mono); color: var(--gm-laiton); font-weight: 500; }
+    .variante dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 12px; }
+    .variante dt { color: var(--gm-texte-3); }
     .variante dd { margin: 0; font-variant-numeric: tabular-nums; }
-    .apercu { width: 100%; aspect-ratio: 1; object-fit: none; object-position: center;
-              border: 1px solid currentColor; background: #222; display: block; }
+    .apercu {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: none;
+      object-position: center;
+      background: var(--gm-creux);
+      border: 1px solid var(--gm-trait);
+      border-radius: var(--gm-r);
+      display: block;
+    }
     .apercu.entier { object-fit: contain; }
-    .avert { font-size: .85rem; opacity: .85; margin: .4rem 0 0; }
-    #journal { white-space: pre-wrap; word-break: break-word; border: 1px solid currentColor;
-               padding: .6rem; border-radius: 4px; min-height: 3rem; font-size: .85rem; margin-top: 1rem; }
-    #tokens-liste img { width: 40px; height: 40px; object-fit: cover; border-radius: 50%; display: block; }
-    #tokens-liste td { vertical-align: middle; }
-    #cartes-liste img { width: 160px; height: auto; display: block; border: 1px solid currentColor; }
-    #cartes-liste td { vertical-align: top; }
-    #cartes-liste button { min-height: 32px; padding: .3rem .55rem; margin: 0 .25rem 0 0; }
-    #cartes-liste .inventaire { font-size: .8rem; white-space: pre-wrap; margin: .4rem 0 0; }
-    #tokens-liste button { min-height: 32px; padding: .3rem .55rem; margin: 0 .25rem 0 0; }
-    #token-form { border: 1px solid; border-color: color-mix(in srgb, currentColor 30%, transparent);
-                  border-radius: 4px; padding: .75rem; }
+    .avert { margin: 0; font-size: 12px; color: var(--gm-laiton-vif); }
+
+    /* Liaisons : la carte prend tout ce qui reste, l'éditeur une colonne fixe. */
+    #atelier-liaisons { grid-template-columns: minmax(0, 1fr) 340px; }
+    .liaisons-carte { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .liaisons-barre {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 16px;
+      padding: 8px 14px;
+      background: var(--gm-panneau);
+      border-bottom: 1px solid var(--gm-trait);
+      font-size: 12px;
+      color: var(--gm-texte-2);
+    }
+    .liaisons-barre label { display: inline-flex; align-items: center; gap: 6px; }
+    .liaisons-barre select { max-width: 260px; }
+    #prep-map-zoom { width: 110px; }
+    #prep-map-cell-info { margin-left: auto; font-family: var(--gm-mono); color: var(--gm-info); }
+    #prep-map-viewport {
+      flex: 1;
+      min-height: 320px;
+      position: relative;
+      overflow: hidden;
+      cursor: crosshair;
+      background: var(--gm-creux);
+      touch-action: none;
+    }
+    #prep-map-canvas { display: block; position: absolute; left: 0; top: 0; }
+    .liaisons-editeur {
+      background: var(--gm-panneau);
+      border-left: 1px solid var(--gm-trait);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Pions : le fabricant à gauche, la bibliothèque à droite. */
+    #atelier-pions { grid-template-columns: 540px minmax(0, 1fr); }
+    .pions-fabrique {
+      background: var(--gm-panneau);
+      border-right: 1px solid var(--gm-trait);
+      padding: 18px 20px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .pions-biblio { padding: 18px 24px 40px; display: flex; flex-direction: column; gap: 14px; }
+    #tokens-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .pion {
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      background: var(--gm-panneau);
+      border: 1px solid var(--gm-trait);
+      border-radius: var(--gm-r-lg);
+    }
+    .pion img {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+      background: var(--gm-creux);
+      box-shadow: 0 0 0 2px var(--pion-bord, var(--gm-trait-fort));
+    }
+    .pion strong { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pion .meta { display: block; font-size: 11px; color: var(--gm-texte-3); font-variant-numeric: tabular-nums; }
+    .pion .genre {
+      display: inline-block;
+      margin-right: 6px;
+      padding: 0 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      background: var(--gm-releve);
+      color: var(--gm-texte-2);
+    }
+    .pion .genre.pj { background: var(--gm-laiton-fond); color: var(--gm-laiton); }
+    .pion .actions { display: flex; gap: 4px; margin-top: 6px; }
+    .pions-vide { color: var(--gm-texte-2); font-size: 12px; }
+
+    /* ── Serveur absent ────────────────────────────────────────────────────────────────────── */
+    #hors-ligne {
+      grid-row: 2;
+      align-self: center;
+      justify-self: center;
+      max-width: 560px;
+      margin: 24px;
+      padding: 22px 26px;
+      background: var(--gm-panneau);
+      border: 1px solid var(--gm-sang-trait);
+      border-radius: var(--gm-r-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #hors-ligne h2 { margin: 0; font-size: 16px; color: var(--gm-sang); }
+    #hors-ligne p { margin: 0; line-height: 1.55; color: var(--gm-texte-2); }
+    #hors-ligne p strong { color: var(--gm-texte); }
+
+    /* ── Barre d'état : le journal ─────────────────────────────────────────────────────────── */
+    #prep-etat {
+      grid-row: 3;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 0 8px 0 14px;
+      background: var(--gm-panneau);
+      border-top: 1px solid var(--gm-trait);
+      min-width: 0;
+    }
+    #journal {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      padding: 7px 0;
+      font-family: var(--gm-police);
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--gm-texte-2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #journal[data-ton='ok'] { color: var(--gm-vert); }
+    #journal[data-ton='erreur'] { color: var(--gm-sang); }
+    #journal[data-ton='avert'] { color: var(--gm-laiton-vif); }
+    #prep-etat.ouvert #journal {
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 40vh;
+      overflow: auto;
+      padding: 10px 0;
+    }
+    #btn-journal { margin: 3px 0; flex-shrink: 0; }
+
+    @media (max-width: 1100px) {
+      #atelier-pions { grid-template-columns: minmax(0, 1fr); overflow: auto; }
+      #atelier-pions .colonne { overflow: visible; }
+      .pions-fabrique { border-right: 0; border-bottom: 1px solid var(--gm-trait); }
+      #atelier-liaisons { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(420px, 1fr) auto; overflow: auto; }
+      .liaisons-editeur { border-left: 0; border-top: 1px solid var(--gm-trait); }
+      #atelier-cartes { grid-template-columns: 240px minmax(0, 1fr); }
+      .prep-titre span { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
   </style>
 </head>
 <body>
-  <h1>Préparation des cartes</h1>
-  <p class="aide">
-    Outil <strong>local</strong> : il écrit dans le dépôt de cette machine. Il ne fait pas
-    partie de l'application — cf. <code>docs/CHANTIER-L-OUTIL-CARTES.md</code>.
-    Fermer la fenêtre noire lancée par <code>outil-cartes.cmd</code> arrête l'outil.
-  </p>
+  <header id="prep-haut">
+    <div class="prep-titre">
+      <strong>Préparation des cartes</strong>
+      <span>outil local — hors application</span>
+    </div>
+    <nav id="prep-ateliers" role="tablist" aria-label="Ateliers" class="cache">
+      <button type="button" role="tab" id="onglet-cartes" data-atelier="cartes" aria-controls="atelier-cartes" aria-selected="true">Cartes</button>
+      <button type="button" role="tab" id="onglet-liaisons" data-atelier="liaisons" aria-controls="atelier-liaisons" aria-selected="false">Liaisons</button>
+      <button type="button" role="tab" id="onglet-pions" data-atelier="pions" aria-controls="atelier-pions" aria-selected="false">Pions</button>
+    </nav>
+    <div class="prep-ressort"></div>
+    <span class="prep-local" title="Il écrit dans le dépôt de cette machine. Fermer la fenêtre noire lancée par outil-cartes.cmd arrête l'outil.">serveur local</span>
+    <div class="prep-publier cache" id="prep-publier">
+      <label title="Ne réutiliser aucun artefact déjà fabriqué"><input id="force" type="checkbox"> tout refabriquer</label>
+      <button id="btn-publish" class="gm-btn--primary"
+        title="Relance la passe complète avec les constantes du dépôt et ne réencode que ce qui a changé. Aucun réglage comparé dans l'atelier Cartes n'est publié.">Publier le catalogue</button>
+    </div>
+  </header>
 
-  <div id="hors-ligne" class="alerte cache">
-    <p style="margin:0 0 .5rem">
-      <strong>Serveur local absent.</strong> Cette page ne sait rien faire sans lui : la
-      préparation d'image vit en Node, à un seul endroit, et le navigateur ne la réimplémente
-      pas — un navigateur n'a pas le droit de lancer un processus sur la machine.
+  <section id="hors-ligne" class="cache" role="alert">
+    <h2>Serveur local absent</h2>
+    <p>
+      Cette page ne sait rien faire sans lui : la préparation d'image vit en Node, à un seul
+      endroit, et le navigateur ne la réimplémente pas — un navigateur n'a pas le droit de lancer
+      un processus sur la machine.
     </p>
-    <p style="margin:0">
+    <p>
       <strong>Double-cliquer <code>outil-cartes.cmd</code></strong> à la racine du dépôt : la
-      page s'ouvrira d'elle-même. Si tu lis ceci sur le site publié, l'outil n'existe que sur
-      la machine du mainteneur — c'est voulu.
+      page s'ouvrira d'elle-même. Si tu lis ceci sur le site publié, l'outil n'existe que sur la
+      machine du mainteneur — c'est voulu.
     </p>
-  </div>
+  </section>
 
-  <div id="outil" class="cache">
-    <h2>1. Choisir une carte</h2>
-    <label>Source <select id="source"></select></label>
-    <table id="details"><tbody></tbody></table>
+  <main id="outil" class="cache">
+    <!-- ── Cartes ──────────────────────────────────────────────────────────────────────────── -->
+    <div class="atelier" id="atelier-cartes" role="tabpanel" aria-labelledby="onglet-cartes">
+      <div id="cartes-liste">
+        <nav id="cartes-index" class="colonne" aria-label="Cartes du dépôt">
+          <ul id="cartes-items"></ul>
+          <p class="aide">
+            Une carte naît d'un <code>.dd2vtt</code>, <code>.df2vtt</code>, <code>.uvtt</code>
+            ou d'une image déposée dans <code>maps/</code>.
+          </p>
+        </nav>
 
-    <h2>2. Comparer des réglages</h2>
-    <p class="aide">
-      Les variantes sont écrites dans <code>maps/.preview/</code>, jamais dans
-      <code>maps/generated/</code>. Elles servent à <em>décider</em> : le réglage retenu se
-      fixe ensuite dans les constantes de <code>scripts/resample.mjs</code>, où il vaut pour
-      tout le dépôt et se relit dans le diff.
-    </p>
-    <p class="aide">
-      Rien n'est prédit ici : la sortie s'obtient en la fabriquant. Le navigateur ne
-      rééchantillonne aucune image — le pipeline n'a qu'une implantation, en Node.
-    </p>
-    <label>Densité cible <input id="ppc" type="number" min="8" max="400" step="1" value="140" style="width:5.5rem"></label>
-    <label>Plafond <input id="cap" type="number" min="512" max="16384" step="256" value="8192" style="width:6rem"></label>
-    <label>Qualité <input id="qual" type="number" min="1" max="100" step="5" value="90" style="width:4.5rem"></label>
-    <button id="btn-preview">Fabriquer cette variante</button>
-    <button id="btn-vider" disabled>Vider les variantes</button>
+        <div id="carte-fiche" class="colonne">
+          <div class="fiche-tete">
+            <div>
+              <h2 id="fiche-nom">—</h2>
+              <p class="ident" id="fiche-ident"></p>
+            </div>
+            <div class="fiche-actions" id="fiche-actions"></div>
+          </div>
 
-    <div id="variantes"></div>
+          <label class="fiche-source">Fichier source <select id="source"></select></label>
+          <table id="details"><tbody></tbody></table>
+          <div id="fiche-inventaire"></div>
 
-    <h2>3. Publier</h2>
-    <p class="aide">
-      Relance la passe transactionnelle complète <strong>avec les constantes du dépôt</strong>,
-      et ne réencode que ce qui a changé. Aucun réglage de la section 2 n'est publié : un
-      réglage posé au coup par coup serait écrasé sans un mot au prochain
-      <code>pnpm maps:prepare</code>.
-    </p>
-    <button id="btn-publish">Publier le catalogue</button>
-    <label><input id="force" type="checkbox"> tout refabriquer, sans réutiliser</label>
-
-    <h2>4. Éditeur de liaisons inter-étages</h2>
-    <p class="aide">
-      Sélectionnez une scène publiée, affichez un étage, armez le bouton et tapez une case sur la carte pour définir l'extrémité A ou B.
-      Les liaisons sont sauvegardées dans <code>maps/&lt;sceneId&gt;.links.json</code> (commité dans git).
-    </p>
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-      <label>Scène à éditer <select id="link-scene-select"><option value="">Chargement...</option></select></label>
-      <label>Étage affiché <select id="link-level-select"><option value="">—</option></select></label>
-    </div>
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start;">
-      <div id="prep-map-container" style="flex: 1 1 500px; min-width: 320px; border: 1px solid currentColor; border-radius: 4px; padding: 0.5rem; background: #1a1a1a; position: relative;">
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.85rem; align-items: center;">
-          <span>Zoom: <input id="prep-map-zoom" type="range" min="0.2" max="3" step="0.1" value="1" style="width: 100px;"></span>
-          <button id="prep-map-reset-view" style="min-height: 28px; padding: 0.2rem 0.5rem; font-size: 0.8rem;">Réinitialiser la vue</button>
-          <span id="prep-map-cell-info" style="margin-left: auto; font-family: monospace; color: #8bbdf0;">Case: —</span>
-        </div>
-        <div id="prep-map-viewport" style="width: 100%; height: 420px; overflow: hidden; position: relative; cursor: crosshair; background: #111; border-radius: 4px; touch-action: none;">
-          <canvas id="prep-map-canvas" style="display: block; position: absolute; left: 0; top: 0;"></canvas>
+          <section class="bloc">
+            <h3>Comparer des réglages</h3>
+            <p class="aide">
+              Rien n'est prédit ici : la sortie s'obtient en la fabriquant, en Node. Les variantes
+              vont dans <code>maps/.preview/</code>, jamais dans <code>maps/generated/</code>.
+              Elles servent à <em>décider</em> — le réglage retenu se fixe ensuite dans les
+              constantes de <code>scripts/resample.mjs</code>, où il vaut pour tout le dépôt et se
+              relit dans le diff. « Publier le catalogue » n'emporte aucun de ces réglages : posé
+              au coup par coup, il serait écrasé sans un mot au prochain <code>pnpm maps:prepare</code>.
+            </p>
+            <div class="reglages">
+              <label>Densité cible <span class="unite">px/case</span>
+                <input id="ppc" type="number" min="8" max="400" step="1" value="140" style="width:6rem"></label>
+              <label>Plafond <span class="unite">px</span>
+                <input id="cap" type="number" min="512" max="16384" step="256" value="8192" style="width:6.5rem"></label>
+              <label>Qualité <span class="unite">WebP</span>
+                <input id="qual" type="number" min="1" max="100" step="5" value="90" style="width:5rem"></label>
+              <button id="btn-preview">Fabriquer cette variante</button>
+              <button id="btn-vider" class="gm-btn--ghost" disabled>Vider les variantes</button>
+            </div>
+            <div id="variantes"></div>
+          </section>
         </div>
       </div>
-      <div style="flex: 0 0 340px; min-width: 300px;">
+    </div>
+
+    <!-- ── Liaisons ────────────────────────────────────────────────────────────────────────── -->
+    <div class="atelier" id="atelier-liaisons" role="tabpanel" aria-labelledby="onglet-liaisons" hidden>
+      <div class="liaisons-carte">
+        <div class="liaisons-barre">
+          <label>Scène <select id="link-scene-select"><option value="">Chargement…</option></select></label>
+          <label>Étage <select id="link-level-select"><option value="">—</option></select></label>
+          <label>Zoom <input id="prep-map-zoom" type="range" min="0.1" max="5" step="0.05" value="1"></label>
+          <button id="prep-map-reset-view" class="gm-btn--sm">Ajuster</button>
+          <span id="prep-map-cell-info">Case : —</span>
+        </div>
+        <div id="prep-map-viewport">
+          <canvas id="prep-map-canvas"></canvas>
+        </div>
+      </div>
+      <aside class="liaisons-editeur colonne">
+        <p class="aide">
+          Armer, taper la case A sur la carte, puis désigner l'extrémité B. Seules les scènes
+          publiées sont listées. Écrit dans <code>maps/&lt;scène&gt;.links.json</code>, commité.
+        </p>
         <div id="prep-link-editor-mount"></div>
-      </div>
+      </aside>
     </div>
 
-    <h2>5. Bibliothèque de pions</h2>
-    <p class="aide">
-      Écrit dans <code>maps/tokens/</code> et <code>maps/tokens/catalog.json</code> — donc
-      dans le dépôt, <strong>persistant d'une séance à l'autre et d'une machine à l'autre</strong> après commit.
-    </p>
+    <!-- ── Pions ───────────────────────────────────────────────────────────────────────────── -->
+    <div class="atelier" id="atelier-pions" role="tabpanel" aria-labelledby="onglet-pions" hidden>
+      <div class="pions-fabrique colonne" id="pions-fabrique">
+        <p class="surtitre">Fabriquer un pion</p>
+        <div id="token-maker-mount"></div>
+      </div>
+      <div class="pions-biblio colonne">
+        <p class="surtitre">Bibliothèque</p>
+        <p class="aide">
+          Écrite dans <code>maps/tokens/</code> et <code>maps/tokens/catalog.json</code> — donc
+          dans le dépôt, persistante d'une séance et d'une machine à l'autre après commit.
+        </p>
+        <div id="tokens-liste"></div>
+      </div>
+    </div>
+  </main>
 
-    <div id="token-maker-mount" style="background: #181818; padding: 1.25rem; border-radius: 8px; border: 1px solid #333; margin-bottom: 1.5rem;"></div>
-
-    <table id="tokens-liste"><tbody></tbody></table>
-
-    <h2>6. Bibliothèque de cartes</h2>
-    <p class="aide">
-      Renommer écrit <code>maps/scenes.json</code> et <strong>rien d'autre</strong> : le
-      catalogue garde l'ancien nom jusqu'au prochain clic sur « Publier le catalogue ».
-      Supprimer emporte les artefacts, les entrées <em>et la source</em> — sans quoi la
-      publication suivante recréerait la carte. C'est sans annulation : l'inventaire complet
-      est affiché avant la confirmation.
-    </p>
-    <table id="cartes-liste"><tbody></tbody></table>
-  </div>
-
-  <pre id="journal">Chargement…</pre>
+  <footer id="prep-etat">
+    <pre id="journal" aria-live="polite">Chargement…</pre>
+    <button id="btn-journal" class="gm-btn--ghost gm-btn--sm" aria-expanded="false">Déplier</button>
+  </footer>
 
   <script type="module" src="js/app/prepare.js"></script>
 </body>
