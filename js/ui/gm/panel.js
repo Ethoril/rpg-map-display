@@ -303,15 +303,24 @@ export function createGMPanel(container, options = {}) {
     <!-- Conteneurs de contenu des onglets -->
     <div class="gm-tabs-content">
       <div id="tab-content-token-maker" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-token-maker">
-        <div class="token-elevation-section gm-section">
-          <h3 class="gm-title">Pion sélectionné</h3>
-          <div class="gm-field">
-            <label for="token-elevation">Élévation</label>
-            <input type="number" id="token-elevation" class="token-elevation-input" value="0" disabled />
+        <!-- C-10, tranche 3 : sans sélection, la liste des pions de l'étage ; avec une sélection, sa
+             fiche. Les deux ne sont jamais à l'écran ensemble. Un clic de ligne fait exactement ce
+             que fait le clic sur la carte (store.selectToken) : aucun événement réseau de plus. -->
+        <section id="gm-roster" class="gm-section">
+          <div class="gm-roster-head">
+            <h4 class="gm-h gm-h--inline">Sur la carte</h4>
+            <span id="gm-roster-count" class="gm-muted"></span>
           </div>
-          <p id="token-elevation-label" class="gm-hint">(aucun pion sélectionné)</p>
+          <div id="gm-roster-list" class="gm-roster-list"></div>
+          <p id="gm-roster-empty" class="gm-hint" hidden>Aucun pion sur cet étage. Posez-en un depuis la bibliothèque ci-dessous.</p>
+        </section>
 
-          <div id="token-edit-fields" class="gm-stack gm-subsection">
+        <div class="token-elevation-section gm-section" hidden>
+          <button id="gm-roster-back" type="button" class="gm-btn--ghost gm-btn--sm">← Tous les pions</button>
+          <h3 class="gm-title gm-token-sheet-title">Pion sélectionné</h3>
+
+          <div id="token-edit-fields" class="gm-stack">
+            <h4 class="gm-h gm-h--inline">Identité</h4>
             <div class="gm-field">
               <label for="token-edit-label">Nom</label>
               <input type="text" id="token-edit-label" disabled />
@@ -332,73 +341,104 @@ export function createGMPanel(container, options = {}) {
               <input type="number" id="token-edit-size-cells" min="1" max="4" disabled />
             </div>
             <div class="gm-field">
-              <label for="token-edit-speed-cells">Vitesse (cases)</label>
-              <input type="number" id="token-edit-speed-cells" min="1" disabled />
+              <label for="token-elevation">Élévation</label>
+              <input type="number" id="token-elevation" class="token-elevation-input" value="0" disabled />
             </div>
-            <div class="gm-field">
-              <label for="token-edit-hidden">Masqué aux joueurs</label>
-              <input type="checkbox" id="token-edit-hidden" disabled />
-            </div>
-            <div class="gm-field">
-              <label for="token-edit-player-movable">Déplaçable par les joueurs</label>
-              <input type="checkbox" id="token-edit-player-movable" disabled />
-            </div>
-            <div class="gm-field">
-              <label for="token-edit-locked">Verrouillé</label>
-              <input type="checkbox" id="token-edit-locked" disabled />
-            </div>
-            <div class="gm-field">
-              <label for="token-edit-vision-dim">Vision dans le noir (cases)</label>
-              <input type="number" id="token-edit-vision-dim" min="0" max="60" disabled />
-            </div>
-            <div class="gm-field">
-              <label for="token-edit-torch">Porte une torche</label>
-              <input type="checkbox" id="token-edit-torch" disabled />
-            </div>
-            <div class="gm-field">
-              <label for="token-edit-torch-range">Portée (cases)</label>
-              <input type="number" id="token-edit-torch-range" min="1" max="20" disabled />
-            </div>
-            <div class="gm-field">
-              <label for="token-hp-current">PV (courant / max)</label>
-              <div class="gm-row gm-hp-pair">
-                <input type="number" id="token-hp-current" min="0" disabled placeholder="—" />
-                <span class="gm-muted">/</span>
-                <input type="number" id="token-hp-max" min="1" disabled placeholder="—" />
+            <p id="token-elevation-label" class="gm-muted">(aucun pion sélectionné)</p>
+
+            <details id="gm-token-group-move" class="gm-disclosure" open>
+              <summary><span>Déplacement</span><span id="gm-token-sum-move" class="gm-muted gm-disclosure-sum"></span></summary>
+              <div class="gm-disclosure-body gm-stack">
+                <div class="gm-field">
+                  <label for="token-edit-speed-cells">Vitesse (cases)</label>
+                  <input type="number" id="token-edit-speed-cells" min="1" disabled />
+                </div>
+                <div class="gm-field">
+                  <label for="token-edit-player-movable">Déplaçable par les joueurs</label>
+                  <input type="checkbox" id="token-edit-player-movable" disabled />
+                </div>
+                <div class="gm-field">
+                  <label for="token-edit-locked">Verrouillé</label>
+                  <input type="checkbox" id="token-edit-locked" disabled />
+                </div>
               </div>
-            </div>
-          </div>
+            </details>
 
-          <div id="token-health-section" class="gm-subsection" hidden>
-            <h4 class="gm-h">État de santé (PNJ)</h4>
-            <div id="token-health-radios" class="gm-row">
-              <label class="gm-check">
-                <input type="radio" name="token-health-group" id="token-health-unharmed" value="unharmed" disabled />
-                <span>Indemne</span>
-              </label>
-              <label class="gm-check">
-                <input type="radio" name="token-health-group" id="token-health-wounded" value="wounded" disabled />
-                <span>Blessé</span>
-              </label>
-              <label class="gm-check">
-                <input type="radio" name="token-health-group" id="token-health-critical" value="critical" disabled />
-                <span>Mal en point</span>
-              </label>
-            </div>
-          </div>
+            <details id="gm-token-group-vision" class="gm-disclosure">
+              <summary><span>Vision et lumière</span><span id="gm-token-sum-vision" class="gm-muted gm-disclosure-sum"></span></summary>
+              <div class="gm-disclosure-body gm-stack">
+                <div class="gm-field">
+                  <label for="token-edit-vision-dim">Vision dans le noir (cases)</label>
+                  <input type="number" id="token-edit-vision-dim" min="0" max="60" disabled />
+                </div>
+                <div class="gm-field">
+                  <label for="token-edit-torch">Porte une torche</label>
+                  <input type="checkbox" id="token-edit-torch" disabled />
+                </div>
+                <div class="gm-field">
+                  <label for="token-edit-torch-range">Portée (cases)</label>
+                  <input type="number" id="token-edit-torch-range" min="1" max="20" disabled />
+                </div>
+              </div>
+            </details>
 
-          <div id="token-markers-section" class="gm-subsection">
-            <h4 class="gm-h">Marqueurs d'état</h4>
-            <div id="token-markers-grid" class="gm-marker-grid">
-              ${STATUS_MARKER_IDS.map(
-                (id) => `
-                <label class="gm-check">
-                  <input type="checkbox" class="token-marker-checkbox" value="${id}" disabled />
-                  <span>${STATUS_MARKER_LABEL_FR[id]}</span>
-                </label>
-              `
-              ).join('')}
-            </div>
+            <details id="gm-token-group-visibility" class="gm-disclosure">
+              <summary><span>Visibilité</span><span id="gm-token-sum-visibility" class="gm-muted gm-disclosure-sum"></span></summary>
+              <div class="gm-disclosure-body gm-stack">
+                <div class="gm-field">
+                  <label for="token-edit-hidden">Masqué aux joueurs</label>
+                  <input type="checkbox" id="token-edit-hidden" disabled />
+                </div>
+              </div>
+            </details>
+
+            <details id="gm-token-group-hp" class="gm-disclosure" open>
+              <summary><span>Points de vie</span><span id="gm-token-sum-hp" class="gm-muted gm-disclosure-sum"></span></summary>
+              <div class="gm-disclosure-body gm-stack">
+                <div class="gm-field">
+                  <label for="token-hp-current">PV (courant / max)</label>
+                  <div class="gm-row gm-hp-pair">
+                    <input type="number" id="token-hp-current" min="0" disabled placeholder="—" />
+                    <span class="gm-muted">/</span>
+                    <input type="number" id="token-hp-max" min="1" disabled placeholder="—" />
+                  </div>
+                </div>
+
+                <div id="token-health-section" hidden>
+                  <h4 class="gm-h">État de santé (PNJ)</h4>
+                  <div id="token-health-radios" class="gm-row">
+                    <label class="gm-check">
+                      <input type="radio" name="token-health-group" id="token-health-unharmed" value="unharmed" disabled />
+                      <span>Indemne</span>
+                    </label>
+                    <label class="gm-check">
+                      <input type="radio" name="token-health-group" id="token-health-wounded" value="wounded" disabled />
+                      <span>Blessé</span>
+                    </label>
+                    <label class="gm-check">
+                      <input type="radio" name="token-health-group" id="token-health-critical" value="critical" disabled />
+                      <span>Mal en point</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details id="gm-token-group-markers" class="gm-disclosure" open>
+              <summary><span>Marqueurs</span><span id="gm-token-sum-markers" class="gm-muted gm-disclosure-sum"></span></summary>
+              <div id="token-markers-section" class="gm-disclosure-body">
+                <div id="token-markers-grid" class="gm-marker-grid">
+                  ${STATUS_MARKER_IDS.map(
+                    (id) => `
+                    <label class="gm-check">
+                      <input type="checkbox" class="token-marker-checkbox" value="${id}" disabled />
+                      <span>${STATUS_MARKER_LABEL_FR[id]}</span>
+                    </label>
+                  `
+                  ).join('')}
+                </div>
+              </div>
+            </details>
           </div>
 
           <p id="token-edit-status" class="gm-status"></p>
@@ -411,24 +451,26 @@ export function createGMPanel(container, options = {}) {
               Supprimer ce pion
             </button>
           </div>
+        </div>
 
-          <div id="gm-reserve-drawer" class="gm-subsection" hidden>
-            <h4 class="gm-h">Réserve</h4>
-            <p class="gm-hint">
-              Pions retirés du plateau, avec leur état. « Poser » arme la pose : tapez ensuite la carte.
-            </p>
-            <p id="gm-reserve-stacking-notice" class="gm-hint gm-warn" hidden></p>
-            <div id="gm-reserve-list" class="gm-stack"></div>
-          </div>
+        <!-- Sous la liste quand rien n'est sélectionné (la fiche est alors masquée), sous la fiche sinon. -->
+        <div id="gm-reserve-drawer" class="gm-section" hidden>
+          <h4 class="gm-h">Réserve</h4>
+          <p class="gm-hint">
+            Pions retirés du plateau, avec leur état. « Poser » arme la pose : tapez ensuite la carte.
+          </p>
+          <p id="gm-reserve-stacking-notice" class="gm-hint gm-warn" hidden></p>
+          <div id="gm-reserve-list" class="gm-stack"></div>
         </div>
-        <div class="token-library-section gm-section gm-section--flat">
-          <h3 class="gm-title">Bibliothèque de pions</h3>
-          <div id="token-library-mount"></div>
-        </div>
-        <div class="token-maker-section gm-section gm-section--flat">
-          <h3 class="gm-title">Créer un pion</h3>
-          <div id="token-maker-mount"></div>
-        </div>
+
+        <details id="gm-token-library-group" class="gm-disclosure token-library-section" open>
+          <summary>Bibliothèque de pions</summary>
+          <div class="gm-disclosure-body"><div id="token-library-mount"></div></div>
+        </details>
+        <details id="gm-token-maker-group" class="gm-disclosure token-maker-section" open>
+          <summary>Créer un pion</summary>
+          <div class="gm-disclosure-body"><div id="token-maker-mount"></div></div>
+        </details>
       </div>
 
       <div id="tab-content-handouts" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-handouts" hidden>
@@ -1411,6 +1453,149 @@ export function createGMPanel(container, options = {}) {
     );
   }
 
+  // ── Liste des pions de l'étage (C-10, tranche 3) ─────────────────────────────────────────
+  const tokenSheet = /** @type {HTMLElement} */ (container.querySelector('.token-elevation-section'));
+  const roster = /** @type {HTMLElement} */ (container.querySelector('#gm-roster'));
+  const rosterList = /** @type {HTMLElement} */ (container.querySelector('#gm-roster-list'));
+  const rosterCount = /** @type {HTMLElement} */ (container.querySelector('#gm-roster-count'));
+  const rosterEmpty = /** @type {HTMLElement} */ (container.querySelector('#gm-roster-empty'));
+  const rosterBack = /** @type {HTMLButtonElement} */ (container.querySelector('#gm-roster-back'));
+
+  /** Signature de la dernière liste rendue — même garde que la réserve, pour la même raison. */
+  let signatureRoster = /** @type {string|null} */ (null);
+
+  /**
+   * Reconstruit la liste des pions de l'étage actif : PJ d'abord, puis PNJ, puis par libellé.
+   *
+   * ⛔ Tout texte passe par `textContent` : le libellé d'un pion est une donnée, et il peut
+   * venir d'un autre poste.
+   */
+  function updateRoster() {
+    const activeLevelId = store.getActiveLevelId();
+    const pions = (store.getCampaign()?.tokens ?? [])
+      .filter((t) => t.levelId === activeLevelId)
+      .sort((p, q) => {
+        if (p.kind !== q.kind) return p.kind === 'pc' ? -1 : 1;
+        return (p.label ?? '').localeCompare(q.label ?? '', 'fr');
+      });
+    const signature = JSON.stringify(pions);
+    if (signature === signatureRoster) return;
+    signatureRoster = signature;
+
+    rosterCount.textContent = String(pions.length);
+    rosterEmpty.hidden = pions.length > 0;
+    rosterList.replaceChildren(
+      ...pions.map((pion) => {
+        const ligne = document.createElement('button');
+        ligne.type = 'button';
+        ligne.className = 'gm-roster-row';
+        ligne.dataset.tokenId = pion.id;
+
+        const pastille = document.createElement('span');
+        pastille.className = pion.hidden ? 'gm-roster-avatar gm-roster-avatar--hidden' : 'gm-roster-avatar';
+        // La couleur du pion est une donnée, pas un choix de thème : elle seule reste en ligne.
+        pastille.style.borderColor = pion.borderColor;
+        if (pion.imageUrl) {
+          const image = document.createElement('img');
+          image.src = pion.imageUrl;
+          image.alt = '';
+          pastille.append(image);
+        } else {
+          pastille.textContent = initiales(pion.label ?? '');
+        }
+
+        const texte = document.createElement('span');
+        texte.className = 'gm-roster-text';
+        const nom = document.createElement('span');
+        nom.className = 'gm-roster-name';
+        nom.textContent = pion.label || 'Sans nom';
+        const sous = document.createElement('span');
+        sous.className = 'gm-roster-sub gm-muted';
+        sous.textContent =
+          (pion.kind === 'pc' ? 'PJ' : 'PNJ') +
+          (pion.hidden ? ' · masqué' : '') +
+          (pion.mounted === true ? ' · à cheval' : '') +
+          (pion.locked ? ' · verrouillé' : '');
+        texte.append(nom, sous);
+
+        const valeur = document.createElement('span');
+        valeur.className = 'gm-roster-value';
+        // ⛔ Même ordre de branches que la réserve et la barre de vitalité : jamais de PV chiffrés
+        // pour un PNJ (interdiction n°4), et son cran ne s'affiche que s'il a des PV, comme dans
+        // la barre de vitalité.
+        valeur.textContent =
+          pion.kind === 'npc'
+            ? pion.hp
+              ? SANTE_LABEL_FR[pion.health] ?? pion.health
+              : ''
+            : pion.hp
+            ? `${pion.hp.current} / ${pion.hp.max}`
+            : '';
+
+        ligne.append(pastille, texte, valeur);
+        return ligne;
+      })
+    );
+  }
+
+  /**
+   * Deux lettres pour la pastille d'un pion sans image.
+   *
+   * @param {string} label
+   */
+  function initiales(label) {
+    const mots = label.trim().split(/\s+/).filter(Boolean);
+    if (mots.length === 0) return '?';
+    return mots
+      .slice(0, 2)
+      .map((mot) => Array.from(mot)[0])
+      .join('')
+      .toUpperCase();
+  }
+
+  // Un clic de ligne fait EXACTEMENT ce que fait le clic sur la carte : sélectionner, sans rien
+  // publier. Délégué au conteneur, pour survivre aux reconstructions de la liste.
+  rosterList.addEventListener(
+    'click',
+    (event) => {
+      const cible = event.target instanceof Element ? event.target.closest('.gm-roster-row') : null;
+      const tokenId = cible instanceof HTMLElement ? cible.dataset.tokenId : undefined;
+      if (tokenId) store.selectToken(tokenId);
+    },
+    { signal: listeners.signal }
+  );
+
+  rosterBack.addEventListener('click', () => store.selectToken(null), { signal: listeners.signal });
+
+  const sumMove = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-move'));
+  const sumVision = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-vision'));
+  const sumVisibility = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-visibility'));
+  const sumHp = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-hp'));
+  const sumMarkers = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-markers'));
+
+  /**
+   * Les résumés des volets repliables de la fiche, lus du pion et de rien d'autre.
+   *
+   * @param {import('../../core/types.js').Token|null} pion
+   */
+  function updateSheetSummaries(pion) {
+    if (!pion) {
+      for (const el of [sumMove, sumVision, sumVisibility, sumHp, sumMarkers]) el.textContent = '';
+      return;
+    }
+    sumMove.textContent = `${pion.speedCells ?? 1} cases · joueurs : ${pion.playerMovable ? 'oui' : 'non'}`;
+    sumVision.textContent =
+      `vision ${pion.visionDim ?? 0}` + (pion.emitsLight ? ` · torche ${pion.emitsLight.range}` : '');
+    sumVisibility.textContent = pion.hidden ? 'masqué' : 'visible';
+    sumHp.textContent = !pion.hp
+      ? ''
+      : pion.kind === 'npc'
+      ? SANTE_LABEL_FR[pion.health] ?? pion.health
+      : `${pion.hp.current} / ${pion.hp.max}`;
+    const n = (pion.markers ?? []).length;
+    sumMarkers.textContent = n === 0 ? 'aucun' : String(n);
+  }
+
   const tokenHpCurrent = /** @type {HTMLInputElement} */ (container.querySelector('#token-hp-current'));
   const tokenHpMax = /** @type {HTMLInputElement} */ (container.querySelector('#token-hp-max'));
   const tokenHealthSection = /** @type {HTMLElement} */ (container.querySelector('#token-health-section'));
@@ -1446,6 +1631,10 @@ export function createGMPanel(container, options = {}) {
     updateVitalsBar();
     const selectedToken = store.getSelectedToken();
     const disabled = !selectedToken;
+    // La liste sans sélection, la fiche avec : jamais les deux à l'écran.
+    roster.hidden = !disabled;
+    tokenSheet.hidden = disabled;
+    updateSheetSummaries(selectedToken);
     for (const control of tokenEditControls) control.disabled = disabled;
     btnDeleteToken.disabled = disabled;
     btnReserveToken.disabled = disabled;
@@ -1965,6 +2154,7 @@ export function createGMPanel(container, options = {}) {
 
   updateTokenEditUIFromStore();
   updateReserveDrawer();
+  updateRoster();
 
   // ── Ambiance lumineuse (Lot 3, S-05) ──────────────────────────────────────────────────
   const ambientDayBtn = /** @type {HTMLButtonElement} */ (topbar.querySelector('#gm-ambient-day'));
@@ -2145,6 +2335,7 @@ export function createGMPanel(container, options = {}) {
       linkEditor?.refresh();
     }
     updateReserveDrawer();
+    updateRoster();
     updateLightBarFromStore();
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();

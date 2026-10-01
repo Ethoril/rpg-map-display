@@ -831,6 +831,8 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     await pageGM.click('.gm-tab-btn[data-tab="token-maker"]');
 
     // 1. Masquer le pion aux joueurs : la case à cocher voyage en `token.update`.
+    // C-10 : la case vit dans le volet « Visibilité », replié par défaut ; le MJ l'ouvre d'abord.
+    await pageGM.click('#gm-token-group-visibility summary');
     await pageGM.click('#token-edit-hidden');
     await expect
       .poll(() =>
@@ -873,6 +875,87 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
 
     await pageGM.close();
     await pagePlayer.close();
+  });
+});
+
+test.describe('C-10 — onglet Pions', () => {
+  test('C-10 — la liste des pions de l étage', async ({ page }) => {
+    await setupGMView(page);
+    const hostile = '<img data-c10-xss="roster" src=x onerror="window.__c10xss=1">';
+
+    // Le PJ s'appelle « Zorro » et le PNJ a un nom qui commence par « < » : un tri par libellé seul
+    // mettrait le PNJ en tête. Le troisième pion est sur un autre étage et ne doit pas apparaître.
+    await page.evaluate(async (nomHostile) => {
+      const store = await import('../js/state/store.js');
+      const schema = await import('../js/core/schema.js');
+      store.loadCampaign(
+        schema.createCampaign({
+          campaignId: 'c-roster',
+          name: 'Campagne',
+          levels: [
+            schema.createLevel({ id: 'l1', name: 'Rez-de-chaussée' }),
+            schema.createLevel({ id: 'l2', name: 'Cave' }),
+          ],
+          tokens: [
+            schema.createToken({
+              id: 'pnj', levelId: 'l1', cell: { a: 2, b: 2 }, kind: 'npc', label: nomHostile,
+              hidden: true, hp: { current: 3, max: 7 }, health: 'wounded',
+            }),
+            schema.createToken({
+              id: 'pj', levelId: 'l1', cell: { a: 4, b: 4 }, kind: 'pc', label: 'Zorro',
+              hp: { current: 23, max: 31 },
+            }),
+            schema.createToken({ id: 'ailleurs', levelId: 'l2', cell: { a: 1, b: 1 }, label: 'Absent' }),
+          ],
+        })
+      );
+    }, hostile);
+
+    // (a) Sans sélection : la liste, pas la fiche.
+    const roster = page.locator('#gm-roster');
+    const fiche = page.locator('.token-elevation-section');
+    await expect(roster).toBeVisible();
+    await expect(fiche).toBeHidden();
+
+    // (b) Exactement les pions de l'étage actif, PJ d'abord.
+    const lignes = page.locator('#gm-roster .gm-roster-row');
+    await expect(lignes).toHaveCount(2);
+    await expect(lignes.nth(0)).toHaveAttribute('data-token-id', 'pj');
+    await expect(lignes.nth(1)).toHaveAttribute('data-token-id', 'pnj');
+    await expect(page.locator('#gm-roster-count')).toHaveText('2');
+    await expect(lignes.nth(0).locator('.gm-roster-value')).toHaveText('23 / 31');
+    await expect(lignes.nth(1).locator('.gm-roster-sub')).toContainText('masqué');
+    await expect(lignes.nth(1).locator('.gm-roster-value')).toHaveText('Blessé');
+    await expect(roster).not.toContainText('Absent');
+    // ⛔ Interdiction n°4 : jamais de PV chiffrés pour un PNJ.
+    await expect(lignes.nth(1)).not.toContainText('3 / 7');
+
+    // (e) Le nom hostile reste du texte.
+    await expect(lignes.nth(1).locator('.gm-roster-name')).toHaveText(hostile);
+    await expect(page.locator('[data-c10-xss]')).toHaveCount(0);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__c10xss)).toBeUndefined();
+
+    // (c) Un clic sur une ligne sélectionne CE pion et montre sa fiche.
+    await lignes.nth(1).click();
+    expect(
+      await page.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken()?.id)
+    ).toBe('pnj');
+    await expect(fiche).toBeVisible();
+    await expect(roster).toBeHidden();
+    await expect(page.locator('#token-edit-label')).toHaveValue(hostile);
+
+    // (d) Le retour désélectionne, et la liste revient.
+    await page.click('#gm-roster-back');
+    expect(
+      await page.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken() ?? null)
+    ).toBeNull();
+    await expect(roster).toBeVisible();
+    await expect(fiche).toBeHidden();
+    await expect(lignes).toHaveCount(2);
+
+    // Et le PJ, sélectionné par sa ligne, montre son propre nom.
+    await lignes.nth(0).click();
+    await expect(page.locator('#token-edit-label')).toHaveValue('Zorro');
   });
 });
 

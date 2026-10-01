@@ -187,6 +187,8 @@ test('Panneau MJ : cocher/décocher la torche d\'un PJ republie la vision, et la
   await page.goto(`/gm.html?session=${sessionId}`);
   await waitForApp(page);
   await page.click('.gm-tab-btn[data-tab="token-maker"]');
+  // C-10 : vision et torche vivent dans un volet replié par défaut ; le MJ l'ouvre d'abord.
+  await page.click('#gm-token-group-vision summary');
 
   await expect(page.locator('#token-edit-torch')).toBeEnabled();
   await expect(page.locator('#token-edit-torch')).not.toBeChecked();
@@ -278,6 +280,8 @@ test('Panneau MJ : modifier la vision dans le noir d\'un pion posé change la vi
   await page.goto(`/gm.html?session=${sessionId}`);
   await waitForApp(page);
   await page.click('.gm-tab-btn[data-tab="token-maker"]');
+  // C-10 : vision et torche vivent dans un volet replié par défaut ; le MJ l'ouvre d'abord.
+  await page.click('#gm-token-group-vision summary');
 
   await expect(page.locator('#token-edit-vision-dim')).toHaveValue('6');
 

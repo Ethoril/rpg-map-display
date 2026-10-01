@@ -762,6 +762,128 @@ details.gm-disclosure > .gm-disclosure-body {
   margin-top: 16px;
 }
 
+/* ── Ajouts C-10, tranche 3 : onglet Pions — liste de l'étage, fiche en volets ───────────────── */
+
+#gm-roster[hidden],
+.token-elevation-section[hidden],
+#gm-reserve-drawer[hidden] {
+  display: none;
+}
+
+.gm-roster-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.gm-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gm-roster-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 400;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--gm-r);
+}
+
+.gm-roster-row:hover:not(:disabled) {
+  background: var(--gm-releve);
+  border-color: var(--gm-trait);
+  filter: none;
+}
+
+.gm-roster-avatar {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid var(--gm-trait-fort);
+  background: var(--gm-creux);
+  color: var(--gm-texte-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.gm-roster-avatar > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gm-roster-avatar--hidden {
+  opacity: 0.5;
+}
+
+.gm-roster-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gm-roster-name,
+.gm-roster-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gm-roster-name {
+  font-weight: 600;
+}
+
+.gm-roster-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gm-roster-value:empty {
+  display: none;
+}
+
+#gm-roster-back {
+  margin: -4px 0 6px -6px;
+}
+
+.gm-token-sheet-title {
+  margin-bottom: 6px;
+}
+
+/* Le résumé d'un volet se cale à droite, contre le chevron. */
+.gm-disclosure-sum {
+  margin-left: auto;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.token-elevation-section details.gm-disclosure:first-of-type {
+  margin-top: 4px;
+}
+
+#gm-token-library-group,
+#gm-token-maker-group {
+  margin-bottom: 4px;
+}
+
 /* ── Contrôles ─────────────────────────────────────────────────────────────────────────────── */
 
 input[type='number'],
