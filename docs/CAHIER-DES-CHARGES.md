@@ -345,7 +345,8 @@ MJ. Les PNJ ont un état Visible / Masqué (préparation d'embuscades).
   clos (Q7), et un marqueur n'altère jamais le déplacement — or celui-ci le change. Ses règles sont
   au §5.3bis, « Pion monté ». Une tête de cheval occupe le **dernier** emplacement de la rangée de
   badges, en bas à droite du pion ; les marqueurs n'y ont plus que deux places, et le compteur
-  « +N » prend le relais au-delà.
+  « +N » prend le relais au-delà. Comme le badge d'élévation, elle disparaît sur un pion trop petit
+  à l'écran (paliers des points de la rangée de marqueurs).
 
 ### 5.3bis Modèle de déplacement — style jeu de plateau
 

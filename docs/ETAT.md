@@ -242,8 +242,12 @@ laissé passer un lot entier dont les 4 tests navigateur étaient rouges.
 > dérivée de la constante et non choisie. L'absence est réelle — sonde à l'appui, le couloir
 > reste noir sur 10 s — elle est maintenant aussi **prouvée**.
 
-Depuis R1-08, `test:e2e` garde le projet `chromium` et les trois scénarios de geste réel sont
-exécutés ensuite via le projet `manuel` (`pnpm run test:gestes`) dans `pnpm run verify`. Leur
+Depuis R1-08, `test:e2e` garde le projet `chromium` et les scénarios de geste réel sont
+exécutés ensuite via le projet `manuel` (`pnpm run test:gestes`) dans `pnpm run verify` — trois
+dans `gmToolDisarmGeste.spec.mjs`, et depuis le 01/10/2026 un quatrième,
+`selectionStripGeste.spec.mjs` (chantier C-9) : un vrai appui sur le cheval de la bande de sélection
+monte le pion **sans pan de carte ni désélection** — la panne qu'un élément d'interface posé sur la
+carte d'une tablette rend la plus probable. Leur
 cause d'instabilité avait été trouvée et corrigée le 4 août 2026 — défaut du test, pas de
 l'application — ; leur succès est désormais requis avant tout déploiement. Les traces restent
 publiées en artefact en cas d'échec, sans second job qui rejouerait les mêmes scénarios.
@@ -1851,6 +1855,32 @@ depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jo
 
 ⚠ **« Complet » ne veut pas dire « fini »** : ce qui est complet, c'est la liste des critères
 d'acceptation du §11.
+
+> ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
+>
+> Demande du mainteneur, arbitrée le jour même en deux séances de choix multiples (trace en C-9 de
+> `QUESTIONS-EN-ATTENTE.md`, règles au CdC §5.3, §5.3bis, §7). Deux tranches :
+>
+> 1. **Le pion monté** : champ `mounted`, budget × 2, **aucun portail** franchi quel que soit son
+>    état, **aucune liaison** depuis la tablette, événement `token.mounted`, bouton « À cheval » de
+>    la barre de vitalité MJ, tête de cheval au dernier emplacement de la rangée de badges.
+> 2. **La bande de sélection** de la tablette, 5e dérogation de `CONVENTIONS.md` §8 n°2 : bouton
+>    monter / descendre, badges d'état, nom au toucher.
+>
+> **Vérifié par mutation**, pas sur la foi des comptes rendus : 21 mutations tuées sur 22 pour la
+> tranche 1, 15 sur 16 pour la tranche 2. Les deux survivantes sont équivalentes — une purge de
+> cache que seuls les tests appellent, et une garde de clic redondante avec le masquage de la bande.
+> ⭐ **Un vrai trou trouvé ainsi** : retirer l'icône du cheval de la liste blanche de Pages ne faisait
+> rougir aucun test — le paquet était comparé à la liste, qui l'oubliait avec lui. Un test part
+> désormais des URL que le runtime charge (`sitePackage.test.mjs`, même famille que R1-06b).
+>
+> ⏳ **À éprouver à la table**, rien de cela ne se juge en CI :
+>
+> - la **lisibilité** du bouton cheval sur une carte claire : contrairement aux badges, il n'a pas de
+>   disque sombre, seulement le fond à 35 % de la bande ;
+> - le **dessin** du cheval (Delapouite, préféré à Lorc par Claude pour sa lisibilité à 16 px) ;
+> - la **durée** du nom d'un badge, 2,5 s (`SELECTION_STRIP_LABEL_MS`), lue à voix haute sous cast ;
+> - la zone doublée qui **s'arrête aux portes ouvertes**, sur le manoir (8 portes doubles comprises).
 
 > ### ⭐ Séance du 20/09/2026 — onze arbitrages, puis six dettes fermées et deux chantiers ouverts
 >
