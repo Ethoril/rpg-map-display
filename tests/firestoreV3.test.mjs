@@ -38,7 +38,7 @@ function snapshot() {
       templates: [{ id: 'template', levelId: 'cave', shape: 'circle', origin: { x: 280, y: 280 }, radiusCells: 2, directionDeg: 0, widthCells: 1, color: '#ff0000', visibleToPlayers: true }],
       settings: {},
     },
-    activeLevelId: 'rdc', selectedTokenId: 'hero', activeHandout: { id: 'note' },
+    activeLevelId: 'rdc', selectedTokenId: 'hero',
   };
 }
 
@@ -50,8 +50,6 @@ test('v3 répartit puis reconstitue trois étages sans relire les sous-documents
   assert.deepEqual(v3.parent.tokenIds, ['hero']);
   assert.equal('levels' in v3.parent, false);
   assert.equal('tokens' in v3.parent, false);
-  assert.deepEqual(v3.parent.activeHandout, { id: 'note' });
-  assert.equal('activeHandout' in v3.state, false);
   assert.deepEqual(v3.levels[0].data.level.walls, [{ points: [{ cellX: 0, cellY: 0 }, { cellX: 3, cellY: 0 }] }]);
 
   const restored = joinSnapshotFromFirestoreV3(
@@ -63,12 +61,11 @@ test('v3 répartit puis reconstitue trois étages sans relire les sous-documents
   assert.deepEqual(restored.campaign.levels.map((/** @type {any} */ item) => item.id), ['rdc', 'etage', 'cave']);
   assert.deepEqual(restored.campaign.tokens.map((/** @type {any} */ item) => item.id), ['hero']);
   assert.deepEqual(restored.campaign.templates, source.campaign.templates);
-  assert.equal(restored.activeHandout.id, 'note');
 });
 
 test('la transition conserve le secours v2 jusqu au nettoyage de la revision relue', () => {
   const source = snapshot();
-  const legacyV2 = { schemaVersion: 2, campaign: source.campaign, activeHandout: source.activeHandout };
+  const legacyV2 = { schemaVersion: 2, campaign: source.campaign };
   const v3 = splitSnapshotForFirestoreV3(source, 'session-three', 99);
   const transition = createFirestoreV3TransitionParent(legacyV2, v3.parent);
 
@@ -81,7 +78,7 @@ test('la transition conserve le secours v2 jusqu au nettoyage de la revision rel
 
 test('une migration concurrente rebase sa revision et conserve le secours v2 du parent courant', () => {
   const source = snapshot();
-  const legacyV2 = { schemaVersion: 2, campaign: source.campaign, activeHandout: source.activeHandout };
+  const legacyV2 = { schemaVersion: 2, campaign: source.campaign };
   const first = splitSnapshotForFirestoreV3(source, 'session-three', nextFirestoreV3Revision(legacyV2));
   const parentAfterFirst = createFirestoreV3TransitionParent(legacyV2, first.parent);
   const second = splitSnapshotForFirestoreV3(source, 'session-three', nextFirestoreV3Revision(parentAfterFirst));
@@ -124,7 +121,9 @@ test('la fixture synthétique à trois étages est transportable sans assets ré
   const ground = v3.levels.find((entry) => entry.id === 'rdc');
   assert.ok(ground);
   assert.equal(ground.data.level.portals[0].locked, true);
-  assert.deepEqual(joinSnapshotFromFirestoreV3(v3.parent, v3.levels, v3.tokens, v3.state), fixture);
+  // La fixture, figée, porte encore `activeHandout` : C-13 l'a retiré, il ne fait plus l'aller-retour.
+  const { activeHandout: _retire, ...attendu } = fixture;
+  assert.deepEqual(joinSnapshotFromFirestoreV3(v3.parent, v3.levels, v3.tokens, v3.state), attendu);
 });
 
 test('replay transport : teleport, suivi, selection et verrou restent independants par etage', () => {

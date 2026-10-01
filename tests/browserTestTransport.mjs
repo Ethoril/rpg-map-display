@@ -16,6 +16,19 @@ export async function waitForApp(page) {
 }
 
 /**
+ * Nœud `session/{id}/sharedImage` simulé (C-13), par session : il tient le rôle du serveur RTDB.
+ * Côté Node et non dans la page, pour la même raison qu'en vrai : il survit au F5 d'un écran, il
+ * est commun à tous les écrans de la session, et il n'est écrit dans **aucun** stockage du
+ * navigateur — ce qu'un test vérifie justement.
+ *
+ * @type {Map<string, any>}
+ */
+const imagesPartagees = new Map();
+
+/** Pages qui ont déjà reçu la fonction d'accès au nœud : l'exposer deux fois lèverait. */
+const pagesAvecNoeudImage = new WeakSet();
+
+/**
  * Injecte un transport BroadcastChannel dans la vraie page, sans relais manuel
  * du test : le seul chemin entre deux pages est le canal du navigateur.
  *
@@ -29,6 +42,19 @@ export async function waitForApp(page) {
  * @param {any} snapshot - ce que rendra `transport.snapshot()` au démarrage
  */
 export async function installBrowserTransport(page, sessionId, snapshot) {
+  if (!pagesAvecNoeudImage.has(page)) {
+    pagesAvecNoeudImage.add(page);
+    // Les trois opérations du vrai transport sur le nœud. `close` reprend la transaction de
+    // `FirebaseTransport.closeSharedImage` : le nœud n'est effacé que s'il porte encore cet id.
+    await page.exposeFunction(
+      '__rpgTestSharedImage',
+      (/** @type {'get'|'set'|'close'} */ op, /** @type {string} */ sid, /** @type {any} */ arg) => {
+        if (op === 'set') imagesPartagees.set(sid, arg);
+        if (op === 'close' && imagesPartagees.get(sid)?.id === arg) imagesPartagees.delete(sid);
+        return imagesPartagees.get(sid) ?? null;
+      }
+    );
+  }
   await page.addInitScript(
     ({ injectedSessionId, injectedSnapshot }) => {
       Object.defineProperty(Element.prototype, 'requestFullscreen', {
@@ -37,10 +63,13 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       });
 
       let documentHidden = false;
-      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void}} */
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void, savedSnapshot: string|null}} */
       const wire = {
         published: [],
         received: [],
+        // Dernier instantané remis à `saveSnapshot`, sérialisé : ce que la sauvegarde aurait
+        // écrit (C-13 : rien du partage d'image ne doit y figurer).
+        savedSnapshot: null,
         // Le test décide si le transport prétend avoir manqué des événements, et compte les
         // resynchros réellement demandées.
         gap: false,
@@ -76,6 +105,19 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           this.listeners = new Set();
           /** @type {BroadcastChannel|null} */
           this.channel = null;
+          /** @type {Set<(image: any) => void>} Abonnés au nœud de l'image partagée (C-13) */
+          this.imageListeners = new Set();
+          /** @type {BroadcastChannel|null} Signal « le nœud a changé » entre écrans */
+          this.imageChannel = null;
+          /** @type {string|null} */
+          this.sessionId = null;
+        }
+
+        /** Relit le nœud et le remet à chaque abonné de cet écran, comme `onValue`. */
+        async relireImage() {
+          if (!this.sessionId) return;
+          const image = await /** @type {any} */ (window).__rpgTestSharedImage('get', this.sessionId);
+          for (const listener of this.imageListeners) listener(image);
         }
 
         async connect(/** @type {string} */ connectedSessionId) {
@@ -92,6 +134,13 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
             });
           }
           this.channel = new BroadcastChannel(`rpg-test-${connectedSessionId}`);
+          this.sessionId = connectedSessionId;
+          // Canal distinct du flux d'événements : le nœud d'état n'est PAS un événement, et il ne
+          // doit apparaître ni dans `wire.received` ni chez les abonnés de `subscribe`.
+          this.imageChannel = new BroadcastChannel(`rpg-test-image-${connectedSessionId}`);
+          this.imageChannel.addEventListener('message', () => {
+            void this.relireImage();
+          });
           const livrer = (/** @type {any} */ data) => {
             wire.received.push(data);
             // Comme le vrai transport (`_notifySubscribers`) : l'erreur d'un abonné se journalise,
@@ -135,7 +184,37 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           return structuredClone(wire.snapshot ?? injectedSnapshot);
         }
 
-        async saveSnapshot() {}
+        async saveSnapshot(/** @type {any} */ instantane) {
+          wire.savedSnapshot = JSON.stringify(instantane);
+        }
+
+        async shareImage(/** @type {any} */ image) {
+          if (!this.sessionId) return { ok: false, error: new Error('Transport non connecté') };
+          await /** @type {any} */ (window).__rpgTestSharedImage('set', this.sessionId, image);
+          this.imageChannel?.postMessage('changed');
+          await this.relireImage();
+          return { ok: true };
+        }
+
+        async closeSharedImage(/** @type {string} */ id) {
+          if (!this.sessionId) return { ok: false, error: new Error('Transport non connecté') };
+          await /** @type {any} */ (window).__rpgTestSharedImage('close', this.sessionId, id);
+          this.imageChannel?.postMessage('changed');
+          await this.relireImage();
+          return { ok: true };
+        }
+
+        subscribeSharedImage(/** @type {(image: any) => void} */ callback) {
+          this.imageListeners.add(callback);
+          // Comme `onValue` : la valeur courante est remise dès l'abonnement — c'est ce qui fait
+          // revenir une image ouverte après un F5.
+          if (this.sessionId) {
+            /** @type {any} */ (window).__rpgTestSharedImage('get', this.sessionId).then((/** @type {any} */ image) => {
+              if (this.imageListeners.has(callback)) callback(image);
+            });
+          }
+          return () => this.imageListeners.delete(callback);
+        }
 
         mayHaveMissedEvents() {
           return wire.gap === true;
@@ -165,6 +244,9 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           this.channel?.close();
           this.channel = null;
           this.listeners.clear();
+          this.imageChannel?.close();
+          this.imageChannel = null;
+          this.imageListeners.clear();
         }
       }
 

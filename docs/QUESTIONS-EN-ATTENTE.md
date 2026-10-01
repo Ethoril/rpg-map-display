@@ -998,6 +998,31 @@ pli.
 >   n°4 : une bordure hors palette déjà posée n'est jamais remplacée, elle paraît en dix-septième
 >   pastille tant qu'elle est celle du pion.
 
+### C-13 Le handout devient le « partage d'image » — demande du mainteneur, 01/10/2026
+
+« J'ai envie de complètement changer le fonctionnement du handout » : plus d'URL, plus de
+bibliothèque ; un simple outil pour montrer en grand l'image d'un monstre.
+
+> ## ✅ TRANCHÉ le 01/10/2026, en séance de choix multiples
+>
+> - **Nom** : « Partage d'image ». Le MJ choisit un fichier **local** ; il s'affiche en
+>   surimpression sur la vue joueurs, qui le ferment par **une croix**.
+> - **Rien n'est sauvegardé** : l'image, réduite au format TV (1920 px au plus grand côté, WebP),
+>   **transite** par la RTDB le temps de l'affichage et y est **effacée** à la fermeture. Ni git, ni
+>   campagne, ni Firestore, ni localStorage.
+> - **La croix ferme pour tous et le MJ le voit** (« Fermée par les joueurs. ») ; le MJ peut aussi
+>   fermer.
+> - **Un F5 de la tablette fait revenir l'image** tant qu'elle n'est pas fermée ; fermée, jamais.
+>
+> ⭐ **Appliqué sans nouvel arbitrage**, et dit au mainteneur : un **nœud d'état**
+> `session/{id}/sharedImage` plutôt que deux événements `image.show` / `image.hide` — les
+> événements sont purgés dès accusé, un F5 ne les retrouverait pas. La fermeture est une
+> transaction qui n'efface que l'image qu'on ferme (`decideSharedImageClose`). L'ancien handout
+> (bibliothèque, `activeHandout`, `handout.*`) est retiré ; un document qui en porte encore les
+> champs se charge sans erreur.
+>
+> ⏳ **À éprouver sur le vrai Firebase et la tablette** : les e2e passent par le transport de test.
+
 ### C-14 Les barres d'état autour des pions sont retirées — demande du mainteneur, 01/10/2026
 
 « Je ne suis toujours pas satisfait de la représentation des points de vie autour des pions » :

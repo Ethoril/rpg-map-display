@@ -1934,6 +1934,28 @@ d'acceptation du §11.
 > recherche et les dossiers repliés de la bibliothèque MJ, la lisibilité des seize bordures sur la
 > TV.
 
+> ### ✅ Chantier C-13 — le handout devient le « partage d'image », livré le 02/10/2026 (hors §11)
+>
+> Onglet « Image » du mode Jouer : « Choisir une image… » ouvre le sélecteur de fichier ; l'image,
+> réduite à 1920 px au plus grand côté, s'affiche en surimpression sur la vue joueurs avec une
+> croix. Elle transite par le nœud RTDB `session/{id}/sharedImage` et y est effacée à la
+> fermeture — par la croix (« Fermée par les joueurs. » côté MJ) ou par « Fermer l'image ». Un F5
+> de la tablette la retrouve tant qu'elle est ouverte. Rien n'est sauvegardé. L'ancien handout
+> (URL, bibliothèque, `handout.*`, `activeHandout`) est retiré, avec lecture tolérante des anciens
+> documents. Arbitrages : C-13 de `QUESTIONS-EN-ATTENTE.md`, amendement au CdC §5.8 et §7.
+> **Vérifié par mutation** : croix qui n'efface pas, image non réduite, « Fermer » inopérant,
+> fermeture qui ignore l'identifiant.
+>
+> ⏳ **À éprouver** sur le vrai Firebase et la tablette : les e2e passent par le transport de
+> test. La croix est en haut à droite, à gauche du bouton plein écran.
+
+> ### ✅ Chantier C-14 — plus de barres d'état autour des pions, livré le 02/10/2026 (hors §11)
+>
+> Provisoire, sur demande du mainteneur : ni châsse ni anneau de PV ; seuls les cartouches chiffrés,
+> rapprochés sur le bord du portrait (PJ vus des joueurs, PNJ du MJ seul). `tokenSocket.js` reste
+> dormant. ⚠ L'état Indemne/Blessé/Mal en point des PNJ ne se voit plus sur la carte. À rouvrir
+> quand le mainteneur aura une meilleure idée (C-14 de `QUESTIONS-EN-ATTENTE.md`).
+
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur, arbitrée le jour même en deux séances de choix multiples (trace en C-9 de

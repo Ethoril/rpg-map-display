@@ -1125,3 +1125,19 @@ button.gm-flash-ok {
   color: var(--gm-vert);
   border-color: var(--gm-vert-trait);
 }
+
+/* ── Chantier C-13 : onglet Image — partage d'image ─────────────────────────────────────────── */
+
+#image-share-current[hidden] {
+  display: none;
+}
+
+.image-share-preview {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  background: var(--gm-creux);
+  border: 1px solid var(--gm-trait);
+  border-radius: var(--gm-r);
+}

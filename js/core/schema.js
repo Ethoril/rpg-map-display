@@ -362,6 +362,9 @@ export function normalizeCampaign(campaign) {
   if (!campaign || typeof campaign !== 'object') return campaign;
 
   const res = normalizeCampaignColors(campaign);
+  // Chantier C-13 : la bibliothèque d'images de séance n'existe plus. Une campagne enregistrée
+  // avant la porte encore — elle se charge, et le champ est retiré, quelle que soit sa forme.
+  delete res.handoutLibrary;
   if (Array.isArray(res.levels)) {
     for (const level of res.levels) {
       normalizeLevel(level);
@@ -396,9 +399,6 @@ export function createCampaign(overrides = {}) {
     // structurellement impossible qu'un pion rangé éclaire une pièce.
     reserve: overrides.reserve ?? [],
     templates: overrides.templates ?? [],
-    // La bibliothèque d'images de séance (C-3) : de la donnée de campagne, vide par défaut. ⛔ Ce
-    // ne sont que des liens — le dépôt n'héberge aucune image de séance.
-    handoutLibrary: overrides.handoutLibrary ?? [],
     // ⛔ `settings` est un conteneur réservé, et il est **vide**. Il portait `ambientLevel`, retiré
     // le 12/08/2026 en tranchant la question n°4 du §12 : l'ambiante est **par étage**
     // (`level.ambient`), c'est elle que `fogLayer` lit, et le champ global n'était **relu par aucun
@@ -1266,44 +1266,9 @@ export function validateCampaign(campaign) {
     }
   }
 
-  // Bibliothèque d'images de séance (C-3, tranche A).
-  //
-  // ⚠ **L'absence n'est jamais une erreur** : une campagne enregistrée avant C-3 ne porte pas ce
-  // champ, et elle doit charger normalement avec une bibliothèque vide. Seule une valeur *présente
-  // et mal formée* est refusée — même tolérance que `reserve` ci-dessus.
-  if (campaign.handoutLibrary !== undefined) {
-    if (!Array.isArray(campaign.handoutLibrary)) {
-      errors.push('handoutLibrary doit être un tableau');
-    } else {
-      const knownHandoutIds = new Set();
-      for (const entry of campaign.handoutLibrary) {
-        if (!entry || typeof entry !== 'object') {
-          errors.push('Objet invalide dans handoutLibrary');
-          continue;
-        }
-        const hId = entry.id || 'inconnu';
-        if (typeof entry.id !== 'string' || entry.id === '') {
-          errors.push(`Handout "${hId}" : id requis (chaîne non vide)`);
-        } else if (knownHandoutIds.has(entry.id)) {
-          // Un identifiant dupliqué ferait révéler une entrée et en retirer une autre.
-          errors.push(`Handout "${hId}" : id dupliqué dans handoutLibrary`);
-        } else {
-          knownHandoutIds.add(entry.id);
-        }
-        if (typeof entry.name !== 'string') {
-          errors.push(`Handout "${hId}" : name invalide (chaîne attendue)`);
-        }
-        // ⛔ Même règle que partout hors pions : pas de `data:` ni de `blob:`. L'image de séance
-        // vit chez le mainteneur, elle ne s'embarque pas dans le document de campagne.
-        if (!isPersistableAssetUrl(entry.imageUrl) || entry.imageUrl === '') {
-          errors.push(`Handout "${hId}" : imageUrl non persistable "${entry.imageUrl}"`);
-        }
-        if (!Number.isFinite(entry.addedAt)) {
-          errors.push(`Handout "${hId}" : addedAt invalide "${entry.addedAt}"`);
-        }
-      }
-    }
-  }
+  // ⛔ Plus de `handoutLibrary` à valider (C-13) : la bibliothèque d'images de séance est retirée,
+  // et `normalizeCampaign` efface le champ d'une campagne enregistrée avant. Ne pas le revalider
+  // ici : une ancienne bibliothèque mal formée ferait refuser une campagne pour un champ mort.
 
   errors.push(...validateLinks(campaign));
 

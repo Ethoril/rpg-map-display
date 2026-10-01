@@ -862,3 +862,74 @@ test('C10 : changer de session ou remettre le store à zéro oublie les masques 
   setSessionFog('rdc', null);
   resetStore();
 });
+
+// Chantier C-13 — le partage d'image remplace les handouts. Les instantanés, les entrées
+// localStorage et les campagnes écrits avant portent encore `activeHandout` et `handoutLibrary` :
+// ils doivent se charger sans erreur, et ces champs morts ne doivent survivre nulle part.
+const ANCIEN_HANDOUT = { id: 'handout-1', name: 'Lettre', imageUrl: './assets/lettre.jpg' };
+const ANCIENNE_BIBLIOTHEQUE = [
+  { id: 'handout-1', name: 'Lettre', imageUrl: './assets/lettre.jpg', addedAt: 1 },
+  // Une entrée que l'ancien validateur refusait (id dupliqué, data:, sans addedAt) : elle ne doit
+  // plus rien faire refuser.
+  { id: 'handout-1', imageUrl: 'data:image/png;base64,AAAA' },
+];
+
+test('C-13 : un instantané portant activeHandout et handoutLibrary se restaure, champs ignorés', () => {
+  resetStore();
+  const camp = /** @type {any} */ (makeValidCampaign());
+  camp.handoutLibrary = ANCIENNE_BIBLIOTHEQUE;
+
+  restoreFromSnapshot({ campaign: camp, activeLevelId: 'et1', selectedTokenId: null, activeHandout: ANCIEN_HANDOUT });
+
+  const etat = /** @type {any} */ (getState());
+  assert.equal(etat.campaign?.campaignId, 'camp-test');
+  assert.equal(etat.activeLevelId, 'et1');
+  assert.equal('activeHandout' in etat, false, 'le store ne connaît plus de handout');
+  assert.equal('handoutLibrary' in /** @type {any} */ (getCampaign()), false, 'la bibliothèque est retirée');
+  resetStore();
+});
+
+test('C-13 : une campagne portant handoutLibrary se charge, et la normalisation retire le champ', () => {
+  resetStore();
+  const camp = /** @type {any} */ (makeValidCampaign());
+  camp.handoutLibrary = ANCIENNE_BIBLIOTHEQUE;
+
+  loadCampaign(camp);
+
+  assert.equal('handoutLibrary' in /** @type {any} */ (getCampaign()), false);
+  assert.equal(camp.handoutLibrary, ANCIENNE_BIBLIOTHEQUE, 'le document de l’appelant est intact');
+  resetStore();
+});
+
+test('C-13 : une entrée localStorage portant activeHandout se relit, et n’est pas réécrite', () => {
+  const memoire = new Map();
+  const faux = {
+    getItem: (/** @type {string} */ k) => memoire.get(k) ?? null,
+    setItem: (/** @type {string} */ k, /** @type {string} */ v) => { memoire.set(k, String(v)); },
+    removeItem: (/** @type {string} */ k) => { memoire.delete(k); },
+  };
+  const avant = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { value: faux, configurable: true, writable: true });
+  try {
+    resetStore();
+    const camp = /** @type {any} */ (makeValidCampaign());
+    camp.handoutLibrary = ANCIENNE_BIBLIOTHEQUE;
+    memoire.set('rpg_campaign_c13', JSON.stringify(camp));
+    memoire.set('rpg_session_c13', JSON.stringify({
+      activeLevelId: 'et1', selectedTokenId: null, activeHandout: ANCIEN_HANDOUT,
+    }));
+
+    assert.equal(loadFromLocalStorage('c13'), true);
+    assert.equal(getLastPersistenceError(), null);
+    assert.equal(getState().campaign?.campaignId, 'camp-test');
+    assert.equal(getState().activeLevelId, 'et1');
+
+    saveToLocalStorage('c13');
+    assert.equal(memoire.get('rpg_session_c13')?.includes('activeHandout'), false);
+    assert.equal(memoire.get('rpg_campaign_c13')?.includes('handoutLibrary'), false);
+  } finally {
+    if (avant) Object.defineProperty(globalThis, 'localStorage', avant);
+    else delete (/** @type {any} */ (globalThis)).localStorage;
+    resetStore();
+  }
+});

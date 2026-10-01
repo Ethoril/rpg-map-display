@@ -215,3 +215,56 @@ canvas {
   border-radius: 4px;
   pointer-events: none;
 }
+
+/* ── Partage d'image (C-13) ─────────────────────────────────────────────────────────────────
+   Overlay transitoire : présent dans le DOM le temps de l'affichage, et rien d'autre. Il capte
+   les gestes — un doigt posé sur l'image ne fait pas glisser la carte dessous.
+
+   ⛔ z-index 9000 : strictement sous l'avertissement de version (9999), sous le bouton plein
+   écran (9500), au-dessus de tout le reste de la vue. */
+#image-share-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.92);
+  touch-action: none;
+}
+
+#image-share-overlay img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* La croix : grande cible tactile, lisible depuis le canapé sur la TV. En haut à droite, mais à
+   gauche du bouton plein écran (12 px du bord, 44 px de large), qu'elle ne doit pas recouvrir. */
+.image-share-close {
+  position: absolute;
+  top: 12px;
+  right: 72px;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 34px;
+  line-height: 1;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.image-share-close:focus-visible {
+  outline: 3px solid #4a90e2;
+  outline-offset: 2px;
+}

@@ -24,7 +24,7 @@ import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { isPlayerManipulableToken } from '../input/tokenHit.js';
 import { withTemplatePreview } from '../input/templateHit.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
-import { mountHandoutOverlay } from '../ui/player/handoutOverlay.js';
+import { mountImageShareOverlay } from '../ui/player/imageShareOverlay.js';
 import { VISION_REQUEST_EVENT } from '../core/constants.js';
 import {
   createNetworkStatus,
@@ -175,7 +175,7 @@ async function setupMobileLocks() {
     fullscreenButton.style.position = 'fixed';
     fullscreenButton.style.top = '12px';
     fullscreenButton.style.right = '12px';
-    // Au-dessus du handout (9000), sous l'avertissement de version (9999) : une image
+    // Au-dessus de l'image partagée (9000), sous l'avertissement de version (9999) : une image
     // révélée ne doit pas piéger la tablette en fenêtré, mais rien ne masque une alerte.
     fullscreenButton.style.zIndex = '9500';
     fullscreenButton.style.width = '44px';
@@ -1064,7 +1064,7 @@ export async function bootstrapPlayerApp(options = {}) {
     transport: transport || undefined,
     role: 'players',
   });
-  const handoutOverlay = mountHandoutOverlay();
+  const imageShareOverlay = mountImageShareOverlay({ transport: transport || undefined });
 
   function persistCamera() {
     try {
@@ -1121,7 +1121,7 @@ export async function bootstrapPlayerApp(options = {}) {
     if (repriseDiffereeTimer !== null) clearTimeout(repriseDiffereeTimer);
     playerControls.detach();
     versionBadge.detach();
-    handoutOverlay.detach();
+    imageShareOverlay.detach();
     playerLevelSelector?.destroy();
     selectionStrip?.destroy();
     cleanupMobileLocks();

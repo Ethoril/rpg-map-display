@@ -38,6 +38,7 @@ import {
 import { identifiantAleatoire, isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
+/** @typedef {import('../core/types.js').SharedImage} SharedImage */
 /** @typedef {import('./Transport.js').Transport} Transport */
 
 /** Champs sans lesquels rien ne peut fonctionner. `databaseURL` n'apparaît dans la console
@@ -639,7 +640,6 @@ export function splitSnapshotForFirestoreV3(snapshot, sessionId, revision = Date
     tokenIds,
     activeLevelId: snapshot.activeLevelId ?? null,
     selectedTokenId: snapshot.selectedTokenId ?? null,
-    activeHandout: snapshot.activeHandout ?? null,
   };
   const levels = campaign.levels.map((/** @type {any} */ level) => ({
     id: level.id,
@@ -833,7 +833,6 @@ export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
     },
     activeLevelId: parent.activeLevelId ?? null,
     selectedTokenId: parent.selectedTokenId ?? null,
-    activeHandout: parent.activeHandout ?? null,
   };
 }
 
@@ -883,6 +882,47 @@ async function readFirestoreV3Snapshot(parentRef, initialParent) {
     }
   }
   throw lastError;
+}
+
+/**
+ * Forme attendue d'une image partagée (C-13), à l'écriture comme à la lecture du nœud.
+ *
+ * @param {any} value
+ * @returns {value is SharedImage}
+ */
+export function isValidSharedImage(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof value.id === 'string' &&
+      value.id !== '' &&
+      typeof value.dataUrl === 'string' &&
+      value.dataUrl.startsWith('data:image/') &&
+      Number.isFinite(value.width) &&
+      Number.isFinite(value.height) &&
+      Number.isFinite(value.at)
+  );
+}
+
+/**
+ * Décision de la transaction de fermeture d'une image partagée (C-13). Fonction pure : c'est elle
+ * qu'exerce le test, et `closeSharedImage` ne fait que la passer à `runTransaction`.
+ *
+ * - le nœud porte l'image `id` → `null`, il est effacé ;
+ * - le nœud porte une **autre** image → `undefined`, la transaction est abandonnée et rien n'est
+ *   écrit : une croix tardive n'emporte pas l'image que le MJ vient de partager à sa place ;
+ * - le nœud est vide (ou le cache local ne le connaît pas encore) → `null`. ⚠ Pas un abandon :
+ *   le SDK appelle d'abord la fonction avec sa valeur en cache, et un abandon sur un cache vide
+ *   terminerait la transaction sans jamais consulter le serveur. Écrire `null` contre une valeur
+ *   serveur différente fait rejouer la décision avec la vraie valeur.
+ *
+ * @param {any} current valeur courante du nœud
+ * @param {string} id identifiant de l'image que l'on ferme
+ * @returns {null|undefined}
+ */
+export function decideSharedImageClose(current, id) {
+  if (current === null || current === undefined) return null;
+  return current && typeof current === 'object' && current.id === id ? null : undefined;
 }
 
 /**
@@ -947,6 +987,8 @@ export class FirebaseTransport {
 
     /** @type {Set<() => void>} */
     this._presenceUnsubscribers = new Set();
+    /** @type {Set<() => void>} Écoutes du nœud `sharedImage` (C-13) */
+    this._sharedImageUnsubscribers = new Set();
     /** @type {import('firebase/database').DatabaseReference|null} */
     this._presenceRef = null;
     /** @type {import('firebase/database').OnDisconnect|null} */
@@ -1635,16 +1677,10 @@ export class FirebaseTransport {
               // encore chez les utilisateurs, on en extrait la campagne.
               const campObj = lu && !Array.isArray(lu.levels) && lu.campaign ? lu.campaign : lu;
               const sessObj = localSess ? JSON.parse(localSess) : {};
-              // ⛔ `activeHandout` fait partie du repli, à l'identique de
-              // `store.loadFromLocalStorage`. `restoreFromSnapshot` remet le champ à `null`
-              // quand il manque : l'omettre effacerait définitivement de la tablette le
-              // document affiché aux joueurs, dès la première resynchro dont la lecture
-              // Firestore échoue.
               etat = {
                 campaign: campObj,
                 activeLevelId: sessObj.activeLevelId,
                 selectedTokenId: sessObj.selectedTokenId,
-                activeHandout: sessObj.activeHandout,
               };
             }
           }
@@ -1991,6 +2027,112 @@ export class FirebaseTransport {
   }
 
   /**
+   * Partage une image avec les joueurs — chantier C-13. Écrit le nœud d'état
+   * `session/{sessionId}/sharedImage`, et **remplace** l'image précédente s'il y en avait une.
+   *
+   * ⛔ Ni événement, ni instantané Firestore, ni `assertNoTransientAssetUrls` : l'image est un
+   * `data:` **par construction**, elle transite le temps de l'affichage et rien ne l'enregistre.
+   *
+   * ⛔ La promesse NE REJETTE JAMAIS, comme `publish` — cf. `PublishResult` dans Transport.js.
+   *
+   * @param {SharedImage} image
+   * @returns {Promise<import('./Transport.js').PublishResult>}
+   */
+  async shareImage(image) {
+    try {
+      if (!this._db || !this._sessionId) {
+        throw new Error('Transport non connecté');
+      }
+      if (!isValidSharedImage(image)) {
+        throw new Error('Image partagée invalide (id, dataUrl data:image/, width, height, at requis)');
+      }
+      await set(ref(this._db, `session/${this._sessionId}/sharedImage`), {
+        id: image.id,
+        dataUrl: image.dataUrl,
+        width: image.width,
+        height: image.height,
+        at: image.at,
+      });
+    } catch (err) {
+      return { ok: false, error: this._reportError(err, 'partage d\'image') };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Ferme l'image partagée **si c'est encore celle-là** — chantier C-13.
+   *
+   * ⭐ Transaction et non `remove` : une croix touchée sur une image que le MJ vient de remplacer
+   * effacerait sinon la nouvelle. La décision est `decideSharedImageClose`, pure et testée.
+   *
+   * ⛔ La promesse NE REJETTE JAMAIS, comme `publish`.
+   *
+   * @param {string} id identifiant de l'image que l'on ferme
+   * @returns {Promise<import('./Transport.js').PublishResult>}
+   */
+  async closeSharedImage(id) {
+    try {
+      if (!this._db || !this._sessionId) {
+        throw new Error('Transport non connecté');
+      }
+      if (typeof id !== 'string' || !id) {
+        throw new Error('Identifiant d\'image partagée requis');
+      }
+      await runTransaction(ref(this._db, `session/${this._sessionId}/sharedImage`), (current) =>
+        decideSharedImageClose(current, id)
+      );
+    } catch (err) {
+      return { ok: false, error: this._reportError(err, 'fermeture de l\'image partagée') };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Suit l'image partagée de la session — chantier C-13. Le callback reçoit l'image courante, ou
+   * `null` quand il n'y en a pas ; il est rappelé à chaque partage, remplacement et fermeture, et
+   * dès l'abonnement : c'est ce qui fait revenir une image ouverte après un F5.
+   *
+   * Une valeur de forme inattendue est rendue comme une absence, et signalée.
+   *
+   * @param {(image: SharedImage|null) => void} callback
+   * @returns {() => void} Désabonnement
+   */
+  subscribeSharedImage(callback) {
+    if (!this._db || !this._sessionId) {
+      throw new Error('Transport non connecté');
+    }
+    if (typeof callback !== 'function') {
+      throw new Error('Le callback d\'image partagée doit être une fonction');
+    }
+    const imageRef = ref(this._db, `session/${this._sessionId}/sharedImage`);
+    const unsubscribe = onValue(
+      imageRef,
+      (snap) => {
+        const val = snap.val();
+        if (val === null || val === undefined) {
+          callback(null);
+          return;
+        }
+        if (!isValidSharedImage(val)) {
+          console.warn('FirebaseTransport : image partagée de forme inattendue, ignorée');
+          callback(null);
+          return;
+        }
+        callback(val);
+      },
+      (err) => this._reportError(err, 'écoute de l\'image partagée')
+    );
+    this._sharedImageUnsubscribers.add(unsubscribe);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      this._sharedImageUnsubscribers.delete(unsubscribe);
+      unsubscribe();
+    };
+  }
+
+  /**
    * Identifiant unique du client connecté courant.
    * @returns {string|null}
    */
@@ -2237,6 +2379,8 @@ export class FirebaseTransport {
 
     for (const unsubscribe of this._presenceUnsubscribers) unsubscribe();
     this._presenceUnsubscribers.clear();
+    for (const unsubscribe of this._sharedImageUnsubscribers) unsubscribe();
+    this._sharedImageUnsubscribers.clear();
     if (this._presenceHeartbeat) {
       clearInterval(this._presenceHeartbeat);
       this._presenceHeartbeat = null;

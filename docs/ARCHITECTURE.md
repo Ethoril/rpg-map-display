@@ -182,7 +182,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   │   ├─ tokenMaker.js      [1a] générateur de pions (recadrage canvas)
 │   │   │   ├─ sceneLibrary.js    [2]  bibliothèque de cartes
 │   │   │   ├─ tokenLibrary.js    [1b] bibliothèque de pions
-│   │   │   ├─ handouts.js        [1b] révélation d'image
+│   │   │   ├─ imageShare.js     [C-13] partage d'image : fichier local réduit au format TV, aperçu, fermeture
 │   │   │   ├─ fogTools.js        [2]  pinceaux révéler/masquer, reset
 │   │   │   ├─ wallEditor.js      [2]  éditeur minimal de murs
 │   │   │   ├─ linkEditor.js      [3]  pose, association et suppression de liaisons
@@ -190,7 +190,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   │   └─ levelSelector.js   [3]  sélecteur d'étage MJ
 │   │   └─ player/
 │   │       ├─ bootstrap.js       [1a] montage de la vue joueurs
-│   │       ├─ handoutOverlay.js  [1b] plein écran d'image révélée
+│   │       ├─ imageShareOverlay.js [C-13] image partagée en plein écran, croix qui la ferme pour tous
 │   │       ├─ levelSelector.js   [3]  sélecteur d'étage joueurs
 │   │       └─ selectionStrip.js [C-9] bande de sélection, bord droit, tant qu'un pion est
 │   │                                  sélectionné : monter / descendre, badges d'état et leur

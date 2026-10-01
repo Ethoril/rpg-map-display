@@ -1920,7 +1920,7 @@ if (typeof document !== 'undefined') {
   brancher('btn-horloge', diagnosticHorlogeEtCanal);
   brancher('btn-lumieres-masque', diagnosticChampLumineuxMasque);
 
-  for (const nom of ['Cartes', 'UVTT', 'Image', 'Pions', 'Handouts', 'Fog', 'Murs', 'Liaisons', 'Gabarits', 'Grille']) {
+  for (const nom of ['Cartes', 'UVTT', 'Image', 'Pions', 'Partage', 'Fog', 'Murs', 'Liaisons', 'Gabarits', 'Grille']) {
     const bouton = document.getElementById(`btn-onglet-${nom.toLowerCase()}`);
     bouton?.addEventListener('click', () => compterOnglet(nom));
   }

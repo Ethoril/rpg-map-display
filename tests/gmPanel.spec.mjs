@@ -147,9 +147,9 @@ test.describe('R0 — navigation et rendu sûr du panneau MJ', () => {
 
     await page.locator('#gm-tab-token-maker').focus();
     await page.keyboard.press('ArrowRight');
-    await expect(page.locator('#gm-tab-handouts')).toBeFocused();
-    await expect(page.locator('#gm-tab-handouts')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('#tab-content-handouts')).not.toHaveAttribute('hidden', '');
+    await expect(page.locator('#gm-tab-image-share')).toBeFocused();
+    await expect(page.locator('#gm-tab-image-share')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#tab-content-image-share')).not.toHaveAttribute('hidden', '');
     await expect(page.locator('#tab-content-token-maker')).toHaveAttribute('hidden', '');
   });
 
@@ -1016,7 +1016,7 @@ test.describe('UX-03 — Modes Jouer et Préparer', () => {
     const playTabs = page.locator('.gm-tab-btn:visible');
     await expect(playTabs).toHaveCount(2);
     await expect(page.locator('#gm-tab-token-maker')).toBeVisible();
-    await expect(page.locator('#gm-tab-handouts')).toBeVisible();
+    await expect(page.locator('#gm-tab-image-share')).toBeVisible();
     for (const id of palettes) await expect(page.locator(id)).toBeVisible();
     await expect(page.locator('#gm-rail [data-palette]')).toHaveCount(4);
 

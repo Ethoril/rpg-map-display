@@ -93,7 +93,7 @@ fixtures/
 ├─ images/
 │  ├─ checker-10x8.png          damier généré, 1 case = 1 carreau
 │  └─ seconde-image.webp        image quelconque de 3 Ko, figée (C-12) : « une autre image »
-│                               des e2e de handouts et de remplacement d'étage
+│                               des e2e de remplacement d'étage
 ├─ scenes/                      copies FIGÉES de scènes publiées (C-12, cf. §2bis)
 │  ├─ catalog.json              catalogue de test : les trois scènes ci-dessous, sceneUrl
 │  │                            vers ce dossier, vignettes vers maps/minimal.webp

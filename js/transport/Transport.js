@@ -1,5 +1,6 @@
 // @ts-check
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
+/** @typedef {import('../core/types.js').SharedImage} SharedImage */
 
 /**
  * Issue d'une publication. `ok: false` signifie que RIEN n'est parti sur le canal : événement
@@ -31,6 +32,12 @@
  *   serait lu par l'application avant d'être écrit dès le deuxième réveil (ordre d'insertion DOM).
  * @property {() => Promise<void>} [resync] rouvre le canal sans changer d'identité de client.
  *   Un appel pendant une resynchro en vol rejoint celle-ci au lieu d'en lancer une seconde.
+ * @property {(image: SharedImage) => Promise<PublishResult>} [shareImage] partage d'image (C-13) :
+ *   écrit le nœud d'état de l'image partagée, en remplaçant la précédente. Ne rejette jamais.
+ * @property {(id: string) => Promise<PublishResult>} [closeSharedImage] efface ce nœud **seulement
+ *   s'il porte encore cet `id`** : une fermeture tardive n'emporte pas une image plus récente.
+ * @property {(callback: (image: SharedImage|null) => void) => () => void} [subscribeSharedImage]
+ *   suit le nœud, dès l'abonnement puis à chaque changement ; rend le désabonnement.
  * @property {() => void} disconnect
  */
 export {}

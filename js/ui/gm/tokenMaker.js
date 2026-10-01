@@ -11,7 +11,7 @@ import {
 import { TOKEN_BORDER_PALETTE, TOKEN_BORDER_DEFAULT } from '../../core/constants.js';
 
 /**
- * Message du lien Drive qui ne désigne aucun fichier — mot pour mot celui des handouts et du
+ * Message du lien Drive qui ne désigne aucun fichier — mot pour mot celui du
  * panneau d'import, pour que le MJ lise la même phrase où qu'il colle son lien.
  */
 const MESSAGE_DRIVE_INUTILISABLE =
@@ -249,7 +249,7 @@ export function createTokenMaker(container, options = {}) {
    *
    * Un lien de partage Drive est une page HTML, pas une image, et il passe `isPersistableAssetUrl`
    * sans broncher — c'est bien du HTTPS. Sans cette conversion, le pion affiche une page web, en
-   * silence. Calqué sur `ui/gm/handouts.js` et `ui/gm/importPanel.js`.
+   * silence. Calqué sur `ui/gm/importPanel.js`.
    *
    * @returns {{url: string, inutilisable: boolean}}
    */

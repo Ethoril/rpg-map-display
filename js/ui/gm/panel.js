@@ -3,7 +3,7 @@ import { createImportPanel } from './importPanel.js';
 import { createTokenMaker, mountBorderSwatches } from './tokenMaker.js';
 import { createSceneLibrary } from './sceneLibrary.js';
 import { createTokenLibrary } from './tokenLibrary.js';
-import { createHandouts } from './handouts.js';
+import { createImageShare } from './imageShare.js';
 import { createFogTools } from './fogTools.js';
 import { createWallEditor } from './wallEditor.js';
 import { createLinkEditor } from './linkEditor.js';
@@ -293,7 +293,7 @@ export function createGMPanel(container, options = {}) {
     <div class="gm-tabs-header" role="tablist" aria-label="Inspecteur du meneur de jeu">
       <!-- Mode Jouer (2 onglets) -->
       <button class="gm-tab-btn active" type="button" id="gm-tab-token-maker" role="tab" data-tab="token-maker" aria-controls="tab-content-token-maker" aria-selected="true" tabindex="0">Pions</button>
-      <button class="gm-tab-btn" type="button" id="gm-tab-handouts" role="tab" data-tab="handouts" aria-controls="tab-content-handouts" aria-selected="false" tabindex="-1">Handouts</button>
+      <button class="gm-tab-btn" type="button" id="gm-tab-image-share" role="tab" data-tab="image-share" aria-controls="tab-content-image-share" aria-selected="false" tabindex="-1" title="Partage d’image">Image</button>
       <!-- Mode Préparer (3 onglets) -->
       <button class="gm-tab-btn" type="button" id="gm-tab-scene-library" role="tab" data-tab="scene-library" aria-controls="tab-content-scene-library" aria-selected="false" tabindex="-1" hidden>Cartes</button>
       <button class="gm-tab-btn" type="button" id="gm-tab-import-image" role="tab" data-tab="import-image" aria-controls="tab-content-import-image" aria-selected="false" tabindex="-1" hidden>Image</button>
@@ -473,8 +473,8 @@ export function createGMPanel(container, options = {}) {
         </details>
       </div>
 
-      <div id="tab-content-handouts" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-handouts" hidden>
-        <div id="handouts-mount"></div>
+      <div id="tab-content-image-share" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-image-share" hidden>
+        <div id="image-share-mount"></div>
       </div>
 
       <div id="tab-content-scene-library" class="gm-tab-pane" role="tabpanel" aria-labelledby="gm-tab-scene-library" hidden>
@@ -554,7 +554,7 @@ export function createGMPanel(container, options = {}) {
 
   /** @type {Record<'play'|'prep', string[]>} */
   const MODE_TABS = {
-    play: ['token-maker', 'handouts'],
+    play: ['token-maker', 'image-share'],
     prep: ['scene-library', 'import-image', 'grid-settings'],
   };
 
@@ -971,7 +971,7 @@ export function createGMPanel(container, options = {}) {
   const uvttMount = /** @type {HTMLElement} */ (container.querySelector('#import-uvtt-mount'));
   const imageMount = /** @type {HTMLElement} */ (container.querySelector('#import-image-mount'));
   const tokenMakerMount = /** @type {HTMLElement} */ (container.querySelector('#token-maker-mount'));
-  const handoutsMount = /** @type {HTMLElement} */ (container.querySelector('#handouts-mount'));
+  const imageShareMount = /** @type {HTMLElement} */ (container.querySelector('#image-share-mount'));
   const fogToolsMount = /** @type {HTMLElement} */ (palette.querySelector('#fog-tools-mount'));
 
   createImportPanel(uvttMount, { mode: 'uvtt' });
@@ -981,7 +981,7 @@ export function createGMPanel(container, options = {}) {
     onClearFog: () => fogTools?.clearFog(),
   });
 
-  const handouts = handoutsMount ? createHandouts(handoutsMount, { transport }) : null;
+  const imageShare = imageShareMount ? createImageShare(imageShareMount, { transport }) : null;
 
   const wallEditorMount = /** @type {HTMLElement} */ (palette.querySelector('#wall-editor-mount'));
   const linkEditorMount = /** @type {HTMLElement} */ (palette.querySelector('#link-editor-mount'));
@@ -2423,7 +2423,7 @@ export function createGMPanel(container, options = {}) {
       versionBadge?.detach();
       sceneLibrary?.destroy();
       tokenLibrary?.destroy();
-      handouts?.destroy();
+      imageShare?.destroy();
       container.replaceChildren();
       topbar.replaceChildren();
       rail.replaceChildren();

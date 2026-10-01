@@ -7,6 +7,7 @@ import {
     FirebaseTransport,
     assertNoNestedArrays,
     assertNoTransientAssetUrls,
+    decideSharedImageClose,
     decodeEventFromRtdb,
     decodeSnapshotFromFirestore,
     encodeEventForRtdb,
@@ -17,6 +18,7 @@ import {
     FIRESTORE_SNAPSHOT_WARNING_BYTES,
     getAcknowledgedEventFrontier,
     isRetentionLeaseStale,
+    isValidSharedImage,
     measureFirestoreSnapshot,
     normalizeExplicitSessionIds,
     RETENTION_LEASE_SUSPECT_AFTER_MS,
@@ -674,4 +676,28 @@ test('A2 : le repli local de snapshot() déballe une enveloppe héritée, et lit
         if (avant) Object.defineProperty(globalThis, 'localStorage', avant);
         else delete (/** @type {any} */ (globalThis)).localStorage;
     }
+});
+
+// Chantier C-13 — la fermeture d'une image partagée est une transaction : elle n'efface le nœud
+// que s'il porte encore l'image qu'on ferme. Une croix touchée sur une image que le MJ vient de
+// remplacer ne doit pas emporter la nouvelle.
+test('C-13 : decideSharedImageClose efface l’image visée, et laisse une image plus récente', () => {
+    const ancienne = { id: 'image-a', dataUrl: 'data:image/webp;base64,AAAA', width: 10, height: 5, at: 1 };
+    const recente = { id: 'image-b', dataUrl: 'data:image/webp;base64,BBBB', width: 10, height: 5, at: 2 };
+
+    assert.equal(decideSharedImageClose(ancienne, 'image-a'), null, 'la bonne image est effacée');
+    assert.equal(decideSharedImageClose(recente, 'image-a'), undefined, 'id périmé : transaction abandonnée');
+    // Nœud vide, ou cache local pas encore rempli : écrire `null` fait consulter le serveur, là où
+    // un abandon terminerait la transaction sans l'avoir jamais lu.
+    assert.equal(decideSharedImageClose(null, 'image-a'), null);
+});
+
+test('C-13 : isValidSharedImage n’accepte qu’une image data:image/ complète', () => {
+    const bonne = { id: 'image-a', dataUrl: 'data:image/webp;base64,AAAA', width: 1920, height: 1280, at: 1 };
+    assert.equal(isValidSharedImage(bonne), true);
+    assert.equal(isValidSharedImage({ ...bonne, dataUrl: 'https://exemple.test/a.webp' }), false);
+    assert.equal(isValidSharedImage({ ...bonne, dataUrl: 'data:text/html,<p>' }), false);
+    assert.equal(isValidSharedImage({ ...bonne, id: '' }), false);
+    assert.equal(isValidSharedImage({ ...bonne, width: 'large' }), false);
+    assert.equal(isValidSharedImage(null), false);
 });

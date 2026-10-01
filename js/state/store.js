@@ -5,9 +5,6 @@ import {
   createCampaign,
   normalizeCampaign,
   normalizeLevel,
-  isPersistableAssetUrl,
-  assertPersistableAssetUrl,
-  identifiantAleatoire,
 } from '../core/schema.js';
 import {
   setSelectionState,
@@ -22,8 +19,6 @@ import { cellKey } from '../core/cellKey.js';
 /** @typedef {import('../core/types.js').Level} Level */
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Cell} Cell */
-/** @typedef {import('../core/types.js').Handout} Handout */
-/** @typedef {import('../core/types.js').HandoutLibraryEntry} HandoutLibraryEntry */
 /** @typedef {import('../core/types.js').CellPoint} CellPoint */
 
 /** @type {Campaign | null} */
@@ -31,9 +26,6 @@ let campaign = null;
 
 /** @type {string | null} */
 let activeLevelId = null;
-
-/** @type {Handout | null} */
-let activeHandout = null;
 
 /**
  * Dernier instantané destiné au rendu. Il ne contient aucune copie de la campagne : ses
@@ -47,8 +39,7 @@ let activeHandout = null;
  *   activeLevel: Level | null,
  *   selectedTokenId: string | null,
  *   selectedToken: Token | null,
- *   reachableCells: Map<string, number>,
- *   activeHandout: Handout | null
+ *   reachableCells: Map<string, number>
  * }> | null}
  */
 let renderSnapshot = null;
@@ -327,7 +318,6 @@ export function saveToLocalStorage(sessionId) {
       JSON.stringify({
         activeLevelId,
         selectedTokenId: getSelectedTokenId(),
-        activeHandout,
       })
     );
     lastPersistenceError = null;
@@ -345,10 +335,12 @@ export function saveToLocalStorage(sessionId) {
  *
  * @param {string} sessionId
  * @returns {boolean} true si **un état** a été restauré : campagne, état de session, ou
- *   les deux. Une entrée de session sans campagne est un cas réel et non une anomalie —
- *   un handout peut être affiché avant tout chargement de carte (chantier H). Aucun
- *   appelant n'exploite ce retour aujourd'hui ; ne pas en déduire « une campagne est
- *   chargée » sans vérifier `getCampaign()`.
+ *   les deux. Une entrée de session sans campagne est un cas réel et non une anomalie :
+ *   `saveToLocalStorage` l'écrit même quand aucune carte n'est chargée. Aucun appelant
+ *   n'exploite ce retour aujourd'hui ; ne pas en déduire « une campagne est chargée »
+ *   sans vérifier `getCampaign()`.
+ *
+ *   ⚠ Une entrée de session écrite avant C-13 porte encore `activeHandout` : il est ignoré.
  */
 export function loadFromLocalStorage(sessionId) {
   const storage = getStorage();
@@ -372,7 +364,6 @@ export function loadFromLocalStorage(sessionId) {
         campaign: campData,
         activeLevelId: sessData.activeLevelId,
         selectedTokenId: sessData.selectedTokenId,
-        activeHandout: sessData.activeHandout,
       },
       { sessionId }
     );
@@ -446,21 +437,8 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
     clearSelectionState();
   }
 
-  const rawHandout = snapshotData.activeHandout;
-  if (
-    rawHandout &&
-    typeof rawHandout === 'object' &&
-    typeof rawHandout.imageUrl === 'string' &&
-    isPersistableAssetUrl(rawHandout.imageUrl)
-  ) {
-    activeHandout = deepFreeze({
-      id: String(rawHandout.id || 'handout-1'),
-      name: String(rawHandout.name || ''),
-      imageUrl: String(rawHandout.imageUrl),
-    });
-  } else {
-    activeHandout = null;
-  }
+  // ⛔ `snapshotData.activeHandout`, qu'un instantané d'avant C-13 porte encore, n'est pas lu : le
+  // partage d'image ne passe plus par le store (nœud d'état RTDB, `FirebaseTransport.shareImage`).
 
   notifySubscribers();
 }
@@ -1928,7 +1906,6 @@ export function clearTemplates(levelId) {
 export function resetStore() {
   campaign = null;
   activeLevelId = null;
-  activeHandout = null;
   sessionFogMap.clear();
   sessionVisionMap.clear();
   clearSelectionState();
@@ -1944,8 +1921,7 @@ export function resetStore() {
  *   activeLevel: Level | null,
  *   selectedTokenId: string | null,
  *   selectedToken: Token | null,
- *   reachableCells: Map<string, number>,
- *   activeHandout: Handout | null
+ *   reachableCells: Map<string, number>
  * }>}
  */
 export function getState() {
@@ -1965,7 +1941,6 @@ export function getState() {
     selectedTokenId: selId,
     selectedToken: selectedToken ? structuredClone(selectedToken) : null,
     reachableCells: getReachableCells(),
-    activeHandout: activeHandout ? structuredClone(activeHandout) : null,
   });
 }
 
@@ -1986,8 +1961,7 @@ export function getState() {
  *   activeLevel: Level | null,
  *   selectedTokenId: string | null,
  *   selectedToken: Token | null,
- *   reachableCells: Map<string, number>,
- *   activeHandout: Handout | null
+ *   reachableCells: Map<string, number>
  * }>}
  */
 export function getRenderSnapshot() {
@@ -2010,7 +1984,6 @@ export function getRenderSnapshot() {
     selectedTokenId,
     selectedToken,
     reachableCells: createReadonlyMap(getReachableCells()),
-    activeHandout,
   });
   return renderSnapshot;
 }
@@ -2050,135 +2023,6 @@ export function getSelectedToken() {
   if (!campaign || !selId) return null;
   const token = campaign.tokens.find((t) => t.id === selId) || null;
   return token ? deepFreeze(structuredClone(token)) : null;
-}
-
-/**
- * Copie figée du handout actif courant (ou null).
- * @returns {Handout | null}
- */
-export function getActiveHandout() {
-  return activeHandout ? deepFreeze(structuredClone(activeHandout)) : null;
-}
-
-/**
- * Définit ou réinitialise le handout actif.
- * Refuse les URLs non persistables (data:, blob:).
- *
- * @param {Handout | null} handout
- * @returns {void}
- */
-export function setActiveHandout(handout) {
-  if (handout === null || handout === undefined) {
-    if (activeHandout !== null) {
-      activeHandout = null;
-      notifySubscribers();
-    }
-    return;
-  }
-
-  if (typeof handout !== 'object' || !handout.imageUrl) {
-    throw new Error('Handout invalide : imageUrl requise');
-  }
-
-  assertPersistableAssetUrl(handout.imageUrl, 'imageUrl');
-
-  activeHandout = deepFreeze({
-    id: String(handout.id || `handout-${Date.now()}`),
-    name: String(handout.name || ''),
-    imageUrl: String(handout.imageUrl),
-  });
-
-  notifySubscribers();
-}
-
-/**
- * Copie figée de la bibliothèque d'images de séance (C-3, tranche A).
- *
- * ⚠ Une campagne d'avant C-3 ne porte pas le champ, et une absence vaut **bibliothèque vide** :
- * c'est ici que cette tolérance est rendue, pour qu'aucun appelant n'ait à la refaire.
- *
- * @returns {HandoutLibraryEntry[]}
- */
-export function getHandoutLibrary() {
-  if (!campaign || !Array.isArray(campaign.handoutLibrary)) return [];
-  return deepFreeze(structuredClone(campaign.handoutLibrary));
-}
-
-/**
- * Ajoute une image de séance à la bibliothèque, **sans la révéler**.
- *
- * L'identifiant est fabriqué **une fois, ici**, et ne bouge plus : c'est lui que porteront toutes
- * les révélations de cette entrée. Avant C-3, un identifiant était refabriqué à chaque révélation,
- * donc n'adressait rien — et retirer l'entrée affichée n'était pas reconnaissable.
- *
- * @param {{name?: string, imageUrl: string}} entryData
- * @returns {HandoutLibraryEntry} L'entrée ajoutée, telle qu'enregistrée.
- */
-export function addHandoutToLibrary(entryData) {
-  if (!campaign) {
-    throw new Error('Aucune campagne chargée');
-  }
-  if (!entryData || typeof entryData !== 'object' || !entryData.imageUrl) {
-    throw new Error('Handout invalide : imageUrl requise');
-  }
-  assertPersistableAssetUrl(entryData.imageUrl, 'imageUrl');
-
-  /** @type {HandoutLibraryEntry} */
-  const entry = {
-    id: `handout-${identifiantAleatoire()}`,
-    name: String(entryData.name || '').trim() || 'Sans titre',
-    imageUrl: String(entryData.imageUrl),
-    addedAt: Date.now(),
-  };
-
-  const candidate = structuredClone(campaign);
-  if (!Array.isArray(candidate.handoutLibrary)) {
-    candidate.handoutLibrary = [];
-  }
-  candidate.handoutLibrary.push(entry);
-
-  assertValidCampaign(candidate, `Ajout du handout "${entry.name}"`);
-  replaceCampaign(candidate);
-  notifySubscribers();
-  return entry;
-}
-
-/**
- * Retire une entrée de la bibliothèque.
- *
- * ⭐ **Si c'est l'entrée affichée, elle cesse aussi d'être affichée.** Sans cela, la TV garderait
- * une image que le MJ croit supprimée — et il n'aurait plus aucune entrée sur laquelle cliquer pour
- * la masquer. C'est porté ici, dans la mutation, plutôt que dans l'interface : un second chemin
- * vers ce retrait (réseau, restauration) hériterait de la garde au lieu de l'oublier.
- *
- * ⚠ L'interface reste chargée de publier `handout.hide` : le store n'a pas de transport, et ce
- * fichier ne réseaute rien (CLAUDE.md).
- *
- * @param {string} handoutId
- * @returns {boolean} true si une entrée a été retirée.
- */
-export function removeHandoutFromLibrary(handoutId) {
-  if (!campaign) {
-    throw new Error('Aucune campagne chargée');
-  }
-  if (!handoutId || typeof handoutId !== 'string') {
-    throw new Error('Identifiant de handout requis');
-  }
-
-  const index = (campaign.handoutLibrary || []).findIndex((h) => h.id === handoutId);
-  if (index < 0) return false;
-
-  const candidate = structuredClone(campaign);
-  (candidate.handoutLibrary || []).splice(index, 1);
-  assertValidCampaign(candidate, `Retrait du handout "${handoutId}"`);
-  replaceCampaign(candidate);
-
-  if (activeHandout && activeHandout.id === handoutId) {
-    activeHandout = null;
-  }
-
-  notifySubscribers();
-  return true;
 }
 
 /** @type {Map<string, string>} */

@@ -40,6 +40,30 @@ export class LocalSocketTransport {
     }
 
     /**
+     * @param {import('../core/types.js').SharedImage} _image
+     * @returns {Promise<import('./Transport.js').PublishResult>} jamais rendu : le stub lève
+     */
+    shareImage(_image) {
+        throw new Error('LocalSocketTransport non implémenté');
+    }
+
+    /**
+     * @param {string} _id
+     * @returns {Promise<import('./Transport.js').PublishResult>} jamais rendu : le stub lève
+     */
+    closeSharedImage(_id) {
+        throw new Error('LocalSocketTransport non implémenté');
+    }
+
+    /**
+     * @param {(image: import('../core/types.js').SharedImage|null) => void} _callback
+     * @returns {() => void}
+     */
+    subscribeSharedImage(_callback) {
+        throw new Error('LocalSocketTransport non implémenté');
+    }
+
+    /**
      * @returns {void}
      */
     disconnect() {

@@ -454,7 +454,7 @@ test.describe('UX-08 — Un pion créé se pose là où l\'on tape', () => {
     await genererUnPion(page);
     expect(await outilActif(page)).toBe('token-place');
 
-    await page.click('button[data-tab="handouts"]');
+    await page.click('button[data-tab="image-share"]');
     expect(await outilActif(page), 'changer d\'onglet désarme (amendement A3)').toBe('none');
     expect(
       await page.evaluate(() => /** @type {any} */ (window).__RPG_APP__?.gmPanel?.hasPendingToken())

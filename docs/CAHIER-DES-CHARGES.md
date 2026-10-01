@@ -547,8 +547,9 @@ sources portées par les pions (`emitsLight`).
 
   *Amendé le 01/10/2026 (C-10, refonte de la vue MJ).* Les dix onglets sont devenus trois zones :
   un **rail d'outils** à gauche (Ping, Mesure, lampes, et quatre boutons de palette : Fog, Gabarits,
-  Murs, Liaisons), la carte au centre, un **inspecteur** à droite (Pions, Handouts en Jouer ;
-  Cartes, Image, Grille en Préparer ; le diagnostic UVTT est un volet repliable de Cartes). ⭐ Une
+  Murs, Liaisons), la carte au centre, un **inspecteur** à droite (Pions, Handouts en Jouer —
+  Handouts devenu Image, le partage d'image du §5.8, par C-13 ; Cartes, Image, Grille en
+  Préparer ; le diagnostic UVTT est un volet repliable de Cartes). ⭐ Une
   **palette** posée sur la carte est l'ancien onglet et en garde les règles : en ouvrir ou en
   fermer une désarme l'outil, comme un changement d'onglet ; la bascule Jouer/Préparer ne désarme
   jamais. Un outil armé se signale par un liseré de laiton autour de la carte et une puce de rappel.
@@ -627,7 +628,7 @@ Toute modification invalide les arêtes de grille concernées dans le masque blo
 
 *Note (Tranche L-07)* : Déplacer un mur est reporté (exigerait un mode de glisser dans `js/input/`). L'édition de portails attend deux noms d'événements — `portal.add` et `portal.remove` — qui n'existent pas au §7 et ne s'inventent pas sans décision du mainteneur.
 
-### 5.8 Révélation d'image aux joueurs
+### 5.8 Partage d'image
 
 Le MJ choisit une image (portrait, lettre, rune, plan trouvé) ; elle s'affiche **en plein
 écran sur la vue joueurs** jusqu'à fermeture par le MJ. Ne touche ni la carte, ni les
@@ -636,6 +637,32 @@ pions, ni le fog.
 Meilleur rapport valeur/effort du cahier des charges : quelques dizaines de lignes, un
 seul événement réseau, et un usage constant sur une table hybride équipée d'un grand
 écran.
+
+> **Amendement C-13 (01/10/2026) — « Partage d'image » remplace entièrement les handouts.**
+> Décision du mainteneur. L'usage est de montrer en grand aux joueurs, à la volée, l'image d'un
+> monstre. Le nom dans l'interface est **« Partage d'image »** (onglet « Image » du mode Jouer).
+>
+> - **Plus d'URL, plus de bibliothèque.** Le MJ clique « Choisir une image… », qui ouvre le
+>   sélecteur de fichier de son poste. L'image est réduite **côté MJ** au format TV — plus grand
+>   côté ramené à 1920 px, jamais agrandie, encodée en WebP sous 1 500 000 caractères — puis
+>   affichée en surimpression plein écran sur la vue joueurs. Choisir une nouvelle image
+>   **remplace** la précédente.
+> - ⛔ **Rien n'est sauvegardé** : ni dépôt, ni campagne, ni Firestore, ni localStorage. L'image
+>   **transite** par le nœud d'état RTDB `session/{sid}/sharedImage` (§6) le temps de l'affichage,
+>   et ce nœud est **effacé** à la fermeture. Ce n'est **pas** un événement du §7 : c'est l'état de
+>   session partagé que l'amendement du 03/08 au §6 réservait à une décision — celle-ci.
+> - **Les joueurs ferment avec une croix** sur l'overlay, seul contrôle de la vue joueurs pendant
+>   l'affichage (le Zero-UI tolère un overlay transitoire, rien d'autre). L'image se ferme **pour
+>   tous**, et le MJ le voit : son aperçu disparaît, une ligne dit « Fermée par les joueurs. ». Le
+>   MJ peut aussi fermer depuis son panneau. Une fermeture n'efface le nœud **que s'il porte encore
+>   l'image fermée** : une croix tardive n'emporte jamais une image plus récente.
+> - Un **F5** de la tablette fait revenir l'image tant qu'elle n'est pas fermée ; une fois fermée,
+>   elle ne revient jamais.
+> - Pendant l'affichage, l'overlay capte les gestes : pas de pan de carte dessous.
+>
+> Les champs `activeHandout` (instantané, localStorage) et `handoutLibrary` (campagne) n'existent
+> plus. Un document qui les porte encore se charge sans erreur ; ils sont ignorés, et
+> `handoutLibrary` est retiré par la normalisation.
 
 ### 5.9 Gabarits de zone d'effet
 
@@ -755,9 +782,6 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
 
 // sceneLibrary — index de navigation, dérivé des levels
 [{ levelId, name, thumbUrl, gridType, source: 'uvtt'|'image', updatedAt }]
-
-// handouts (§5.8)
-[{ id, name, imageUrl }]
 ```
 
 **Convention d'unités — source du bug n°1.** Toutes les coordonnées du modèle
@@ -782,6 +806,7 @@ compiler** plutôt que simplement déconseillé.
 /session/{sid}/events             → flux d'événements en append (§7), tous domaines confondus
 /session/{sid}/presence/{cid}     → { role, at, build, label }
 /session/{sid}/retentionClients/{cid} → { state: joining|active, eventCursor?, at } barrière et accusé de réception éphémères
+/session/{sid}/sharedImage        → { id, dataUrl, width, height, at } image partagée (§5.8, C-13), absente hors affichage
 ```
 
 Plus, hors RTDB, un unique document Firestore `campaigns/{sid}` portant **toute** la campagne,
@@ -842,7 +867,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
 | `ping` | **MJ seul** (amendé le 12/08/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
 | `ambient.set` | MJ | throttlé |
-| `handout.show` / `handout.hide` | MJ | ponctuel |
+| ~~`handout.show` / `handout.hide`~~ | — | **retirés par C-13** : le partage d'image n'est pas un événement, c'est le nœud d'état `session/{sid}/sharedImage` (§5.8, §6). Un ancien `handout.*` reçu est ignoré comme tout type inconnu |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
 | `token.mounted` | MJ, **joueurs** | ponctuel — `{ tokenId, mounted }`, état **absolu**, seul écrivain de `mounted`, voir l'amendement C-9 |
@@ -1240,7 +1265,7 @@ Critères :
 
 ### Lot 1b — La prépa MJ
 
-Bibliothèque de scènes, bibliothèque de pions (§5.7), révélation d'image (§5.8), badge
+Bibliothèque de scènes, bibliothèque de pions (§5.7), révélation d'image (§5.8, remplacée par le partage d'image de C-13), badge
 d'élévation.
 
 C'est ce qui fait passer l'outil d'« une carte » à « une campagne », et c'est le terrain

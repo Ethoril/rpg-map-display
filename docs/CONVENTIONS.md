@@ -194,7 +194,7 @@ Forme unique, sans exception :
 ```
 
 - `type` : chaîne en `domaine.action`, en anglais — `token.move`, `portal.toggle`,
-  `handout.show`. La liste exhaustive est dans le cahier des charges §7 ; **ne pas en
+  `fog.update`. La liste exhaustive est dans le cahier des charges §7 ; **ne pas en
   inventer** sans demander.
 - `payload` : objet plat. Pas d'événement imbriqué, pas de tableau d'événements.
 - **Ne jamais transmettre ce que le destinataire peut recalculer.** On envoie

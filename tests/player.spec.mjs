@@ -390,7 +390,7 @@ test.describe('T-23 — Vue joueurs autonome', () => {
     const bouton = page.locator('#player-fullscreen-btn');
     await expect(bouton).toBeVisible();
 
-    // Ancré en haut à droite, au-dessus du handout (9000) et sous l'alerte de version (9999).
+    // Ancré en haut à droite, au-dessus de l'image partagée (9000) et sous l'alerte de version (9999).
     const ancrage = await page.evaluate(() => {
       const el = /** @type {HTMLElement} */ (document.getElementById('player-fullscreen-btn'));
       const style = window.getComputedStyle(el);

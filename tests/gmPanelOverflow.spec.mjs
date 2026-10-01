@@ -39,7 +39,9 @@ const SNAPSHOT = {
   activeHandout: null,
 };
 
-const ONGLETS_JOUER = ['Pions', 'Handouts'];
+// ⚠ « Image » est le nom d'un onglet dans chaque mode (partage d'image en Jouer, C-13 ; import en
+// Préparer) : les boutons se cherchent donc parmi les onglets VISIBLES.
+const ONGLETS_JOUER = ['Pions', 'Image'];
 const ONGLETS_PREPARER = ['Cartes', 'Image', 'Grille'];
 // C-10 : les quatre anciens onglets d'outil sont des palettes posées sur la carte.
 const PALETTES = ['fog-tools', 'template-tools', 'wall-editor', 'link-editor'];
@@ -86,7 +88,7 @@ for (const largeur of [1024, 1440]) {
     // 1. Parcours du mode Jouer (mode par défaut)
     await page.click('#gm-mode-play');
     for (const nom of ONGLETS_JOUER) {
-      const bouton = page.locator('.gm-tabs-header button', { hasText: nom }).first();
+      const bouton = page.locator('.gm-tabs-header button:visible', { hasText: nom }).first();
       await bouton.click();
       await page.waitForTimeout(250);
       const { debordement, coupable } = await mesure();
@@ -99,7 +101,7 @@ for (const largeur of [1024, 1440]) {
     // 2. Parcours du mode Préparer
     await page.click('#gm-mode-prep');
     for (const nom of ONGLETS_PREPARER) {
-      const bouton = page.locator('.gm-tabs-header button', { hasText: nom }).first();
+      const bouton = page.locator('.gm-tabs-header button:visible', { hasText: nom }).first();
       await bouton.click();
       await page.waitForTimeout(250);
       const { debordement, coupable } = await mesure();
