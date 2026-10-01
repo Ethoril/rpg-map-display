@@ -37,32 +37,32 @@ export function createHandouts(mount, options = {}) {
   const listeners = new AbortController();
 
   mount.innerHTML = `
-    <div class="handouts-form" style="display: flex; flex-direction: column; gap: 1rem; background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-      <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Images de séance (Handouts)</h3>
+    <div class="handouts-form gm-stack">
+      <h3 class="gm-h">Images de séance (Handouts)</h3>
 
-      <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-        <label for="handout-image-url" style="font-size: 0.85rem; color: #ccc;">URL de l'image (relative ou https://) :</label>
-        <input type="text" id="handout-image-url" placeholder="./assets/mon-image.jpg" style="padding: 0.5rem; background: #1e1e1e; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;" />
+      <div class="gm-stack">
+        <label for="handout-image-url" class="gm-muted">URL de l'image (relative ou https://) :</label>
+        <input type="text" id="handout-image-url" placeholder="./assets/mon-image.jpg" />
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-        <label for="handout-title" style="font-size: 0.85rem; color: #ccc;">Nom / Titre (optionnel) :</label>
-        <input type="text" id="handout-title" placeholder="Lettre secrète" style="padding: 0.5rem; background: #1e1e1e; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;" />
+      <div class="gm-stack">
+        <label for="handout-title" class="gm-muted">Nom / Titre (optionnel) :</label>
+        <input type="text" id="handout-title" placeholder="Lettre secrète" />
       </div>
 
-      <div id="handout-error-msg" style="display: none; padding: 0.5rem; background: #3a1a1a; color: #ff6b6b; border: 1px solid #662222; border-radius: 4px; font-size: 0.8rem;"></div>
-      <div id="handout-warning-msg" style="display: none; padding: 0.5rem; background: #3a3018; color: #f0c674; border: 1px solid #6b5520; border-radius: 4px; font-size: 0.8rem;"></div>
+      <div id="handout-error-msg" class="gm-status gm-err" hidden></div>
+      <div id="handout-warning-msg" class="gm-status gm-warn" hidden></div>
 
-      <div style="display: flex; gap: 0.5rem;">
-        <button id="handout-add-btn" style="flex: 1; padding: 0.6rem; background: #37474f; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">➕ Ajouter à la bibliothèque</button>
-        <button id="handout-hide-btn" style="flex: 1; padding: 0.6rem; background: #c62828; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">🙈 Masquer</button>
+      <div class="gm-row">
+        <button id="handout-add-btn" class="gm-btn--primary">Ajouter à la bibliothèque</button>
+        <button id="handout-hide-btn" class="gm-btn--danger">Masquer</button>
       </div>
 
-      <div id="handout-status" style="padding: 0.5rem; background: #1e1e1e; border-radius: 4px; border: 1px solid #333; font-size: 0.8rem; color: #aaa;">
+      <div id="handout-status" class="gm-status gm-muted">
         Aucun handout affiché aux joueurs.
       </div>
 
-      <div id="handout-library" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+      <div id="handout-library" class="gm-stack"></div>
     </div>
   `;
 
@@ -78,14 +78,14 @@ export function createHandouts(mount, options = {}) {
   /** @param {string} message */
   function montrerErreur(message) {
     errorEl.textContent = message;
-    errorEl.style.display = 'block';
+    errorEl.hidden = false;
   }
 
   function effacerMessages() {
     errorEl.textContent = '';
-    errorEl.style.display = 'none';
+    errorEl.hidden = true;
     warningEl.textContent = '';
-    warningEl.style.display = 'none';
+    warningEl.hidden = true;
   }
 
   /**
@@ -119,10 +119,10 @@ export function createHandouts(mount, options = {}) {
       if (constats.length === 0) return;
 
       warningEl.textContent =
-        `⚠ « ${entry.name} » est lourde (${constats.join(', ')}). La tablette des joueurs est plus ` +
+        `« ${entry.name} » est lourde (${constats.join(', ')}). La tablette des joueurs est plus ` +
         'lente que ce poste : la révélation risque de se faire attendre à la table. Une version ' +
         'réduite passerait mieux. L\'image reste dans la bibliothèque et peut être révélée.';
-      warningEl.style.display = 'block';
+      warningEl.hidden = false;
     });
 
     sonde.addEventListener('error', () => {
@@ -214,29 +214,18 @@ export function createHandouts(mount, options = {}) {
    */
   function rendreEntree(entry) {
     const card = document.createElement('div');
-    card.className = 'handout-entry';
+    card.className = 'handout-entry gm-row';
     card.dataset.handoutId = entry.id;
-    card.style.display = 'flex';
-    card.style.alignItems = 'center';
-    card.style.gap = '0.5rem';
-    card.style.background = '#1e1e1e';
-    card.style.border = '1px solid #333';
-    card.style.borderRadius = '4px';
-    card.style.padding = '0.4rem';
+    card.style.flexWrap = 'nowrap';
 
     const revealBtn = document.createElement('button');
     revealBtn.type = 'button';
-    revealBtn.className = 'handout-reveal-btn';
+    revealBtn.className = 'handout-reveal-btn gm-btn--ghost';
     revealBtn.style.flex = '1';
     revealBtn.style.display = 'flex';
     revealBtn.style.alignItems = 'center';
-    revealBtn.style.gap = '0.6rem';
-    revealBtn.style.background = 'transparent';
-    revealBtn.style.border = 'none';
-    revealBtn.style.color = '#ddd';
-    revealBtn.style.cursor = 'pointer';
+    revealBtn.style.gap = '8px';
     revealBtn.style.textAlign = 'left';
-    revealBtn.style.font = 'inherit';
     revealBtn.title = `Révéler « ${entry.name} » aux joueurs`;
 
     const thumb = document.createElement('img');
@@ -246,31 +235,28 @@ export function createHandouts(mount, options = {}) {
     thumb.style.width = '64px';
     thumb.style.height = '48px';
     thumb.style.objectFit = 'cover';
-    thumb.style.background = '#000';
-    thumb.style.borderRadius = '3px';
+    thumb.style.borderRadius = 'var(--gm-r)';
     thumb.style.flex = '0 0 auto';
 
     const label = document.createElement('span');
     label.className = 'handout-entry-name';
     label.textContent = entry.name;
-    label.style.fontSize = '0.85rem';
     label.style.overflowWrap = 'anywhere';
 
-    revealBtn.append(thumb, label);
+    const badge = document.createElement('span');
+    badge.className = 'handout-entry-badge gm-chip';
+    badge.textContent = 'Affiché';
+    badge.hidden = true;
+
+    revealBtn.append(thumb, label, badge);
     revealBtn.addEventListener('click', () => revelerEntree(entry), { signal: listeners.signal });
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
-    removeBtn.className = 'handout-remove-btn';
-    removeBtn.textContent = '🗑️';
+    removeBtn.className = 'handout-remove-btn gm-btn--danger gm-btn--sm';
+    removeBtn.textContent = 'Retirer';
     removeBtn.title = `Retirer « ${entry.name} » de la bibliothèque`;
     removeBtn.style.flex = '0 0 auto';
-    removeBtn.style.padding = '0.4rem 0.5rem';
-    removeBtn.style.background = '#3a1a1a';
-    removeBtn.style.color = '#ff6b6b';
-    removeBtn.style.border = '1px solid #662222';
-    removeBtn.style.borderRadius = '4px';
-    removeBtn.style.cursor = 'pointer';
     removeBtn.addEventListener('click', () => retirerEntree(entry), { signal: listeners.signal });
 
     card.append(revealBtn, removeBtn);
@@ -291,6 +277,12 @@ export function createHandouts(mount, options = {}) {
    */
   let signatureDessinee = null;
 
+  /** @param {'gm-ok'|'gm-warn'|'gm-muted'} classe */
+  function etatStatut(classe) {
+    statusEl.classList.remove('gm-ok', 'gm-warn', 'gm-muted');
+    statusEl.classList.add(classe);
+  }
+
   function rafraichirUI() {
     const entries = [...store.getHandoutLibrary()].sort((a, b) => a.addedAt - b.addedAt);
     const signature = JSON.stringify(entries.map((e) => [e.id, e.name, e.imageUrl]));
@@ -300,11 +292,9 @@ export function createHandouts(mount, options = {}) {
       libraryEl.replaceChildren();
       if (entries.length === 0) {
         const vide = document.createElement('p');
-        vide.className = 'handout-library-empty';
+        vide.className = 'handout-library-empty gm-hint';
         vide.textContent = 'Bibliothèque vide : collez une URL d\'image ci-dessus pour l\'ajouter.';
         vide.style.margin = '0';
-        vide.style.fontSize = '0.8rem';
-        vide.style.color = '#777';
         libraryEl.appendChild(vide);
       } else {
         for (const entry of entries) {
@@ -321,29 +311,25 @@ export function createHandouts(mount, options = {}) {
       // cliqué. C'est une propriété de ce qui est affiché, pas une notification.
       const enregistre = entries.some((e) => e.id === active.id);
       if (enregistre) {
-        statusEl.style.borderColor = '#2e7d32';
-        statusEl.style.color = '#81c784';
-        statusEl.textContent = `🟢 Affiché aux joueurs : ${displayName}`;
+        etatStatut('gm-ok');
+        statusEl.textContent = `Affiché aux joueurs : ${displayName}`;
       } else {
-        statusEl.style.borderColor = '#6b5520';
-        statusEl.style.color = '#f0c674';
+        etatStatut('gm-warn');
         statusEl.textContent =
-          `🟡 Affiché aux joueurs : ${displayName} — ⚠ NON enregistrée : ` +
+          `Affiché aux joueurs : ${displayName} — NON enregistrée : ` +
           (store.getCampaign()
             ? 'cette image ne figure pas dans la bibliothèque.'
             : 'la bibliothèque appartient à la campagne, et aucune n\'est chargée.');
       }
     } else {
-      statusEl.style.borderColor = '#333';
-      statusEl.style.color = '#aaa';
-      statusEl.textContent = '⚪ Aucun handout affiché aux joueurs.';
+      etatStatut('gm-muted');
+      statusEl.textContent = 'Aucun handout affiché aux joueurs.';
     }
 
     for (const card of libraryEl.querySelectorAll('.handout-entry')) {
       const affichee = active !== null && card instanceof HTMLElement && card.dataset.handoutId === active.id;
-      if (card instanceof HTMLElement) {
-        card.style.borderColor = affichee ? '#2e7d32' : '#333';
-      }
+      const badge = card.querySelector('.handout-entry-badge');
+      if (badge instanceof HTMLElement) badge.hidden = !affichee;
     }
   }
 

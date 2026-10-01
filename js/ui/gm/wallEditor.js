@@ -165,28 +165,25 @@ export function createWallEditor(container, options) {
   let draftVertices = [];
 
   container.innerHTML = `
-    <div class="gm-section">
-      <h3>🧱 Éditeur de murs</h3>
-      <div class="gm-btn-group" style="margin-bottom: 12px;">
-        <button id="wall-btn-arm" class="gm-btn" style="flex: 1;">Armer l'éditeur</button>
-      </div>
+    <div class="gm-stack">
+      <button id="wall-btn-arm" class="gm-btn--primary gm-btn--block" aria-pressed="false">Armer l'éditeur</button>
 
-      <div id="wall-tools-panel" style="display: none;">
-        <div style="margin-bottom: 10px; font-weight: 500; font-size: 0.85rem; color: var(--color-text-subtle, #94a3b8);">
-          Mode d'édition :
-        </div>
-        <div class="gm-btn-group" style="margin-bottom: 12px;">
-          <button id="wall-btn-mode-trace" class="gm-btn gm-btn-active" style="flex: 1;">✏️ Tracer</button>
-          <button id="wall-btn-mode-remove" class="gm-btn" style="flex: 1;">🗑️ Supprimer</button>
-        </div>
+      <div id="wall-tools-panel" hidden>
+        <div class="gm-stack">
+          <div class="gm-muted">Mode d'édition :</div>
+          <div class="gm-row">
+            <button id="wall-btn-mode-trace" aria-pressed="true" style="flex: 1;">Tracer</button>
+            <button id="wall-btn-mode-remove" aria-pressed="false" style="flex: 1;">Supprimer</button>
+          </div>
 
-        <div id="wall-draft-actions" style="margin-top: 10px;">
-          <button id="wall-btn-commit" class="gm-btn gm-btn-primary" style="width: 100%; margin-bottom: 6px;" disabled>
-            ✅ Valider le mur (0 sommet)
-          </button>
-          <button id="wall-btn-cancel" class="gm-btn" style="width: 100%;" disabled>
-            ❌ Annuler le tracé
-          </button>
+          <div id="wall-draft-actions" class="gm-stack" style="gap: 6px;">
+            <button id="wall-btn-commit" class="gm-btn--primary gm-btn--block" disabled>
+              Valider le mur (0 sommet)
+            </button>
+            <button id="wall-btn-cancel" class="gm-btn--block" disabled>
+              Annuler le tracé
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -202,24 +199,19 @@ export function createWallEditor(container, options) {
   function updateUI() {
     if (isArmed) {
       btnArm.textContent = 'Désarmer l\'éditeur';
-      btnArm.classList.add('gm-btn-active');
-      panelTools.style.display = 'block';
+      btnArm.setAttribute('aria-pressed', 'true');
+      panelTools.hidden = false;
     } else {
       btnArm.textContent = 'Armer l\'éditeur';
-      btnArm.classList.remove('gm-btn-active');
-      panelTools.style.display = 'none';
+      btnArm.setAttribute('aria-pressed', 'false');
+      panelTools.hidden = true;
     }
 
-    if (subMode === 'tracer') {
-      btnModeTrace.classList.add('gm-btn-active');
-      btnModeRemove.classList.remove('gm-btn-active');
-    } else {
-      btnModeTrace.classList.remove('gm-btn-active');
-      btnModeRemove.classList.add('gm-btn-active');
-    }
+    btnModeTrace.setAttribute('aria-pressed', String(subMode === 'tracer'));
+    btnModeRemove.setAttribute('aria-pressed', String(subMode !== 'tracer'));
 
     const n = draftVertices.length;
-    btnCommit.textContent = `✅ Valider le mur (${n} sommet${n > 1 ? 's' : ''})`;
+    btnCommit.textContent = `Valider le mur (${n} sommet${n > 1 ? 's' : ''})`;
     btnCommit.disabled = n < 2;
     btnCancel.disabled = n === 0;
   }

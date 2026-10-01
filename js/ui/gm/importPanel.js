@@ -42,35 +42,35 @@ export function createImportPanel(container, options = {}) {
 
   container.className = 'import-panel-container';
   container.innerHTML = `
-    <div class="import-panel-ui" style="display: flex; flex-direction: column; gap: 1.5rem; font-family: system-ui, sans-serif;">
+    <div class="import-panel-ui gm-stack">
       ${
         showUvtt
           ? `
       <!-- Section 1 : Importation UVTT (Diagnostic) -->
-      <div class="import-uvtt-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333; opacity: 0.7;">
-        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #888;">⚙️ Diagnostic développeur — Import UVTT</h3>
-        <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
+      <div class="import-uvtt-section gm-section">
+        <h3 class="gm-h">Diagnostic développeur — Import UVTT</h3>
+        <p class="gm-muted">
           Pour ajouter des cartes <strong>avant la séance</strong>, utilisez plutôt :
-          <code style="background: #1a1a1a; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.75rem;">pnpm maps:prepare</code>
+          <code>pnpm maps:prepare</code>
         </p>
-        <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
+        <p class="gm-muted">
           Cette section permet d'importer et tester localement des fichiers UVTT sans passer par la préparation complète.
         </p>
 
-        <label style="display: inline-block; padding: 0.5rem 1rem; background: #333; color: #fff; border-radius: 4px; cursor: pointer; text-align: center;">
+        <label class="gm-row" style="justify-content: center; padding: 6px 12px; background: var(--gm-releve); border: 1px solid var(--gm-trait); border-radius: var(--gm-r); cursor: pointer;">
           <span>Choisir un fichier .uvtt</span>
-          <input type="file" id="uvtt-file-input" accept=".uvtt,.json" style="display: none;" />
+          <input type="file" id="uvtt-file-input" accept=".uvtt,.json" hidden />
         </label>
 
-        <div id="uvtt-preview-wrap" style="display: none; margin-top: 0.75rem;">
-          <img id="uvtt-local-preview" alt="Aperçu local de la carte UVTT" style="display: block; width: 100%; max-height: 180px; object-fit: contain; background: #111; border-radius: 4px;" />
+        <div id="uvtt-preview-wrap" hidden>
+          <img id="uvtt-local-preview" alt="Aperçu local de la carte UVTT" style="display: block; width: 100%; max-height: 180px; object-fit: contain;" />
         </div>
 
-        <button id="btn-validate-uvtt-import" style="width: 100%; padding: 0.5rem; margin-top: 0.75rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+        <button id="btn-validate-uvtt-import" class="gm-btn--block" disabled>
           Charger (aperçu local)
         </button>
 
-        <div id="uvtt-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
+        <div id="uvtt-status" class="gm-status" hidden></div>
       </div>
       `
           : ''
@@ -80,20 +80,20 @@ export function createImportPanel(container, options = {}) {
         showImage
           ? `
       <!-- Section 2 : Importation Image avec Calibration -->
-      <div class="import-image-section" style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #4a90e2;">Import Image & Calibration</h3>
-        <p style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #aaa;">
+      <div class="import-image-section gm-section">
+        <h3 class="gm-h">Import Image & Calibration</h3>
+        <p class="gm-muted">
           Indiquez l'URL de l'image (relative au dépôt, HTTPS ou lien Google Drive) pour ajouter et calibrer un étage dans la campagne.
         </p>
 
-        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
-          <label for="image-url-input" style="font-size: 0.85rem; color: #ccc;">URL de l'image (relative ou https://) :</label>
-          <input type="text" id="image-url-input" placeholder="maps/mon-image.webp ou lien Google Drive" style="padding: 0.5rem; background: #1e1e1e; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem;" />
+        <div class="gm-stack">
+          <label for="image-url-input" class="gm-muted">URL de l'image (relative ou https://) :</label>
+          <input type="text" id="image-url-input" placeholder="maps/mon-image.webp ou lien Google Drive" />
         </div>
 
-        <div id="image-error-msg" style="display: none; padding: 0.5rem; background: #3a1a1a; color: #ff6b6b; border: 1px solid #662222; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.75rem;"></div>
+        <div id="image-error-msg" class="gm-status gm-err" hidden></div>
 
-        <div class="calibration-controls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+        <div class="calibration-controls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; margin: 12px 0;">
           <label for="img-cells-wide">Cases (largeur) :</label>
           <input type="number" id="img-cells-wide" min="1" max="200" value="20" />
 
@@ -104,20 +104,20 @@ export function createImportPanel(container, options = {}) {
           <input type="number" id="img-px-per-cell" min="10" max="500" value="140" />
         </div>
 
-        <div class="image-preview-wrap" style="position: relative; width: 100%; height: 180px; background: #111; border-radius: 4px; overflow: hidden; margin-bottom: 0.75rem;">
+        <div class="image-preview-wrap" style="position: relative; width: 100%; height: 180px; background: var(--gm-creux); border-radius: var(--gm-r); overflow: hidden; margin-bottom: 12px;">
           <canvas id="image-calibration-canvas" width="300" height="180" style="width: 100%; height: 100%; display: block;"></canvas>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-          <button id="btn-validate-image-import" style="width: 100%; padding: 0.5rem; background: #4a5a5a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+        <div class="gm-stack">
+          <button id="btn-validate-image-import" class="gm-btn--primary gm-btn--block" disabled>
             Ajouter un étage
           </button>
-          <button id="btn-replace-image-import" style="width: 100%; padding: 0.5rem; background: #4a3a3a; color: #ffcccc; border: 1px solid #663333; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+          <button id="btn-replace-image-import" class="gm-btn--danger gm-btn--block" disabled>
             Remplacer l'étage courant
           </button>
         </div>
 
-        <div id="image-status" style="margin-top: 0.75rem; font-size: 0.85rem; display: none;"></div>
+        <div id="image-status" class="gm-status" hidden></div>
       </div>
       `
           : ''
@@ -162,13 +162,14 @@ export function createImportPanel(container, options = {}) {
    * Affiche un statut d'import sans interpréter le contenu du fichier importé comme du HTML.
    *
    * @param {HTMLElement|null} status
-   * @param {string} color
+   * @param {'gm-ok'|'gm-err'|'gm-warn'} tone
    * @param {Node[]} nodes
    */
-  function setImportStatus(status, color, nodes) {
+  function setImportStatus(status, tone, nodes) {
     if (!status) return;
-    status.style.display = 'block';
-    status.style.color = color;
+    status.hidden = false;
+    status.classList.remove('gm-ok', 'gm-err', 'gm-warn');
+    status.classList.add(tone);
     status.replaceChildren(...nodes);
   }
 
@@ -234,7 +235,7 @@ export function createImportPanel(container, options = {}) {
             uvttPreview.src = parsed.imageBase64.startsWith('data:')
               ? parsed.imageBase64
               : `data:image/png;base64,${parsed.imageBase64}`;
-            uvttPreviewWrap.style.display = 'block';
+            uvttPreviewWrap.hidden = false;
           }
           refreshUvttButton();
 
@@ -249,17 +250,17 @@ export function createImportPanel(container, options = {}) {
           ];
           if (parsed.warnings && parsed.warnings.length > 0) {
             const warning = document.createElement('span');
-            warning.style.color = '#f1c40f';
+            warning.className = 'gm-warn';
             warning.textContent = `Avertissement : ${parsed.warnings.join(' ; ')}`;
             statusNodes.push(document.createElement('br'), warning);
           }
-          setImportStatus(uvttStatus, '#f1c40f', statusNodes);
+          setImportStatus(uvttStatus, 'gm-warn', statusNodes);
         } catch (err) {
           pendingUvtt = null;
           refreshUvttButton();
           const title = document.createElement('strong');
           title.textContent = "Erreur d'importation UVTT :";
-          setImportStatus(uvttStatus, '#e74c3c', [
+          setImportStatus(uvttStatus, 'gm-err', [
             title,
             statusText(` ${err instanceof Error ? err.message : String(err)}`),
           ]);
@@ -296,18 +297,17 @@ export function createImportPanel(container, options = {}) {
       const title = document.createElement('strong');
       title.textContent = `✓ Étage "${level.name}" chargé (aperçu local — pas d'image).`;
       const help = document.createElement('span');
-      help.style.cssText = 'font-size:0.8rem;color:#aaa';
+      help.className = 'gm-muted';
       help.append('Pour publier avec image, utilisez : ');
       const command = document.createElement('code');
-      command.style.cssText = 'background:#1a1a1a;padding:0.2rem 0.4rem;border-radius:3px';
       command.textContent = 'pnpm maps:prepare';
       help.appendChild(command);
-      setImportStatus(uvttStatus, '#2ecc71', [title, document.createElement('br'), help]);
+      setImportStatus(uvttStatus, 'gm-ok', [title, document.createElement('br'), help]);
       options.onImportUvtt?.(publishedResult);
     } catch (err) {
       const title = document.createElement('strong');
       title.textContent = 'Erreur :';
-      setImportStatus(uvttStatus, '#e07070', [
+      setImportStatus(uvttStatus, 'gm-err', [
         title,
         statusText(` ${err instanceof Error ? err.message : String(err)}`),
       ]);
@@ -372,7 +372,7 @@ export function createImportPanel(container, options = {}) {
       loadedCalibImage = null;
       loadedNormalizedUrl = null;
       if (imageErrorMsg) {
-        imageErrorMsg.style.display = 'none';
+        imageErrorMsg.hidden = true;
         imageErrorMsg.textContent = '';
       }
       drawCalibrationPreview();
@@ -384,7 +384,7 @@ export function createImportPanel(container, options = {}) {
       if (imageErrorMsg) {
         imageErrorMsg.textContent =
           "Ce lien Google Drive ne désigne pas un fichier (un dossier ?). Ouvrez l'image dans Drive, puis copiez son lien de partage.";
-        imageErrorMsg.style.display = 'block';
+        imageErrorMsg.hidden = false;
       }
       loadedCalibImage = null;
       loadedNormalizedUrl = null;
@@ -402,7 +402,7 @@ export function createImportPanel(container, options = {}) {
       if (imageErrorMsg) {
         imageErrorMsg.textContent =
           'URL non persistable : les images data: et blob: ou absolues non-https sont interdites. Utilisez une URL HTTPS ou relative au dépôt.';
-        imageErrorMsg.style.display = 'block';
+        imageErrorMsg.hidden = false;
       }
       loadedCalibImage = null;
       loadedNormalizedUrl = null;
@@ -418,7 +418,7 @@ export function createImportPanel(container, options = {}) {
       loadedCalibImage = probe;
       loadedNormalizedUrl = url;
       if (imageErrorMsg) {
-        imageErrorMsg.style.display = 'none';
+        imageErrorMsg.hidden = true;
         imageErrorMsg.textContent = '';
       }
 
@@ -438,7 +438,7 @@ export function createImportPanel(container, options = {}) {
       loadedNormalizedUrl = null;
       if (imageErrorMsg) {
         imageErrorMsg.textContent = `L'image n'a pas pu être chargée depuis ${url} — vérifiez l'adresse et le partage.`;
-        imageErrorMsg.style.display = 'block';
+        imageErrorMsg.hidden = false;
       }
       drawCalibrationPreview();
       refreshImageButton();
@@ -516,7 +516,7 @@ export function createImportPanel(container, options = {}) {
           if (!resultat.ok) {
             const echec = document.createElement('strong');
             echec.textContent = `⚠ Étage "${level.name}" chargé ici, mais NON publié.`;
-            setImportStatus(imageStatus, '#e07070', [
+            setImportStatus(imageStatus, 'gm-err', [
               echec,
               document.createElement('br'),
               statusText(resultat.error.message),
@@ -527,7 +527,7 @@ export function createImportPanel(container, options = {}) {
 
         const title = document.createElement('strong');
         title.textContent = `✓ Étage "${level.name}" chargé et publié.`;
-        setImportStatus(imageStatus, '#2ecc71', [
+        setImportStatus(imageStatus, 'gm-ok', [
           title,
           document.createElement('br'),
           statusText(
@@ -537,7 +537,7 @@ export function createImportPanel(container, options = {}) {
       } catch (err) {
         const title = document.createElement('strong');
         title.textContent = 'Erreur :';
-        setImportStatus(imageStatus, '#e07070', [
+        setImportStatus(imageStatus, 'gm-err', [
           title,
           statusText(` ${err instanceof Error ? err.message : String(err)}`),
         ]);
@@ -622,7 +622,7 @@ export function createImportPanel(container, options = {}) {
         if (!resultat.ok) {
           const echec = document.createElement('strong');
           echec.textContent = '⚠ Étage courant remplacé ici, mais NON publié.';
-          setImportStatus(imageStatus, '#e07070', [
+          setImportStatus(imageStatus, 'gm-err', [
             echec,
             document.createElement('br'),
             statusText(resultat.error.message),
@@ -632,7 +632,7 @@ export function createImportPanel(container, options = {}) {
 
         const title = document.createElement('strong');
         title.textContent = '✓ Étage courant remplacé et publié.';
-        setImportStatus(imageStatus, '#2ecc71', [
+        setImportStatus(imageStatus, 'gm-ok', [
           title,
           document.createElement('br'),
           statusText(
@@ -642,7 +642,7 @@ export function createImportPanel(container, options = {}) {
       } catch (err) {
         const title = document.createElement('strong');
         title.textContent = 'Erreur :';
-        setImportStatus(imageStatus, '#e07070', [
+        setImportStatus(imageStatus, 'gm-err', [
           title,
           statusText(` ${err instanceof Error ? err.message : String(err)}`),
         ]);

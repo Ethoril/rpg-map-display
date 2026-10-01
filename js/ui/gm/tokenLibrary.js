@@ -36,11 +36,11 @@ export async function createTokenLibrary(container, options = {}) {
   const listeners = new AbortController();
 
   container.innerHTML = `
-    <div class="token-library" style="display: flex; flex-direction: column; gap: 1rem;">
-      <div class="token-library-status" style="padding: 0.75rem; background: #252525; border-radius: 4px; border: 1px solid #333; color: #aaa; text-align: center; font-size: 0.85rem;">
+    <div class="token-library gm-stack">
+      <div class="token-library-status gm-status gm-muted">
         Chargement du catalogue de pions…
       </div>
-      <div class="token-library-list" style="display: grid; grid-template-columns: 1fr; gap: 0.75rem;"></div>
+      <div class="token-library-list gm-stack"></div>
     </div>
   `;
 
@@ -54,13 +54,8 @@ export async function createTokenLibrary(container, options = {}) {
    * @param {string} message
    */
   function setStatus(kind, message) {
-    const palette = {
-      info: { background: '#252525', color: '#aaa' },
-      ok: { background: '#1a3a2a', color: '#6fb386' },
-      error: { background: '#3a1a1a', color: '#e07070' },
-    };
-    statusEl.style.background = palette[kind].background;
-    statusEl.style.color = palette[kind].color;
+    statusEl.classList.remove('gm-ok', 'gm-err', 'gm-muted');
+    statusEl.classList.add(kind === 'ok' ? 'gm-ok' : kind === 'error' ? 'gm-err' : 'gm-muted');
     statusEl.textContent = message;
   }
 
@@ -101,20 +96,12 @@ export async function createTokenLibrary(container, options = {}) {
    */
   function renderTokenCard(entry) {
     const card = document.createElement('div');
-    card.className = 'token-card';
+    card.className = 'token-card gm-section gm-stack';
     card.dataset.tokenId = entry.id;
-    card.style.background = '#252525';
-    card.style.border = `1px solid ${entry.borderColor || '#333'}`;
-    card.style.borderRadius = '4px';
-    card.style.padding = '0.75rem';
-    card.style.display = 'flex';
-    card.style.flexDirection = 'column';
-    card.style.gap = '0.5rem';
 
     const topRow = document.createElement('div');
-    topRow.style.display = 'flex';
-    topRow.style.alignItems = 'center';
-    topRow.style.gap = '0.75rem';
+    topRow.className = 'gm-row';
+    topRow.style.flexWrap = 'nowrap';
 
     const img = document.createElement('img');
     img.className = 'token-card-image';
@@ -124,38 +111,26 @@ export async function createTokenLibrary(container, options = {}) {
     img.style.height = '48px';
     img.style.objectFit = 'cover';
     img.style.borderRadius = '50%';
-    img.style.border = `2px solid ${entry.borderColor || '#888'}`;
+    img.style.border = `2px solid ${entry.borderColor || 'var(--gm-trait-fort)'}`;
 
     const infoCol = document.createElement('div');
     infoCol.style.flex = '1';
 
     const titleEl = document.createElement('h4');
-    titleEl.className = 'token-card-name';
+    titleEl.className = 'token-card-name gm-title';
     titleEl.textContent = entry.name;
-    titleEl.style.margin = '0 0 0.25rem 0';
-    titleEl.style.fontSize = '0.95rem';
-    titleEl.style.color = '#fff';
+    titleEl.style.margin = '0 0 4px';
 
     const metaEl = document.createElement('div');
-    metaEl.className = 'token-card-meta';
-    metaEl.style.fontSize = '0.75rem';
-    metaEl.style.color = '#aaa';
+    metaEl.className = 'token-card-meta gm-muted';
     metaEl.textContent = `${entry.kind.toUpperCase()} • Taille: ${entry.sizeCells} case(s) • Vit: ${entry.speedCells} case(s)`;
 
     infoCol.append(titleEl, metaEl);
     topRow.append(img, infoCol);
 
     const btnInstantiate = document.createElement('button');
-    btnInstantiate.className = 'token-card-instantiate';
-    btnInstantiate.textContent = '➕ Instancier';
-    btnInstantiate.style.padding = '0.4rem 0.6rem';
-    btnInstantiate.style.background = '#4a90e2';
-    btnInstantiate.style.color = '#fff';
-    btnInstantiate.style.border = 'none';
-    btnInstantiate.style.borderRadius = '4px';
-    btnInstantiate.style.cursor = 'pointer';
-    btnInstantiate.style.fontSize = '0.8rem';
-    btnInstantiate.style.fontWeight = '500';
+    btnInstantiate.className = 'token-card-instantiate gm-btn--sm gm-btn--primary';
+    btnInstantiate.textContent = 'Instancier';
 
     btnInstantiate.addEventListener(
       'click',

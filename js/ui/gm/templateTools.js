@@ -60,73 +60,71 @@ export function createTemplateTools(container, options) {
   let currentTemplateId = generateTemplateId();
 
   container.innerHTML = `
-    <div class="template-tools-panel" style="display: flex; flex-direction: column; gap: 0.8rem; padding: 0.5rem 0;">
-      <div style="font-weight: 600; font-size: 0.9rem; color: #eee; border-bottom: 1px solid #333; padding-bottom: 0.4rem;">
-        📐 Gabarits de zone d'effet
-      </div>
-
-      <div style="display: flex; flex-direction: column; gap: 0.3rem;">
-        <label style="font-size: 0.75rem; color: #aaa;">Forme du gabarit</label>
-        <select id="tpl-shape" style="background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 0.4rem; border-radius: 4px; font-size: 0.85rem;">
+    <div class="template-tools-panel gm-stack">
+      <div class="gm-stack" style="gap: 4px;">
+        <label class="gm-muted" for="tpl-shape">Forme du gabarit</label>
+        <select id="tpl-shape">
           <option value="circle" selected>Cercle (disque)</option>
           <option value="cone">Cône (60°)</option>
           <option value="line">Ligne (rectangle)</option>
         </select>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.3rem;">
-        <label style="font-size: 0.75rem; color: #aaa;">Rayon (cases)</label>
-        <div style="display: flex; align-items: center; gap: 0.4rem;">
-          <input id="tpl-radius" type="number" min="1" max="20" value="${radiusCells}" style="flex: 1; background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 0.4rem; border-radius: 4px; font-size: 0.85rem;" />
-          <div style="display: flex; gap: 0.2rem;">
-            <button class="tpl-rad-preset" data-rad="1" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">1</button>
-            <button class="tpl-rad-preset" data-rad="2" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">2</button>
-            <button class="tpl-rad-preset" data-rad="4" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">4</button>
-            <button class="tpl-rad-preset" data-rad="6" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">6</button>
+      <div class="gm-stack" style="gap: 4px;">
+        <label class="gm-muted" for="tpl-radius">Rayon (cases)</label>
+        <div class="gm-row" style="flex-wrap: nowrap;">
+          <input id="tpl-radius" type="number" min="1" max="20" value="${radiusCells}" style="flex: 1; min-width: 0;" />
+          <div class="gm-row" style="gap: 4px; flex-wrap: nowrap;">
+            <button class="tpl-rad-preset gm-btn--sm" data-rad="1">1</button>
+            <button class="tpl-rad-preset gm-btn--sm" data-rad="2">2</button>
+            <button class="tpl-rad-preset gm-btn--sm" data-rad="4">4</button>
+            <button class="tpl-rad-preset gm-btn--sm" data-rad="6">6</button>
           </div>
         </div>
       </div>
 
-      <div id="tpl-width-row" style="display: none; flex-direction: column; gap: 0.3rem;">
-        <label style="font-size: 0.75rem; color: #aaa;">Largeur de la ligne (cases)</label>
-        <div style="display: flex; align-items: center; gap: 0.4rem;">
-          <input id="tpl-width" type="number" min="1" max="20" step="1" value="${widthCells}" style="flex: 1; background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 0.4rem; border-radius: 4px; font-size: 0.85rem;" />
-          <div style="display: flex; gap: 0.2rem;">
-            <button class="tpl-width-preset" data-width="1" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">1</button>
-            <button class="tpl-width-preset" data-width="2" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">2</button>
-            <button class="tpl-width-preset" data-width="3" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; background: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">3</button>
+      <div id="tpl-width-row" hidden>
+        <div class="gm-stack" style="gap: 4px;">
+          <label class="gm-muted" for="tpl-width">Largeur de la ligne (cases)</label>
+          <div class="gm-row" style="flex-wrap: nowrap;">
+            <input id="tpl-width" type="number" min="1" max="20" step="1" value="${widthCells}" style="flex: 1; min-width: 0;" />
+            <div class="gm-row" style="gap: 4px; flex-wrap: nowrap;">
+              <button class="tpl-width-preset gm-btn--sm" data-width="1">1</button>
+              <button class="tpl-width-preset gm-btn--sm" data-width="2">2</button>
+              <button class="tpl-width-preset gm-btn--sm" data-width="3">3</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
-        <label style="font-size: 0.75rem; color: #aaa;">Couleur</label>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <input id="tpl-color" type="color" value="${color}" style="background: none; border: none; width: 32px; height: 32px; cursor: pointer;" />
-          <button class="tpl-color-preset" data-color="#ef4444" style="width: 20px; height: 20px; border-radius: 50%; background: #ef4444; border: 1px solid #fff; cursor: pointer;"></button>
-          <button class="tpl-color-preset" data-color="#3b82f6" style="width: 20px; height: 20px; border-radius: 50%; background: #3b82f6; border: 1px solid #fff; cursor: pointer;"></button>
-          <button class="tpl-color-preset" data-color="#10b981" style="width: 20px; height: 20px; border-radius: 50%; background: #10b981; border: 1px solid #fff; cursor: pointer;"></button>
-          <button class="tpl-color-preset" data-color="#f59e0b" style="width: 20px; height: 20px; border-radius: 50%; background: #f59e0b; border: 1px solid #fff; cursor: pointer;"></button>
+      <div class="gm-field">
+        <label class="gm-muted" for="tpl-color">Couleur</label>
+        <div class="gm-row">
+          <input id="tpl-color" type="color" value="${color}" />
+          <button class="tpl-color-preset" data-color="#ef4444" aria-label="Rouge" style="width: 20px; height: 20px; min-height: 0; padding: 0; border-radius: 50%; background: #ef4444; border: 1px solid var(--gm-texte);"></button>
+          <button class="tpl-color-preset" data-color="#3b82f6" aria-label="Bleu" style="width: 20px; height: 20px; min-height: 0; padding: 0; border-radius: 50%; background: #3b82f6; border: 1px solid var(--gm-texte);"></button>
+          <button class="tpl-color-preset" data-color="#10b981" aria-label="Vert" style="width: 20px; height: 20px; min-height: 0; padding: 0; border-radius: 50%; background: #10b981; border: 1px solid var(--gm-texte);"></button>
+          <button class="tpl-color-preset" data-color="#f59e0b" aria-label="Ambre" style="width: 20px; height: 20px; min-height: 0; padding: 0; border-radius: 50%; background: #f59e0b; border: 1px solid var(--gm-texte);"></button>
         </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
-        <input id="tpl-visible" type="checkbox" ${visibleToPlayers ? 'checked' : ''} style="cursor: pointer;" />
-        <label for="tpl-visible" style="font-size: 0.8rem; color: #eee; cursor: pointer;">Visible par les joueurs</label>
-      </div>
+      <label class="gm-check" for="tpl-visible">
+        <input id="tpl-visible" type="checkbox" ${visibleToPlayers ? 'checked' : ''} />
+        Visible par les joueurs
+      </label>
 
-      <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
-        <button id="tpl-toggle-arm" style="padding: 0.6rem; font-size: 0.85rem; font-weight: 600; background: #3b82f6; color: #fff; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
+      <div class="gm-stack">
+        <button id="tpl-toggle-arm" class="gm-btn--primary gm-btn--block">
           Poser un gabarit (désarmé)
         </button>
-        <button id="tpl-clear-level" style="padding: 0.5rem; font-size: 0.8rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;">
+        <button id="tpl-clear-level" class="gm-btn--danger gm-btn--block">
           Effacer les gabarits de l'étage
         </button>
       </div>
 
-      <div style="border-top: 1px solid #333; margin-top: 0.4rem; padding-top: 0.6rem;">
-        <strong style="font-size: 0.8rem; color: #eee;">Gabarits posés sur cet étage</strong>
-        <div id="tpl-list" style="display: grid; gap: 0.35rem; margin-top: 0.45rem;"></div>
+      <div class="gm-subsection">
+        <h4 class="gm-h">Gabarits posés sur cet étage</h4>
+        <div id="tpl-list" class="gm-stack" style="gap: 6px;"></div>
       </div>
     </div>
   `;
@@ -147,8 +145,8 @@ export function createTemplateTools(container, options) {
    * mensonge de la même famille que celui de l'onglet Image.
    */
   function updateWidthRow() {
-    if (!widthRow?.style) return;
-    widthRow.style.display = shape === 'line' ? 'flex' : 'none';
+    if (!widthRow) return;
+    widthRow.hidden = shape !== 'line';
   }
 
   /**
@@ -185,7 +183,7 @@ export function createTemplateTools(container, options) {
 
     if (posed.length === 0) {
       const vide = document.createElement('p');
-      vide.style.cssText = 'margin: 0; font-size: 0.75rem; color: #888;';
+      vide.className = 'gm-hint';
       vide.textContent = 'Aucun gabarit posé sur cet étage.';
       list.replaceChildren(vide);
       return;
@@ -194,16 +192,16 @@ export function createTemplateTools(container, options) {
     list.replaceChildren(
       ...posed.map((t) => {
         const row = document.createElement('div');
-        row.className = 'tpl-row';
+        row.className = 'tpl-row gm-reserve-row';
         row.setAttribute('data-template-id', t.id);
-        row.style.cssText =
-          'display: flex; gap: 0.4rem; align-items: center; padding: 0.3rem 0.35rem; border: 1px solid #444; border-radius: 4px;';
 
+        // Couleur de DONNÉES : celle que le MJ a choisie pour ce gabarit.
         const chip = document.createElement('span');
-        chip.style.cssText = `width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid #fff; background: ${t.color};`;
+        chip.className = 'gm-reserve-swatch';
+        chip.style.background = t.color;
 
         const text = document.createElement('span');
-        text.style.cssText = 'flex: 1; font-size: 0.75rem; color: #ddd;';
+        text.className = 'gm-reserve-text';
         const forme = SHAPE_LABEL_FR[t.shape] ?? t.shape;
         const largeur = t.shape === 'line' ? `, largeur ${t.widthCells ?? 1}` : '';
         const cache = t.visibleToPlayers ? '' : ' · MJ seul';
@@ -211,10 +209,8 @@ export function createTemplateTools(container, options) {
 
         const remove = document.createElement('button');
         remove.type = 'button';
-        remove.className = 'tpl-remove';
+        remove.className = 'tpl-remove gm-btn--danger gm-btn--sm';
         remove.setAttribute('data-template-id', t.id);
-        remove.style.cssText =
-          'padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #3a2a2a; color: #e0a0a0; border: 1px solid #5a3a3a; border-radius: 4px; cursor: pointer;';
         remove.textContent = 'Retirer';
         remove.addEventListener('click', () => {
           onRemoveTemplate?.(t.id);
@@ -228,11 +224,10 @@ export function createTemplateTools(container, options) {
   }
 
   function updateUI() {
+    btnArm.ariaPressed = String(armed);
     if (armed) {
-      btnArm.style.background = '#ef4444';
-      btnArm.textContent = '📐 Outil gabarit ARMÉ (tap pour poser)';
+      btnArm.textContent = 'Outil gabarit ARMÉ (tap pour poser)';
     } else {
-      btnArm.style.background = '#3b82f6';
       btnArm.textContent = 'Poser un gabarit (désarmé)';
     }
   }

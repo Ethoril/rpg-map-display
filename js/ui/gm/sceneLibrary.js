@@ -35,11 +35,11 @@ export async function createSceneLibrary(container, options = {}) {
   const listeners = new AbortController();
 
   container.innerHTML = `
-    <div class="scene-library" style="display: flex; flex-direction: column; gap: 1rem;">
-      <div class="scene-library-status" style="padding: 0.75rem; background: #252525; border-radius: 4px; border: 1px solid #333; color: #aaa; text-align: center;">
+    <div class="scene-library gm-stack">
+      <div class="scene-library-status gm-status gm-muted">
         Chargement du catalogue…
       </div>
-      <div class="scene-library-list" style="display: grid; grid-template-columns: 1fr; gap: 0.75rem;"></div>
+      <div class="scene-library-list gm-stack"></div>
     </div>
   `;
 
@@ -54,13 +54,8 @@ export async function createSceneLibrary(container, options = {}) {
    * @param {string} message
    */
   function setStatus(kind, message) {
-    const palette = {
-      info: { background: '#252525', color: '#aaa' },
-      ok: { background: '#1a3a2a', color: '#6fb386' },
-      error: { background: '#3a1a1a', color: '#e07070' },
-    };
-    statusEl.style.background = palette[kind].background;
-    statusEl.style.color = palette[kind].color;
+    statusEl.classList.remove('gm-ok', 'gm-err', 'gm-muted');
+    statusEl.classList.add(kind === 'ok' ? 'gm-ok' : kind === 'error' ? 'gm-err' : 'gm-muted');
     statusEl.textContent = message;
   }
 
@@ -78,7 +73,6 @@ export async function createSceneLibrary(container, options = {}) {
   async function handleLoadScene(mapEntry, mode, loadBtn, addBtn) {
     const btn = mode === 'load' ? loadBtn : addBtn;
     const originalLabel = btn.textContent;
-    const originalBackground = btn.style.background;
 
     loadBtn.disabled = true;
     addBtn.disabled = true;
@@ -180,10 +174,10 @@ export async function createSceneLibrary(container, options = {}) {
       );
 
       btn.textContent = '✓ Fait';
-      btn.style.background = '#2a5a3a';
+      btn.classList.add('gm-flash-ok');
       setTimeout(() => {
         btn.textContent = originalLabel;
-        btn.style.background = originalBackground;
+        btn.classList.remove('gm-flash-ok');
       }, 1500);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -217,10 +211,10 @@ export async function createSceneLibrary(container, options = {}) {
       substitut.style.display = 'flex';
       substitut.style.alignItems = 'center';
       substitut.style.justifyContent = 'center';
-      substitut.style.background = '#1e1e1e';
-      substitut.style.border = '1px dashed #3a3a3a';
-      substitut.style.borderRadius = '4px';
-      substitut.style.color = '#555';
+      substitut.style.background = 'var(--gm-creux)';
+      substitut.style.border = '1px dashed var(--gm-trait)';
+      substitut.style.borderRadius = 'var(--gm-r)';
+      substitut.style.color = 'var(--gm-texte-3)';
       substitut.style.boxSizing = 'border-box';
       return substitut;
     }
@@ -235,8 +229,7 @@ export async function createSceneLibrary(container, options = {}) {
     img.style.height = taille.hauteur;
     img.style.objectFit = 'cover';
     img.style.display = 'block';
-    img.style.borderRadius = '4px';
-    img.style.background = '#1e1e1e';
+    img.style.borderRadius = 'var(--gm-r)';
     return img;
   }
 
@@ -251,28 +244,21 @@ export async function createSceneLibrary(container, options = {}) {
    */
   function renderLevelList(levels) {
     const listeEl = document.createElement('ul');
-    listeEl.className = 'scene-card-levels';
+    listeEl.className = 'scene-card-levels gm-stack';
     listeEl.style.listStyle = 'none';
     listeEl.style.margin = '0';
     listeEl.style.padding = '0';
-    listeEl.style.display = 'flex';
-    listeEl.style.flexDirection = 'column';
-    listeEl.style.gap = '0.4rem';
 
     for (const level of levels) {
       const item = document.createElement('li');
-      item.className = 'scene-card-level';
+      item.className = 'scene-card-level gm-row';
       item.dataset.levelId = level.levelId;
-      item.style.display = 'flex';
-      item.style.alignItems = 'center';
-      item.style.gap = '0.5rem';
+      item.style.flexWrap = 'nowrap';
       item.style.minWidth = '0';
 
       const nomEl = document.createElement('span');
-      nomEl.className = 'scene-card-level-name';
+      nomEl.className = 'scene-card-level-name gm-muted';
       nomEl.textContent = level.name;
-      nomEl.style.fontSize = '0.8rem';
-      nomEl.style.color = '#bbb';
       nomEl.style.overflow = 'hidden';
       nomEl.style.textOverflow = 'ellipsis';
       nomEl.style.whiteSpace = 'nowrap';
@@ -298,88 +284,49 @@ export async function createSceneLibrary(container, options = {}) {
    */
   function renderMapCard(mapEntry) {
     const mapCard = document.createElement('div');
-    mapCard.className = 'scene-card';
+    mapCard.className = 'scene-card gm-section gm-stack';
     mapCard.dataset.mapId = mapEntry.id;
-    mapCard.style.background = '#252525';
-    mapCard.style.border = '1px solid #333';
-    mapCard.style.borderRadius = '4px';
-    mapCard.style.padding = '1rem';
-    mapCard.style.display = 'flex';
-    mapCard.style.flexDirection = 'column';
-    mapCard.style.gap = '0.75rem';
 
     const header = document.createElement('div');
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.justifyContent = 'space-between';
-    header.style.paddingBottom = '0.5rem';
-    header.style.borderBottom = '1px solid #333';
 
     const nameEl = document.createElement('h3');
-    nameEl.className = 'scene-card-name';
+    nameEl.className = 'scene-card-name gm-title';
     nameEl.textContent = mapEntry.name;
     nameEl.style.margin = '0';
-    nameEl.style.fontSize = '1rem';
-    nameEl.style.color = '#fff';
 
     const countersEl = document.createElement('div');
-    countersEl.className = 'scene-card-counters';
-    countersEl.style.display = 'flex';
-    countersEl.style.gap = '0.75rem';
-    countersEl.style.fontSize = '0.8rem';
-    countersEl.style.color = '#aaa';
+    countersEl.className = 'scene-card-counters gm-muted';
 
     const feats = mapEntry.features;
-    const counters = [
-      { label: 'Murs', icon: '🧱', value: feats.walls },
-      { label: 'Portes', icon: '🚪', value: feats.portals },
-      { label: 'Lumières', icon: '💡', value: feats.lights },
+    const plur = (/** @type {number} */ n, /** @type {string} */ un, /** @type {string} */ plu) =>
+      `${n} ${n > 1 ? plu : un}`;
+    const parts = [
+      plur(feats.walls, 'mur', 'murs'),
+      plur(feats.portals, 'porte', 'portes'),
+      plur(feats.lights, 'lumière', 'lumières'),
     ];
-    for (const counter of counters) {
-      const span = document.createElement('span');
-      span.title = counter.label;
-      span.textContent = `${counter.icon} ${counter.value}`;
-      countersEl.appendChild(span);
-    }
-    if (feats.bakedLighting) {
-      const span = document.createElement('span');
-      span.title = 'Éclairage déjà intégré à l’image';
-      span.textContent = '✨';
-      countersEl.appendChild(span);
-    }
+    if (feats.bakedLighting) parts.push('éclairage intégré à l’image');
+    countersEl.textContent = parts.join(' · ');
 
     header.append(nameEl, countersEl);
 
     const actions = document.createElement('div');
-    actions.style.display = 'flex';
-    actions.style.gap = '0.5rem';
-    actions.style.flexWrap = 'wrap';
+    actions.className = 'gm-row';
 
     /**
      * @param {string} className
      * @param {string} label
-     * @param {string} background
      * @returns {HTMLButtonElement}
      */
-    const makeButton = (className, label, background) => {
+    const makeButton = (className, label) => {
       const btn = document.createElement('button');
       btn.className = className;
       btn.textContent = label;
-      btn.style.flex = '1';
-      btn.style.minWidth = '120px';
-      btn.style.padding = '0.5rem';
-      btn.style.background = background;
-      btn.style.color = '#fff';
-      btn.style.border = 'none';
-      btn.style.borderRadius = '4px';
-      btn.style.cursor = 'pointer';
-      btn.style.fontSize = '0.85rem';
-      btn.style.fontWeight = '500';
       return btn;
     };
 
-    const loadBtn = makeButton('scene-card-load', '📂 Charger', '#4a90e2');
-    const addBtn = makeButton('scene-card-add', '➕ Ajouter étage', '#6a6a6a');
+    const loadBtn = makeButton('scene-card-load gm-btn--sm gm-btn--primary', '📂 Charger');
+    const addBtn = makeButton('scene-card-add gm-btn--sm', '➕ Ajouter étage');
 
     loadBtn.addEventListener(
       'click',

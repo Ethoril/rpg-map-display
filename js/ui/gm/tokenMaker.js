@@ -61,67 +61,67 @@ export function createTokenMaker(container, options = {}) {
   // --- Structure DOM ---
   container.className = 'token-maker-container';
   container.innerHTML = `
-    <div class="token-maker-ui" style="display: flex; flex-direction: column; gap: 1rem; max-width: 480px; font-family: system-ui, sans-serif; color: #f0f0f0;">
-      <div class="token-maker-dropzone" style="border: 2px dashed #666; padding: 1rem; text-align: center; border-radius: 6px; cursor: pointer; background: #1a1a1a; color: #ccc;">
+    <div class="token-maker-ui" style="display: flex; flex-direction: column; gap: 1rem; max-width: 480px; font-family: system-ui, sans-serif; var(--gm-texte, #f0f0f0);">
+      <div class="token-maker-dropzone" style="border: 2px dashed var(--gm-trait-fort, #666); padding: 1rem; text-align: center; border-radius: 6px; cursor: pointer; background: var(--gm-creux, #1a1a1a); color: var(--gm-texte-2, #ccc);">
         <label style="cursor: pointer; display: block;">
-          <span style="color: #4a90e2; font-weight: 500;">Déposer une image ou cliquer pour choisir</span>
+          <span style="color: var(--gm-laiton, #4a90e2); font-weight: 500;">Déposer une image ou cliquer pour choisir</span>
           <input type="file" id="token-file-input" accept="image/*" style="display: none;" />
         </label>
       </div>
 
-      <div class="token-maker-preview-wrap" style="position: relative; width: 300px; height: 300px; margin: 0 auto; background: #111; border-radius: 6px; overflow: hidden; touch-action: none; border: 1px solid #444;">
+      <div class="token-maker-preview-wrap" style="position: relative; width: 300px; height: 300px; margin: 0 auto; background: var(--gm-creux, #111); border-radius: 6px; overflow: hidden; touch-action: none; border: 1px solid var(--gm-trait-fort, #444);">
         <canvas id="token-preview-canvas" width="300" height="300" style="width: 300px; height: 300px; display: block; cursor: grab;"></canvas>
       </div>
 
-      <div class="token-maker-form" style="display: grid; grid-template-columns: 140px 1fr; gap: 0.6rem 0.8rem; align-items: center; background: #1a1a1a; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <label for="token-id" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Identifiant :</label>
-        <input type="text" id="token-id" placeholder="Auto depuis le nom" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+      <div class="token-maker-form" style="display: grid; grid-template-columns: 140px 1fr; gap: 0.6rem 0.8rem; align-items: center; background: var(--gm-creux, #1a1a1a); padding: 1rem; border-radius: 6px; border: 1px solid var(--gm-trait, #333);">
+        <label for="token-id" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Identifiant :</label>
+        <input type="text" id="token-id" placeholder="Auto depuis le nom" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-label" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Nom du pion :</label>
-        <input type="text" id="token-label" value="Pion" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <label for="token-label" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Nom du pion :</label>
+        <input type="text" id="token-label" value="Pion" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-kind" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Type de pion :</label>
-        <select id="token-kind" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
+        <label for="token-kind" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Type de pion :</label>
+        <select id="token-kind" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
           <option value="npc">PNJ (Non-Joueur)</option>
           <option value="pc">PJ (Joueur)</option>
         </select>
 
-        <label for="token-shape" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Forme guide :</label>
-        <select id="token-shape" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
+        <label for="token-shape" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Forme guide :</label>
+        <select id="token-shape" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
           <option value="square">▢ Carré</option>
           <option value="circle">⭕ Cercle</option>
         </select>
 
-        <label for="token-border-color" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Couleur bordure :</label>
-        <input type="color" id="token-border-color" value="#e74c3c" style="background: #252525; border: 1px solid #444; border-radius: 4px; height: 36px; padding: 2px; cursor: pointer; width: 100%;" />
+        <label for="token-border-color" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Couleur bordure :</label>
+        <input type="color" id="token-border-color" value="#e74c3c" style="background: var(--gm-releve, #252525); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; height: 36px; padding: 2px; cursor: pointer; width: 100%;" />
 
-        <label for="token-size-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Taille (cases) :</label>
-        <input type="number" id="token-size-cells" min="1" max="8" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <label for="token-size-cells" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Taille (cases) :</label>
+        <input type="number" id="token-size-cells" min="1" max="8" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-speed-cells" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vitesse (cases) :</label>
-        <input type="number" id="token-speed-cells" min="1" max="30" value="3" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <label for="token-speed-cells" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Vitesse (cases) :</label>
+        <input type="number" id="token-speed-cells" min="1" max="30" value="3" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
         <!-- ⛔ « Vision claire » retirée le 26/08/2026 (chantier Z) : le moteur n'a jamais lu
              qu'un seul rayon, et il n'y en aura qu'un. Le champ restant dit donc ce qu'il est —
              la portée DANS LE NOIR. Dans une zone éclairée, un pion voit jusqu'à sa ligne de vue. -->
-        <label for="token-vision-dim" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">Vision dans le noir :</label>
-        <input type="number" id="token-vision-dim" min="0" max="40" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <label for="token-vision-dim" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Vision dans le noir :</label>
+        <input type="number" id="token-vision-dim" min="0" max="40" value="1" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-max-hp" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">PV max :</label>
-        <input type="number" id="token-max-hp" min="1" max="999" placeholder="—" style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <label for="token-max-hp" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">PV max :</label>
+        <input type="number" id="token-max-hp" min="1" max="999" placeholder="—" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
 
-        <label for="token-canonical-url" style="color: #e0e0e0; font-weight: 500; font-size: 0.9rem;">URL publiée :</label>
-        <input type="text" id="token-canonical-url" placeholder="Optionnel : maps/tokens/..." style="min-width: 0; width: 100%; box-sizing: border-box; background: #252525; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
+        <label for="token-canonical-url" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">URL publiée :</label>
+        <input type="text" id="token-canonical-url" placeholder="Optionnel : maps/tokens/..." style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;" />
       </div>
 
-      <p id="token-maker-status" style="margin: 0; font-size: 0.8rem; color: #aaa;">
+      <p id="token-maker-status" style="margin: 0; font-size: 0.8rem; color: var(--gm-texte-2, #aaa);">
         Sans URL publiée, l'image est embarquée et disponible pour la génération.
       </p>
 
       <div class="token-maker-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <button id="btn-generate-token" style="flex: 2; min-width: 140px; padding: 0.55rem; background: #27ae60; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" disabled>Générer & enregistrer pion</button>
-        <button id="btn-reset-token" style="flex: 1; min-width: 80px; padding: 0.55rem; background: #444; color: white; border: none; border-radius: 4px; cursor: pointer;">Vider</button>
-        <button id="btn-download-token" style="flex: 1; min-width: 100px; padding: 0.55rem; background: #2980b9; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>Télécharger</button>
+        <button id="btn-generate-token" style="flex: 2; min-width: 140px; padding: 0.55rem; background: var(--gm-vert, #27ae60); color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" disabled>Générer & enregistrer pion</button>
+        <button id="btn-reset-token" style="flex: 1; min-width: 80px; padding: 0.55rem; background: var(--gm-trait-fort, #444); color: white; border: none; border-radius: 4px; cursor: pointer;">Vider</button>
+        <button id="btn-download-token" style="flex: 1; min-width: 100px; padding: 0.55rem; background: var(--gm-info, #2980b9); color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>Télécharger</button>
       </div>
     </div>
   `;
@@ -211,17 +211,17 @@ export function createTokenMaker(container, options = {}) {
     btnGenerate.disabled = !loadedImage || !levelOk || !urlIsValid;
 
     if (requireLevelId && !defaultLevelId) {
-      status.style.color = '#f1c40f';
+      status.style.color = 'var(--gm-laiton-vif, #f1c40f)';
       status.textContent = 'Ajoutez ou sélectionnez un étage avant de générer un pion.';
     } else if (inutilisable) {
-      status.style.color = '#e74c3c';
+      status.style.color = 'var(--gm-sang, #e74c3c)';
       status.textContent = MESSAGE_DRIVE_INUTILISABLE;
     } else if (!urlIsValid) {
-      status.style.color = '#e74c3c';
+      status.style.color = 'var(--gm-sang, #e74c3c)';
       status.textContent =
         'URL invalide : utilisez une URL relative ou HTTPS publiée, jamais data: ou blob:.';
     } else {
-      status.style.color = '#aaa';
+      status.style.color = 'var(--gm-texte-2, #aaa)';
       status.textContent =
         "Sans URL publiée, l'image est embarquée et disponible pour la génération.";
     }
@@ -326,7 +326,7 @@ export function createTokenMaker(container, options = {}) {
       // Un format que le navigateur ne décode pas (HEIC d'un iPhone, par exemple) était ignoré sans
       // un mot (audit du 22/09, F5) : le bouton restait grisé et rien ne disait pourquoi.
       img.onerror = () => {
-        status.style.color = '#e74c3c';
+        status.style.color = 'var(--gm-sang, #e74c3c)';
         status.textContent = `Image illisible par le navigateur (${file.type || 'format inconnu'}) : convertissez-la en PNG, JPEG ou WebP.`;
       };
       img.src = /** @type {string} */ (evt.target?.result);
@@ -342,16 +342,16 @@ export function createTokenMaker(container, options = {}) {
 
   dropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    dropzone.style.borderColor = '#4a90e2';
+    dropzone.style.borderColor = 'var(--gm-laiton, #4a90e2)';
   });
 
   dropzone.addEventListener('dragleave', () => {
-    dropzone.style.borderColor = '#666';
+    dropzone.style.borderColor = 'var(--gm-trait-fort, #666)';
   });
 
   dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dropzone.style.borderColor = '#666';
+    dropzone.style.borderColor = 'var(--gm-trait-fort, #666)';
     const file = e.dataTransfer?.files[0];
     if (file) loadImageFile(file);
   });
@@ -585,7 +585,7 @@ export function createTokenMaker(container, options = {}) {
     currentDataUrl = dataUrl;
 
     btnDownload.disabled = false;
-    status.style.color = '#2ecc71';
+    status.style.color = 'var(--gm-vert, #2ecc71)';
     if (explicitCanonicalUrl) {
       status.textContent = `Pion ajouté. Il référence ${explicitCanonicalUrl} : publiez ce fichier.`;
     } else {
@@ -599,16 +599,16 @@ export function createTokenMaker(container, options = {}) {
     if (options.onGenerate) {
       const res = /** @type {any} */ (options.onGenerate(token, dataUrl));
       if (res && typeof res.then === 'function') {
-        status.style.color = '#3498db';
+        status.style.color = 'var(--gm-info, #3498db)';
         status.textContent = 'Enregistrement en cours…';
         btnGenerate.disabled = true;
         res
           .then(() => {
-            status.style.color = '#2ecc71';
+            status.style.color = 'var(--gm-vert, #2ecc71)';
             status.textContent = `Pion « ${token.label} » (${token.id}) enregistré avec succès.`;
           })
           .catch((/** @type {any} */ err) => {
-            status.style.color = '#e74c3c';
+            status.style.color = 'var(--gm-sang, #e74c3c)';
             status.textContent = `Erreur : ${err instanceof Error ? err.message : String(err)}`;
           })
           .finally(() => {
@@ -727,7 +727,7 @@ export function createTokenMaker(container, options = {}) {
      * @param {string} text
      * @param {string} [color]
      */
-    setStatus: (text, color = '#aaa') => {
+    setStatus: (text, color = 'var(--gm-texte-2, #aaa)') => {
       status.style.color = color;
       status.textContent = text;
     },

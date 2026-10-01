@@ -114,37 +114,37 @@ export function createFogTools(container, options) {
 
   // Structure HTML de l'onglet
   container.innerHTML = `
-    <div class="fog-tools-root" style="display: flex; flex-direction: column; gap: 1.25rem; font-family: system-ui, sans-serif; color: #eee;">
-      
+    <div class="fog-tools-root">
+
       <!-- Actions globales -->
-      <div style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #4a90e2; text-transform: uppercase; letter-spacing: 0.5px;">Actions globales</h4>
-        <div style="display: flex; gap: 0.5rem;">
-          <button id="fog-btn-reveal-all" style="flex: 1; padding: 0.6rem; background: #2e4a32; color: #a3e6b1; border: 1px solid #3e6b44; border-radius: 4px; font-weight: 500; cursor: pointer;">Tout révéler</button>
-          <button id="fog-btn-hide-all" style="flex: 1; padding: 0.6rem; background: #4a2e2e; color: #e6a3a3; border: 1px solid #6b3e3e; border-radius: 4px; font-weight: 500; cursor: pointer;">Tout masquer</button>
+      <div class="gm-section">
+        <h4 class="gm-h">Actions globales</h4>
+        <div class="gm-row">
+          <button id="fog-btn-reveal-all" style="flex: 1;">Tout révéler</button>
+          <button id="fog-btn-hide-all" class="gm-btn--danger" style="flex: 1;">Tout masquer</button>
         </div>
       </div>
 
       <!-- Pinceaux -->
-      <div style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #4a90e2; text-transform: uppercase; letter-spacing: 0.5px;">Pinceaux</h4>
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-          <button id="fog-btn-tool-reveal" class="fog-tool-btn" data-tool="reveal" style="flex: 1; padding: 0.6rem; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🖌️ Révéler</button>
-          <button id="fog-btn-tool-hide" class="fog-tool-btn" data-tool="hide" style="flex: 1; padding: 0.6rem; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🧹 Masquer</button>
+      <div class="gm-section">
+        <h4 class="gm-h">Pinceaux</h4>
+        <div class="gm-row" style="margin-bottom: 10px;">
+          <button id="fog-btn-tool-reveal" class="fog-tool-btn" data-tool="reveal" aria-pressed="false" style="flex: 1;">Révéler</button>
+          <button id="fog-btn-tool-hide" class="fog-tool-btn" data-tool="hide" aria-pressed="false" style="flex: 1;">Masquer</button>
         </div>
 
-        <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 0.5rem;">Taille du pinceau :</div>
-        <div style="display: flex; gap: 0.5rem;">
-          <button class="fog-radius-btn" data-radius="1" style="flex: 1; padding: 0.4rem; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">1 case</button>
-          <button class="fog-radius-btn" data-radius="3" style="flex: 1; padding: 0.4rem; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">3 cases</button>
-          <button class="fog-radius-btn" data-radius="5" style="flex: 1; padding: 0.4rem; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">5 cases</button>
+        <div class="gm-muted" style="margin-bottom: 6px;">Taille du pinceau :</div>
+        <div class="gm-row">
+          <button class="fog-radius-btn" data-radius="1" aria-pressed="false" style="flex: 1;">1 case</button>
+          <button class="fog-radius-btn" data-radius="3" aria-pressed="false" style="flex: 1;">3 cases</button>
+          <button class="fog-radius-btn" data-radius="5" aria-pressed="false" style="flex: 1;">5 cases</button>
         </div>
       </div>
 
       <!-- Historique -->
-      <div style="background: #252525; padding: 1rem; border-radius: 6px; border: 1px solid #333;">
-        <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #4a90e2; text-transform: uppercase; letter-spacing: 0.5px;">Historique (Undo)</h4>
-        <button id="fog-btn-undo" style="width: 100%; padding: 0.6rem; background: #2a3a4a; color: #90c0e0; border: 1px solid #3a5a7a; border-radius: 4px; font-weight: 500; cursor: pointer;" disabled>↩️ Annuler (0)</button>
+      <div class="gm-section">
+        <h4 class="gm-h">Historique (Undo)</h4>
+        <button id="fog-btn-undo" class="gm-btn--block" disabled>Annuler (0)</button>
       </div>
 
     </div>
@@ -159,45 +159,14 @@ export function createFogTools(container, options) {
 
   function updateUI() {
     // État des outils
-    if (activeTool === 'reveal') {
-      btnToolReveal.style.background = '#2e4a32';
-      btnToolReveal.style.borderColor = '#4a90e2';
-      btnToolReveal.style.color = '#fff';
-
-      btnToolHide.style.background = '#1a1a1a';
-      btnToolHide.style.borderColor = '#444';
-      btnToolHide.style.color = '#ccc';
-    } else if (activeTool === 'hide') {
-      btnToolHide.style.background = '#4a2e2e';
-      btnToolHide.style.borderColor = '#4a90e2';
-      btnToolHide.style.color = '#fff';
-
-      btnToolReveal.style.background = '#1a1a1a';
-      btnToolReveal.style.borderColor = '#444';
-      btnToolReveal.style.color = '#ccc';
-    } else {
-      btnToolReveal.style.background = '#1a1a1a';
-      btnToolReveal.style.borderColor = '#444';
-      btnToolReveal.style.color = '#ccc';
-
-      btnToolHide.style.background = '#1a1a1a';
-      btnToolHide.style.borderColor = '#444';
-      btnToolHide.style.color = '#ccc';
-    }
+    btnToolReveal.setAttribute('aria-pressed', String(activeTool === 'reveal'));
+    btnToolHide.setAttribute('aria-pressed', String(activeTool === 'hide'));
 
     // État des rayons
     radiusBtns.forEach((btn) => {
       const b = /** @type {HTMLButtonElement} */ (btn);
       const r = Number(b.dataset.radius);
-      if (r === brushRadiusCells) {
-        b.style.background = '#333';
-        b.style.borderColor = '#4a90e2';
-        b.style.color = '#fff';
-      } else {
-        b.style.background = '#1a1a1a';
-        b.style.borderColor = '#444';
-        b.style.color = '#ccc';
-      }
+      b.setAttribute('aria-pressed', String(r === brushRadiusCells));
     });
 
     // État du bouton undo
@@ -205,14 +174,10 @@ export function createFogTools(container, options) {
     const stack = levelId ? getUndoStack(levelId) : [];
     if (stack.length > 0) {
       btnUndo.disabled = false;
-      btnUndo.style.opacity = '1';
-      btnUndo.style.cursor = 'pointer';
-      btnUndo.textContent = `↩️ Annuler (${stack.length})`;
+      btnUndo.textContent = `Annuler (${stack.length})`;
     } else {
       btnUndo.disabled = true;
-      btnUndo.style.opacity = '0.4';
-      btnUndo.style.cursor = 'not-allowed';
-      btnUndo.textContent = '↩️ Annuler';
+      btnUndo.textContent = 'Annuler';
     }
   }
 

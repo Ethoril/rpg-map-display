@@ -18,9 +18,9 @@ export function createLinkEditor(container, options) {
   container.innerHTML = `
     <section class="gm-section">
       <h3>↕ Liaisons d'étages</h3>
-      <p style="font-size:.8rem;color:#aaa">Armez, tapez la case A sur la carte, puis associez la destination B.</p>
+      <p style="font-size:.8rem;color:var(--gm-texte-2, #aaa)">Armez, tapez la case A sur la carte, puis associez la destination B.</p>
       <button id="link-arm" class="gm-btn" type="button" style="width:100%">Poser l'extrémité A</button>
-      <p id="link-a-status" style="min-height:1.2rem;font-size:.8rem;color:#9cc8ff"></p>
+      <p id="link-a-status" style="min-height:1.2rem;font-size:.8rem;color:var(--gm-info, #9cc8ff)"></p>
       <div id="link-form" style="display:grid;grid-template-columns:auto 1fr;gap:.5rem .65rem;align-items:center">
         <label for="link-kind">Type</label><select id="link-kind"><option value="stairs">Escalier</option><option value="elevator">Ascenseur</option><option value="ladder">Échelle</option><option value="hatch">Trappe</option><option value="passage">Passage</option></select>
         <label for="link-label">Libellé</label><input id="link-label" type="text" maxlength="80" placeholder="Escalier nord" />
@@ -30,8 +30,8 @@ export function createLinkEditor(container, options) {
         <label for="link-gm-only">MJ seul</label><input id="link-gm-only" type="checkbox" />
       </div>
       <button id="link-create" class="gm-btn gm-btn-primary" type="button" style="width:100%;margin-top:.75rem" disabled>Créer la liaison</button>
-      <p id="link-error" style="min-height:1.2rem;color:#f87171;font-size:.8rem"></p>
-      <div style="border-top:1px solid #444;margin-top:.75rem;padding-top:.75rem"><strong style="font-size:.85rem">Liaisons existantes</strong><div id="link-list" style="display:grid;gap:.35rem;margin-top:.45rem"></div></div>
+      <p id="link-error" style="min-height:1.2rem;color:var(--gm-sang, #f87171);font-size:.8rem"></p>
+      <div style="border-top:1px solid var(--gm-trait-fort, #444);margin-top:.75rem;padding-top:.75rem"><strong style="font-size:.85rem">Liaisons existantes</strong><div id="link-list" style="display:grid;gap:.35rem;margin-top:.45rem"></div></div>
     </section>`;
   const arm = /** @type {HTMLButtonElement} */ (container.querySelector('#link-arm'));
   const status = /** @type {HTMLElement} */ (container.querySelector('#link-a-status'));
@@ -84,7 +84,7 @@ export function createLinkEditor(container, options) {
     create.disabled = !endpointA || destinationLevels.length === 0;
     list.replaceChildren(...options.getLinks().map((link) => {
       const row = document.createElement('div');
-      row.style.cssText = `display:flex;gap:.35rem;align-items:center;padding:.35rem;border:1px solid ${selectedLinkId === link.id ? '#f5a623' : '#444'};border-radius:4px`;
+      row.style.cssText = `display:flex;gap:.35rem;align-items:center;padding:.35rem;border:1px solid ${selectedLinkId === link.id ? 'var(--gm-laiton, #f5a623)' : 'var(--gm-trait-fort, #444)'};border-radius:4px`;
       const text = document.createElement('span'); text.style.flex = '1'; text.textContent = `${link.label || link.kind} (${link.a.levelId}:${link.a.at.cellX},${link.a.at.cellY} → ${link.b.levelId}:${link.b.at.cellX},${link.b.at.cellY})${link.bidirectional ? '' : ' sens unique'}${link.gmOnly ? ' · MJ' : ''}`;
       const select = document.createElement('button'); select.type = 'button'; select.className = 'gm-btn'; select.textContent = 'Voir'; select.addEventListener('click', () => { selectedLinkId = link.id; options.requestRender?.(); refresh(); });
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'gm-btn'; remove.textContent = 'Supprimer'; remove.addEventListener('click', () => { options.onRemove(link.id); if (selectedLinkId === link.id) selectedLinkId = null; refresh(); });

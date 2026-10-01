@@ -957,3 +957,10 @@ kbd {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--gm-trait-fort);
 }
+
+/* Confirmation brève d'un bouton qui vient d'agir (« ✓ Fait ») — pas un état enfoncé. */
+button.gm-flash-ok {
+  background: var(--gm-vert-fond);
+  color: var(--gm-vert);
+  border-color: var(--gm-vert-trait);
+}
