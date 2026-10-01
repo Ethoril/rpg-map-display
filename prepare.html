@@ -251,8 +251,15 @@
       flex-direction: column;
       gap: 14px;
     }
+    .fabrique-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .fabrique-tete .surtitre { margin: 0; }
+    .fabrique-tete .surtitre.edition { color: var(--gm-laiton); }
     .pions-biblio { padding: 18px 24px 40px; display: flex; flex-direction: column; gap: 14px; }
-    #tokens-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    #tokens-liste { display: flex; flex-direction: column; gap: 14px; }
+    .pions-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .pions-dossier > summary { font-weight: 650; }
+    .fabrique-dossier { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 0.8rem;
+      font-size: 0.9rem; font-weight: 500; max-width: 480px; }
     .pion {
       display: grid;
       grid-template-columns: 56px minmax(0, 1fr);
@@ -469,7 +476,15 @@
     <!-- ── Pions ───────────────────────────────────────────────────────────────────────────── -->
     <div class="atelier" id="atelier-pions" role="tabpanel" aria-labelledby="onglet-pions" hidden>
       <div class="pions-fabrique colonne" id="pions-fabrique">
-        <p class="surtitre">Fabriquer un pion</p>
+        <div class="fabrique-tete">
+          <p class="surtitre" id="fabrique-titre">Nouveau pion</p>
+          <button id="btn-nouveau-pion" class="gm-btn--sm" disabled
+            title="Repart d'un formulaire vide : le pion en cours d'édition n'est pas modifié">＋ Nouveau pion</button>
+        </div>
+        <label class="fabrique-dossier">Dossier
+          <input id="token-folder" type="text" list="token-folders" maxlength="60" placeholder="Sans dossier"
+            autocomplete="off"></label>
+        <datalist id="token-folders"></datalist>
         <div id="token-maker-mount"></div>
       </div>
       <div class="pions-biblio colonne">

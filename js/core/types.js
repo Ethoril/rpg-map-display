@@ -271,6 +271,8 @@
  * @property {{ range: number, intensity: number, color: string }|null} emitsLight
  * @property {string} borderColor
  * @property {number|null} [maxHp]
+ * @property {string} [folder] dossier de rangement dans la bibliothèque (C-11) — un seul niveau,
+ *   absent = sans dossier. Rangement seul : il ne passe jamais dans un `Token` instancié.
  */
 
 /**

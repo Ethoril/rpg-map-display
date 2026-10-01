@@ -330,3 +330,62 @@ test.describe('Chantier I — Bibliothèque de pions (tokenLibrary)', () => {
     await pagePlayer.close();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// C-11 — dossiers et recherche dans la bibliothèque de la vue MJ.
+//
+// Demande du mainteneur, 01/10/2026 : le nombre de pions va beaucoup augmenter. Les dossiers
+// sont repliés par défaut, la recherche filtre tous les dossiers à la fois et ignore les accents.
+
+test('C-11 — la bibliothèque MJ range par dossier, replié, et la recherche traverse les dossiers', async ({
+  page,
+}) => {
+  const base = FAKE_TOKEN_CATALOG.tokens[0];
+  await page.route('**/maps/tokens/catalog.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        version: 1,
+        tokens: [
+          { ...base, id: 'elysia', name: 'Elysia' },
+          { ...base, id: 'goblin-scout', name: 'Éclaireur Goblinoïde', folder: 'Monstres' },
+          { ...base, id: 'ogre', name: 'Ogre', folder: 'Monstres' },
+          { ...base, id: 'zombie', name: 'Zombie', folder: 'Morts-vivants' },
+        ],
+      }),
+    })
+  );
+
+  const sessionId = `test-tokenlib-dossiers-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, null);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+  await page.waitForSelector('.gm-tab-btn[data-tab="token-maker"]');
+  await page.click('.gm-tab-btn[data-tab="token-maker"]');
+
+  const carte = (/** @type {string} */ nom) => page.locator('.token-card', { hasText: nom });
+  const dossier = (/** @type {string} */ nom) => page.locator(`.token-folder[data-folder="${nom}"]`);
+
+  // Rangement : le pion sans dossier est à découvert, les autres dans des dossiers repliés.
+  await expect(page.locator('.token-card')).toHaveCount(4);
+  await expect(carte('Elysia')).toBeVisible();
+  await expect(dossier('Monstres').locator('summary')).toHaveText('Monstres · 2');
+  await expect(dossier('Monstres')).not.toHaveAttribute('open', '');
+  await expect(carte('Ogre')).toBeHidden();
+
+  // Recherche sans accent : elle trouve le pion, ouvre son dossier, et retire le reste.
+  await page.fill('.token-library-search', 'eclaireur');
+  await expect(page.locator('.token-card')).toHaveCount(1);
+  await expect(carte('Éclaireur Goblinoïde')).toBeVisible();
+  await expect(dossier('Morts-vivants')).toHaveCount(0);
+
+  await page.fill('.token-library-search', 'introuvable');
+  await expect(page.locator('.token-card')).toHaveCount(0);
+  await expect(page.locator('.token-library-empty')).toContainText('introuvable');
+
+  // La recherche vidée rend le rangement d'avant : dossiers repliés.
+  await page.fill('.token-library-search', '');
+  await expect(page.locator('.token-card')).toHaveCount(4);
+  await expect(carte('Ogre')).toBeHidden();
+});

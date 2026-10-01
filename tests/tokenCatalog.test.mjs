@@ -6,6 +6,8 @@ import {
   createTokenFromLibraryEntry,
   upsertTokenEntry,
   removeTokenEntry,
+  normalizeFolder,
+  groupByFolder,
 } from '../js/import/tokenCatalog.js';
 
 /** @type {import('../js/core/types.js').TokenLibraryEntry} */
@@ -161,4 +163,41 @@ test('12. remove permet de vider la bibliothèque, y compris l’entrée de dém
 
   assert.deepEqual(errors, [], 'un catalogue vide reste un catalogue valide');
   assert.deepEqual(catalog, { version: 1, tokens: [] });
+});
+
+test('C-11 — un dossier est accepté, une valeur non normalisée refusée', () => {
+  /** @param {unknown} folder */
+  const avec = (folder) => validateTokenCatalog({ version: 1, tokens: [{ ...validEntry, folder }] });
+  assert.deepEqual(avec('Monstres'), []);
+  assert.deepEqual(validateTokenCatalog({ version: 1, tokens: [validEntry] }), [], 'absent = sans dossier');
+  for (const mauvais of ['', '  ', ' Monstres', 'Monstres ', 'a'.repeat(61), 3, null]) {
+    assert.equal(avec(mauvais).length, 1, `refusé : ${JSON.stringify(mauvais)}`);
+  }
+});
+
+test('C-11 — normalizeFolder resserre les espaces et rend undefined pour « sans dossier »', () => {
+  assert.equal(normalizeFolder('  PNJ   de  Valombre '), 'PNJ de Valombre');
+  assert.equal(normalizeFolder(''), undefined);
+  assert.equal(normalizeFolder('   '), undefined);
+  assert.equal(normalizeFolder(undefined), undefined);
+});
+
+test('C-11 — groupByFolder : sans dossier en tête, puis dossiers et pions par ordre alphabétique', () => {
+  const e = [
+    { name: 'Zombie', folder: 'Morts-vivants' },
+    { name: 'Elysia' },
+    { name: 'Gobelin', folder: 'monstres' },
+    { name: 'Squelette', folder: 'Morts-vivants' },
+    { name: 'Bhelgi' },
+    { name: 'Hydre', folder: 'Monstres 10' },
+    { name: 'Ogre', folder: 'Monstres 2' },
+  ];
+  const groupes = groupByFolder(e);
+  assert.deepEqual(
+    groupes.map((g) => g.folder),
+    [null, 'monstres', 'Monstres 2', 'Monstres 10', 'Morts-vivants']
+  );
+  assert.deepEqual(groupes[0].entries.map((x) => x.name), ['Bhelgi', 'Elysia']);
+  assert.deepEqual(groupes[4].entries.map((x) => x.name), ['Squelette', 'Zombie']);
+  assert.equal(e[0].name, 'Zombie', 'les entrées reçues ne sont pas réordonnées');
 });

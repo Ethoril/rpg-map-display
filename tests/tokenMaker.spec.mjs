@@ -42,7 +42,7 @@ async function setupTokenMaker(page) {
 }
 
 test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
-  test('Charge une image, effectue du pan/zoom, génère un pion 2x2 carré et télécharge', async ({
+  test('Charge une image, effectue du pan/zoom, génère un pion 2x2 et télécharge', async ({
     page,
   }) => {
     await setupTokenMaker(page);
@@ -75,8 +75,9 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     }
 
     // 3. Remplir le formulaire pion
-    // Forme: Carré, kind: pc, couleur: #ff0000, sizeCells: 2, speedCells: 3
-    await page.selectOption('#token-maker-root #token-shape', 'square');
+    // kind: pc, couleur: #ff0000, sizeCells: 2, speedCells: 3
+    // ⛔ Plus de choix de forme depuis le 01/10/2026 : le pion est toujours rond.
+    await expect(page.locator('#token-maker-root #token-shape')).toHaveCount(0);
     await page.selectOption('#token-maker-root #token-kind', 'pc');
     await page.fill('#token-maker-root #token-border-color', '#ff0000');
     await page.fill('#token-maker-root #token-size-cells', '2');
@@ -132,6 +133,7 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(dimensions.width).toBe(280);
     expect(dimensions.height).toBe(280);
 
+
     // 7. Déclencher le téléchargement et vérifier qu'il est capturé par le navigateur
     const downloadPromise = page.waitForEvent('download');
     await page.click('#token-maker-root #btn-download-token');
@@ -143,13 +145,23 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
   test('Génère un pion circulaire 1x1', async ({ page }) => {
     await setupTokenMaker(page);
 
-    await page.setInputFiles('#token-maker-root #token-file-input', {
-      name: 'monster.png',
-      mimeType: 'image/png',
-      buffer: TEST_PNG_BUFFER,
+    // Une image OPAQUE et plus grande que le guide : avec l'image de test, minuscule et en partie
+    // transparente, le coin du pion était transparent même sans découpe ronde — un faux vert
+    // attrapé par mutation le 01/10/2026.
+    await page.evaluate(async () => {
+      const c = document.createElement('canvas');
+      c.width = 400;
+      c.height = 400;
+      const ctx = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+      ctx.fillStyle = '#3060c0';
+      ctx.fillRect(0, 0, 400, 400);
+      const blob = /** @type {Blob} */ (await /** @type {Promise<Blob | null>} */ (new Promise((r) => c.toBlob(r, 'image/png'))));
+      /** @type {any} */ (window).__tokenMakerInstance.loadImageFile(
+        new File([blob], 'opaque.png', { type: 'image/png' })
+      );
     });
+    await expect(page.locator('#token-maker-root #btn-generate-token')).toBeEnabled();
 
-    await page.selectOption('#token-maker-root #token-shape', 'circle');
     await page.selectOption('#token-maker-root #token-kind', 'npc');
     await page.fill('#token-maker-root #token-border-color', '#00ff00');
     await page.fill('#token-maker-root #token-size-cells', '1');
@@ -172,6 +184,28 @@ test.describe('T-21 — Générateur de pions (tokenMaker)', () => {
     expect(tokenResult.token.sizeCells).toBe(1);
     expect(tokenResult.token.speedCells).toBe(4);
     expect(tokenResult.token.borderColor).toBe('#00ff00');
+
+    // Le pion est rond : le coin de l'image est transparent, le haut de la bordure ne l'est pas.
+    // Un carré revenu par erreur peindrait le coin. Le centre aussi est opaque :
+    // l'image l'est.
+    const alphas = await page.evaluate(async (url) => {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+      ctx.drawImage(img, 0, 0);
+      return {
+        coin: ctx.getImageData(2, 2, 1, 1).data[3],
+        bordure: ctx.getImageData(img.width / 2, 4, 1, 1).data[3],
+        centre: ctx.getImageData(img.width / 2, img.height / 2, 1, 1).data[3],
+      };
+    }, tokenResult.dataUrl);
+    expect(alphas.coin).toBe(0);
+    expect(alphas.bordure).toBeGreaterThan(200);
+    expect(alphas.centre).toBe(255);
 
     // 1 case -> Math.max(200, 1 * 140) = 200px
     const dimensions = await page.evaluate(async (url) => {

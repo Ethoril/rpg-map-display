@@ -1,5 +1,6 @@
 import { createLinkEditor } from '../ui/gm/linkEditor.js';
 import { createTokenMaker } from '../ui/gm/tokenMaker.js';
+import { groupByFolder, normalizeFolder } from '../import/tokenCatalog.js';
 import { gridFor } from '../grid/index.js';
 import { screenToMapPoint } from '../render/camera.js';
 
@@ -303,10 +304,44 @@ selSource.addEventListener('change', changerDeSource);
 
 const tokensListe = /** @type {HTMLElement} */ (document.getElementById('tokens-liste'));
 const pionsFabrique = /** @type {HTMLElement} */ (document.getElementById('pions-fabrique'));
+const fabriqueTitre = /** @type {HTMLElement} */ (document.getElementById('fabrique-titre'));
+const btnNouveauPion = /** @type {HTMLButtonElement} */ (document.getElementById('btn-nouveau-pion'));
+const champDossier = /** @type {HTMLInputElement} */ (document.getElementById('token-folder'));
+const listeDossiers = /** @type {HTMLDataListElement} */ (document.getElementById('token-folders'));
+/**
+ * Dossiers que le mainteneur a repliés dans l'atelier. Dépliés par défaut ici, au contraire de
+ * la vue MJ : c'est l'endroit où l'on range, on veut voir ce qu'on range.
+ * @type {Set<string>}
+ */
+const dossiersReplies = new Set();
+
+/**
+ * Dit si le fabricant crée un pion ou en modifie un. Sans ce titre, rien ne distinguait les deux
+ * états une fois un pion ouvert par « Éditer » — et rien n'invitait à en créer un autre.
+ *
+ * @param {string|null} nom nom du pion en cours d'édition, `null` pour un pion neuf
+ */
+function modeFabrique(nom) {
+  fabriqueTitre.textContent = nom === null ? 'Nouveau pion' : `Modifier « ${nom} »`;
+  fabriqueTitre.classList.toggle('edition', nom !== null);
+  btnNouveauPion.disabled = nom === null;
+}
 
 /** @param {any[]} tokens */
 function afficherTokens(tokens) {
   tokensListe.replaceChildren();
+  const groupes = groupByFolder(tokens);
+  // Les dossiers existants sont proposés à la saisie : un dossier mal orthographié en ferait un
+  // second, et c'est à l'écriture qu'on l'évite.
+  listeDossiers.replaceChildren(
+    ...groupes
+      .filter((g) => g.folder !== null)
+      .map((g) => {
+        const option = document.createElement('option');
+        option.value = /** @type {string} */ (g.folder);
+        return option;
+      })
+  );
   if (tokens.length === 0) {
     const p = document.createElement('p');
     p.className = 'pions-vide';
@@ -315,62 +350,92 @@ function afficherTokens(tokens) {
     return;
   }
 
-  for (const t of tokens) {
-    const carte = document.createElement('article');
-    carte.className = 'pion';
-    // La couleur de bordure du pion, telle qu'il la portera sur la carte. Posée comme
-    // variable, jamais comme style : la feuille garde la main sur tout le reste.
-    if (typeof t.borderColor === 'string') carte.style.setProperty('--pion-bord', t.borderColor);
-
-    const img = document.createElement('img');
-    img.src = `/${t.imageUrl}?v=${encodeURIComponent(t.imageUrl)}-${tokens.length}`;
-    img.alt = t.name;
-
-    const info = document.createElement('div');
-    const maxHpStr = typeof t.maxHp === 'number' && t.maxHp >= 1 ? `${t.maxHp} PV` : 'sans PV';
-    const name = document.createElement('strong');
-    name.textContent = t.name;
-    const genre = document.createElement('span');
-    genre.className = t.kind === 'pc' ? 'genre pj' : 'genre';
-    genre.textContent = t.kind === 'pc' ? 'PJ' : 'PNJ';
-    const metadata = document.createElement('span');
-    metadata.className = 'meta';
-    metadata.append(
-      genre,
-      `${t.id} · taille ${t.sizeCells} · vitesse ${t.speedCells} · vision ${t.visionDim} · ${maxHpStr}`
-    );
-
-    const actions = document.createElement('div');
-    actions.className = 'actions';
-
-    const bEdit = document.createElement('button');
-    bEdit.className = 'gm-btn--sm';
-    bEdit.textContent = 'Éditer';
-    bEdit.addEventListener('click', () => {
-      prepTokenMaker?.populateFromToken(t);
-      pionsFabrique.scrollTo({ top: 0, behavior: 'smooth' });
-      dire(`Édition de « ${t.name} » (${t.id}). Modifiez les champs puis cliquez sur Mettre à jour.`);
+  for (const { folder, entries } of groupes) {
+    const grille = document.createElement('div');
+    grille.className = 'pions-grille';
+    for (const t of entries) grille.appendChild(carteDePion(t, tokens.length));
+    if (folder === null) {
+      tokensListe.appendChild(grille);
+      continue;
+    }
+    const volet = document.createElement('details');
+    volet.className = 'gm-disclosure pions-dossier';
+    volet.dataset.folder = folder;
+    volet.open = !dossiersReplies.has(folder);
+    const titre = document.createElement('summary');
+    titre.textContent = `${folder} · ${entries.length}`;
+    grille.classList.add('gm-disclosure-body');
+    volet.append(titre, grille);
+    volet.addEventListener('toggle', () => {
+      if (volet.open) dossiersReplies.delete(folder);
+      else dossiersReplies.add(folder);
     });
-
-    const bDel = document.createElement('button');
-    bDel.className = 'gm-btn--sm gm-btn--ghost';
-    bDel.textContent = 'Supprimer';
-    bDel.addEventListener('click', () =>
-      pendant(bDel, async () => {
-        const r = await api('/api/tokens/delete', { id: t.id });
-        afficherTokens(r.tokens);
-        dire(
-          `✓ « ${r.removed.name} » retiré de la bibliothèque.\n` +
-            `Son image ${r.orphan} est conservée : une campagne enregistrée peut encore la référencer.`
-        );
-      })
-    );
-
-    actions.append(bEdit, bDel);
-    info.append(name, metadata, actions);
-    carte.append(img, info);
-    tokensListe.appendChild(carte);
+    tokensListe.appendChild(volet);
   }
+}
+
+/**
+ * @param {any} t entrée de bibliothèque
+ * @param {number} total nombre d'entrées, qui entre dans la clé de cache de l'image
+ * @returns {HTMLElement}
+ */
+function carteDePion(t, total) {
+  const carte = document.createElement('article');
+  carte.className = 'pion';
+  // La couleur de bordure du pion, telle qu'il la portera sur la carte. Posée comme
+  // variable, jamais comme style : la feuille garde la main sur tout le reste.
+  if (typeof t.borderColor === 'string') carte.style.setProperty('--pion-bord', t.borderColor);
+
+  const img = document.createElement('img');
+  img.src = `/${t.imageUrl}?v=${encodeURIComponent(t.imageUrl)}-${total}`;
+  img.alt = t.name;
+
+  const info = document.createElement('div');
+  const maxHpStr = typeof t.maxHp === 'number' && t.maxHp >= 1 ? `${t.maxHp} PV` : 'sans PV';
+  const name = document.createElement('strong');
+  name.textContent = t.name;
+  const genre = document.createElement('span');
+  genre.className = t.kind === 'pc' ? 'genre pj' : 'genre';
+  genre.textContent = t.kind === 'pc' ? 'PJ' : 'PNJ';
+  const metadata = document.createElement('span');
+  metadata.className = 'meta';
+  metadata.append(
+    genre,
+    `${t.id} · taille ${t.sizeCells} · vitesse ${t.speedCells} · vision ${t.visionDim} · ${maxHpStr}`
+  );
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+
+  const bEdit = document.createElement('button');
+  bEdit.className = 'gm-btn--sm';
+  bEdit.textContent = 'Éditer';
+  bEdit.addEventListener('click', () => {
+    prepTokenMaker?.populateFromToken(t);
+    champDossier.value = t.folder ?? '';
+    modeFabrique(t.name);
+    pionsFabrique.scrollTo({ top: 0, behavior: 'smooth' });
+    dire(`Édition de « ${t.name} » (${t.id}). Modifiez les champs puis cliquez sur Mettre à jour.`);
+  });
+
+  const bDel = document.createElement('button');
+  bDel.className = 'gm-btn--sm gm-btn--ghost';
+  bDel.textContent = 'Supprimer';
+  bDel.addEventListener('click', () =>
+    pendant(bDel, async () => {
+      const r = await api('/api/tokens/delete', { id: t.id });
+      afficherTokens(r.tokens);
+      dire(
+        `✓ « ${r.removed.name} » retiré de la bibliothèque.\n` +
+          `Son image ${r.orphan} est conservée : une campagne enregistrée peut encore la référencer.`
+      );
+    })
+  );
+
+  actions.append(bEdit, bDel);
+  info.append(name, metadata, actions);
+  carte.append(img, info);
+  return carte;
 }
 
 // --- Bibliothèque de cartes (tranche C-1) ------------------------------------------
@@ -965,6 +1030,8 @@ if (tokenMakerMount) {
           emitsLight: token.emitsLight,
           borderColor: token.borderColor,
           maxHp: token.hp ? token.hp.max : null,
+          // Absent plutôt que vide : « sans dossier » n'a qu'une forme dans le catalogue.
+          ...(normalizeFolder(champDossier.value) ? { folder: normalizeFolder(champDossier.value) } : {}),
         };
 
         const r = await api('/api/tokens/save', { entry, imageDataUrl: dataUrl });
@@ -977,6 +1044,18 @@ if (tokenMakerMount) {
     },
   });
 }
+
+btnNouveauPion.addEventListener('click', () => {
+  prepTokenMaker?.resetForm();
+  champDossier.value = '';
+  modeFabrique(null);
+  dire('Nouveau pion : déposer une image, remplir la fiche, puis « Générer & enregistrer pion ».');
+});
+// « Vider », bouton du fabricant lui-même, repart aussi d'un pion neuf.
+tokenMakerMount.querySelector('#btn-reset-token')?.addEventListener('click', () => {
+  champDossier.value = '';
+  modeFabrique(null);
+});
 
 /** Démarrage : sans API, la page le dit au lieu d'échouer en silence. */
 (async () => {

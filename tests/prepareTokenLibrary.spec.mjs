@@ -128,6 +128,8 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
   await page.fill('#token-speed-cells', '4');
   await page.fill('#token-vision-dim', '12');
   await page.fill('#token-max-hp', '23');
+  // Saisi avec des espaces en trop : il doit partir normalisé, sinon il ferait un second dossier.
+  await page.fill('#token-folder', '  Sondes   de test ');
 
   await page.click('#btn-generate-token');
 
@@ -145,6 +147,7 @@ test('V-03 — les champs du formulaire arrivent intacts dans l’entrée de bib
   expect(charge.entry.kind).toBe('pc');
   expect(charge.entry.id).toBe('sonde-vision');
   expect(charge.entry.name).toBe('Sonde de vision');
+  expect(charge.entry.folder).toBe('Sondes de test');
 
   // L'image part bien avec l'entrée, et sous le plafond de bibliothèque de 256 Kio — celui de la
   // campagne, à 24 Kio, ne s'applique pas à un fichier posé sur disque et référencé par URL.
@@ -295,4 +298,79 @@ test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalo
   // téléporté atterrisse ailleurs, d'où l'assertion sur la forme des deux extrémités.
   expect(charge.links[0].b.at).toEqual({ cellX: 4, cellY: 6 });
   expect(Object.keys(charge.links[0].a.at).sort()).toEqual(['cellX', 'cellY']);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// C-11 — après « Éditer », on doit pouvoir repartir d'un pion neuf.
+//
+// Signalé par le mainteneur le 01/10/2026 : une fois un pion ouvert, rien ne permettait d'en
+// créer un autre. L'identifiant restait celui du pion édité, et enregistrer l'écrasait.
+
+test('C-11 — « Nouveau pion » vide le formulaire du pion édité, identifiant compris', async ({
+  page,
+}) => {
+  await page.route('**/api/sources', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(SOURCES) })
+  );
+  await page.route('**/api/tokens', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        tokens: [
+          {
+            id: 'elysia',
+            name: 'Elysia',
+            imageUrl: 'maps/tokens/goblin.webp',
+            kind: 'pc',
+            sizeCells: 1,
+            speedCells: 5,
+            visionDim: 12,
+            emitsLight: null,
+            borderColor: '#3366ff',
+            maxHp: 14,
+            folder: 'Joueurs',
+          },
+          {
+            id: 'ogre',
+            name: 'Ogre',
+            imageUrl: 'maps/tokens/goblin.webp',
+            kind: 'npc',
+            sizeCells: 2,
+            speedCells: 3,
+            visionDim: 1,
+            emitsLight: null,
+            borderColor: '#aa3300',
+            maxHp: 40,
+          },
+        ],
+        errors: [],
+      }),
+    })
+  );
+  await page.route('**/api/maps', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ maps: [] }) })
+  );
+
+  await page.goto('/prepare.html#pions');
+  await expect(page.locator('#outil')).not.toHaveClass(/cache/);
+  await expect(page.locator('#btn-nouveau-pion')).toBeDisabled();
+
+  // Rangement : le pion sans dossier à découvert, l'autre dans son dossier, proposé à la saisie.
+  await expect(page.locator('.pions-dossier[data-folder="Joueurs"]')).toContainText('Elysia');
+  await expect(page.locator('.pions-dossier')).toHaveCount(1);
+  await expect(page.locator('#token-folders option')).toHaveAttribute('value', 'Joueurs');
+
+  await page.locator('.pion', { hasText: 'Elysia' }).locator('button', { hasText: 'Éditer' }).click();
+  await expect(page.locator('#token-folder')).toHaveValue('Joueurs');
+  await expect(page.locator('#fabrique-titre')).toContainText('Modifier « Elysia »');
+  await expect(page.locator('#token-id')).toHaveValue('elysia');
+  await expect(page.locator('#btn-generate-token')).toHaveText('Mettre à jour le pion');
+
+  await page.click('#btn-nouveau-pion');
+  await expect(page.locator('#fabrique-titre')).toHaveText('Nouveau pion');
+  await expect(page.locator('#token-id')).toHaveValue('');
+  await expect(page.locator('#token-folder')).toHaveValue('');
+  await expect(page.locator('#token-vision-dim')).toHaveValue('1');
+  await expect(page.locator('#btn-generate-token')).toHaveText('Générer & enregistrer pion');
+  await expect(page.locator('#btn-nouveau-pion')).toBeDisabled();
 });

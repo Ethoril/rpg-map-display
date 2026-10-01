@@ -1,5 +1,5 @@
 // @ts-check
-import { validateTokenCatalog, createTokenFromLibraryEntry } from '../../import/tokenCatalog.js';
+import { validateTokenCatalog, createTokenFromLibraryEntry, groupByFolder } from '../../import/tokenCatalog.js';
 import * as store from '../../state/store.js';
 
 /**
@@ -40,12 +40,23 @@ export async function createTokenLibrary(container, options = {}) {
       <div class="token-library-status gm-status gm-muted">
         Chargement du catalogue de pions…
       </div>
+      <input type="search" class="token-library-search" placeholder="Rechercher un pion…"
+        aria-label="Rechercher un pion par son nom" hidden />
       <div class="token-library-list gm-stack"></div>
     </div>
   `;
 
   const statusEl = /** @type {HTMLElement} */ (container.querySelector('.token-library-status'));
   const listEl = /** @type {HTMLElement} */ (container.querySelector('.token-library-list'));
+  const searchEl = /** @type {HTMLInputElement} */ (container.querySelector('.token-library-search'));
+  /**
+   * Dossiers que le MJ a dépliés. Repliés par défaut : c'est le nombre de pions qui a motivé les
+   * dossiers (C-11), une liste toute dépliée n'aurait rien rangé.
+   * @type {Set<string>}
+   */
+  const dossiersOuverts = new Set();
+  /** @type {TokenLibraryEntry[]} */
+  let entrees = [];
 
   /**
    * Affiche un message d'état dans le composant.
@@ -144,6 +155,62 @@ export async function createTokenLibrary(container, options = {}) {
     return card;
   }
 
+  /**
+   * Comparaison sans casse ni accents : « eclaireur » doit trouver « Éclaireur ».
+   * @param {string} texte
+   */
+  function plier(texte) {
+    return texte.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
+  /**
+   * Affiche la bibliothèque rangée par dossier : les pions sans dossier en tête, puis un volet
+   * par dossier. Une recherche filtre tous les dossiers à la fois et ouvre ceux qui répondent.
+   */
+  function renderList() {
+    const requete = plier(searchEl.value.trim());
+    const retenues = requete ? entrees.filter((e) => plier(e.name).includes(requete)) : entrees;
+    listEl.replaceChildren();
+
+    if (retenues.length === 0) {
+      const vide = document.createElement('div');
+      vide.className = 'token-library-empty gm-muted';
+      vide.textContent = `Aucun pion ne contient « ${searchEl.value.trim()} ».`;
+      listEl.appendChild(vide);
+      return;
+    }
+
+    for (const { folder, entries } of groupByFolder(retenues)) {
+      if (folder === null) {
+        for (const entry of entries) listEl.appendChild(renderTokenCard(entry));
+        continue;
+      }
+      const volet = document.createElement('details');
+      volet.className = 'gm-disclosure token-folder';
+      volet.dataset.folder = folder;
+      volet.open = requete !== '' || dossiersOuverts.has(folder);
+      const titre = document.createElement('summary');
+      titre.textContent = `${folder} · ${entries.length}`;
+      const corps = document.createElement('div');
+      corps.className = 'gm-disclosure-body gm-stack';
+      for (const entry of entries) corps.appendChild(renderTokenCard(entry));
+      volet.append(titre, corps);
+      volet.addEventListener(
+        'toggle',
+        () => {
+          // Pendant une recherche, l'ouverture est forcée : elle ne doit pas devenir un choix.
+          if (requete) return;
+          if (volet.open) dossiersOuverts.add(folder);
+          else dossiersOuverts.delete(folder);
+        },
+        { signal: listeners.signal }
+      );
+      listEl.appendChild(volet);
+    }
+  }
+
+  searchEl.addEventListener('input', renderList, { signal: listeners.signal });
+
   // Chargement du catalogue
   try {
     const response = await fetch(catalogUrl, { cache: 'no-cache' });
@@ -163,9 +230,9 @@ export async function createTokenLibrary(container, options = {}) {
     }
 
     setStatus('ok', `✓ ${data.tokens.length} pion(s) disponible(s)`);
-    for (const entry of data.tokens) {
-      listEl.appendChild(renderTokenCard(entry));
-    }
+    entrees = data.tokens;
+    searchEl.hidden = false;
+    renderList();
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     setStatus('error', `✗ Bibliothèque indisponible : ${errMsg}`);

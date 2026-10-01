@@ -984,6 +984,16 @@ pli.
 > ⭐ **Appliqué sans nouvel arbitrage** : le thème et les polices de C-10, par cohérence ; le
 > renommage et la suppression gardent leurs boîtes de dialogue natives, éprouvées par les e2e.
 
+> ## ✅ TRANCHÉ le 01/10/2026, second temps — pions
+>
+> - **Forme carrée retirée** du fabricant de pions, dans l'outil comme dans la vue MJ : un pion est
+>   toujours rond. « Je ne vois pas de raisons qui me pousserait à l'utiliser. »
+> - **Bouton « Nouveau pion »** : après « Éditer », rien ne permettait de repartir d'un pion neuf.
+> - **Dossiers de pions**, sur un seul niveau : champ optionnel `folder` des entrées de
+>   `maps/tokens/catalog.json` (absent = sans dossier). Dans la vue MJ, un volet repliable par
+>   dossier, replié par défaut, et une **recherche par nom** qui traverse les dossiers ; dans
+>   l'outil, les mêmes volets, dépliés par défaut. Pas de renommage de dossier en bloc.
+
 ---
 
 ## D. Décisions produit encore ouvertes

@@ -124,9 +124,60 @@ export function validateTokenCatalog(obj) {
         errors.push(`${prefix} : maxHp doit être null ou un entier >= 1`);
       }
     }
+
+    // Absent = sans dossier. Présent, il est déjà normalisé : une chaîne vide ou entourée
+    // d'espaces ferait deux dossiers qui s'affichent pareil.
+    if (entry.folder !== undefined && normalizeFolder(entry.folder) !== entry.folder) {
+      errors.push(
+        `${prefix} : folder doit être un nom non vide d'au plus ${FOLDER_MAX_LENGTH} caractères, sans espace en tête ni en fin`
+      );
+    }
   }
 
   return errors;
+}
+
+/** Longueur maximale d'un nom de dossier de pions. */
+export const FOLDER_MAX_LENGTH = 60;
+
+/**
+ * Normalise un nom de dossier saisi : espaces resserrés, `undefined` pour « sans dossier ».
+ *
+ * @param {unknown} raw
+ * @returns {string|undefined}
+ */
+export function normalizeFolder(raw) {
+  if (typeof raw !== 'string') return undefined;
+  const nom = raw.replace(/\s+/g, ' ').trim();
+  if (nom === '' || nom.length > FOLDER_MAX_LENGTH) return undefined;
+  return nom;
+}
+
+/**
+ * Range des entrées par dossier, pour l'affichage — la vue MJ et l'outil de préparation
+ * partagent ce rangement, et ne doivent pas le refaire chacun à sa façon.
+ *
+ * Les pions sans dossier viennent en tête (`folder: null`), puis les dossiers par ordre
+ * alphabétique ; dans chaque groupe, les pions par nom. Pure : les entrées ne sont pas mutées.
+ *
+ * @template {{ name: string, folder?: string }} E
+ * @param {E[]} entries
+ * @returns {{ folder: string|null, entries: E[] }[]}
+ */
+export function groupByFolder(entries) {
+  /** @param {string} x @param {string} y */
+  const ordre = (x, y) => x.localeCompare(y, 'fr', { sensitivity: 'base', numeric: true });
+  /** @type {Map<string|null, E[]>} */
+  const groupes = new Map();
+  for (const entry of entries) {
+    const cle = normalizeFolder(entry.folder) ?? null;
+    const groupe = groupes.get(cle);
+    if (groupe) groupe.push(entry);
+    else groupes.set(cle, [entry]);
+  }
+  return [...groupes.entries()]
+    .sort(([a], [b]) => (a === null ? -1 : b === null ? 1 : ordre(a, b)))
+    .map(([folder, liste]) => ({ folder, entries: [...liste].sort((x, y) => ordre(x.name, y.name)) }));
 }
 
 /**

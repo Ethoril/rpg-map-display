@@ -884,6 +884,15 @@ details.gm-disclosure > .gm-disclosure-body {
   margin-bottom: 4px;
 }
 
+/* Bibliothèque de pions rangée par dossier (C-11) : la recherche en tête, un volet par dossier. */
+.token-library-search {
+  width: 100%;
+}
+
+.token-library-empty {
+  padding: 4px 2px;
+}
+
 /* ── Contrôles ─────────────────────────────────────────────────────────────────────────────── */
 
 input[type='number'],

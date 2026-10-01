@@ -1918,7 +1918,17 @@ d'acceptation du §11.
 > démarrage, l'avertissement « catalogue de pions invalide » était écrasé aussitôt écrit.
 > **Vérifié par mutation** : un atelier qui ne s'ouvre plus fait rougir les deux e2e qui le pilotent.
 >
-> ⏳ **À éprouver** sur une carte neuve, au double-clic sur `outil-cartes.cmd`.
+> **Second temps, le même jour**, sur retour du mainteneur : la forme carrée quitte le fabricant
+> de pions (le pion est toujours rond) ; un bouton « Nouveau pion » repart d'un formulaire vide
+> après « Éditer » ; les pions se rangent en **dossiers** d'un seul niveau — champ `folder` du
+> catalogue, volets repliables dans la vue MJ avec une recherche par nom sans accents, volets
+> dépliés dans l'outil. **Vérifié par mutation** : découpe ronde, remise à zéro, dossier normalisé
+> et repris à l'édition, recherche qui ouvre les dossiers et ignore les accents. Un faux vert
+> attrapé en route : l'image de test, minuscule et transparente, rendait le coin du pion
+> transparent même sans découpe ronde.
+>
+> ⏳ **À éprouver** sur une carte neuve, au double-clic sur `outil-cartes.cmd`, et à la table : la
+> recherche et les dossiers repliés de la bibliothèque MJ.
 
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >

@@ -86,12 +86,6 @@ export function createTokenMaker(container, options = {}) {
           <option value="pc">PJ (Joueur)</option>
         </select>
 
-        <label for="token-shape" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Forme guide :</label>
-        <select id="token-shape" style="min-width: 0; width: 100%; box-sizing: border-box; background: var(--gm-releve, #252525); color: var(--gm-texte, #ffffff); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; padding: 0.35rem 0.5rem; font: inherit;">
-          <option value="square">▢ Carré</option>
-          <option value="circle">⭕ Cercle</option>
-        </select>
-
         <label for="token-border-color" style="color: var(--gm-texte, #e0e0e0); font-weight: 500; font-size: 0.9rem;">Couleur bordure :</label>
         <input type="color" id="token-border-color" value="#e74c3c" style="background: var(--gm-releve, #252525); border: 1px solid var(--gm-trait-fort, #444); border-radius: 4px; height: 36px; padding: 2px; cursor: pointer; width: 100%;" />
 
@@ -136,7 +130,6 @@ export function createTokenMaker(container, options = {}) {
   }
 
   const idInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-id'));
-  const shapeSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#token-shape'));
   const kindSelect = /** @type {HTMLSelectElement} */ (container.querySelector('#token-kind'));
   const colorInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-border-color'));
   const sizeCellsInput = /** @type {HTMLInputElement} */ (container.querySelector('#token-size-cells'));
@@ -270,7 +263,6 @@ export function createTokenMaker(container, options = {}) {
     }
 
     // Affichage du masque et du guide au centre
-    const shape = shapeSelect.value;
     const borderColor = colorInput.value;
 
     previewCtx.save();
@@ -280,26 +272,14 @@ export function createTokenMaker(container, options = {}) {
     previewCtx.beginPath();
     previewCtx.rect(0, 0, canvasWidth, canvasHeight);
 
-    const gx = cx - guideSize / 2;
-    const gy = cy - guideSize / 2;
-
-    if (shape === 'circle') {
-      previewCtx.arc(cx, cy, guideSize / 2, 0, Math.PI * 2, true);
-    } else {
-      // Découpe carrée sens antihoraire
-      previewCtx.rect(gx + guideSize, gy, -guideSize, guideSize);
-    }
+    previewCtx.arc(cx, cy, guideSize / 2, 0, Math.PI * 2, true);
     previewCtx.fill();
 
     // Contour du guide
     previewCtx.strokeStyle = borderColor;
     previewCtx.lineWidth = 3;
     previewCtx.beginPath();
-    if (shape === 'circle') {
-      previewCtx.arc(cx, cy, guideSize / 2, 0, Math.PI * 2);
-    } else {
-      previewCtx.rect(gx, gy, guideSize, guideSize);
-    }
+    previewCtx.arc(cx, cy, guideSize / 2, 0, Math.PI * 2);
     previewCtx.stroke();
 
     previewCtx.restore();
@@ -424,19 +404,8 @@ export function createTokenMaker(container, options = {}) {
   });
 
   // Changements dans le formulaire -> redessine le guide
-  shapeSelect.addEventListener('change', drawPreview);
   colorInput.addEventListener('input', drawPreview);
   canonicalUrlInput.addEventListener('input', refreshGenerateAvailability);
-
-  // Synchronisation suggestive kind <-> guide shape if desired
-  kindSelect.addEventListener('change', () => {
-    if (kindSelect.value === 'pc') {
-      shapeSelect.value = 'circle';
-    } else if (kindSelect.value === 'npc') {
-      shapeSelect.value = 'square';
-    }
-    drawPreview();
-  });
 
   /**
    * Encode le canevas du pion en tenant sous `maxBytesBudget`.
@@ -481,7 +450,6 @@ export function createTokenMaker(container, options = {}) {
     const sizeCells = Math.max(1, parseInt(sizeCellsInput.value, 10) || 1);
     const speedCells = Math.max(1, parseInt(speedCellsInput.value, 10) || 3);
     const kind = /** @type {'pc'|'npc'} */ (kindSelect.value === 'npc' ? 'npc' : 'pc');
-    const shape = shapeSelect.value;
     const borderColor = colorInput.value;
 
     const targetSize = Math.max(200, sizeCells * 140);
@@ -498,13 +466,12 @@ export function createTokenMaker(container, options = {}) {
     const srcX = srcCx - srcSize / 2;
     const srcY = srcCy - srcSize / 2;
 
+    // Toujours un cercle : la forme carrée a été retirée à la demande du mainteneur (01/10/2026),
+    // personne ne s'en servait.
     outCtx.save();
-
-    if (shape === 'circle') {
-      outCtx.beginPath();
-      outCtx.arc(targetSize / 2, targetSize / 2, targetSize / 2, 0, Math.PI * 2);
-      outCtx.clip();
-    }
+    outCtx.beginPath();
+    outCtx.arc(targetSize / 2, targetSize / 2, targetSize / 2, 0, Math.PI * 2);
+    outCtx.clip();
 
     outCtx.drawImage(loadedImage, srcX, srcY, srcSize, srcSize, 0, 0, targetSize, targetSize);
 
@@ -512,12 +479,7 @@ export function createTokenMaker(container, options = {}) {
     outCtx.strokeStyle = borderColor;
     outCtx.lineWidth = borderWidth;
     outCtx.beginPath();
-
-    if (shape === 'circle') {
-      outCtx.arc(targetSize / 2, targetSize / 2, targetSize / 2 - borderWidth / 2, 0, Math.PI * 2);
-    } else {
-      outCtx.rect(borderWidth / 2, borderWidth / 2, targetSize - borderWidth, targetSize - borderWidth);
-    }
+    outCtx.arc(targetSize / 2, targetSize / 2, targetSize / 2 - borderWidth / 2, 0, Math.PI * 2);
     outCtx.stroke();
 
     outCtx.restore();
@@ -666,7 +628,6 @@ export function createTokenMaker(container, options = {}) {
     if (idInput) idInput.value = '';
     labelInput.value = 'Pion';
     kindSelect.value = 'npc';
-    shapeSelect.value = 'square';
     colorInput.value = '#e74c3c';
     sizeCellsInput.value = '1';
     speedCellsInput.value = '3';
