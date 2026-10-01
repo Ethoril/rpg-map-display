@@ -11,6 +11,7 @@ import {
   setSelection,
   moveTokenToCell,
   resetStore,
+  addLibraryCopy,
   subscribe,
   getState,
   getRenderSnapshot,
@@ -932,4 +933,28 @@ test('C-13 : une entrée localStorage portant activeHandout se relit, et n’est
     else delete (/** @type {any} */ (globalThis)).localStorage;
     resetStore();
   }
+});
+
+test('C-15 — addLibraryCopy numérote, compte et ajoute en une transaction ; un refus ne distribue rien', () => {
+  loadCampaign(
+    createCampaign({
+      campaignId: 'c15',
+      name: 'C15',
+      levels: [createLevel({ id: 'l1', name: 'N1' })],
+      tokens: [createToken({ id: 'a', levelId: 'l1', cell: { a: 1, b: 1 }, label: 'Gobelin', libraryId: 'gobelin' })],
+    })
+  );
+  const pose = addLibraryCopy(createToken({ id: 'b', levelId: 'l1', cell: { a: 3, b: 1 }, label: 'Gobelin', libraryId: 'gobelin' }));
+  assert.deepEqual(pose.patches, [{ tokenId: 'a', patch: { copyNumber: 1, label: 'Gobelin 1' } }]);
+  const c = /** @type {any} */ (getCampaign());
+  assert.equal(c.tokens.find((/** @type {any} */ t) => t.id === 'a').copyNumber, 1);
+  assert.equal(c.tokens.find((/** @type {any} */ t) => t.id === 'b').label, 'Gobelin 2');
+  assert.deepEqual(c.settings.copyCounters, { gobelin: 2 });
+
+  // Case occupée : refus, et ni numéro ni compteur n'ont bougé.
+  assert.throws(() =>
+    addLibraryCopy(createToken({ id: 'z', levelId: 'l1', cell: { a: 3, b: 1 }, label: 'Gobelin', libraryId: 'gobelin' }))
+  );
+  assert.deepEqual(/** @type {any} */ (getCampaign()).settings.copyCounters, { gobelin: 2 });
+  assert.equal(/** @type {any} */ (getCampaign()).tokens.length, 2);
 });

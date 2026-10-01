@@ -13,6 +13,7 @@ import {
   getReachableCells,
 } from './selection.js';
 import { gridFor } from '../grid/index.js';
+import { numberLibraryCopy } from '../import/tokenCatalog.js';
 import { cellKey } from '../core/cellKey.js';
 
 /** @typedef {import('../core/types.js').Campaign} Campaign */
@@ -739,6 +740,61 @@ export function addToken(tokenData) {
   assertValidCampaign(candidate, `Ajout du pion "${tokenData?.id || 'inconnu'}"`);
   replaceCampaign(candidate);
   notifySubscribers();
+}
+
+/**
+ * Pose un exemplaire de bibliothèque et le numérote — chantier C-15.
+ *
+ * ⭐ **Une seule transaction** : le numéro donné au premier exemplaire (quand on pose le deuxième),
+ * celui du nouveau, le compteur de campagne et l'ajout lui-même. Validés ensemble, adoptés ensemble ;
+ * un refus (case occupée, schéma) ne laisse aucun numéro distribué pour rien.
+ *
+ * La règle elle-même est `numberLibraryCopy`, pure. L'appelant publie les `token.update` rendus
+ * dans `patches` PUIS le `token.add` du pion rendu — les joueurs reçoivent ainsi les numéros des
+ * deux exemplaires.
+ *
+ * @param {import('../core/types.js').Token} tokenData pion à poser, avec `libraryId`
+ * @returns {{ token: import('../core/types.js').Token, patches: { tokenId: string, patch: { copyNumber: number, label?: string } }[] }}
+ */
+export function addLibraryCopy(tokenData) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const level = campaign.levels.find((l) => l.id === tokenData.levelId);
+  if (level) {
+    const conflict = findStackingConflict(
+      campaign.tokens,
+      level,
+      tokenData.levelId,
+      tokenData.cell,
+      tokenData.sizeCells || 1,
+      null
+    );
+    if (conflict) {
+      throw new Error(
+        `Ajout du pion "${tokenData?.id || 'inconnu'}" refusé : case occupée par "${conflict.id}"`
+      );
+    }
+  }
+
+  const { token, patches, counter } = numberLibraryCopy(campaign, tokenData);
+  const candidate = structuredClone(campaign);
+  for (const { tokenId, patch } of patches) {
+    const cible =
+      candidate.tokens.find((t) => t.id === tokenId) ?? (candidate.reserve ?? []).find((t) => t.id === tokenId);
+    if (cible) Object.assign(cible, patch);
+  }
+  if (counter !== null && tokenData.libraryId) {
+    candidate.settings = {
+      ...(candidate.settings ?? {}),
+      copyCounters: { ...(candidate.settings?.copyCounters ?? {}), [tokenData.libraryId]: counter },
+    };
+  }
+  candidate.tokens.push(structuredClone(token));
+  assertValidCampaign(candidate, `Ajout du pion "${tokenData?.id || 'inconnu'}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return { token: structuredClone(token), patches };
 }
 
 /**
@@ -1526,6 +1582,8 @@ const ALLOWED_TOKEN_PATCH_KEYS = new Set([
   'markers',
   'hp',
   'health',
+  // C-15 : le premier exemplaire reçoit son numéro quand on pose le deuxième, par `token.update`.
+  'copyNumber',
 ]);
 
 /**

@@ -389,3 +389,114 @@ test('C-11 — la bibliothèque MJ range par dossier, replié, et la recherche t
   await expect(page.locator('.token-card')).toHaveCount(4);
   await expect(carte('Ogre')).toBeHidden();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// C-15 — exemplaires numérotés, et vus des joueurs.
+//
+// Demande du mainteneur, 01/10/2026 : plusieurs exemplaires d'un même pion doivent se distinguer
+// sur la table, joueurs compris. Arbitrage : à partir du deuxième — le premier devient 1 quand on
+// pose le deuxième —, et un numéro n'est jamais réattribué.
+
+test('C-15 — deux exemplaires posés : 1 et 2, chez le MJ comme sur la tablette, numéros dessinés', async ({
+  context,
+}) => {
+  const sessionId = `test-tokenlib-numeros-${Date.now()}`;
+  const snapshot = {
+    campaign: {
+      schemaVersion: 2,
+      campaignId: 'numeros',
+      name: 'Numéros',
+      levels: [FAKE_LEVEL],
+      links: [],
+      // Un PJ qui voit les deux cases de pose : sans lui, la tablette ne dessinerait rien du tout,
+      // et l'absence de numéro ne prouverait rien.
+      tokens: [
+        {
+          id: 'pj-temoin',
+          levelId: FAKE_LEVEL.id,
+          cell: { a: 4, b: 3 },
+          sizeCells: 1,
+          kind: 'pc',
+          imageUrl: '',
+          borderColor: '#4f7ea8',
+          label: 'Témoin',
+          hidden: false,
+          visionDim: 10,
+          emitsLight: null,
+          speedCells: 6,
+          playerMovable: true,
+          locked: false,
+          elevation: 0,
+          markers: [],
+          hp: null,
+          health: 'unharmed',
+        },
+      ],
+      templates: [],
+      settings: {},
+    },
+    activeLevelId: FAKE_LEVEL.id,
+    selectedTokenId: null,
+  };
+  const pageGM = await context.newPage();
+  const pagePlayer = await context.newPage();
+  for (const p of [pageGM, pagePlayer]) {
+    await p.route('**/maps/tokens/catalog.json', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_TOKEN_CATALOG) })
+    );
+    await installBrowserTransport(p, sessionId, snapshot);
+  }
+  // Tout texte écrit sur un canvas de la tablette est relevé : c'est là que le numéro doit paraître.
+  await pagePlayer.addInitScript(() => {
+    const ecrire = CanvasRenderingContext2D.prototype.fillText;
+    /** @type {any} */ (window).__textesDessines = [];
+    /**
+     * @param {string} texte
+     * @param {number} x
+     * @param {number} y
+     */
+    CanvasRenderingContext2D.prototype.fillText = function (texte, x, y) {
+      /** @type {any} */ (window).__textesDessines.push(String(texte));
+      return ecrire.call(this, texte, x, y);
+    };
+  });
+  await pageGM.goto(`/gm.html?session=${sessionId}`);
+  await pagePlayer.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(pageGM);
+  await waitForApp(pagePlayer);
+
+  await pageGM.click('.gm-tab-btn[data-tab="token-maker"]');
+  await expect(pageGM.locator('.token-card')).toHaveCount(1);
+  for (const x of [2.5, 5.5]) {
+    await pageGM.click('.token-card-instantiate');
+    await pageGM.evaluate((cx) => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.onIntention({
+        type: 'tap',
+        mapPos: { x: cx * 140, y: 3.5 * 140 },
+        screenPos: { x: 300, y: 300 },
+      });
+    }, x);
+  }
+
+  /** @param {import('@playwright/test').Page} page */
+  const exemplaires = (page) =>
+    page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return (store.getCampaign()?.tokens ?? [])
+        .filter((t) => t.libraryId === 'goblin-scout')
+        .map((t) => `${t.copyNumber}:${t.label}`)
+        .sort();
+    });
+  const attendu = ['1:Éclaireur Goblinoïde 1', '2:Éclaireur Goblinoïde 2'];
+  await expect.poll(() => exemplaires(pageGM)).toEqual(attendu);
+  await expect.poll(() => exemplaires(pagePlayer)).toEqual(attendu);
+
+  // Les numéros sont DESSINÉS sur la tablette — pas seulement présents dans son store.
+  const textes = () => pagePlayer.evaluate(() => /** @type {string[]} */ (/** @type {any} */ (window).__textesDessines));
+  await expect.poll(async () => (await textes()).includes('1') && (await textes()).includes('2')).toBe(true);
+
+  // Et le compteur de campagne retient le dernier numéro donné.
+  expect(
+    await pageGM.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.settings?.copyCounters)
+  ).toEqual({ 'goblin-scout': 2 });
+});

@@ -10,6 +10,7 @@ import {
   computeElevationBadgeLayout,
   drawStatusBadges,
   computeHpBadgeLayout,
+  computeCopyBadgeLayout,
 } from '../statusBadges.js';
 
 const TOKEN_IMAGE_CACHE_LIMIT = 64;
@@ -431,6 +432,28 @@ export class TokensLayer {
         );
         ctx.restore();
       }
+    }
+
+    // ── Numéro d'exemplaire (C-15) : vu de tous, joueurs compris — ils suivent « le 2 » eux aussi.
+    if (typeof token.copyNumber === 'number') {
+      const copie = computeCopyBadgeLayout(width, zoom);
+      const cx = p0.x + copie.centerX;
+      const cy = p0.y + copie.centerY;
+      ctx.save();
+      if (token.hidden) ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.arc(cx, cy, copie.radiusMap, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 1 / zoom;
+      ctx.stroke();
+      ctx.font = `bold ${copie.fontSizeMap}px sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(token.copyNumber), cx, cy + 0.5 / zoom);
+      ctx.restore();
     }
   }
 }

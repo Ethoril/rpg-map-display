@@ -383,6 +383,13 @@ export const TOKEN_HP_BADGE_HEIGHT_PX = 16;
  */
 export const TOKEN_HP_BADGE_INSET_RATIO = 0.18;
 
+/**
+ * Pastille du numéro d'exemplaire (C-15), en pixels ÉCRAN comme le cartouche de PV : lisible sur la
+ * TV quel que soit le zoom, sans seuil de disparition — les joueurs en ont besoin pour suivre « le 2 ».
+ */
+export const TOKEN_COPY_BADGE_RADIUS_PX = 10;
+export const TOKEN_COPY_BADGE_FONT_SIZE_PX = 12;
+
 
 /**
  * Géométrie des badges. **Toutes ces valeurs sont en pixels ÉCRAN**, jamais en pixels carte :

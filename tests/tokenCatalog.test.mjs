@@ -8,6 +8,7 @@ import {
   removeTokenEntry,
   normalizeFolder,
   groupByFolder,
+  numberLibraryCopy,
 } from '../js/import/tokenCatalog.js';
 
 /** @type {import('../js/core/types.js').TokenLibraryEntry} */
@@ -200,4 +201,67 @@ test('C-11 — groupByFolder : sans dossier en tête, puis dossiers et pions par
   assert.deepEqual(groupes[0].entries.map((x) => x.name), ['Bhelgi', 'Elysia']);
   assert.deepEqual(groupes[4].entries.map((x) => x.name), ['Squelette', 'Zombie']);
   assert.equal(e[0].name, 'Zombie', 'les entrées reçues ne sont pas réordonnées');
+});
+
+// ── C-15 — exemplaires numérotés ───────────────────────────────────────────────────────────────
+
+/**
+ * @param {string} id
+ * @param {Record<string, any>} [extra]
+ */
+const gob = (id, extra = {}) => ({ id, libraryId: 'gobelin', label: 'Gobelin', ...extra });
+
+test('C-15 — un exemplaire seul ne porte pas de numéro', () => {
+  const r = numberLibraryCopy({ tokens: [] }, /** @type {any} */ (gob('a')));
+  assert.equal(r.token.copyNumber, undefined);
+  assert.equal(r.token.label, 'Gobelin');
+  assert.deepEqual(r.patches, []);
+  assert.equal(r.counter, null);
+});
+
+test('C-15 — le deuxième numérote le premier (1) et prend le 2 ; le troisième prend le 3', () => {
+  const r2 = numberLibraryCopy({ tokens: [/** @type {any} */ (gob('a'))] }, /** @type {any} */ (gob('b')));
+  assert.deepEqual(r2.patches, [{ tokenId: 'a', patch: { copyNumber: 1, label: 'Gobelin 1' } }]);
+  assert.equal(r2.token.copyNumber, 2);
+  assert.equal(r2.token.label, 'Gobelin 2');
+  assert.equal(r2.counter, 2);
+
+  const plateau = [gob('a', { copyNumber: 1, label: 'Gobelin 1' }), gob('b', { copyNumber: 2, label: 'Gobelin 2' })];
+  const r3 = numberLibraryCopy({ tokens: /** @type {any} */ (plateau), settings: { copyCounters: { gobelin: 2 } } }, /** @type {any} */ (gob('c')));
+  assert.deepEqual(r3.patches, []);
+  assert.equal(r3.token.copyNumber, 3);
+});
+
+test('C-15 — un numéro n’est jamais réattribué, même quand le plus haut a disparu', () => {
+  // Le 3 a été retiré : il ne reste que 1, et le compteur dit 3.
+  const r = numberLibraryCopy(
+    { tokens: /** @type {any} */ ([gob('a', { copyNumber: 1 })]), settings: { copyCounters: { gobelin: 3 } } },
+    /** @type {any} */ (gob('d'))
+  );
+  assert.equal(r.token.copyNumber, 4);
+  assert.equal(r.counter, 4);
+
+  // Tous retirés : le suivant est seul, donc sans numéro — puis l'autre numérote les deux au-delà.
+  const seul = numberLibraryCopy({ tokens: [], settings: { copyCounters: { gobelin: 4 } } }, /** @type {any} */ (gob('e')));
+  assert.equal(seul.token.copyNumber, undefined);
+  const deux = numberLibraryCopy(
+    { tokens: /** @type {any} */ ([gob('e')]), settings: { copyCounters: { gobelin: 4 } } },
+    /** @type {any} */ (gob('f'))
+  );
+  assert.deepEqual(deux.patches.map((p) => p.patch.copyNumber), [5]);
+  assert.equal(deux.token.copyNumber, 6);
+});
+
+test('C-15 — la réserve compte, un pion renommé garde son nom, une autre entrée ne compte pas', () => {
+  const r = numberLibraryCopy(
+    {
+      tokens: /** @type {any} */ ([{ id: 'o', libraryId: 'ogre', label: 'Ogre' }]),
+      reserve: /** @type {any} */ ([gob('a', { label: 'Chef gobelin' })]),
+    },
+    /** @type {any} */ (gob('b'))
+  );
+  assert.deepEqual(r.patches, [{ tokenId: 'a', patch: { copyNumber: 1 } }]);
+  assert.equal(r.token.copyNumber, 2);
+  // Un pion fait à la main n'a pas de provenance : il ne se numérote pas.
+  assert.deepEqual(numberLibraryCopy({ tokens: [] }, /** @type {any} */ ({ id: 'x', label: 'X' })).patches, []);
 });

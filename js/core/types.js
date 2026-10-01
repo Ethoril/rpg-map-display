@@ -189,6 +189,10 @@
  * @property {boolean} [mounted] À cheval (chantier C-9, 01/10/2026). Monté, le pion voit son budget de
  *   déplacement doublé et ne franchit, depuis la tablette, aucun portail quel que soit son état, ni
  *   aucune liaison. Absent = à pied. Seul écrivain : `token.mounted` → `store.setTokenMounted`.
+ * @property {string} [libraryId] Entrée de bibliothèque dont le pion est un exemplaire (C-15). Absent
+ *   pour un pion fabriqué à la main : il ne se numérote pas.
+ * @property {number|null} [copyNumber] Numéro d'exemplaire, affiché sur le pion et vu des joueurs
+ *   (C-15). Donné à partir du deuxième exemplaire posé ; jamais réattribué.
  * @property {TokenMove} [move]
  */
 
@@ -219,6 +223,9 @@
  * cave sombre sous un rez éclairé. Ne pas remettre de champ ici sans un lecteur en face.
  *
  * @typedef {Object} CampaignSettings
+ * @property {Record<string, number>} [copyCounters] Dernier numéro d'exemplaire donné, par entrée de
+ *   bibliothèque (C-15). C'est lui qui garantit qu'un numéro n'est jamais réattribué, même quand
+ *   l'exemplaire le plus haut a été retiré.
  */
 
 /**

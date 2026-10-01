@@ -281,5 +281,62 @@ export function createTokenFromLibraryEntry(entry, options) {
     markers: options.markers ? [...options.markers] : [],
     hp: maxHp !== null ? { current: maxHp, max: maxHp } : null,
     health: 'unharmed',
+    // La provenance, pour numéroter les exemplaires (C-15). Le numéro, lui, se décide à la pose.
+    libraryId: entry.id,
   });
+}
+
+/**
+ * Numérote un exemplaire de bibliothèque qu'on va poser — chantier C-15, 01/10/2026.
+ *
+ * Arbitrages du mainteneur :
+ * - **à partir du deuxième** : un exemplaire seul ne porte pas de numéro ; quand on en pose un
+ *   deuxième, le premier devient 1 et le nouveau 2 ;
+ * - **jamais réattribué** : le suivant prend le dernier numéro donné + 1, même si l'exemplaire qui
+ *   le portait a été retiré. D'où le compteur de campagne, `settings.copyCounters`.
+ *
+ * Les exemplaires comptés sont ceux du plateau ET de la réserve : un pion rangé reste vivant.
+ * Le nom ne prend le numéro que s'il est encore celui de la bibliothèque — un pion renommé par le
+ * MJ garde son nom, et seule sa pastille porte le numéro.
+ *
+ * Pure : la campagne et le pion reçus ne sont pas mutés.
+ *
+ * @param {{ tokens: Token[], reserve?: Token[], settings?: { copyCounters?: Record<string, number> } }} campaign
+ * @param {Token} token pion à poser, `label` = nom de l'entrée de bibliothèque
+ * @returns {{ token: Token, patches: { tokenId: string, patch: { copyNumber: number, label?: string } }[], counter: number|null }}
+ *   `counter` est le nouveau dernier numéro donné, ou `null` si rien n'a été numéroté
+ */
+export function numberLibraryCopy(campaign, token) {
+  const libraryId = token.libraryId;
+  if (!libraryId) return { token: { ...token }, patches: [], counter: null };
+
+  const freres = [...(campaign.tokens ?? []), ...(campaign.reserve ?? [])].filter(
+    (t) => t.libraryId === libraryId && t.id !== token.id
+  );
+  if (freres.length === 0) return { token: { ...token }, patches: [], counter: null };
+
+  let dernier = Math.max(
+    campaign.settings?.copyCounters?.[libraryId] ?? 0,
+    ...freres.map((t) => (typeof t.copyNumber === 'number' ? t.copyNumber : 0))
+  );
+  const base = token.label;
+
+  /** @type {{ tokenId: string, patch: { copyNumber: number, label?: string } }[]} */
+  const patches = [];
+  // L'exemplaire resté seul jusque-là — un seul en principe ; dans l'ordre d'identifiant s'il y en
+  // avait plusieurs, pour que deux MJ rejouant la même pose aboutissent aux mêmes numéros.
+  for (const frere of freres.filter((t) => typeof t.copyNumber !== 'number').sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    dernier += 1;
+    patches.push({
+      tokenId: frere.id,
+      patch: frere.label === base ? { copyNumber: dernier, label: `${base} ${dernier}` } : { copyNumber: dernier },
+    });
+  }
+
+  dernier += 1;
+  return {
+    token: { ...token, copyNumber: dernier, label: `${base} ${dernier}` },
+    patches,
+    counter: dernier,
+  };
 }

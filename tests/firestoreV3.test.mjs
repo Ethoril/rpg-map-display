@@ -234,3 +234,26 @@ test('C7 : un parent d’avant l’amendement (sans tables) se relit, et fait to
   const plan = planFirestoreV3Write(ancien.parent, suivant);
   assert.equal(plan.levels.length + plan.tokens.length, 2, 'sans empreintes précédentes, tout est réécrit');
 });
+
+test('C-15 — numéros d’exemplaire et compteur de campagne survivent à l’aller-retour Firestore v3', async () => {
+  // ⚠ Le trou qui avait avalé la bibliothèque de handouts : un champ de campagne que le découpage
+  // v3 n'écrit pas disparaît au premier F5 du MJ, sans erreur. Ce test le ferme pour C-15.
+  const schema = await import('../js/core/schema.js');
+  const campaign = schema.createCampaign({
+    campaignId: 'c15',
+    name: 'C15',
+    levels: [schema.createLevel({ id: 'l1', name: 'N' })],
+    tokens: [schema.createToken({ id: 'a', levelId: 'l1', libraryId: 'gob', copyNumber: 2, label: 'Gob 2' })],
+    settings: { copyCounters: { gob: 3 } },
+  });
+  const v3 = splitSnapshotForFirestoreV3({ campaign, activeLevelId: 'l1' }, 's1', 5);
+  const relu = joinSnapshotFromFirestoreV3(
+    v3.parent,
+    v3.levels.map((/** @type {any} */ e) => ({ id: e.id, data: e.data })),
+    v3.tokens.map((/** @type {any} */ e) => ({ id: e.id, data: e.data })),
+    v3.state
+  );
+  assert.equal(relu.campaign.tokens[0].libraryId, 'gob');
+  assert.equal(relu.campaign.tokens[0].copyNumber, 2);
+  assert.deepEqual(relu.campaign.settings, { copyCounters: { gob: 3 } });
+});

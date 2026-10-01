@@ -2370,13 +2370,20 @@ export function createGMPanel(container, options = {}) {
    */
   function placePendingTokenAt(levelId, cell) {
     if (!pendingToken || !levelId || !cell) return false;
-    const token = { ...pendingToken, levelId, cell: { a: cell.a, b: cell.b } };
+    let token = { ...pendingToken, levelId, cell: { a: cell.a, b: cell.b } };
+    /** @type {{ tokenId: string, patch: { copyNumber: number, label?: string } }[]} */
+    let numerotes = [];
     try {
       // ⚠ Deux mutations pour un seul geste : un pion de la réserve doit en SORTIR dans la même
       // transaction où il entre sur le plateau, sinon il existe deux fois — et le schéma refuse
       // la campagne suivante, son jeu d'identifiants étant commun aux deux collections.
       if (pendingFromReserve) {
         if (!store.placeTokenFromReserve(token.id, levelId, cell)) return false;
+      } else if (token.libraryId) {
+        // Exemplaire de bibliothèque (C-15) : numéroté à la pose, à partir du deuxième.
+        const pose = store.addLibraryCopy(token);
+        token = pose.token;
+        numerotes = pose.patches;
       } else {
         store.addToken(token);
       }
@@ -2385,6 +2392,10 @@ export function createGMPanel(container, options = {}) {
       // MJ retape à l'intérieur sans avoir à régénérer son pion.
       tokenMaker.setStatus(err instanceof Error ? err.message : String(err), '#e74c3c');
       return false;
+    }
+    // Le numéro du premier exemplaire d'abord, le nouveau ensuite : la table voit les deux.
+    for (const { tokenId, patch } of numerotes) {
+      transport?.publish({ type: 'token.update', payload: { tokenId, patch }, at: Date.now(), by: 'gm' });
     }
     transport?.publish({
       type: 'token.add',

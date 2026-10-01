@@ -19,6 +19,8 @@ import {
   TOKEN_HP_BADGE_PADDING_X_PX,
   TOKEN_HP_BADGE_HEIGHT_PX,
   TOKEN_HP_BADGE_INSET_RATIO,
+  TOKEN_COPY_BADGE_RADIUS_PX,
+  TOKEN_COPY_BADGE_FONT_SIZE_PX,
   MOUNTED_ICON_URL,
 } from '../core/constants.js';
 
@@ -282,6 +284,30 @@ export function computeHpBadgeLayout(tokenWidthMap, zoom, current, max) {
     heightMap,
     paddingXMap,
     text,
+  };
+}
+
+/**
+ * Géométrie de la pastille du numéro d'exemplaire (C-15) : au bas-gauche du pion, centrée sur le
+ * bord du portrait rond, là où la diagonale le croise — (1 − 1/√2) / 2 de la largeur depuis le coin.
+ * Taille constante à l'écran, sans seuil de disparition.
+ *
+ * ⚠ Elle partage ce coin avec le premier emplacement de la rangée de marqueurs quand un pion en
+ * porte trois : elle est dessinée par-dessus, le numéro restant ce que les joueurs doivent lire.
+ *
+ * @param {number} tokenWidthMap Largeur du pion sur la carte
+ * @param {number} zoom Zoom de la caméra
+ * @returns {{ centerX: number, centerY: number, radiusMap: number, fontSizeMap: number }}
+ *   centre relatif au coin haut-gauche de la case du pion
+ */
+export function computeCopyBadgeLayout(tokenWidthMap, zoom) {
+  const safeZoom = zoom > 0 ? zoom : 1;
+  const retrait = tokenWidthMap * ((1 - Math.SQRT1_2) / 2);
+  return {
+    centerX: retrait,
+    centerY: tokenWidthMap - retrait,
+    radiusMap: TOKEN_COPY_BADGE_RADIUS_PX / safeZoom,
+    fontSizeMap: TOKEN_COPY_BADGE_FONT_SIZE_PX / safeZoom,
   };
 }
 

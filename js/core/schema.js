@@ -1137,6 +1137,18 @@ export function validateCampaign(campaign) {
         errors.push(`Pion "${tokenId}" : mounted doit être un booléen`);
       }
 
+      // Exemplaires numérotés (C-15) : la provenance et le numéro, tous deux optionnels.
+      if (token.libraryId !== undefined && (typeof token.libraryId !== 'string' || token.libraryId === '')) {
+        errors.push(`Pion "${tokenId}" : libraryId doit être un identifiant non vide`);
+      }
+      if (
+        token.copyNumber !== undefined &&
+        token.copyNumber !== null &&
+        (!Number.isInteger(token.copyNumber) || token.copyNumber < 1)
+      ) {
+        errors.push(`Pion "${tokenId}" : copyNumber doit être null ou un entier >= 1`);
+      }
+
       const level = enReserve ? null : levelsById.get(token.levelId);
       if (
         level &&
@@ -1269,6 +1281,21 @@ export function validateCampaign(campaign) {
   // ⛔ Plus de `handoutLibrary` à valider (C-13) : la bibliothèque d'images de séance est retirée,
   // et `normalizeCampaign` efface le champ d'une campagne enregistrée avant. Ne pas le revalider
   // ici : une ancienne bibliothèque mal formée ferait refuser une campagne pour un champ mort.
+
+  // Compteurs d'exemplaires (C-15) : le dernier numéro donné, par entrée de bibliothèque. Ils
+  // vivent dans `settings`, le conteneur réservé aux réglages de campagne qui sont LUS.
+  const compteurs = campaign.settings?.copyCounters;
+  if (compteurs !== undefined) {
+    if (!compteurs || typeof compteurs !== 'object' || Array.isArray(compteurs)) {
+      errors.push('settings.copyCounters doit être un objet');
+    } else {
+      for (const [libraryId, n] of Object.entries(compteurs)) {
+        if (!Number.isInteger(n) || n < 1) {
+          errors.push(`settings.copyCounters["${libraryId}"] doit être un entier >= 1`);
+        }
+      }
+    }
+  }
 
   errors.push(...validateLinks(campaign));
 

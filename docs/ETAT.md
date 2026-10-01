@@ -1956,6 +1956,18 @@ d'acceptation du §11.
 > dormant. ⚠ L'état Indemne/Blessé/Mal en point des PNJ ne se voit plus sur la carte. À rouvrir
 > quand le mainteneur aura une meilleure idée (C-14 de `QUESTIONS-EN-ATTENTE.md`).
 
+> ### ✅ Chantier C-15 — exemplaires numérotés, livré le 02/10/2026 (hors §11)
+>
+> Un pion posé depuis la bibliothèque est numéroté à partir du deuxième exemplaire (le premier
+> devient 1), sans jamais réattribuer un numéro ; une pastille en bas à gauche du pion le montre à
+> tous, joueurs compris, et le nom devient « Gobelin 2 ». Provenance et numéro sont des champs
+> optionnels du pion, le compteur vit dans `settings.copyCounters` et survit à l'aller-retour
+> Firestore v3 (testé). Arbitrages : C-15 de `QUESTIONS-EN-ATTENTE.md`. **Vérifié par mutation** :
+> pastille absente chez les joueurs, premier exemplaire jamais numéroté, compteur ignoré ou non
+> enregistré, numéro du premier non publié.
+>
+> ⏳ **À éprouver à la table** : lisibilité de la pastille sur la TV.
+
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur, arbitrée le jour même en deux séances de choix multiples (trace en C-9 de

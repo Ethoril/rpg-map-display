@@ -1023,6 +1023,27 @@ bibliothèque ; un simple outil pour montrer en grand l'image d'un monstre.
 >
 > ⏳ **À éprouver sur le vrai Firebase et la tablette** : les e2e passent par le transport de test.
 
+### C-15 Exemplaires numérotés — demande du mainteneur, 01/10/2026
+
+« Quand j'instancie plusieurs exemplaires d'un même pion, je voudrais que l'outil leur attribue un
+numéro […] visible par les joueurs, eux aussi en auront besoin. »
+
+> ## ✅ TRANCHÉ le 01/10/2026, en séance de choix multiples
+>
+> - **À partir du deuxième** : un exemplaire seul n'a pas de numéro ; poser le deuxième fait du
+>   premier le 1 et du nouveau le 2.
+> - **Jamais réattribué** : le suivant prend le dernier numéro donné + 1, même si celui qui le
+>   portait a été retiré.
+> - **Pastille en bas à gauche** du pion, vue de tous ; le nom devient « Gobelin 2 ».
+>
+> ⭐ **Appliqué sans nouvel arbitrage** : la provenance `token.libraryId` et le numéro
+> `token.copyNumber` sont des champs optionnels du pion ; le dernier numéro donné vit dans
+> `campaign.settings.copyCounters` — le conteneur réservé aux réglages de campagne qui sont lus.
+> Les exemplaires en réserve comptent. Un pion renommé par le MJ garde son nom (seule sa pastille
+> porte le numéro). Le premier exemplaire reçoit son numéro par un `token.update`, événement
+> existant. ⚠ Avec trois marqueurs d'état, la pastille chevauche le premier : elle est dessinée
+> par-dessus.
+
 ### C-14 Les barres d'état autour des pions sont retirées — demande du mainteneur, 01/10/2026
 
 « Je ne suis toujours pas satisfait de la représentation des points de vie autour des pions » :
