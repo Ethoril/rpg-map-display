@@ -1,14 +1,14 @@
 {
   "schemaVersion": 2,
-  "campaignId": "campaign-village hexa",
-  "name": "Village hexa",
+  "campaignId": "campaign-embuscade_forêt",
+  "name": "Embuscade — Forêt",
   "levels": [
     {
-      "id": "village hexa",
-      "name": "Village hexa",
+      "id": "embuscade_forêt",
+      "name": "Embuscade — Forêt",
       "pxPerCell": 140,
-      "widthCells": 21,
-      "heightCells": 21,
+      "widthCells": 56,
+      "heightCells": 32,
       "grid": {
         "type": "square",
         "offsetX": 0,
@@ -25,7 +25,7 @@
         "baked": true
       },
       "order": 0,
-      "imageUrl": "maps/generated/village hexa.webp",
+      "imageUrl": "maps/generated/embuscade_forêt.webp",
       "videoUrl": null,
       "animatedOverlays": [],
       "terrainCost": null

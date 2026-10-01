@@ -29,29 +29,56 @@
       }
     },
     {
-      "id": "manoir-rdc",
-      "name": "Manoir — RDC",
-      "sourceUrl": "maps/manoir-rdc.uvtt",
-      "sceneUrl": "maps/generated/manoir-rdc.scene.json",
-      "imageUrl": "maps/generated/manoir-rdc.webp",
-      "thumbUrl": "maps/generated/manoir-rdc.thumb.webp",
+      "id": "barrage_ulric",
+      "name": "Barrage — Ulric",
+      "sourceUrl": "maps/barrage_ulric.dd2vtt",
+      "sceneUrl": "maps/generated/barrage_ulric.scene.json",
+      "imageUrl": "maps/generated/barrage_ulric.webp",
+      "thumbUrl": "maps/generated/barrage_ulric.thumb.webp",
       "levels": [
         {
-          "levelId": "manoir-rdc",
-          "name": "Manoir — RDC",
-          "thumbUrl": "maps/generated/manoir-rdc.thumb.webp",
+          "levelId": "barrage_ulric",
+          "name": "Barrage — Ulric",
+          "thumbUrl": "maps/generated/barrage_ulric.thumb.webp",
           "gridType": "square",
           "source": "uvtt",
-          "updatedAt": 1784982066985
+          "updatedAt": 1790805643590
         }
       ],
-      "sourceHash": "sha256-223ecc42a8c27214e125c8aaca8138243d6decca2e204463998193b5c1b5a23a",
+      "sourceHash": "sha256-dd45b43160f096ee2a3613ff957ae565f87b58d2c70f881491695adb1e996b22",
       "levelCount": 1,
       "features": {
-        "walls": 131,
-        "portals": 40,
+        "walls": 0,
+        "portals": 0,
         "lights": 0,
-        "bakedLighting": false,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
+      "id": "embuscade_forêt",
+      "name": "Embuscade — Forêt",
+      "sourceUrl": "maps/embuscade_forêt.dd2vtt",
+      "sceneUrl": "maps/generated/embuscade_forêt.scene.json",
+      "imageUrl": "maps/generated/embuscade_forêt.webp",
+      "thumbUrl": "maps/generated/embuscade_forêt.thumb.webp",
+      "levels": [
+        {
+          "levelId": "embuscade_forêt",
+          "name": "Embuscade — Forêt",
+          "thumbUrl": "maps/generated/embuscade_forêt.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1790804905265
+        }
+      ],
+      "sourceHash": "sha256-aa5368638d251959b4b071f390607fd9771cb3173931947dcdc9b40367781bdd",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 0,
+        "lights": 0,
+        "bakedLighting": true,
         "animated": false
       }
     },
@@ -161,33 +188,6 @@
         "lights": 4,
         "bakedLighting": true,
         "animated": true
-      }
-    },
-    {
-      "id": "village hexa",
-      "name": "Village hexa",
-      "sourceUrl": "maps/village hexa.dd2vtt",
-      "sceneUrl": "maps/generated/village hexa.scene.json",
-      "imageUrl": "maps/generated/village hexa.webp",
-      "thumbUrl": "maps/generated/village hexa.thumb.webp",
-      "levels": [
-        {
-          "levelId": "village hexa",
-          "name": "Village hexa",
-          "thumbUrl": "maps/generated/village hexa.thumb.webp",
-          "gridType": "square",
-          "source": "uvtt",
-          "updatedAt": 1790183997080
-        }
-      ],
-      "sourceHash": "sha256-56d777fb8f94dbedd8dadfe0fbb4de91ecef6b4d977aefcfa60ee7bd7aeea9fe",
-      "levelCount": 1,
-      "features": {
-        "walls": 0,
-        "portals": 0,
-        "lights": 0,
-        "bakedLighting": true,
-        "animated": false
       }
     },
     {

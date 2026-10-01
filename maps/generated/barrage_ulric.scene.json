@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-barrage_ulric",
+  "name": "Barrage — Ulric",
+  "levels": [
+    {
+      "id": "barrage_ulric",
+      "name": "Barrage — Ulric",
+      "pxPerCell": 140,
+      "widthCells": 50,
+      "heightCells": 50,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "walls": [],
+      "portals": [],
+      "lights": [],
+      "ambient": {
+        "level": 1,
+        "baked": true
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/barrage_ulric.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "reserve": [],
+  "templates": [],
+  "handoutLibrary": [],
+  "settings": {}
+}
