@@ -106,3 +106,112 @@ canvas {
   outline: 3px solid #4a90e2;
   outline-offset: 2px;
 }
+
+/* ── Bande de sélection de la vue joueurs (C-9) ─────────────────────────────────────────────
+   Cinquième dérogation de CONVENTIONS.md §8 n°2 : elle n'existe que tant qu'un pion est
+   sélectionné (`display` piloté par js/ui/player/selectionStrip.js). Bord droit, centrée
+   verticalement ; en haut le bouton monter / descendre, dessous les badges d'état.
+
+   ⚠ `max-height` laisse libres le bouton plein écran en haut à droite (12 px + 44 px) et
+   l'avertissement de version en bas à droite : au-delà, la bande défile en elle-même, et son
+   défilement ne doit pas devenir un pan de la carte. Sobre : aucune animation. */
+#player-selection-strip {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-height: calc(100% - 136px);
+  z-index: 5;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 8px;
+  scrollbar-width: none;
+}
+
+#player-selection-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Cible tactile de 44 px au minimum, comme les onglets d'étage. */
+.player-selection-mount,
+.player-selection-badge {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.player-selection-mount img {
+  width: 34px;
+  height: 34px;
+  pointer-events: none;
+}
+
+/* Même allure que les badges du canvas : disque sombre cerclé de blanc, icône blanche. */
+.player-selection-badge img {
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  padding: 5px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Pion monté : la même tête de cheval, barrée d'une diagonale blanche cernée de sombre — le
+   bouton dit « quitter le cheval ». Pas de second fichier d'icône. */
+.player-selection-mount.is-mounted::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 46px;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px #111111;
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+}
+
+/* ⛔ Le focus reste VISIBLE (même règle que `.player-level-tab`). Décalage vers l'intérieur :
+   la bande défile, et un contour qui déborde y serait coupé. */
+.player-selection-mount:focus-visible,
+.player-selection-badge:focus-visible {
+  outline: 3px solid #4a90e2;
+  outline-offset: -3px;
+}
+
+/* Nom d'un badge, à gauche de celui-ci. Frère de la bande et non enfant : la bande défile, et
+   un conteneur défilant coupe ce qui déborde. Positionnée par le script, jamais tapable. */
+.player-selection-label {
+  position: fixed;
+  z-index: 6;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  color: #ffffff;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  pointer-events: none;
+}

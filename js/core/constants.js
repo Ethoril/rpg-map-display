@@ -300,7 +300,8 @@ export const STATUS_MARKER_CATEGORY_COLORS = {
 };
 
 /**
- * Libellés français, pour le sélecteur du panneau MJ uniquement.
+ * Libellés français, pour le sélecteur du panneau MJ et la bande de sélection de la tablette
+ * (C-9), qui les affiche à l'appui sur un badge.
  *
  * Table distincte des deux précédentes, et c'est délibéré : les réunir obligerait le schéma
  * à importer des libellés d'interface (`CONVENTIONS.md` §7, identifiants en anglais).
@@ -423,6 +424,12 @@ export const STATUS_ICON_CACHE_LIMIT = 128;
  * icônes d'état mais hors de `assets/icons/status/`, qui fait autorité sur les 14 marqueurs.
  */
 export const MOUNTED_ICON_URL = 'assets/icons/mounted.svg';
+
+/**
+ * Durée d'affichage du nom d'un badge d'état, après un appui dans la bande de sélection de la
+ * tablette (chantier C-9) — « quelques secondes », le temps de le lire à voix haute à la table.
+ */
+export const SELECTION_STRIP_LABEL_MS = 2500;
 
 /** Monté, le budget de déplacement est doublé — décision du mainteneur du 01/10/2026. */
 export const MOUNTED_SPEED_MULTIPLIER = 2;

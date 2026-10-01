@@ -17,6 +17,7 @@ import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
 import { decodeFogPng, getOrExtractMaskAlpha, isCellVisibleInMask } from '../vision/fog.js';
 import { createPlayerLevelSelector } from '../ui/player/levelSelector.js';
+import { createSelectionStrip } from '../ui/player/selectionStrip.js';
 import { gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
@@ -836,6 +837,33 @@ export async function bootstrapPlayerApp(options = {}) {
       })
     : null;
 
+  // Chantier C-9 : la bande de sélection, 5e dérogation de `CONVENTIONS.md` §8 n°2.
+  const selectionStripMount = /** @type {HTMLElement|null} */ (
+    document.getElementById('player-selection-strip')
+  );
+  const selectionStrip = selectionStripMount
+    ? createSelectionStrip(selectionStripMount, {
+        getSelectedToken: () => store.getSelectedToken(),
+        // État ABSOLU publié, comme le bouton du MJ : `token.mounted` est rejouable. La zone se
+        // recalcule d'elle-même, `setTokenMounted` appelant `rafraichirZoneAtteignable`.
+        onToggleMounted: (token) => {
+          const suivant = !(token.mounted === true);
+          try {
+            store.setTokenMounted(token.id, suivant);
+          } catch (err) {
+            console.error('Monture refusée :', err);
+            return;
+          }
+          transport?.publish({
+            type: 'token.mounted',
+            payload: { tokenId: token.id, mounted: suivant },
+            at: Date.now(),
+            by: 'players',
+          });
+        },
+      })
+    : null;
+
   const unsubscribeStore = store.subscribe((change) => {
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
@@ -845,6 +873,7 @@ export async function bootstrapPlayerApp(options = {}) {
     // compris avant qu'un sélecteur existe pour en changer (UX-12).
     memoriserEtage(store.getActiveLevelId());
     playerLevelSelector?.update();
+    selectionStrip?.update();
   });
 
   /** @type {(() => void)|null} */
@@ -1094,6 +1123,7 @@ export async function bootstrapPlayerApp(options = {}) {
     versionBadge.detach();
     handoutOverlay.detach();
     playerLevelSelector?.destroy();
+    selectionStrip?.destroy();
     cleanupMobileLocks();
     unsubscribeStore();
     unsubscribeEvents?.();
