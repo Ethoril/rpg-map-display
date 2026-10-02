@@ -11,6 +11,7 @@ import {
   LIGHT_GM_DARKNESS_RATIO,
   LIGHT_NIGHT_VISION_FLOOR,
   LIGHT_COLOR_VISION_GAIN,
+  LIGHT_GLOW_GAIN,
   FOG_VEIL_GM_UNEXPLORED,
   FOG_VEIL_GM_EXPLORED,
   FOG_VEIL_PLAYER_UNEXPLORED,
@@ -30,9 +31,18 @@ import {
 // champ d'un `fillRect` uniforme : ni dégradé ni polygone, donc aucune zone d'ombre du mock.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** @param {number} width @param {number} height */
-function createMockCanvas(width, height) {
+/**
+ * ⭐ `rasterise` (ajouté le 02/10/2026, pour le HALO) : le `fill()` remplit alors vraiment le
+ * polygone tracé d'un dégradé radial, arrêts interpolés par morceaux — la même règle que le mock
+ * de `lightField.test.mjs`. Sans l'option, `fill()` reste un simple journal : tous les tests
+ * d'avant le halo tournent sur ce mock mince, inchangé.
+ *
+ * @param {number} width @param {number} height @param {{ rasterise?: boolean }} [options]
+ */
+function createMockCanvas(width, height, options = {}) {
   const pixels = new Float64Array(width * height * 4);
+  /** @type {Array<{x: number, y: number}>} */
+  let chemin = [];
   /** @type {any[]} */
   const journal = [];
 
@@ -72,13 +82,40 @@ function createMockCanvas(width, height) {
           alpha * (1 - ab) * src +
           alpha * ab * ((src * fond) / 255) +
           (1 - alpha) * fondPremultiplie;
+      } else if (mode === 'screen') {
+        // Même forme de Porter-Duff complète que `multiply` ci-dessus, avec
+        // `B(Cb, Cs) = Cb + Cs − Cb·Cs` : jamais au-delà du blanc. Sur une destination
+        // transparente, la source s'écrit telle quelle à sa propre opacité.
+        const ab = pixels[index + 3] / 255;
+        const fondPremultiplie = pixels[index + canal];
+        const fond = ab > 0 ? fondPremultiplie / ab : 0;
+        const src = couleur[canal];
+        pixels[index + canal] =
+          alpha * (1 - ab) * src +
+          alpha * ab * (src + fond - (src * fond) / 255) +
+          (1 - alpha) * fondPremultiplie;
+      } else if (mode === 'saturation') {
+        // Mode NON séparable : traité d'un bloc plus bas, sur les trois canaux à la fois.
       } else if (mode === 'destination-out' || mode === 'destination-in') {
         // Ne touchent pas les couleurs, ne rongent que l'alpha. Traité plus bas.
       } else {
         pixels[index + canal] = source + pixels[index + canal] * (1 - alpha);
       }
     }
-    if (mode === 'destination-out') {
+    if (mode === 'saturation') {
+      // ⭐ Ajouté le 02/10/2026 : avant, ce mode tombait sur `source-over` et peignait le stencil
+      // blanc par-dessus le décor. Modèle borné à ce que la couche y dessine — un stencil GRIS,
+      // de saturation nulle : `B(Cb, Cs)` est alors le gris de même luminance que `Cb`.
+      const ab = pixels[index + 3] / 255;
+      if (ab > 0) {
+        const [r, g, b] = [pixels[index] / ab, pixels[index + 1] / ab, pixels[index + 2] / ab];
+        const lum = 0.3 * r + 0.59 * g + 0.11 * b;
+        for (let canal = 0; canal < 3; canal++) {
+          pixels[index + canal] = alpha * ab * lum + (1 - alpha) * pixels[index + canal];
+        }
+      }
+      pixels[index + 3] = alpha * 255 + pixels[index + 3] * (1 - alpha);
+    } else if (mode === 'destination-out') {
       pixels[index + 3] = pixels[index + 3] * (1 - alpha);
     } else if (mode === 'destination-in') {
       // ⭐ Ajouté pour le stencil « vu sans lumière » (`_construireStencilNocturne`) : ne
@@ -142,12 +179,57 @@ function createMockCanvas(width, height) {
       }
     },
 
-    createRadialGradient() {
+    /** @param {number} x0 @param {number} y0 @param {number} r0 @param {number} x1 @param {number} y1 @param {number} r1 */
+    createRadialGradient(x0, y0, r0, x1, y1, r1) {
       journal.push({ op: 'gradient' });
-      return { __gradient: true, addColorStop() {} };
+      /** @type {Array<{ position: number, texte: string }>} */
+      const stops = [];
+      return {
+        __gradient: true, centre: { x: x1, y: y1 }, rayon: r1, stops,
+        /** @param {number} position @param {string} texte */
+        addColorStop(position, texte) { stops.push({ position, texte }); },
+      };
     },
-    beginPath() {}, moveTo() {}, lineTo() {}, closePath() {},
-    fill() { journal.push({ op: 'fill', mode: this.globalCompositeOperation }); },
+    beginPath() { chemin = []; },
+    /** @param {number} x @param {number} y */
+    moveTo(x, y) { chemin.push({ x, y }); },
+    /** @param {number} x @param {number} y */
+    lineTo(x, y) { chemin.push({ x, y }); },
+    closePath() {},
+    fill() {
+      journal.push({ op: 'fill', mode: this.globalCompositeOperation });
+      const style = this.fillStyle;
+      if (!options.rasterise || !style?.__gradient || style.stops.length === 0 || chemin.length < 3) return;
+      const arrets = style.stops.map((/** @type {any} */ s) => ({ position: s.position, ...lireRgba(s.texte) }));
+      /** @param {number} t */
+      const alphaA = (t) => {
+        for (let k = 1; k < arrets.length; k++) {
+          if (t <= arrets[k].position) {
+            const a = arrets[k - 1];
+            const b = arrets[k];
+            const u = b.position > a.position ? (t - a.position) / (b.position - a.position) : 1;
+            return a.alpha + (b.alpha - a.alpha) * u;
+          }
+        }
+        return arrets[arrets.length - 1].alpha;
+      };
+      for (let ligne = 0; ligne < height; ligne++) {
+        for (let col = 0; col < width; col++) {
+          const point = { x: col + 0.5, y: ligne + 0.5 };
+          let dedans = false;
+          for (let i = 0, j = chemin.length - 1; i < chemin.length; j = i++) {
+            const pi = chemin[i];
+            const pj = chemin[j];
+            if (pi.y > point.y !== pj.y > point.y &&
+                point.x < ((pj.x - pi.x) * (point.y - pi.y)) / (pj.y - pi.y) + pi.x) dedans = !dedans;
+          }
+          if (!dedans) continue;
+          const t = Math.min(1, Math.hypot(point.x - style.centre.x, point.y - style.centre.y) / Math.max(1e-9, style.rayon));
+          const alpha = alphaA(t);
+          if (alpha > 0) fusionner((ligne * width + col) * 4, arrets[0].couleur, alpha, this.globalCompositeOperation);
+        }
+      }
+    },
 
     /** @param {any} image @param {...number} reste */
     drawImage(image, ...reste) {
@@ -1066,4 +1148,192 @@ test('E1 : après un changement d’étage de taille différente, aucune passe n
       if (amplifie) assert.equal(amplifie.width, champ.maskWidth, `${w}×${h} : champ amplifié de l’étage précédent`);
     }
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Le HALO — décision du mainteneur du 02/10/2026. Ces tests tournent sur le mock RASTERISANT :
+// le halo est un dégradé dans un polygone, le mock mince n'en écrirait aucun pixel.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** @param {number} w @param {number} h */
+const fabriqueRaster = (w, h) => createMockCanvas(w, h, { rasterise: true });
+
+/** @param {any} ctx @param {number} x @param {number} y */
+function rgbAu(ctx, x, y) {
+  const index = (y * ctx.width + x) * 4;
+  return { red: ctx.pixels[index], green: ctx.pixels[index + 1], blue: ctx.pixels[index + 2], alpha: ctx.pixels[index + 3] };
+}
+
+/**
+ * Un étage de nuit portant une lampe au centre (case 5,5 → pixel carte 500,500), portée 3.
+ * @param {{ on?: boolean, color?: string, ambient?: number }} [o]
+ */
+function etageLampe(o = {}) {
+  return etage({
+    ambient: { level: o.ambient ?? 0, baked: true },
+    lights: [{ id: 'l1', at: { cellX: 5, cellY: 5 }, range: 3, intensity: 1, color: o.color ?? '#ffa54f', shadows: true, on: o.on ?? true }],
+  });
+}
+
+/** Un décor sombre et opaque, comme une image de nuit sans lueur peinte. */
+function decorSombre() {
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  ctx.fillStyle = 'rgba(60, 60, 60, 1)';
+  ctx.fillRect(0, 0, 1000, 1000);
+  ctx.journal.length = 0;
+  return ctx;
+}
+
+/**
+ * Rend `level` sur un décor sombre (transparent sous un fond animé). `sansHalo` retire le halo
+ * du champ juste avant le rendu : la référence « même scène, sans la fonction ».
+ * @param {any} level @param {any} options @param {boolean} [sansHalo]
+ */
+function rendre(level, options, sansHalo = false) {
+  const couche = new LightLayer({ createCanvas: fabriqueRaster });
+  couche.update(ADAPTATEUR, level, []);
+  if (sansHalo) champDe(couche).glowCount = 0;
+  const ctx = options.suppressed ? createMockCanvas(1000, 1000)._ctx : decorSombre();
+  couche.render(ctx, ADAPTATEUR, level, options);
+  return { ctx, couche };
+}
+
+/** @param {any} ctx */
+const passeHalo = (ctx) => ctx.journal.some((/** @type {any} */ e) => e.op === 'drawImage' && e.mode === 'screen');
+
+test('H1. ⭐ Une lampe ALLUMÉE, à ambiante nulle, rend le décor PLUS CLAIR que l’image source', () => {
+  for (const role of /** @type {const} */ (['gm', 'players'])) {
+    const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 });
+    const { ctx } = rendre(etageLampe(), { role, mode: 'play', visibleCanvas: masque });
+    const pres = rgbAu(ctx, 520, 500);
+    assert.ok(pres.red > 60 + 40, `${role} : près de la lampe, attendu bien au-dessus de 60, obtenu ${pres.red}`);
+    assert.ok(pres.red <= 255 && pres.green <= 255, 'screen ne dépasse jamais le blanc');
+  }
+});
+
+test('H2. Une lampe ÉTEINTE n’ajoute RIEN : rendu identique à un étage sans lampe', () => {
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 });
+  const options = { role: 'players', visibleCanvas: masque };
+  const eteinte = rendre(etageLampe({ on: false }), options).ctx;
+  const vide = rendre(etage({ ambient: { level: 0, baked: true } }), options).ctx;
+  assert.deepEqual(rgbAu(eteinte, 520, 500), rgbAu(vide, 520, 500));
+  assert.equal(passeHalo(eteinte), false, '⛔ aucune passe de halo');
+});
+
+test('H3. ⛔ En plein JOUR (ambiante 1), aucun halo — le décor sort intact', () => {
+  for (const role of /** @type {const} */ (['gm', 'players'])) {
+    const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 });
+    const { ctx } = rendre(etageLampe({ ambient: 1 }), { role, mode: 'play', visibleCanvas: masque });
+    assert.equal(rgbAu(ctx, 520, 500).red, 60, `${role} : plein jour, décor intact`);
+    assert.equal(passeHalo(ctx), false, `${role} : aucune passe de halo`);
+  }
+});
+
+test('H4. ⛔ MJ en « Préparer » : aucun halo, rien du tout', () => {
+  const { ctx } = rendre(etageLampe(), { role: 'gm', mode: 'prep' });
+  assert.equal(rgbAu(ctx, 520, 500).red, 60);
+  assert.equal(ctx.journal.length, 0);
+});
+
+test('H5. ⭐ Joueurs : le halo est RÉDUIT à ce qui est vu à l’instant — rien ne filtre d’une pièce hors de vue', () => {
+  // Visible : la moitié GAUCHE du masque seulement (x < 40, soit x < 500 px carte).
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 40, h: 80 });
+  const options = { role: 'players', visibleCanvas: masque };
+  const avec = rendre(etageLampe(), options).ctx;
+  const sans = rendre(etageLampe(), options, true).ctx;
+
+  assert.ok(rgbAu(avec, 480, 500).red > rgbAu(sans, 480, 500).red + 40, 'dans la zone vue, le halo luit');
+  assert.deepEqual(rgbAu(avec, 560, 500), rgbAu(sans, 560, 500), '⛔ hors de la zone vue, AUCUN halo');
+
+  // ⛔ Et sans masque du tout, la table ne reçoit aucun halo : ne rien montrer ne fuit pas.
+  assert.equal(passeHalo(rendre(etageLampe(), { role: 'players' }).ctx), false);
+});
+
+test('H6. Le MJ voit le halo PARTOUT et à pleine force — ni réduction ni atténuation', () => {
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 40, h: 80 });
+  const options = { role: 'gm', mode: 'play', visibleCanvas: masque };
+  const avec = rendre(etageLampe(), options).ctx;
+  const sans = rendre(etageLampe(), options, true).ctx;
+  assert.ok(rgbAu(avec, 560, 500).red > rgbAu(sans, 560, 500).red + 40, 'le MJ voit le halo hors de la vue des PJ');
+
+  // Pleine force : le même halo que la table, au même endroit vu des deux côtés.
+  const joueurs = rendre(etageLampe(), { role: 'players', visibleCanvas: masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 }) });
+  const gainJoueurs = rgbAu(joueurs.ctx, 520, 500).red - rgbAu(rendre(etageLampe(), { role: 'players', visibleCanvas: masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 }) }, true).ctx, 520, 500).red;
+  const gainMJ = rgbAu(avec, 520, 500).red - rgbAu(sans, 520, 500).red;
+  assert.ok(gainMJ > gainJoueurs * 0.9, `⛔ halo MJ atténué : +${gainMJ} contre +${gainJoueurs} chez la table`);
+});
+
+test('H7. ⭐ Le halo vient APRÈS la désaturation : un violet le reste jusque dans la frange', () => {
+  // ⭐ Le pixel final doit être EXACTEMENT `screen(scène déjà assombrie et désaturée, halo)`.
+  // Posé avant la désaturation, le halo y perdrait sa couleur là où le stencil mord encore —
+  // la frange extérieure, où le champ amplifié n’a pas saturé. D’où ce point à 80 % de la portée.
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 });
+  const level = etageLampe({ color: '#a040ff' });
+  const options = { role: 'players', visibleCanvas: masque };
+  const { ctx, couche } = rendre(level, options);
+  const sans = rendre(level, options, true).ctx;
+
+  // ⚠ Écart attendu sous mutation : quelques millièmes de niveau, la frange étant faible — le
+  // mock calcule en flottants exacts, la tolérance de 1e-6 les voit sans ambiguïté.
+  const x = 500 + 240;
+  // Côté joueurs, la passe dessine le halo RÉDUIT à la zone vue — c’est lui la source.
+  const halo = rgbAu(couche._haloVisible._ctx, Math.floor((x * 80) / 1000), 40);
+  assert.ok(halo.alpha > 0, 'le cas n’est probant que si le halo porte jusque-là');
+  const a = (halo.alpha / 255) * LIGHT_GLOW_GAIN;
+  const fond = rgbAu(sans, x, 500);
+  const obtenu = rgbAu(ctx, x, 500);
+  for (const canal of /** @type {const} */ (['red', 'green', 'blue'])) {
+    // ⚠ Convention du mock : `drawImage` lit les canaux stockés tels quels comme couleur.
+    const source = halo[canal];
+    const attendu = fond[canal] + a * source * (1 - fond[canal] / 255);
+    assert.ok(Math.abs(obtenu[canal] - attendu) < 1e-6, `${canal} : attendu ${attendu}, obtenu ${obtenu[canal]}`);
+  }
+  assert.ok(obtenu.blue - obtenu.green > fond.blue - fond.green, 'le violet du halo survit');
+});
+
+test('H8. Fond animé : le halo se pose au-dessus du voile, et rien d’opaque hors de lui', () => {
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 });
+  const options = { role: 'players', suppressed: true, visibleCanvas: masque };
+  const avec = rendre(etageLampe(), options).ctx;
+  const sans = rendre(etageLampe(), options, true).ctx;
+  assert.ok(rgbAu(avec, 520, 500).red > rgbAu(sans, 520, 500).red + 40, 'le halo luit au-dessus de la vidéo');
+  assert.deepEqual(rgbAu(avec, 900, 100), rgbAu(sans, 900, 100), '⛔ hors du halo, le halo n’ajoute rien');
+});
+
+test('H9. ⛔ Le champ de la vision (`getFieldCanvas`) n’est jamais touché par le halo', () => {
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 80, h: 80 });
+  const couche = new LightLayer({ createCanvas: fabriqueRaster });
+  const level = etageLampe();
+  couche.update(ADAPTATEUR, level, []);
+  const avant = Array.from(couche.getFieldCanvas()._ctx.pixels);
+  assert.ok(champDe(couche).glowCount > 0, 'le cas n’est probant que si un halo existe');
+  for (const role of /** @type {const} */ (['gm', 'players'])) {
+    couche.render(decorSombre(), ADAPTATEUR, level, { role, mode: 'play', visibleCanvas: masque });
+  }
+  assert.deepEqual(Array.from(couche.getFieldCanvas()._ctx.pixels), avant);
+});
+
+test('H10. Le halo réduit suit la révision du masque VISIBLE, muté en place', () => {
+  const level = etageLampe();
+  const couche = new LightLayer({ createCanvas: fabriqueRaster });
+  couche.update(ADAPTATEUR, level, []);
+
+  // Visible à GAUCHE d'abord. ⭐ Même convention `__fogRevision` que le test 18 : le masque
+  // est mutable EN PLACE, seule l'estampille dit qu'il a changé.
+  const masque = masqueVisible(80, 80, { x: 0, y: 0, w: 40, h: 80 });
+  masque.__fogRevision = 1;
+  const options = { role: /** @type {const} */ ('players'), visibleCanvas: masque };
+  couche.render(decorSombre(), ADAPTATEUR, level, options);
+
+  // La vue passe à DROITE, même objet.
+  masque._ctx.clearRect(0, 0, 80, 80);
+  masque._ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+  masque._ctx.fillRect(40, 0, 40, 80);
+  masque.__fogRevision = 2;
+  const ctx = decorSombre();
+  couche.render(ctx, ADAPTATEUR, level, options);
+
+  const sans = rendre(level, options, true).ctx;
+  assert.ok(rgbAu(ctx, 560, 500).red > rgbAu(sans, 560, 500).red + 40, 'la zone désormais vue reçoit le halo');
+  assert.deepEqual(rgbAu(ctx, 480, 500), rgbAu(sans, 480, 500), '⛔ la zone qui n’est plus vue n’en garde rien');
 });

@@ -373,6 +373,18 @@ export function parseUvtt(jsonInput) {
     let lumieresRejetees = 0;
     let lumieresNormalisees = 0;
     let lumieresSansOmbres = 0;
+    // ⭐ L'intensité est RAPPORTÉE à la plus forte de la carte — décision du mainteneur du
+    // 02/10/2026. Dungeon Alchemist écrit `intensity: 6.0`, une échelle indéterminée (voir
+    // `parseUvttColor`) : rogner chaque valeur à 1 aplatissait toutes les lampes d'une carte au
+    // même éclat. Diviser par le maximum garde leurs écarts relatifs et laisse le schéma en
+    // 0..1 — la plus forte vaut 1, une deux fois moins forte 0,5. Sans aucune valeur positive
+    // et finie, il n'y a rien à quoi rapporter : chaque lampe vaut 1, comme avant.
+    let intensiteMax = 0;
+    for (const l of data.lights) {
+      if (!l || !l.position || !Number.isFinite(l.position.x) || !Number.isFinite(l.position.y)) continue;
+      const brute = l.intensity ?? 1;
+      if (Number.isFinite(brute) && brute > intensiteMax) intensiteMax = brute;
+    }
     for (const l of data.lights) {
       if (
         !l || !l.position ||
@@ -394,8 +406,13 @@ export function parseUvtt(jsonInput) {
       // l'import a continué de rogner à 20 et la marge nouvelle est restée inatteignable pour les
       // cartes importées — c'est-à-dire pour la quasi-totalité des lumières du projet.
       const range = Number.isFinite(rawRange) ? Math.min(Math.max(rawRange, 0), VISION_MAX_RANGE_CELLS) : 5;
-      const intensity = Number.isFinite(rawIntensity) ? Math.min(Math.max(rawIntensity, 0), 1) : 1;
-      if (range !== rawRange || intensity !== rawIntensity) lumieresNormalisees++;
+      const intensity = !Number.isFinite(rawIntensity) || intensiteMax <= 0
+        ? 1
+        : Math.max(rawIntensity, 0) / intensiteMax;
+      // Le rapport au maximum ne perd aucun écart, il ne se signale donc pas. Seul ce qui est
+      // ROGNÉ le fait : une portée hors bornes, une intensité négative ou non numérique.
+      const intensiteRognee = !Number.isFinite(rawIntensity) || rawIntensity < 0;
+      if (range !== rawRange || intensiteRognee) lumieresNormalisees++;
       if (l.shadows === false) lumieresSansOmbres++;
       lights.push({
         id: lightId,

@@ -143,7 +143,21 @@ function createMockCanvas(width, height) {
       journal.push({ op: 'fill', mode, sommets: path.length });
 
       const debut = lireRgba(style.stops[0].texte);
-      const fin = lireRgba(style.stops[style.stops.length - 1].texte);
+      // Interpolation LINÉAIRE PAR MORCEAUX entre arrêts successifs — le halo en pose cinq
+      // (profil quadratique). Avec deux arrêts, c'est exactement la rampe d'avant.
+      const arrets = style.stops.map((/** @type {any} */ s) => ({ position: s.position, alpha: lireRgba(s.texte).alpha }));
+      /** @param {number} t */
+      const alphaA = (t) => {
+        for (let k = 1; k < arrets.length; k++) {
+          if (t <= arrets[k].position) {
+            const a = arrets[k - 1];
+            const b = arrets[k];
+            const u = b.position > a.position ? (t - a.position) / (b.position - a.position) : 1;
+            return a.alpha + (b.alpha - a.alpha) * u;
+          }
+        }
+        return arrets[arrets.length - 1].alpha;
+      };
 
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const point of path) {
@@ -159,7 +173,7 @@ function createMockCanvas(width, height) {
           if (!dansLePolygone(point, path)) continue;
           const distance = Math.hypot(point.x - style.centre.x, point.y - style.centre.y);
           const t = Math.min(1, distance / Math.max(1e-9, style.rayon));
-          const alpha = debut.alpha + (fin.alpha - debut.alpha) * t;
+          const alpha = alphaA(t);
           fusionner((ligne * width + col) * 4, debut.couleur, alpha, mode);
         }
       }
@@ -179,14 +193,17 @@ function createMockCanvas(width, height) {
 
 /** Fabrique liée à un mock, pour l'injecter dans `LightField`. */
 function fabrique() {
-  /** @type {any} */
-  let dernier = null;
+  // ⚠ `LightField` fabrique DEUX canvas depuis le 02/10/2026 : le champ d'abord, le halo
+  // ensuite. `ctxDe` rend le PREMIER — le champ —, `haloDe` le second.
+  /** @type {any[]} */
+  const crees = [];
   /** @param {number} w @param {number} h */
   const createCanvas = (w, h) => {
-    dernier = createMockCanvas(w, h);
-    return dernier.canvas;
+    const mock = createMockCanvas(w, h);
+    crees.push(mock);
+    return mock.canvas;
   };
-  return { createCanvas, ctxDe: () => dernier.ctx };
+  return { createCanvas, ctxDe: () => crees[0].ctx, haloDe: () => crees[1].ctx };
 }
 
 const GRID_SCALE = 100;
@@ -486,4 +503,100 @@ test('11. Un champ sans contexte de dessin ne prétend pas avoir composé', () =
     false,
     '⛔ rendre `true` ferait croire à un champ composé qui n’existe pas'
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Le HALO — décision du mainteneur du 02/10/2026. Un second canvas, rempli dans la même boucle
+// que le champ et sur le même polygone, jamais mêlé à lui.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('H1. ⭐ Le halo est OCCLUS par le mur, comme le champ — même polygone, aucun second sweep', () => {
+  const { createCanvas, haloDe } = fabrique();
+  const champ = new LightField(10, 10, createCanvas);
+  const mur = { p1: { x: 600, y: 0 }, p2: { x: 600, y: 1000 } };
+
+  champ.compose(
+    [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }],
+    { ambientLevel: 0, segments: [mur], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
+  );
+
+  const halo = haloDe();
+  assert.equal(champ.glowCount, 1);
+  assert.ok(pixelAu(halo, 44, 40).red > 0, 'entre la source et le mur, le halo luit');
+  assert.ok(pixelAu(halo, 34, 40).red > 0, 'du côté libre, le halo luit');
+  assert.equal(pixelAu(halo, 54, 40).alpha, 0, '⛔ derrière le mur, AUCUN halo');
+});
+
+test('H2. Le halo porte la COULEUR de la source : un violet donne R et B au-dessus de G', () => {
+  const { createCanvas, haloDe } = fabrique();
+  const champ = new LightField(10, 10, createCanvas);
+  champ.compose(
+    [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#a040ff' }],
+    { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
+  );
+  const p = pixelAu(haloDe(), 42, 40);
+  assert.ok(p.red > p.green + 20 && p.blue > p.green + 20, `violet attendu, obtenu ${JSON.stringify(p)}`);
+});
+
+test('H3. ⛔ Aucune AMBIANTE dans le halo — et sans source, il est vide partout', () => {
+  const { createCanvas, haloDe } = fabrique();
+  const champ = new LightField(10, 10, createCanvas);
+  const opts = { ambientLevel: 0.6, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE };
+
+  champ.compose([{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }], opts);
+  assert.equal(pixelAu(haloDe(), 5, 5).alpha, 0, '⛔ loin de la source, le halo ne doit rien porter de l’ambiante');
+  assert.ok(pixelAu(haloDe(), 40, 40).alpha > 0, 'au centre, le halo luit');
+
+  champ.compose([], opts);
+  assert.equal(champ.glowCount, 0, 'sans source, aucun halo peint');
+  assert.equal(pixelAu(haloDe(), 40, 40).alpha, 0, 'et le halo précédent est effacé');
+});
+
+test('H4. ⛔ Le CHAMP (celui de la vision) est identique au pixel près, halo ou pas', () => {
+  const sources = [
+    { center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ff8030' },
+    { center: { x: 300, y: 700 }, radiusPx: 200, intensity: 0.5, color: '#a040ff' },
+  ];
+  const opts = {
+    ambientLevel: 0.2,
+    segments: [{ p1: { x: 600, y: 0 }, p2: { x: 600, y: 1000 } }],
+    mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE,
+  };
+
+  const avec = fabrique();
+  const champAvec = new LightField(10, 10, avec.createCanvas);
+  champAvec.compose(sources, opts);
+  assert.equal(champAvec.glowCount, 2, 'le cas n’est probant que si le halo a bien été peint');
+
+  // « Sans le halo » : le même champ, son contexte de halo retiré avant de composer.
+  const sans = fabrique();
+  const champSans = new LightField(10, 10, sans.createCanvas);
+  champSans.glowCtx = null;
+  champSans.compose(sources, opts);
+  assert.equal(champSans.glowCount, 0);
+
+  assert.deepEqual(
+    Array.from(avec.ctxDe().pixels),
+    Array.from(sans.ctxDe().pixels),
+    '⛔ le halo ne doit jamais toucher le champ qui nourrit la vision'
+  );
+});
+
+test('H5. L’intensité module le halo, et son profil s’éteint en douceur jusqu’à la portée', () => {
+  const opts = { ambientLevel: 0, segments: [], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE };
+  const pleine = fabrique();
+  new LightField(10, 10, pleine.createCanvas)
+    .compose([{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }], opts);
+  const moitie = fabrique();
+  new LightField(10, 10, moitie.createCanvas)
+    .compose([{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 0.5, color: '#ffffff' }], opts);
+
+  const coeurPlein = pixelAu(pleine.haloDe(), 40, 40).alpha;
+  const coeurMoitie = pixelAu(moitie.haloDe(), 40, 40).alpha;
+  assert.ok(Math.abs(coeurMoitie - coeurPlein / 2) < 3, `attendu la moitié de ${coeurPlein}, obtenu ${coeurMoitie}`);
+
+  // Mi-portée : (1 − 0,5)² = 0,25 du cœur, pas la moitié d'une rampe linéaire.
+  const miPortee = pixelAu(pleine.haloDe(), 40 + 12, 40).alpha;
+  assert.ok(miPortee > 0 && miPortee < coeurPlein * 0.35, `profil quadratique attendu, obtenu ${miPortee} / ${coeurPlein}`);
+  assert.equal(pixelAu(pleine.haloDe(), 40 + 30, 40).alpha, 0, 'au-delà de la portée, aucun halo');
 });

@@ -110,6 +110,28 @@ export class LightField {
     }
 
     this.ctx = this.canvas?.getContext?.('2d') ?? this.canvas?._ctx ?? null;
+
+    // ⭐ Le HALO, second canvas de même taille — décision du mainteneur du 02/10/2026. L'export
+    // Dungeon Alchemist « lumières dans le VTT » rend une image de nuit SANS lueur peinte : un
+    // champ qui ne fait que MULTIPLIER le décor n'y montre donc rien d'une lampe allumée. Le
+    // halo est la lumière que la source AJOUTE, appliquée par `LightLayer.render` en `screen`.
+    //
+    // ⛔ **Jamais mêlé à `this.canvas`.** Ce dernier nourrit la vision (`fog.js`,
+    // `destination-in`) et les stencils : y verser le halo ferait voir plus loin qu'une lampe
+    // n'éclaire. Pas d'ambiante non plus — un plancher uniforme n'est la lueur de personne.
+    if (typeof createCanvas === 'function') {
+      this.glowCanvas = createCanvas(this.maskWidth, this.maskHeight);
+    } else if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      this.glowCanvas = document.createElement('canvas');
+      this.glowCanvas.width = this.maskWidth;
+      this.glowCanvas.height = this.maskHeight;
+    } else {
+      this.glowCanvas = null;
+    }
+    this.glowCtx = this.glowCanvas?.getContext?.('2d') ?? this.glowCanvas?._ctx ?? null;
+    /** @type {number} Sources peintes dans le halo à la dernière composition — à 0,
+     *  `LightLayer.render` saute toute passe de halo. */
+    this.glowCount = 0;
     /** @type {number} Révision du contenu, voir `_touch()`. */
     this.revision = derniereRevision;
     /** @type {number} Sources réellement peintes à la dernière composition. */
@@ -133,7 +155,9 @@ export class LightField {
   /** Éteint le champ : plus aucune lumière nulle part. */
   clear() {
     if (this.ctx) this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
+    if (this.glowCtx) this.glowCtx.clearRect(0, 0, this.maskWidth, this.maskHeight);
     this.paintedCount = 0;
+    this.glowCount = 0;
     this._touch();
   }
 
@@ -194,11 +218,20 @@ export class LightField {
       ctx.fillRect(0, 0, this.maskWidth, this.maskHeight);
     }
 
+    // Le halo repart de zéro à chaque composition, et l'ambiante n'y entre jamais.
+    const glowCtx = this.glowCtx;
+    if (glowCtx) glowCtx.clearRect(0, 0, this.maskWidth, this.maskHeight);
+
     let peintes = 0;
+    let halos = 0;
     ctx.save();
     // Additif plafonné — décision §4.4c. `lighter` borne chaque canal à sa valeur maximale,
     // ce qui EST le plafonnement : aucune arithmétique à écrire pour l'obtenir.
     ctx.globalCompositeOperation = 'lighter';
+    if (glowCtx) {
+      glowCtx.save();
+      glowCtx.globalCompositeOperation = 'lighter';
+    }
 
     for (const source of sources || []) {
       if (!source || !source.center) continue;
@@ -226,20 +259,41 @@ export class LightField {
       degrade.addColorStop(1, `rgba(${red}, ${green}, ${blue}, 0)`);
       ctx.fillStyle = degrade;
 
-      ctx.beginPath();
-      const premier = polygone[0];
-      ctx.moveTo((premier.x - mapOrigin.x) * scaleX, (premier.y - mapOrigin.y) * scaleY);
-      for (let i = 1; i < polygone.length; i++) {
-        const point = polygone[i];
-        ctx.lineTo((point.x - mapOrigin.x) * scaleX, (point.y - mapOrigin.y) * scaleY);
-      }
-      ctx.closePath();
+      /** @param {any} cible */
+      const tracer = (cible) => {
+        cible.beginPath();
+        const premier = polygone[0];
+        cible.moveTo((premier.x - mapOrigin.x) * scaleX, (premier.y - mapOrigin.y) * scaleY);
+        for (let i = 1; i < polygone.length; i++) {
+          const point = polygone[i];
+          cible.lineTo((point.x - mapOrigin.x) * scaleX, (point.y - mapOrigin.y) * scaleY);
+        }
+        cible.closePath();
+      };
+      tracer(ctx);
       ctx.fill();
       peintes++;
+
+      // ⭐ Le halo remplit le MÊME polygone : l'occlusion lui vient gratuitement, sans second
+      // sweep. Son profil n'est pas le dégradé linéaire du champ mais une décroissance
+      // QUADRATIQUE, `intensité × (1 − t)²` : un cœur franc qui s'éteint en douceur jusqu'à 0 à
+      // la portée — une rampe linéaire, ajoutée en `screen`, y dessinerait un disque à bord net.
+      if (glowCtx) {
+        const halo = glowCtx.createRadialGradient(centreX, centreY, 0, centreX, centreY, rayonMasque);
+        for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+          halo.addColorStop(t, `rgba(${red}, ${green}, ${blue}, ${intensite * (1 - t) * (1 - t)})`);
+        }
+        glowCtx.fillStyle = halo;
+        tracer(glowCtx);
+        glowCtx.fill();
+        halos++;
+      }
     }
 
     ctx.restore();
+    if (glowCtx) glowCtx.restore();
     this.paintedCount = peintes;
+    this.glowCount = halos;
     this._touch();
     return true;
   }

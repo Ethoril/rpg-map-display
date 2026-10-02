@@ -118,7 +118,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  rayons lui arrivent en pixels carte, comme à fog.js.
 │   │                                  La signature de cache vit dans la couche, comme celle
 │   │                                  du fog vit dans fogLayer.js. Coût mesuré par M2 :
-│   │                                  1,80 ms pour 93 sources sur Tab S9 FE
+│   │                                  1,80 ms pour 93 sources sur Tab S9 FE.
+│   │                                  ⭐ Compose aussi, sur le même polygone, un HALO sur un
+│   │                                  second canvas (sans ambiante) — ⛔ jamais mêlé au
+│   │                                  champ, qui nourrit la vision (02/10/2026)
 │   │
 │   ├─ render/
 │   │   ├─ stage.js               [1a] contexte Canvas 2D + ordre des couches
@@ -146,7 +149,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  ⚠ SOUS les pions, décision du mainteneur du
 │   │                                  26/08/2026 : la lisibilité des pions à trois écrans
 │   │                                  a été validée en séance, la teinter la remettrait
-│   │                                  en jeu. Lit le champ de vision/lightField.js
+│   │                                  en jeu. Lit le champ de vision/lightField.js.
+│   │                                  Ordre : multiply, désaturation, puis le HALO des lampes
+│   │                                  allumées en screen — de nuit seulement, réduit à
+│   │                                  la zone vue côté joueurs (02/10/2026)
 │   │       ├─ walls.js           [2]  tracé des murs de l'étage (vue MJ seule)
 │   │       ├─ portals.js         [2]  indicateur d'état des trois états
 │   │       ├─ links.js           [3]  marqueurs de liaisons MJ/joueurs

@@ -4,6 +4,7 @@ import {
   LIGHT_GM_DARKNESS_RATIO,
   LIGHT_NIGHT_VISION_FLOOR,
   LIGHT_COLOR_VISION_GAIN,
+  LIGHT_GLOW_GAIN,
 } from '../../core/constants.js';
 import { LightField, cappedLightRange } from '../../vision/lightField.js';
 
@@ -268,6 +269,13 @@ export class LightLayer {
     /** @type {number} Compteur de reconstruction du stencil couleur, même convention que
      *  `_stencilRevisionCounter` ci-dessus. */
     this._stencilCouleurRevisionCounter = 0;
+    /** @type {any} Halo réduit à la zone VUE, pour la vue joueurs — voir `_construireHaloVisible`. */
+    this._haloVisible = null;
+    this._haloVisibleCtx = null;
+    /** @type {number} Révision du champ dont le halo réduit est issu. */
+    this._haloVisibleChampRev = -1;
+    /** @type {any} Révision du masque visible dont le halo réduit est issu. */
+    this._haloVisibleVisibleRev = null;
     /** @type {boolean} Ambiante pleine au dernier `update` : le stencil y serait vide. */
     this._pleineLumiere = false;
     /** @type {number} Sources peintes au dernier calcul, pour observation extérieure. */
@@ -296,6 +304,7 @@ export class LightLayer {
     this._stencilChampRev = -1;
     this._champAmplifieRevision = -1;
     this._stencilCouleurChampRev = -1;
+    this._haloVisibleChampRev = -1;
   }
 
   /**
@@ -742,6 +751,10 @@ export class LightLayer {
       ctx.globalCompositeOperation = 'source-over';
       ctx.drawImage(voile, 0, 0, champ.maskWidth, champ.maskHeight, rect.x, rect.y, rect.width, rect.height);
       ctx.restore();
+      // ⚠ Au-dessus d'une vidéo, `screen` sur des pixels transparents écrit le halo tel quel,
+      // à sa propre opacité : c'est une approximation acceptée le 02/10/2026. Hors du halo, son
+      // alpha est nul — rien d'opaque ne se pose sur la vidéo.
+      this._peindreHalo(ctx, rect, role, options.visibleCanvas);
       return true;
     }
 
@@ -767,7 +780,90 @@ export class LightLayer {
       ctx.drawImage(stencilCouleur, 0, 0, champ.maskWidth, champ.maskHeight, rect.x, rect.y, rect.width, rect.height);
       ctx.restore();
     }
+
+    // ⭐ Le halo vient EN DERNIER — après le `multiply` qui assombrit et la désaturation qui
+    // grise : posé avant, il serait multiplié par le noir d'une nuit sans lueur peinte, puis
+    // éteint en gris. Décision du mainteneur du 02/10/2026.
+    this._peindreHalo(ctx, rect, role, options.visibleCanvas);
     return true;
+  }
+
+  /**
+   * Peint le HALO des sources allumées en `screen` — décision du mainteneur du 02/10/2026.
+   *
+   * ⭐ **Pleine force des deux côtés** : l'atténuation `LIGHT_GM_DARKNESS_RATIO` existe pour que
+   * le MJ garde son décor dans le noir, pas pour lui cacher qu'une lampe brûle.
+   *
+   * ⛔ **Côté joueurs, réduit à la zone VUE à l'instant** (`visibleCanvas`) : une lampe allumée
+   * dans une pièce explorée mais hors de vue ne doit rien laisser filtrer. Sans masque fourni, la
+   * table ne reçoit aucun halo — ne rien montrer est le seul repli qui ne fuit pas. Le MJ, lui,
+   * voit tout.
+   *
+   * Aucune passe quand le champ n'a peint aucun halo : ni lampe allumée, ou ambiante pleine
+   * (`update` n'y balaie aucune source). C'est le cas par défaut, une lampe importée arrivant
+   * éteinte.
+   *
+   * @param {any} ctx @param {{x: number, y: number, width: number, height: number}} rect
+   * @param {'gm'|'players'} role @param {any} visibleCanvas
+   */
+  _peindreHalo(ctx, rect, role, visibleCanvas) {
+    const champ = this._field;
+    if (!champ || !champ.glowCanvas || champ.glowCount <= 0) return;
+    const halo = role === 'players' ? this._construireHaloVisible(ctx, visibleCanvas) : champ.glowCanvas;
+    if (!halo) return;
+    ctx.save();
+    ctx.globalAlpha = LIGHT_GLOW_GAIN;
+    ctx.globalCompositeOperation = 'screen';
+    ctx.drawImage(halo, 0, 0, champ.maskWidth, champ.maskHeight, rect.x, rect.y, rect.width, rect.height);
+    ctx.restore();
+  }
+
+  /**
+   * Le halo réduit à la zone VUE (`destination-in` sur le masque visible), pour la vue joueurs.
+   * En cache, reconstruit seulement quand le champ OU la révision du masque visible ont changé —
+   * même convention que `_construireStencilNocturne`.
+   *
+   * @param {any} mainCtx
+   * @param {any} visibleCanvas
+   */
+  _construireHaloVisible(mainCtx, visibleCanvas) {
+    const champ = this._field;
+    if (!champ || !champ.glowCanvas || !visibleCanvas) return null;
+
+    const visibleRev = visibleCanvas.__fogRevision ?? visibleCanvas;
+    if (
+      this._haloVisible &&
+      this._haloVisibleChampRev === champ.revision &&
+      this._haloVisibleVisibleRev === visibleRev
+    ) {
+      return this._haloVisible;
+    }
+
+    if (
+      !this._haloVisible ||
+      this._haloVisible.width !== champ.maskWidth ||
+      this._haloVisible.height !== champ.maskHeight
+    ) {
+      this._haloVisible = canvasHorsEcran(champ.maskWidth, champ.maskHeight, mainCtx, this._fabrique);
+      if (this._haloVisible) {
+        this._haloVisible.width = champ.maskWidth;
+        this._haloVisible.height = champ.maskHeight;
+        this._haloVisibleCtx = this._haloVisible.getContext('2d');
+      }
+    }
+    const ctx = this._haloVisibleCtx;
+    if (!ctx) return null;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, champ.maskWidth, champ.maskHeight);
+    ctx.drawImage(champ.glowCanvas, 0, 0);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(visibleCanvas, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    this._haloVisibleChampRev = champ.revision;
+    this._haloVisibleVisibleRev = visibleRev;
+    return this._haloVisible;
   }
 
   /**

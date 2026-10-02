@@ -439,3 +439,35 @@ test('F1 : Infinity, map_origin invalide et map_size non entier sont signalés, 
   assert.ok(Number.isInteger(res3.level.heightCells));
   assert.ok(res3.warnings.some((w) => /non entier/.test(w)));
 });
+
+// Décision du mainteneur du 02/10/2026 : l'intensité est RAPPORTÉE à la plus forte de la carte
+// au lieu d'être rognée à 1 lampe par lampe — sans quoi toutes les lampes Dungeon Alchemist
+// (`intensity: 6.0`) arrivaient au même éclat, et leurs écarts relatifs étaient perdus.
+test('Intensité : rapportée à la plus forte de la carte, écarts relatifs conservés', () => {
+  /** @param {any[]} lights */
+  const doc = (lights) => JSON.stringify({
+    format: 0.3,
+    resolution: { map_origin: { x: 0, y: 0 }, map_size: { x: 10, y: 10 }, pixels_per_grid: 100 },
+    line_of_sight: [],
+    portals: [],
+    lights,
+  });
+  /** @param {any} intensity @param {number} x */
+  const lampe = (intensity, x) => ({ position: { x, y: 1 }, range: 4, intensity, color: 'ffffffff' });
+
+  const res = parseUvtt(doc([lampe(6, 1), lampe(3, 2)]));
+  assert.deepEqual(res.lights.map((l) => l.intensity), [1, 0.5], 'la plus forte vaut 1, la moitié 0,5');
+  assert.ok(
+    !res.warnings.some((w) => w.includes('normalisée')),
+    'rapporter au maximum ne perd rien : aucun avertissement'
+  );
+
+  // Rien de positif et fini à quoi rapporter : chaque lampe vaut 1, comme avant.
+  const nulles = parseUvtt(doc([lampe(0, 1), lampe(-2, 2)]));
+  assert.deepEqual(nulles.lights.map((l) => l.intensity), [1, 1]);
+
+  // Une valeur négative parmi des positives est ramenée à 0, et ce rognage se dit.
+  const negative = parseUvtt(doc([lampe(4, 1), lampe(-1, 2)]));
+  assert.deepEqual(negative.lights.map((l) => l.intensity), [1, 0]);
+  assert.ok(negative.warnings.some((w) => w.includes('normalisée')), 'le rognage d’une négative est signalé');
+});

@@ -975,6 +975,34 @@ réécrit par `saveSnapshot` à chaque mutation.
 > ⚠ **Rejeu inoffensif partout** : une lampe déjà supprimée rend `false` sans lever, et une bascule
 > à l'état déjà atteint ne change rien — même profil que `token.reserve` et `portal.toggle`.
 
+> **Amendement C-2 bis (02/10/2026) — une lampe allumée AJOUTE sa lueur.** Référence : l'export
+> Dungeon Alchemist « lumières dans le VTT seulement », une image de nuit où aucune lueur n'est
+> peinte. Le champ lumineux ne faisant que multiplier le décor, une lampe allumée y restait
+> invisible. Huit décisions du mainteneur :
+>
+> 1. **Un halo, à part.** `LightField` remplit un second canvas dans la même boucle que le champ,
+>    sur le **même polygone de sweep** — l'occlusion vient gratuitement, sans second balayage.
+>    Aucune ambiante n'y entre, et ⛔ il n'est **jamais mêlé au champ**, qui nourrit la vision et
+>    les stencils. Il suit `field.revision`, sans signature nouvelle ; sans aucune lampe allumée
+>    — le cas par défaut, une lampe importée arrivant éteinte — aucune passe n'est faite.
+> 2. **Application en `screen`**, qui ne brûle jamais en blanc, **après** le `multiply` et la
+>    désaturation pour que la couleur survive. Décroissance douce (`intensité × (1 − t)²`, un
+>    cœur franc qui s'éteint à 0 à la portée) ; l'opacité est `LIGHT_GLOW_GAIN`
+>    (`core/constants.js`), réglage d'œil à confirmer à la table.
+> 3. **La nuit seulement** : à ambiante pleine (« Jour »), aucun halo — l'invariant qui n'y
+>    balaie aucune source reste intact. Il s'applique dès que l'ambiante est sous 1.
+> 4. **Pleine force** des deux côtés, sans l'atténuation de moitié du MJ ; en « Préparer », le
+>    MJ ne voit aucun éclairage, halo compris.
+> 5. **Les torches des pions** luisent aussi, du même rendu et de leur couleur.
+> 6. **Côté joueurs, le halo est réduit à la zone VUE à l'instant** : une lampe allumée dans une
+>    pièce explorée mais hors de vue ne laisse rien filtrer. Le MJ voit tous les halos.
+> 7. **Sur fond animé**, le halo se pose aussi — `screen` sur des pixels transparents est une
+>    approximation acceptée — et n'ajoute rien d'opaque hors de lui.
+> 8. **L'intensité garde ses écarts** : à l'import UVTT, chaque intensité est rapportée à la plus
+>    forte de la carte (qui vaut 1) au lieu d'être rognée à 1 — le schéma reste en 0..1, aucun
+>    événement ni validation ne change. Sans valeur positive à quoi rapporter, chaque lampe
+>    vaut 1. L'opacité du halo suit l'intensité.
+
 > **Amendement UX-13 (18/08/2026)** : `level.replace` porte `{ levelId, patch }` et remplace le contenu d'un étage existant sur place (`imageUrl`, dimensions, pas de grille, géométrie vidée). Contrairement à `level.add`, il ne crée pas d'étage et s'applique immédiatement pour quiconque affichait déjà cet étage. Les pions de l'étage sont déplacés en réserve via autant d'événements `token.reserve` distincts, et le brouillard de l'étage est réinitialisé.
 
 > **Amendement C-9 (01/10/2026) — `token.mounted`, le pion monté.** Décision du mainteneur : un

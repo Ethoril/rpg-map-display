@@ -221,6 +221,26 @@ export const LIGHT_NIGHT_VISION_FLOOR = 0.35;
 export const LIGHT_COLOR_VISION_GAIN = 4;
 
 /**
+ * Opacité du HALO d'une lampe allumée, appliqué en `screen` sur le décor — décision du
+ * mainteneur du 02/10/2026.
+ *
+ * ⭐ **Pourquoi un halo.** L'export Dungeon Alchemist « lumières dans le VTT » rend une image de
+ * nuit SANS lueur peinte : le champ lumineux, qui ne fait que multiplier le décor, n'y montrait
+ * rien d'une lampe allumée. Le halo (`LightField.glowCanvas`, profil `intensité × (1 − t)²`)
+ * ajoute la couleur de la source par-dessus, APRÈS le `multiply` et la désaturation pour que
+ * cette couleur survive.
+ *
+ * ⭐ **`screen`, jamais `lighter`** : `1 − (1 − décor)(1 − halo)` ne dépasse jamais le blanc et
+ * s'amortit sur un décor déjà clair, là où l'additif brûlerait le cœur en aplat blanc. À 0,85 et
+ * à intensité 1, une lampe orangée (`#ffa54f`) porte au centre un pixel noir à
+ * ≈ (217, 140, 67) — nettement vue — et n’en apporte plus que le quart à mi-portée.
+ *
+ * ⚠ **Ce n'est pas une mesure, c'est un jugement d'œil** — à confirmer à la table, comme
+ * `LIGHT_NIGHT_VISION_FLOOR`. Le halo ne touche JAMAIS le champ qui nourrit la vision.
+ */
+export const LIGHT_GLOW_GAIN = 0.85;
+
+/**
  * Les quatorze marqueurs d'état — **liste close**, CdC §12 Q7 tranchée le 04/08/2026.
  *
  * L'assertion de constance posée sur le littéral ci-dessous n'est pas décorative : elle fait

@@ -519,6 +519,11 @@ test('R… ⭐ SEUIL DE COULEUR : à MI-RAYON d’un halo, la couleur est déjà
       ctx.fillStyle = 'rgb(200, 60, 30)';
       ctx.fillRect(0, 0, scene.width, scene.height);
 
+      // ⚠ HALO neutralisé ici, et seulement ici (02/10/2026). Ce test isole le stencil de
+      // DÉSATURATION ; le halo d'une lampe blanche ajoute du blanc en screen, plus au mi-rayon
+      // qu'en frange, ce qui fait baisser la saturation mesurée par construction et mêlerait deux
+      // mécanismes dans le même nombre. Le halo a ses propres tests (lightLayer.test.mjs, H1-H10).
+      lightLayer._field.glowCount = 0;
       lightLayer.render(ctx, grid, level, { role: 'players', visibleCanvas: visibleFog.canvas });
 
       window.__mesuresSeuilCouleur = {
