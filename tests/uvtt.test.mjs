@@ -361,7 +361,9 @@ test('⭐ Z-04 — une lumière `shadows: false` est conservée, mais son écart
   assert.equal(absent.warnings.filter((w) => w.includes('shadows')).length, 0);
 });
 
-test('⭐ C-2 — une lampe importée d’un UVTT est ALLUMÉE : le format n’a aucun champ d’état', () => {
+// Décision du mainteneur du 02/10/2026 : l'image d'un export Dungeon Alchemist « lumières dans
+// le VTT » est une nuit sans halo — la lampe allumée d'office contredisait ce que montre la carte.
+test('⭐ C-2 — une lampe importée d’un UVTT est ÉTEINTE : le format n’a aucun champ d’état', () => {
   const uvtt = {
     format: 0.3, resolution: { map_origin: { x: 0, y: 0 }, map_size: { x: 5, y: 5 }, pixels_per_grid: 64 },
     line_of_sight: [], portals: [],
@@ -370,7 +372,7 @@ test('⭐ C-2 — une lampe importée d’un UVTT est ALLUMÉE : le format n’a
   };
   const res = parseUvtt(JSON.stringify(uvtt));
   assert.equal(res.lights.length, 1);
-  assert.equal(res.lights[0].on, true);
+  assert.equal(res.lights[0].on, false);
 });
 
 test('D-3 : la borne des portées importées SUIT le plafond du moteur, elle n’est plus écrite en dur', () => {

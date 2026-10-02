@@ -358,14 +358,11 @@ export class PointerInput {
           return;
         }
       } else if (this.role === 'gm' && this.dragLightId) {
-        const isExceeded = isDragThresholdExceeded(
-          this.startScreenPos,
-          screenPos,
-          this.startTime,
-          timeStamp,
-          this.dragHoldMs,
-          this.dragDistanceThreshold
-        );
+        // ⛔ La DISTANCE seule fait d'un appui sur lampe un glisser — jamais la durée (décision
+        // du 02/10/2026). Un clic de trackpad tenu 150 ms avec un pixel de tremblement devenait
+        // un glisser : la lampe sautait au centre de sa case au lieu de basculer. Le pion et le
+        // gabarit gardent leur seuil temporel.
+        const isExceeded = distFromStart >= this.dragDistanceThreshold;
 
         if (isExceeded || this.mode === 'gmLightDrag') {
           const isFirstDrag = this.mode !== 'gmLightDrag';

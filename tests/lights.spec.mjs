@@ -1173,3 +1173,78 @@ test('C-2 : un glisser relâché hors carte ne déplace rien et ne publie rien',
   expect(await lightAt(page, 'l1'), 'la lampe est restée sur sa case').toEqual({ cellX: 5.5, cellY: 5.5 });
   expect((await publishedOfType(page, 'light.move')).length, 'rien ne part sur le réseau').toBe(0);
 });
+
+// Décision du mainteneur du 02/10/2026 — un CLIC sur une lampe la bascule, il ne la déplace pas.
+//
+// ⭐ La lampe est posée HORS du centre de sa case, comme celles d'un UVTT : un glisser parasite
+// la recentrerait, et la position change alors de façon observable, pas seulement le journal.
+
+test('C-2 : ⭐ un clic TENU sur une lampe, avec un pixel de tremblement, la bascule et ne la déplace pas', async ({ page }) => {
+  const sessionId = `light-clic-tenu-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-clic', name: 'Clic tenu', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    ambient: { level: 1, baked: false },
+    lights: [{ id: 'l1', at: { cellX: 5.2, cellY: 5.3 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-clic', levels: [level] }),
+    activeLevelId: 'level-clic',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const box = await boardBox(page);
+  const depart = await pagePointFor(page, box, { x: 520, y: 530 });
+
+  // ⛔ 300 ms : au-delà du seuil temporel de glisser (150 ms), en deçà de l'appui long (500 ms).
+  // C'est le clic de trackpad réel qui, avant le 02/10, devenait un glisser.
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.waitForTimeout(300);
+  await page.mouse.move(depart.x + 1, depart.y);
+  await page.mouse.up();
+
+  const etat = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].lights[0].on
+  );
+  expect(etat, 'la lampe a basculé : elle est éteinte').toBe(false);
+  const toggles = await publishedOfType(page, 'light.toggle');
+  expect(toggles.length, 'exactement UN light.toggle').toBe(1);
+  expect(toggles[0].payload.lightId).toBe('l1');
+  expect(toggles[0].payload.on).toBe(false);
+  expect((await publishedOfType(page, 'light.move')).length, 'aucun light.move').toBe(0);
+  expect(await lightAt(page, 'l1'), 'la lampe n\'a pas été recentrée').toEqual({ cellX: 5.2, cellY: 5.3 });
+});
+
+test('C-2 : un vrai glisser relâché dans la case de la lampe ne la déplace pas et ne publie rien', async ({ page }) => {
+  const sessionId = `light-drag-meme-case-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-meme', name: 'Même case', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    ambient: { level: 1, baked: false },
+    lights: [{ id: 'l1', at: { cellX: 5.2, cellY: 5.3 }, range: 4, intensity: 1, color: '#ffffff', shadows: false, on: true }],
+  });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-meme', levels: [level] }),
+    activeLevelId: 'level-meme',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const box = await boardBox(page);
+  const depart = await pagePointFor(page, box, { x: 520, y: 530 });
+  // (590, 590) : toujours dans la case (5,5).
+  const arrivee = await pagePointFor(page, box, { x: 590, y: 590 });
+  // Garde : le geste doit franchir le seuil de DISTANCE (5 px écran), sinon ce serait un tap et
+  // le test ne prouverait rien sur la fin de glisser.
+  expect(Math.hypot(arrivee.x - depart.x, arrivee.y - depart.y)).toBeGreaterThan(10);
+
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 5 });
+  await page.mouse.up();
+
+  expect(await lightAt(page, 'l1'), 'la lampe n\'a pas été recentrée').toEqual({ cellX: 5.2, cellY: 5.3 });
+  expect((await publishedOfType(page, 'light.move')).length, 'aucun light.move').toBe(0);
+});

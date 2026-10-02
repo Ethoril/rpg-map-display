@@ -84,7 +84,8 @@
  * @property {boolean} shadows
  * @property {boolean} on Allumée (`true`) ou éteinte (`false`) — **deux états seulement**,
  *   décision du mainteneur du 10/09/2026 (amendement C-2). Une lampe déclarée par un UVTT est
- *   allumée à l'import, et son absence dans une scène déjà sur disque vaut allumée : voir
+ *   éteinte à l'import (décision du 02/10/2026), et son absence dans une scène déjà sur disque
+ *   vaut allumée : voir
  *   `normalizeLevel` dans `js/core/schema.js`, même précédent que `Portal.state`.
  */
 

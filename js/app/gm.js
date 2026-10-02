@@ -1929,6 +1929,14 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
+      // Relâchée dans sa propre case : rien ne bouge et rien ne part (décision du 02/10/2026).
+      // Recentrer la lampe déplacerait en douce une lampe importée hors centre.
+      const currentCell = grid.cellFromPoint(grid.mapFromCellPoint(light.at));
+      if (currentCell && currentCell.a === targetCell.a && currentCell.b === targetCell.b) {
+        requestRender();
+        return;
+      }
+
       // Le centre de la case d'arrivée, comme à la pose (E2).
       const at = grid.cellPointFromMap(grid.cellCenter(targetCell));
       store.moveLight(levelId, intention.lightId, at);

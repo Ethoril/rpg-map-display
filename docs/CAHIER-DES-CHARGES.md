@@ -966,9 +966,11 @@ réécrit par `saveSnapshot` à chaque mutation.
 > Un champ, un écrivain : aucun divorce possible entre deux chemins.
 >
 > ⚠ **Le modèle gagne un champ** : `Light.on`, booléen. Une lampe déclarée par un UVTT est
-> **allumée** à l'import, et son absence dans une scène déjà sur disque vaut **allumée** — une
-> campagne existante ne se refuse jamais, elle se normalise (précédent `visionBright` et
-> `ambient.color`).
+> **éteinte** à l'import depuis la décision du mainteneur du 02/10/2026 — le format n'a aucun
+> champ d'état, et l'export Dungeon Alchemist « lumières dans le VTT » rend une image de nuit sans
+> le halo : le MJ allume à la table ce dont il a besoin. Son absence dans une scène déjà sur disque
+> vaut **allumée** — une campagne existante ne se refuse jamais, elle se normalise (précédent
+> `visionBright` et `ambient.color`).
 >
 > ⚠ **Rejeu inoffensif partout** : une lampe déjà supprimée rend `false` sans lever, et une bascule
 > à l'état déjà atteint ne change rien — même profil que `token.reserve` et `portal.toggle`.

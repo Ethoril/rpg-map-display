@@ -408,9 +408,13 @@ export function parseUvtt(jsonInput) {
         // VOIR à travers ce mur. Le rendu occlut donc toutes les sources. Ce qui est écarté se
         // dit, jamais en silence : voir l'avertissement plus bas.
         shadows: l.shadows ?? true,
-        // Amendement C-2 (10/09/2026) : une lampe déclarée par un UVTT est ALLUMÉE. Le format
-        // n'a aucun champ d'état — deux états à trancher côté MJ, pas à l'import.
-        on: true,
+        // Décision du mainteneur du 02/10/2026 (remplace l'amendement C-2 du 10/09) : une lampe
+        // déclarée par un UVTT arrive ÉTEINTE. Le format n'a aucun champ d'état, et l'export
+        // « lumières dans le VTT » de Dungeon Alchemist rend une image de nuit SANS le halo : les
+        // lampes y sont visiblement éteintes, le MJ allume à la table ce dont il a besoin.
+        // ⚠ Seul l'import est concerné : une scène sur disque dont la lampe n'a pas de `on`
+        // reste normalisée ALLUMÉE par le schéma.
+        on: false,
       });
     }
     if (lumieresRejetees > 0) {
