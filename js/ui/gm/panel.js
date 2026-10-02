@@ -15,6 +15,7 @@ import {
   STATUS_MARKER_IDS,
   STATUS_MARKER_LABEL_FR,
   TOKEN_TORCH_DEFAULT,
+  VISION_MAX_RANGE_CELLS,
 } from '../../core/constants.js';
 import { isStatusMarker } from '../../core/schema.js';
 import { cellDimensionsForGridType } from '../../grid/index.js';
@@ -403,7 +404,7 @@ export function createGMPanel(container, options = {}) {
                 </div>
                 <div class="gm-field">
                   <label for="token-edit-torch-range">Portée (cases)</label>
-                  <input type="number" id="token-edit-torch-range" min="1" max="20" disabled />
+                  <input type="number" id="token-edit-torch-range" min="1" max="${VISION_MAX_RANGE_CELLS}" disabled />
                 </div>
               </div>
             </details>
@@ -2150,7 +2151,7 @@ export function createGMPanel(container, options = {}) {
         const range = parseInt(tokenEditTorchRange.value, 10);
         applyTokenPatch({
           emitsLight: {
-            range: Number.isInteger(range) && range >= 1 && range <= 20 ? range : TOKEN_TORCH_DEFAULT.range,
+            range: Number.isInteger(range) && range >= 1 && range <= VISION_MAX_RANGE_CELLS ? range : TOKEN_TORCH_DEFAULT.range,
             intensity: TOKEN_TORCH_DEFAULT.intensity,
             color: TOKEN_TORCH_DEFAULT.color,
           },
@@ -2166,9 +2167,9 @@ export function createGMPanel(container, options = {}) {
     'change',
     () => {
       const value = parseInt(tokenEditTorchRange.value, 10);
-      if (!Number.isInteger(value) || value < 1 || value > 20) {
+      if (!Number.isInteger(value) || value < 1 || value > VISION_MAX_RANGE_CELLS) {
         tokenEditStatus.className = 'gm-status gm-err';
-        tokenEditStatus.textContent = 'La portée de la torche doit être un entier entre 1 et 20 cases.';
+        tokenEditStatus.textContent = `La portée de la torche doit être un entier entre 1 et ${VISION_MAX_RANGE_CELLS} cases.`;
         updateTokenEditUIFromStore();
         return;
       }

@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
+import { VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
 
 const snapshot = {
   campaign: {
@@ -238,6 +239,14 @@ test('Panneau MJ : cocher/décocher la torche d\'un PJ republie la vision, et la
   expect(rangePubliee, 'la portée saisie (12) est celle publiée sur le réseau').toContain(12);
   await expect.poll(dernierPng, 'la nouvelle portée change encore le masque de vision publié')
     .not.toBe(pngAllume);
+
+  // ⛔ E-15 bis (02/10/2026) : le champ bornait la torche à 20 EN DUR quand le moteur acceptait
+  // `VISION_MAX_RANGE_CELLS`. Une portée au-delà de 20, sous le plafond, doit passer.
+  const porteeLongue = VISION_MAX_RANGE_CELLS - 5;
+  await page.fill('#token-edit-torch-range', String(porteeLongue));
+  await page.locator('#token-edit-torch-range').dispatchEvent('change');
+  await expect.poll(() => page.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken()?.emitsLight?.range))
+    .toBe(porteeLongue);
 
   // Décocher ramène exactement à l'état d'avant : plus de source, le masque redevient identique.
   const beforeOff = await page.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.published.length);

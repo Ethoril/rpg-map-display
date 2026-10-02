@@ -14,9 +14,11 @@ import {
   validateCampaign,
   normalizeCampaign,
   normalizeLevel,
+  normalizeToken,
   terrainCostRecordToMap,
   terrainCostMapToRecord,
 } from '../js/core/schema.js';
+import { VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
 
 test('Fabriques et validation de campagne valide', () => {
   const level = createLevel({ id: 'level-1', name: 'Niveau 1' });
@@ -436,4 +438,45 @@ test('D-8 : un grand pion hexagonal se pose en lisière, des deux côtés ; en c
   assert.deepEqual(erreurs(hex, { a: 7, b: 3 }), [], 'la dernière colonne aussi');
   assert.equal(erreurs(hex, { a: 8, b: 3 }).length, 1, 'un ancrage hors carte reste refusé');
   assert.equal(erreurs(carre, { a: 7, b: 3 }).length, 1, 'en carré, le bloc 2×2 doit tenir');
+});
+
+// ⛔ Jumelles littérales de E-15 (02/10/2026). L'import UVTT bornait déjà à `VISION_MAX_RANGE_CELLS`
+// (40 depuis le 21/09), mais `normalizeLevel` rognait encore à 20 EN DUR et `validateCampaign`
+// refusait au-delà : une lampe importée à 30 cases devenait 20 au rechargement, ou une campagne
+// refusée. Ces tests défendent l'ACCORD avec la constante, pas une valeur.
+test('E-15 bis — une lampe au-delà de 20 cases, sous le plafond du moteur, survit au rechargement', () => {
+  const portee = VISION_MAX_RANGE_CELLS - 5;
+  assert.ok(portee > 20, 'le test n’a de sens que si la portée dépasse l’ancienne borne');
+  const level = createLevel({ id: 'rdc' });
+  level.lights.push({ id: 'phare', at: { cellX: 1, cellY: 1 }, range: portee, intensity: 1, color: '#ffffff', shadows: true, on: true });
+
+  const campaign = normalizeCampaign(createCampaign({ levels: [level] }));
+
+  assert.equal(campaign.levels[0].lights[0].range, portee, 'la normalisation ne rogne pas sous le plafond du moteur');
+  assert.deepEqual(validateCampaign(campaign), []);
+});
+
+test('E-15 bis — une lampe au-dessus du plafond est ramenée au plafond, et refusée par la validation', () => {
+  const level = createLevel({ id: 'rdc' });
+  level.lights.push({ id: 'trop', at: { cellX: 1, cellY: 1 }, range: VISION_MAX_RANGE_CELLS + 7, intensity: 1, color: '#ffffff', shadows: true, on: true });
+  const errors = validateCampaign(createCampaign({ levels: [structuredClone(level)] }));
+  assert.ok(errors.some((err) => err.includes('lumière "trop"') && err.includes(`entre 0 et ${VISION_MAX_RANGE_CELLS}`)));
+
+  normalizeLevel(level);
+  assert.equal(level.lights[0].range, VISION_MAX_RANGE_CELLS);
+});
+
+test('E-15 bis — une torche de pion suit le même plafond que les lampes', () => {
+  const portee = VISION_MAX_RANGE_CELLS - 5;
+  assert.ok(portee > 20);
+  const token = createToken({ id: 't1', levelId: 'rdc', cell: { a: 0, b: 0 } });
+  token.emitsLight = { range: portee, intensity: 1, color: '#ffdca8' };
+  normalizeToken(token);
+  assert.equal(token.emitsLight?.range, portee);
+  assert.deepEqual(validateCampaign(createCampaign({ levels: [createLevel({ id: 'rdc' })], tokens: [token] })), []);
+
+  const trop = createToken({ id: 't2', levelId: 'rdc', cell: { a: 0, b: 0 } });
+  trop.emitsLight = { range: VISION_MAX_RANGE_CELLS + 1, intensity: 1, color: '#ffdca8' };
+  const errors = validateCampaign(createCampaign({ levels: [createLevel({ id: 'rdc' })], tokens: [trop] }));
+  assert.ok(errors.some((err) => err.includes('emitsLight.range invalide')));
 });

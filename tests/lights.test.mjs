@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createCampaign, createLevel, createToken, validateCampaign } from '../js/core/schema.js';
+import { VISION_MAX_RANGE_CELLS } from '../js/core/constants.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import { FogLayer, isAmbientLit } from '../js/render/layers/fogLayer.js';
 import { collectLightSources } from '../js/render/layers/light.js';
@@ -60,7 +61,7 @@ test('Lumière R3 : ambiante et torche passent par les mutations store/réseau v
   assert.equal(
     applyNetworkEvent({
       type: 'token.update',
-      payload: { tokenId: 'torche', patch: { emitsLight: { range: 21, intensity: 1, color: '#ffcc66' } } },
+      payload: { tokenId: 'torche', patch: { emitsLight: { range: VISION_MAX_RANGE_CELLS + 1, intensity: 1, color: '#ffcc66' } } },
       at: Date.now(), by: 'gm',
     }),
     false,
@@ -78,7 +79,7 @@ test('Lumière R3 : le schéma refuse explicitement les sources fixes et portée
     widthCells: 10,
     heightCells: 8,
     lights: [
-      /** @type {any} */ ({ id: '', at: { cellX: 11, cellY: -1 }, range: 21, intensity: 2, color: 'orange', shadows: 'oui' }),
+      /** @type {any} */ ({ id: '', at: { cellX: 11, cellY: -1 }, range: VISION_MAX_RANGE_CELLS + 1, intensity: 2, color: 'orange', shadows: 'oui' }),
       { id: 'dupe', at: { cellX: 2, cellY: 2 }, range: 2, intensity: 1, color: '#ffffff', shadows: true },
       { id: 'dupe', at: { cellX: 3, cellY: 3 }, range: 2, intensity: 1, color: '#ffffff', shadows: true },
     ],
@@ -94,12 +95,12 @@ test('Lumière R3 : le schéma refuse explicitement les sources fixes et portée
 
   assert.ok(errors.includes('Étage "rdc" : lumière "inconnue" : id doit être une chaîne non vide'));
   assert.ok(errors.includes('Étage "rdc" : lumière "inconnue" : coordonnées hors limites de l\'étage'));
-  assert.ok(errors.includes('Étage "rdc" : lumière "inconnue" : range invalide (nombre entre 0 et 20 attendu)'));
+  assert.ok(errors.includes(`Étage "rdc" : lumière "inconnue" : range invalide (nombre entre 0 et ${VISION_MAX_RANGE_CELLS} attendu)`));
   assert.ok(errors.includes('Étage "rdc" : lumière "inconnue" : intensity invalide (nombre entre 0 et 1 attendu)'));
   assert.ok(errors.includes('Étage "rdc" : lumière "inconnue" : color invalide "orange" (format #RRGGBB attendu)'));
   assert.ok(errors.includes('Étage "rdc" : lumière "inconnue" : shadows doit être un booléen'));
   assert.ok(errors.includes('Étage "rdc" : lumière "dupe" : id dupliqué'));
-  assert.ok(errors.includes('Pion "torche" : emitsLight.range invalide (nombre entre 0 et 20 attendu)'));
+  assert.ok(errors.includes(`Pion "torche" : emitsLight.range invalide (nombre entre 0 et ${VISION_MAX_RANGE_CELLS} attendu)`));
   assert.ok(errors.includes('Pion "torche" : emitsLight.intensity invalide (nombre entre 0 et 1 attendu)'));
   assert.ok(errors.includes('Pion "torche" : emitsLight.color invalide "#gg0000" (format #RRGGBB attendu)'));
   assert.ok(errors.includes('Pion "pas-objet" : emitsLight doit être null ou un objet'));

@@ -40,7 +40,7 @@ export function identifiantAleatoire() {
  * @typedef {import('./types.js').Token} Token
  */
 
-import { STATUS_MARKER_IDS, HEALTH_STATE_IDS } from './constants.js';
+import { STATUS_MARKER_IDS, HEALTH_STATE_IDS, VISION_MAX_RANGE_CELLS } from './constants.js';
 
 /** @typedef {import('./constants.js').StatusMarker} StatusMarker */
 
@@ -271,7 +271,7 @@ export function normalizeLevel(level) {
         light.intensity = Math.min(Math.max(light.intensity, 0), 1);
       }
       if (Number.isFinite(light.range)) {
-        light.range = Math.min(Math.max(light.range, 0), 20);
+        light.range = Math.min(Math.max(light.range, 0), VISION_MAX_RANGE_CELLS);
       }
       // Amendement C-2 (10/09/2026) : `Light.on` n'existait pas avant. Son absence dans une
       // scène déjà sur disque vaut ALLUMÉE — une campagne existante ne se refuse jamais, elle
@@ -342,7 +342,7 @@ export function normalizeToken(token) {
     token.emitsLight = null;
   } else if (token.emitsLight && typeof token.emitsLight === 'object' && !Array.isArray(token.emitsLight)) {
     if (Number.isFinite(token.emitsLight.range)) {
-      token.emitsLight.range = Math.min(Math.max(token.emitsLight.range, 0), 20);
+      token.emitsLight.range = Math.min(Math.max(token.emitsLight.range, 0), VISION_MAX_RANGE_CELLS);
     }
     if (Number.isFinite(token.emitsLight.intensity)) {
       token.emitsLight.intensity = Math.min(Math.max(token.emitsLight.intensity, 0), 1);
@@ -932,8 +932,8 @@ export function validateCampaign(campaign) {
           ) {
             errors.push(`${lightPrefix} : coordonnées hors limites de l'étage`);
           }
-          if (!Number.isFinite(light.range) || light.range < 0 || light.range > 20) {
-            errors.push(`${lightPrefix} : range invalide (nombre entre 0 et 20 attendu)`);
+          if (!Number.isFinite(light.range) || light.range < 0 || light.range > VISION_MAX_RANGE_CELLS) {
+            errors.push(`${lightPrefix} : range invalide (nombre entre 0 et ${VISION_MAX_RANGE_CELLS} attendu)`);
           }
           if (!Number.isFinite(light.intensity) || light.intensity < 0 || light.intensity > 1) {
             errors.push(`${lightPrefix} : intensity invalide (nombre entre 0 et 1 attendu)`);
@@ -1079,8 +1079,8 @@ export function validateCampaign(campaign) {
         if (!emitted || typeof emitted !== 'object' || Array.isArray(emitted)) {
           errors.push(`Pion "${tokenId}" : emitsLight doit être null ou un objet`);
         } else {
-          if (!Number.isFinite(emitted.range) || emitted.range < 0 || emitted.range > 20) {
-            errors.push(`Pion "${tokenId}" : emitsLight.range invalide (nombre entre 0 et 20 attendu)`);
+          if (!Number.isFinite(emitted.range) || emitted.range < 0 || emitted.range > VISION_MAX_RANGE_CELLS) {
+            errors.push(`Pion "${tokenId}" : emitsLight.range invalide (nombre entre 0 et ${VISION_MAX_RANGE_CELLS} attendu)`);
           }
           if (!Number.isFinite(emitted.intensity) || emitted.intensity < 0 || emitted.intensity > 1) {
             errors.push(`Pion "${tokenId}" : emitsLight.intensity invalide (nombre entre 0 et 1 attendu)`);
