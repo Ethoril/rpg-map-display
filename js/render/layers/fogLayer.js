@@ -586,7 +586,9 @@ export class FogLayer {
         //
         // ⛔ DEUX échelles, jamais une seule — E-11 : en grille hexagonale, l'axe Y (rangées,
         // espacées de √3/2 case) n'a pas la même échelle que l'axe X (colonnes).
-        const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+        // Origine du MASQUE, pas du réseau : en hexagonal décalé (D-11) elles diffèrent.
+        const { x: maskX, y: maskY } = grid.maskRect();
+        const origin0 = { x: maskX, y: maskY };
         const { x: gridScaleX, y: gridScaleY } = grid.cellPitch();
         const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
         const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);

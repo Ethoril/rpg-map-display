@@ -1262,3 +1262,37 @@ test('C-2 : un vrai glisser relâché dans la case de la lampe ne la déplace pa
   expect(await lightAt(page, 'l1'), 'la lampe n\'a pas été recentrée').toEqual({ cellX: 5.2, cellY: 5.3 });
   expect((await publishedOfType(page, 'light.move')).length, 'aucun light.move').toBe(0);
 });
+
+test('D-11 : en hexagonal décalé, la lampe posée est stockée en lecture CARRÉE au centre de l’hexagone tapé', async ({ page }) => {
+  const sessionId = `light-place-hex-${Date.now()}`;
+  const level = createLevel({
+    id: 'level-hex', name: 'Hex', pxPerCell: 100, widthCells: 10, heightCells: 10,
+    grid: { type: 'hex', hexShiftX: -25 },
+  });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({ campaignId: 'c-place-hex', levels: [level] }),
+    activeLevelId: 'level-hex',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.gmPanel.setActiveTool('light-place');
+  });
+
+  // (250, 400) tombe dans l'hexagone (2, 4), rangée paire, centré en (−25 + 250, 400·√3/2 + 50)
+  // = (225 ; 396,41). Lu en carré, ce centre vaut (2,25 ; 3,9641). La lecture de la grille, elle,
+  // aurait rendu (2,5 ; 4,577) — et la lampe aurait éclairé 25 px à droite, 60 px plus bas.
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'tap',
+      screenPos: { x: 250, y: 400 },
+      mapPos: { x: 250, y: 400 },
+    });
+  });
+  const at = await page.evaluate(async () =>
+    (await import('../js/state/store.js')).getCampaign()?.levels[0].lights[0]?.at
+  );
+  expect(at?.cellX).toBeCloseTo(2.25, 9);
+  expect(at?.cellY).toBeCloseTo(4 * (Math.sqrt(3) / 2) + 0.5, 9);
+});

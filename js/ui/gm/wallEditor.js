@@ -45,19 +45,20 @@ function distSqToSegment(p, a, b) {
  * @returns {number}
  */
 function uneCasePx(grid) {
-  const o = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-  const x = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  const o = grid.mapFromGeometryPoint({ cellX: 0, cellY: 0 });
+  const x = grid.mapFromGeometryPoint({ cellX: 1, cellY: 0 });
   return Math.max(1, Math.hypot(x.x - o.x, x.y - o.y));
 }
 
 /**
  * Trouve le point d'accrochage pour une position carte (§4) :
  * 1. Extrémité existante de mur ou portail à moins de 0,5 case (prioritaire).
- * 2. Coin de case entier le plus proche (fallback).
+ * 2. Coin entier le plus proche du quadrillage CARRÉ de la géométrie (fallback) — y compris
+ *    sous des hexagones, où il est invisible (D-11 : la géométrie se lit toujours en carré).
  * Aucun point libre n'est autorisé.
  *
  * ⛔ Toutes les conversions passent par la grille (audit du 22/09, B7) — celle-là même qui
- * DESSINE les murs (`walls.js`, `grid.mapFromCellPoint`). L'éditeur convertissait lui-même avec
+ * DESSINE les murs (`walls.js`, `grid.mapFromGeometryPoint`). L'éditeur convertissait lui-même avec
  * une origine forcée à (0,0) et l'échelle X seule : sur un étage décalé ou hexagonal,
  * l'accrochage et la zone de suppression tombaient à côté du mur affiché.
  *
@@ -95,7 +96,7 @@ export function snapWallVertex(mapPos, level, grid) {
     let minEndpointDist = Infinity;
 
     for (const ep of existingEndpoints) {
-      const pt = grid.mapFromCellPoint(ep);
+      const pt = grid.mapFromGeometryPoint(ep);
       const d = Math.hypot(mapPos.x - pt.x, mapPos.y - pt.y);
       if (d <= seuilPx && d < minEndpointDist) {
         minEndpointDist = d;
@@ -109,7 +110,7 @@ export function snapWallVertex(mapPos, level, grid) {
   }
 
   // 2. Coin de case entier le plus proche
-  const brut = grid.cellPointFromMap(mapPos);
+  const brut = grid.geometryPointFromMap(mapPos);
   return {
     cellX: Math.round(brut.cellX),
     cellY: Math.round(brut.cellY),
@@ -137,8 +138,8 @@ export function findWallAt(mapPos, level, grid) {
     if (!Array.isArray(wall) || wall.length < 2) continue;
 
     for (let i = 0; i < wall.length - 1; i++) {
-      const pA = grid.mapFromCellPoint(wall[i]);
-      const pB = grid.mapFromCellPoint(wall[i + 1]);
+      const pA = grid.mapFromGeometryPoint(wall[i]);
+      const pB = grid.mapFromGeometryPoint(wall[i + 1]);
 
       const dSq = distSqToSegment(mapPos, pA, pB);
       if (dSq <= maxDistPxSq && dSq < minDistSq) {

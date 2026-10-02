@@ -71,6 +71,27 @@ export class SquareGrid {
   }
 
   /**
+   * Géométrie d'étage → pixels carte (amendement D-11). En pavage carré, la lecture de la
+   * géométrie et celle de la grille coïncident.
+   *
+   * @param {CellPoint} cp
+   * @returns {MapPoint}
+   */
+  mapFromGeometryPoint(cp) {
+    return this.mapFromCellPoint(cp);
+  }
+
+  /**
+   * Réciproque exacte de `mapFromGeometryPoint`.
+   *
+   * @param {MapPoint} p
+   * @returns {CellPoint}
+   */
+  geometryPointFromMap(p) {
+    return this.cellPointFromMap(p);
+  }
+
+  /**
    * Étendue de la carte en pixels, depuis l'origine de l'espace carte — voir le contrat dans
    * `GridAdapter.js`. En pavage carré, une case fait `pxPerCell` sur les deux axes.
    *
@@ -104,6 +125,15 @@ export class SquareGrid {
       width: this.widthCells * this.pxPerCell,
       height: this.heightCells * this.pxPerCell,
     };
+  }
+
+  /**
+   * Décalage du réseau par rapport au masque, en colonnes : toujours nul en carré.
+   *
+   * @returns {number}
+   */
+  maskLatticeShift() {
+    return 0;
   }
 
   /**

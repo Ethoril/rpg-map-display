@@ -449,9 +449,12 @@ function discPolygon(center, radiusPx) {
  *   sur l'arête gauche de l'hexagone — sur un mur quand il y en a un — et un PNJ entièrement
  *   visible disparaissait de la vue joueurs. `vision/` ne connaît pas la grille : c'est
  *   l'appelant qui dit le pavage.
+ * @param {number} [decalageColonnes=0] Décalage du réseau par rapport à l'origine du masque, en
+ *   colonnes (`GridAdapter.maskLatticeShift`) : −0,25 sur un étage hexagonal décalé (D-11), dont
+ *   le masque reste calé sur l'image. Même raison que `pavage` : c'est l'appelant qui le sait.
  * @returns {boolean} true si le centre de la case est dans la vision courante (alpha > 0)
  */
-export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells, pavage = 'square') {
+export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells, pavage = 'square', decalageColonnes = 0) {
   if (!cell || typeof cell.a !== 'number' || typeof cell.b !== 'number') return false;
   if (!maskAlpha || !widthCells || !heightCells) return false;
 
@@ -467,7 +470,7 @@ export function isCellVisibleInMask(cell, maskAlpha, widthCells, heightCells, pa
   // de dernière colonne impaire tombe pile sur le bord droit du masque, qui ne couvre que
   // `widthCells` cases : on le ramène au dernier pixel, dans la moitié gauche de l'hexagone.
   const hex = pavage === 'hex';
-  const centreX = a + 0.5 + (hex ? 0.5 * (b & 1) : 0);
+  const centreX = a + 0.5 + (hex ? 0.5 * (b & 1) : 0) + decalageColonnes;
   const centreY = hex ? b + 1 / Math.sqrt(3) : b + 0.5;
   const maskX = Math.min(maskWidth - 1, Math.floor(centreX * FOG_MASK_PX_PER_CELL));
   const maskY = Math.min(maskHeight - 1, Math.floor(centreY * FOG_MASK_PX_PER_CELL));

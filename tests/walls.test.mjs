@@ -81,7 +81,7 @@ function recordingCtx() {
 
 /** Grille à pas fixe : la couche n'a pas à savoir comment on convertit, seulement à déléguer. */
 const grid = /** @type {any} */ ({
-  mapFromCellPoint: (/** @type {{ cellX: number, cellY: number }} */ { cellX, cellY }) => ({
+  mapFromGeometryPoint: (/** @type {{ cellX: number, cellY: number }} */ { cellX, cellY }) => ({
     x: cellX * 140,
     y: cellY * 140,
   }),

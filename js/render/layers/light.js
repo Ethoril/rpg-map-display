@@ -77,7 +77,7 @@ export function collectLightSources(level, tokens, adaptateur) {
     const cases = cappedLightRange(light.range);
     if (cases <= 0) continue;
     sources.push({
-      center: adaptateur.mapFromCellPoint(light.at),
+      center: adaptateur.mapFromGeometryPoint(light.at),
       radiusPx: porteeEnPixels(cases),
       intensity: Number.isFinite(light.intensity) ? light.intensity : 1,
       color: light.color,
@@ -363,7 +363,9 @@ export class LightLayer {
     // espacées de √3/2 case) n'a pas la même échelle que l'axe X (colonnes). Une échelle
     // unique étirait le champ composé de 13,4 % en hauteur, et une lampe se retrouvait
     // peinte une case trop haut par rapport au pion qu'elle éclaire.
-    const origine = adaptateur.mapFromCellPoint({ cellX: 0, cellY: 0 });
+    // Origine du MASQUE, pas du réseau : en hexagonal décalé (D-11) elles diffèrent.
+    const { x: maskX, y: maskY } = adaptateur.maskRect();
+    const origine = { x: maskX, y: maskY };
     const { x: echelleX, y: echelleY } = adaptateur.cellPitch();
 
     // Extraction PARESSEUSE : on n'arrive ici que si la signature a changé. ⛔ Et pas du tout

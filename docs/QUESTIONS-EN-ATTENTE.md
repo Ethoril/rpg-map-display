@@ -1040,9 +1040,10 @@ couvrait (Barrage — Ulric). ⚠ Deux cartes publiées par l'outil de préparat
 >   pas de la nouvelle grille ; la carte n'est jamais réduite ni déplacée.
 > - **`level.grid` est élargi** : il porte en plus `widthCells` et `heightCells` (amendement C-16
 >   du §7 du cahier des charges). Pas de nouvel événement.
-> - **Pions : même case, sinon réserve.** Chaque pion garde ses coordonnées de case ; ceux que la
->   nouvelle grille ne contient plus partent en réserve (`token.reserve`). **Le brouillard de
->   l'étage est réinitialisé**, son masque étant calé sur l'ancien pavage.
+> - ~~**Pions : même case, sinon réserve.**~~ ⚠ **Remplacé par D-11 le 02/10** : le pion va sur la
+>   case qui contient le centre de l'ancienne (l'arbitrage avait été rendu sur une description
+>   fausse). Ceux qui ne trouvent pas de case partent en réserve (`token.reserve`). **Le brouillard
+>   de l'étage est réinitialisé**, son masque étant calé sur l'ancien pavage.
 >
 > ⭐ **Appliqué sans nouvel arbitrage** : la largeur de l'image vaut `widthCells × pxPerCell` dans
 > les deux pavages (`mapExtent().width` ne dépend pas du type) ; elle ne change donc jamais. Seule
@@ -1377,8 +1378,26 @@ seul pavage hexagonal.
 > - **La mesure des couloirs passe AVANT et conditionne** : si l'essentiel des couloirs verticaux
 >   d'une case devient infranchissable, le chiffre revient au mainteneur avant toute ligne de code.
 >
-> ⏳ Lancement à la demande du mainteneur — il garde ses tokens pour les urgences jusqu'au
-> dimanche 04/10 midi.
+> **Mesure faite le 02/10 (avant tout code, comme tranché).** Script hors dépôt : connexité des
+> cases portes ouvertes et fermées, carré contre hexagonal, géométrie lue en carré. Cinq cartes
+> (manoir, ruelle, testnoncuite, testnoncuitenuit, testvideo). **Aucune pièce coupée, aucun
+> passage à travers un mur ni une porte fermée, nulle part.** Seul défaut : un centre d'hexagone
+> posé **exactement** sur un mur est isolé. Le cas arrive aux rangées impaires dès que les murs
+> sont parfaitement sur les bordures (manoir : 142 hexagones isolés, deux couloirs verticaux d'une
+> case coupés) ; les exports imprécis (murs à 3–11 px des bordures) y échappent par chance.
+>
+> - ✅ **Décalage d'un quart de case, toujours** (tranché le 02/10) : au passage en hexagones, le
+>   réseau hexagonal est décalé de `pxPerCell / 4` par rapport au quadrillage de la géométrie.
+>   Chaque centre est alors à 35 px (à 140 px/case) de toute bordure verticale ; aucun ne tombe
+>   exactement sur une bordure horizontale (pas de rangée 70√3, irrationnel) ; les couloirs d'une
+>   case restent franchissables dans les deux sens. Mesuré : **0 défaut sur les cinq cartes**.
+>   Limite : un mur en diagonale, ou à plus de 35 px d'une bordure, sort de la garantie. Le fond se
+>   cale sur le cadre de l'image, plus sur l'étendue de la grille.
+> - ✅ **Les pions suivent la règle des escaliers** (tranché le 02/10, **corrige C-16**) : la case
+>   de la nouvelle grille qui contient le centre de l'ancienne. Deux pions sur la même case → le
+>   second en réserve, MJ prévenu. ⚠ C-16 avait été tranché « même case » sur une description
+>   fausse (« une demi-case de décalage ») : à numéro de case égal, un pion en rangée 40 remonte de
+>   plus de 5 cases à l'écran.
 
 **Le besoin.** Pouvoir mettre une grille hexagonale **pour les déplacements** sur une carte qui
 porte murs, portes, escaliers et lumières — typiquement une carte UVTT importée en carré.

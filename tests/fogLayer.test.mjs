@@ -1153,3 +1153,59 @@ test('A1 : sur une grille DÉCALÉE, le voile suit le mur et la bande d’offset
   assert.ok(ctx.getImageData(85, 55).data[0] < 100, 'juste derrière le mur : voilé');
   assert.ok(ctx.getImageData(10, 55).data[0] < 100, 'la bande d’offset, hors de toute case : voilée');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D-11 — sur un étage hexagonal décalé, le masque reste calé sur l'IMAGE. Calé sur le réseau,
+// reculé de |hexShiftX|, il laissait hors de tout masque une bande de |hexShiftX| pixels au bord
+// droit de l'image : voilée et sans lumière pour toujours, même devant un PJ qui s'y tient.
+// ─────────────────────────────────────────────────────────────────────────────
+
+for (const type of /** @type {const} */ (['hex', 'square'])) {
+  test(`D-11 (${type}) : la bande du bord droit de l’image se découvre devant un PJ de la dernière colonne`, () => {
+    // 6 × 6 cases à 40 px : image de 240 px de large ; en hexagonal le réseau recule de 10 px.
+    const level = createLevel({
+      id: `d11-${type}`,
+      widthCells: 6,
+      heightCells: 6,
+      pxPerCell: 40,
+      grid: { type, offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true, hexShiftX: type === 'hex' ? -10 : 0 },
+    });
+    const grid = gridFor(level);
+    // Dernière colonne, rangée impaire : en hexagonal, c'est l'hexagone qui déborde dans la bande.
+    const pc = createToken({ id: 'pj', levelId: level.id, kind: 'pc', cell: { a: 5, b: 3 }, visionDim: 3 });
+    const centre = grid.cellCenter(pc.cell);
+
+    const { ctx } = createMockCanvas(260, 240);
+    ctx.fillStyle = 'rgb(100, 100, 100)';
+    ctx.fillRect(0, 0, 260, 240);
+    createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+
+    const y = Math.round(centre.y);
+    assert.equal(ctx.getImageData(Math.round(centre.x) - 5, y).data[0], 100, 'le PJ voit sa propre case');
+    // La bande [230, 240] — les 10 derniers pixels de l'image — est vue, comme le reste.
+    for (const x of [231, 235, 239]) {
+      assert.equal(ctx.getImageData(x, y).data[0], 100, `x = ${x}, dans l'image : découvert`);
+    }
+  });
+}
+
+test('D-11 : en hexagonal décalé, le voile suit le mur au pixel — les polygones se projettent sur l’origine du masque', () => {
+  const level = createLevel({
+    id: 'd11-mur',
+    widthCells: 6,
+    heightCells: 6,
+    pxPerCell: 40,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true, hexShiftX: -10 },
+    // Mur lu en carré : x = 120, sur toute la hauteur.
+    walls: [[{ cellX: 3, cellY: 0 }, { cellX: 3, cellY: 6 }]],
+  });
+  const grid = gridFor(level);
+  const pc = createToken({ id: 'pj', levelId: level.id, kind: 'pc', cell: { a: 1, b: 2 }, visionDim: 4 });
+  const { ctx } = createMockCanvas(260, 240);
+  ctx.fillStyle = 'rgb(100, 100, 100)';
+  ctx.fillRect(0, 0, 260, 240);
+  createTestFogLayer().render(/** @type {any} */ (ctx), grid, level, [pc], defaultOptions());
+  const y = Math.round(grid.cellCenter(pc.cell).y);
+  assert.equal(ctx.getImageData(112, y).data[0], 100, 'avant le mur : vu');
+  assert.ok(ctx.getImageData(128, y).data[0] < 100, 'derrière le mur : voilé');
+});

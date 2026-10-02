@@ -1979,10 +1979,22 @@ d'acceptation du §11.
 > proportion de l'image, règle d'ancrage hex D-8, dimensions lues par le récepteur et publiées
 > par le panneau.
 >
-> ⚠ Murs, portes, lumières et liaisons, stockés en unités de case, ne sont pas recalés : sur un
-> étage qui en porte, changer de pavage les décale verticalement (inchangé par rapport à avant).
 > ⏳ **À éprouver à la table** : un étage déjà passé en hex avec l'ancien sélecteur se répare en
 > repassant par carré puis hex.
+
+> ### ✅ Chantier D-11 — des hexagones sur une carte à murs, livré le 02/10/2026 (hors §11)
+>
+> La géométrie d'étage (murs, portes, lampes posées) se lit toujours en carré, quel que soit le
+> pavage : changer de pavage ne la déplace plus d'un pixel. Le réseau hexagonal est décalé d'un
+> quart de case (`grid.hexShiftX`) pour qu'aucun centre ne tombe sur un mur ; pions, escaliers et
+> coût de terrain vont sur la case qui contient leur ancien centre (corrige C-16), à l'identique
+> sur la tablette ; collisions et conflits d'escalier signalés au MJ. Masque de brouillard calé
+> sur l'image (amendement §3 de `CONVENTIONS.md`). **Mesuré** sur le manoir : mêmes 5 / 38 zones
+> qu'en carré, 0 hexagone isolé (142 sans décalage). **Vérifié par mutation** : lecture des murs,
+> décalage ignoré, pions sur le même numéro, collision, bande du bord droit, pose de lampe.
+>
+> ⏳ **À éprouver à la table** : une carte à murs passée en hexagones — couloirs, portes, bordure
+> du brouillard contre les murs (en dents de scie, attendu).
 
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >

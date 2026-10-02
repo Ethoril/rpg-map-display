@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 import { createLevel, createToken } from '../js/core/schema.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
+import { HexGrid } from '../js/grid/HexGrid.js';
 import { TokensLayer } from '../js/render/layers/tokens.js';
 import { decodeFogPng, isCellVisibleInMask } from '../js/vision/fog.js';
 
@@ -291,4 +292,30 @@ test('E3 : en hexagonal, la visibilité d’un pion se lit au VRAI centre de sa 
   // Et le carré, lui, ne change pas : centre (1,5 ; 1,5) → pixel (12, 12).
   assert.equal(isCellVisibleInMask({ a: 1, b: 1 }, masqueAutour(12, 12), W, H), true);
   assert.equal(isCellVisibleInMask({ a: 1, b: 1 }, masqueAutour(16, 12), W, H), false);
+});
+
+test('D-11 : en hexagonal décalé, la visibilité se lit au centre de la case dans un masque calé sur l’image', () => {
+  // Le masque reste calé sur l'image ; le réseau recule d'un quart de case. Le centre de la case
+  // (0, 0) est donc au pixel de masque 8 × 0,25 = 2, et non 4.
+  const level = createLevel({ id: 'h', widthCells: 4, heightCells: 4, pxPerCell: 40, grid: { type: 'hex', hexShiftX: -10 } });
+  const grid = new HexGrid(level);
+  const largeur = 4 * 8;
+  const alpha = new Uint8Array(largeur * 4 * 8);
+  // Seule une colonne étroite autour de x = 2 est vue, sur la hauteur du centre (8/√3 ≈ 4,6).
+  for (let y = 3; y <= 5; y++) for (let x = 1; x <= 3; x++) alpha[y * largeur + x] = 255;
+  assert.equal(isCellVisibleInMask({ a: 0, b: 0 }, alpha, 4, 4, 'hex', grid.maskLatticeShift()), true);
+  assert.equal(isCellVisibleInMask({ a: 0, b: 0 }, alpha, 4, 4, 'hex'), false, 'sans décalage, on lirait x = 4');
+
+  // Et la couche des pions le transmet : un PNJ sur cette case est dessiné côté joueurs.
+  const canvas = createInstrumentedCanvas(largeur, 32).canvas;
+  canvas.maskAlpha = alpha;
+  const pnj = createToken({ id: 'pnj', levelId: 'h', kind: 'npc', cell: { a: 0, b: 0 } });
+  const res = new TokensLayer().render(/** @type {any} */ (createInstrumentedCanvas(200, 200).ctx), grid, [pnj], null, {
+    role: 'players',
+    activeLevelId: 'h',
+    activeLevelWidthCells: 4,
+    activeLevelHeightCells: 4,
+    visibleCanvas: canvas,
+  });
+  assert.ok(res.renderedTokenIds.includes('pnj'));
 });

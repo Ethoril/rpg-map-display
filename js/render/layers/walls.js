@@ -48,11 +48,11 @@ export class WallsLayer {
         if (!Array.isArray(wall) || wall.length < 2) continue;
 
         ctx.beginPath();
-        const p0 = grid.mapFromCellPoint({ cellX: wall[0].cellX, cellY: wall[0].cellY });
+        const p0 = grid.mapFromGeometryPoint({ cellX: wall[0].cellX, cellY: wall[0].cellY });
         ctx.moveTo(p0.x, p0.y);
 
         for (let i = 1; i < wall.length; i++) {
-          const pt = grid.mapFromCellPoint({ cellX: wall[i].cellX, cellY: wall[i].cellY });
+          const pt = grid.mapFromGeometryPoint({ cellX: wall[i].cellX, cellY: wall[i].cellY });
           ctx.lineTo(pt.x, pt.y);
           renderedSegments++;
         }
@@ -72,11 +72,11 @@ export class WallsLayer {
       ctx.lineCap = 'round';
 
       ctx.beginPath();
-      const firstPt = grid.mapFromCellPoint({ cellX: draft[0].cellX, cellY: draft[0].cellY });
+      const firstPt = grid.mapFromGeometryPoint({ cellX: draft[0].cellX, cellY: draft[0].cellY });
       ctx.moveTo(firstPt.x, firstPt.y);
 
       for (let i = 1; i < draft.length; i++) {
-        const pt = grid.mapFromCellPoint({ cellX: draft[i].cellX, cellY: draft[i].cellY });
+        const pt = grid.mapFromGeometryPoint({ cellX: draft[i].cellX, cellY: draft[i].cellY });
         ctx.lineTo(pt.x, pt.y);
       }
       ctx.stroke();
@@ -85,7 +85,7 @@ export class WallsLayer {
       ctx.fillStyle = '#38bdf8';
       ctx.setLineDash([]);
       for (const node of draft) {
-        const pt = grid.mapFromCellPoint({ cellX: node.cellX, cellY: node.cellY });
+        const pt = grid.mapFromGeometryPoint({ cellX: node.cellX, cellY: node.cellY });
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 4 * k, 0, Math.PI * 2);
         ctx.fill();

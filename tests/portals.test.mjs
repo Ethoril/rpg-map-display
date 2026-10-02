@@ -264,3 +264,19 @@ test('7. Capsule de désignation d\'une porte, à trois zooms — plancher écra
   assert.ok(probe(cellFloor * 0.99, undefined) !== null);
   assert.equal(probe(cellFloor * 1.01, undefined), null);
 });
+
+test('D-11 : en hexagonal, la porte se désigne là où elle est dessinée — en carré, rangée impaire comprise', () => {
+  const level = createLevel({
+    id: 'hex-porte',
+    widthCells: 8,
+    heightCells: 8,
+    pxPerCell: 100,
+    grid: { type: 'hex', hexShiftX: -25 },
+    // Rangée impaire : la lecture odd-r l'aurait poussée d'une demi-case à droite, au pas √3/2.
+    portals: [{ id: 'p', a: { cellX: 2, cellY: 3 }, b: { cellX: 3, cellY: 3 }, state: 'closed', freestanding: false }],
+  });
+  const grid = gridFor(level);
+  assert.equal(findHitPortal(grid, level, { x: 250, y: 300 })?.portal?.id, 'p');
+  // Là où la lecture de la grille l'aurait mise : x = −25 + 100 × (2,5 + 0,5), y = 300 × √3/2.
+  assert.equal(findHitPortal(grid, level, { x: 275, y: 300 * (Math.sqrt(3) / 2) }), null);
+});

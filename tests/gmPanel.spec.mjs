@@ -565,6 +565,39 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     const carre = await readFit();
     expect(carre.reduction).toBe(1);
 
+    /**
+     * Ce que la vision et le blocage reçoivent du mur posé ci-dessous, en pixels carte — par le vrai
+     * code d'extraction —, et le centre pixel de la case du Chevalier.
+     */
+    const readPixels = () =>
+      page.evaluate(async () => {
+        const [store, grid, blocked] = await Promise.all([
+          import('../js/state/store.js'),
+          import('../js/grid/index.js'),
+          import('../js/import/blockedEdges.js'),
+        ]);
+        const level = store.getActiveLevel();
+        if (!level) throw new Error('aucun étage actif');
+        const adaptateur = grid.gridFor(level);
+        const chevalier = store.getCampaign()?.tokens.find((/** @type {any} */ t) => t.label === 'Chevalier');
+        return {
+          segments: blocked.extractBlockedSegments(level, adaptateur),
+          chevalier: chevalier ? adaptateur.cellCenter(chevalier.cell) : null,
+          hexShiftX: level.grid.hexShiftX ?? 0,
+          pxPerCell: level.pxPerCell,
+        };
+      });
+    // ⭐ D-11 : un mur sur une bordure de case, en rangée impaire — là où la lecture odd-r d'avant
+    // le décalait d'une demi-case dès le passage en hexagones.
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const levelId = store.getActiveLevelId();
+      if (!levelId) throw new Error('aucun étage actif');
+      store.addWall(levelId, [{ cellX: 5, cellY: 1 }, { cellX: 5, cellY: 3.5 }]);
+    });
+    const pixelsCarre = await readPixels();
+    expect(pixelsCarre.segments).toHaveLength(1);
+
     // ⭐ C-16 : le pavage change aussi le nombre de rangées, et l'image n'est jamais réduite. Le
     // changement attend les dimensions de l'image, d'où l'attente plutôt qu'une lecture immédiate.
     await page.selectOption('#grid-type', 'hex');
@@ -573,18 +606,21 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     expect(hex.widthCells).toBe(carre.widthCells);
     expect(hex.heightCells).toBeGreaterThan(carre.heightCells);
     expect(hex.reduction, 'le fond rapetisse : la grille hexagonale ne couvre pas l’image').toBe(1);
-    // Le Chevalier, posé plus haut, garde sa case.
-    expect(
-      await page.evaluate(async () => {
-        const store = await import('../js/state/store.js');
-        return store.getCampaign()?.tokens.find((/** @type {any} */ t) => t.label === 'Chevalier')?.cell;
-      })
-    ).toEqual({ a: 2, b: 2 });
+    // ⭐ D-11 : le mur reste au pixel près, le réseau recule d'un quart de case, et le Chevalier
+    // passe sur l'hexagone qui contient le centre de son ancienne case — à moins d'un rayon
+    // d'hexagone (pxPerCell / √3) de là où il était.
+    const pixelsHex = await readPixels();
+    expect(pixelsHex.segments).toEqual(pixelsCarre.segments);
+    expect(pixelsHex.hexShiftX).toBe(-pixelsCarre.pxPerCell / 4);
+    const avant = /** @type {{x: number, y: number}} */ (pixelsCarre.chevalier);
+    const apres = /** @type {{x: number, y: number}} */ (pixelsHex.chevalier);
+    expect(Math.hypot(apres.x - avant.x, apres.y - avant.y)).toBeLessThanOrEqual(pixelsCarre.pxPerCell / Math.sqrt(3));
 
     // Et le retour, sinon on ne prouve que le sens facile.
     await page.selectOption('#grid-type', 'square');
     await expect.poll(async () => (await readGrid())?.type).toBe('square');
     expect(await readFit()).toEqual(carre);
+    expect(await readPixels()).toEqual(pixelsCarre);
   });
 
   test('PC6 Validation : synchronisation du pion créé et déplacé vers le store', async ({ page }) => {
@@ -1143,4 +1179,41 @@ test.describe('UX-03 — Modes Jouer et Préparer', () => {
     // La valeur saisie est toujours intacte
     await expect(page.locator('#token-label')).toHaveValue('Gobelin Enragé');
   });
+});
+
+test('D-11 — l’avis du changement de pavage nomme le pion rangé, et s’efface au changement d’étage', async ({ page }) => {
+  const sessionId = `d11-avis-${Date.now()}`;
+  // Hexagones décalés d'un quart de case : les centres de (0, 3) et (0, 4) tombent tous deux dans
+  // la case carrée (0, 3) au retour en carré.
+  const hexa = createLevel({
+    id: 'hexa', name: 'Hexa', order: 0, pxPerCell: 140, widthCells: 10, heightCells: 12,
+    grid: { type: 'hex', hexShiftX: -35 },
+  });
+  const autre = createLevel({ id: 'autre', name: 'Autre', order: 1, widthCells: 5, heightCells: 5 });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({
+      campaignId: 'c-d11',
+      levels: [hexa, autre],
+      tokens: [
+        createToken({ id: 'premier', levelId: 'hexa', label: 'Premier', cell: { a: 0, b: 3 } }),
+        createToken({ id: 'second', levelId: 'hexa', label: 'Second', cell: { a: 0, b: 4 } }),
+      ],
+    }),
+    activeLevelId: 'hexa',
+    selectedTokenId: null,
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+  await page.click('#gm-mode-prep');
+  await page.click('.gm-tab-btn[data-tab="grid-settings"]');
+
+  const avis = page.locator('#grid-type-notice');
+  await expect(avis).toBeHidden();
+  await page.selectOption('#grid-type', 'square');
+  await expect(avis).toBeVisible();
+  await expect(avis).toContainText('Second');
+  await expect(avis).not.toContainText('Premier');
+
+  await page.selectOption('#gm-level-select', 'autre');
+  await expect(avis).toBeHidden();
 });

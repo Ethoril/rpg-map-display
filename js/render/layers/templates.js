@@ -30,8 +30,8 @@ function getLevelObstacleSegments(level, grid) {
         const p2 = poly[i + 1];
         if (p1 && p2) {
           segments.push({
-            p1: grid.mapFromCellPoint(toCellPoint(p1)),
-            p2: grid.mapFromCellPoint(toCellPoint(p2)),
+            p1: grid.mapFromGeometryPoint(toCellPoint(p1)),
+            p2: grid.mapFromGeometryPoint(toCellPoint(p2)),
           });
         }
       }
@@ -44,8 +44,8 @@ function getLevelObstacleSegments(level, grid) {
         const isOpen = typeof portal.state === 'string' ? portal.state === 'open' : portal.closed === false;
         if (!isOpen) {
           segments.push({
-            p1: grid.mapFromCellPoint(toCellPoint(portal.a)),
-            p2: grid.mapFromCellPoint(toCellPoint(portal.b)),
+            p1: grid.mapFromGeometryPoint(toCellPoint(portal.a)),
+            p2: grid.mapFromGeometryPoint(toCellPoint(portal.b)),
           });
         }
       }
@@ -126,8 +126,8 @@ export class TemplatesLayer {
     }
     /** @type {Set<string>} */
     const clesVues = new Set();
-    const p0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-    const p1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+    const p0 = grid.mapFromGeometryPoint({ cellX: 0, cellY: 0 });
+    const p1 = grid.mapFromGeometryPoint({ cellX: 1, cellY: 0 });
     const cellPx = Math.abs(p1.x - p0.x);
 
     ctx.save();

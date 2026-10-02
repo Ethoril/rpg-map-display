@@ -152,7 +152,7 @@ test('C-9 règles (hexagone) : une porte ouverte arrête le pion monté, pas le 
     heightCells: 5,
     pxPerCell: 140,
     portals: [
-      { id: 'hex-porte', a: { cellX: 2.0, cellY: 1.0 }, b: { cellX: 2.0, cellY: 1.6 }, state: 'open', freestanding: false },
+      { id: 'hex-porte', a: { cellX: 2.5, cellY: 1.0 }, b: { cellX: 2.5, cellY: 1.6 }, state: 'open', freestanding: false },
     ],
   });
   const aPied = createToken({ id: 'h', levelId: 'c9-hex', cell: { a: 1, b: 1 }, speedCells: 1 });

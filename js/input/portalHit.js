@@ -61,8 +61,8 @@ export function distancePointToSegment(pt, a, b) {
 export function findHitPortal(grid, activeLevel, mapPos, zoom = 1) {
   if (!activeLevel || !activeLevel.portals || activeLevel.portals.length === 0) return null;
 
-  const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-  const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  const origin0 = grid.mapFromGeometryPoint({ cellX: 0, cellY: 0 });
+  const origin1 = grid.mapFromGeometryPoint({ cellX: 1, cellY: 0 });
   const gridScale = Math.abs(origin1.x - origin0.x);
   const safeZoom = zoom > 0 ? zoom : 1;
   const maxDist = Math.min(
@@ -74,8 +74,8 @@ export function findHitPortal(grid, activeLevel, mapPos, zoom = 1) {
   let best = null;
 
   for (const portal of activeLevel.portals) {
-    const pA = grid.mapFromCellPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
-    const pB = grid.mapFromCellPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
+    const pA = grid.mapFromGeometryPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
+    const pB = grid.mapFromGeometryPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
     const dist = distancePointToSegment(mapPos, pA, pB);
     if (dist < maxDist) {
       // Départage stable par identifiant : deux portes à égalité de distance ne doivent pas

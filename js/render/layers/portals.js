@@ -56,8 +56,8 @@ export class PortalsLayer {
 
     for (const portal of level.portals) {
       const state = portal.state;
-      const pA = grid.mapFromCellPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
-      const pB = grid.mapFromCellPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
+      const pA = grid.mapFromGeometryPoint({ cellX: portal.a.cellX, cellY: portal.a.cellY });
+      const pB = grid.mapFromGeometryPoint({ cellX: portal.b.cellX, cellY: portal.b.cellY });
 
       // Le battement d'une porte verrouillée qu'on vient de taper. Relevé ici pour n'être écrit
       // qu'une fois, mais il ne concerne que `locked`.

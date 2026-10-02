@@ -30,6 +30,14 @@ export class HexGrid {
     this.heightCells = level.heightCells;
     this.offsetX = level.grid?.offsetX ?? 0;
     this.offsetY = level.grid?.offsetY ?? 0;
+    // Décalage horizontal du RÉSEAU des hexagones par rapport à la géométrie d'étage, en pixels
+    // carte (amendement D-11, `docs/CONVENTIONS.md` §1). Le passage en hexagones depuis le panneau
+    // MJ le pose à −pxPerCell/4 pour qu'aucun centre ne tombe sur une bordure de case carrée, là
+    // où passent les murs. ⛔ Il décale tout ce qui dépend du réseau — et rien d'autre : ni
+    // `mapExtent` (le cadre de l'image), ni la géométrie (`mapFromGeometryPoint`).
+    this.hexShiftX = level.grid?.hexShiftX ?? 0;
+    /** Origine horizontale du réseau : `offsetX + hexShiftX`. */
+    this.latticeX = this.offsetX + this.hexShiftX;
     this.color = level.grid?.color ?? '#000000';
     this.opacity = level.grid?.opacity ?? 0.25;
     this.visible = level.grid?.visible ?? true;
@@ -45,7 +53,7 @@ export class HexGrid {
   cellFromPoint(p) {
     const dy = (p.y - this.offsetY) / this.pxPerCell - 0.5;
     const r_f = dy / SQRT3_OVER_2;
-    const dx = (p.x - this.offsetX) / this.pxPerCell - 0.5;
+    const dx = (p.x - this.latticeX) / this.pxPerCell - 0.5;
     const q_f = dx - 0.5 * r_f;
     const s_f = -q_f - r_f;
 
@@ -81,7 +89,7 @@ export class HexGrid {
    */
   pointFromCell(cell) {
     return {
-      x: this.offsetX + this.pxPerCell * (cell.a + 0.5 * (cell.b & 1) + 0.5),
+      x: this.latticeX + this.pxPerCell * (cell.a + 0.5 * (cell.b & 1) + 0.5),
       y: this.offsetY + this.pxPerCell * (cell.b * SQRT3_OVER_2 + 0.5),
     };
   }
@@ -91,6 +99,8 @@ export class HexGrid {
    * `SquareGrid.mapFromCellPoint` — pas son centre (C-5, `docs/QUESTIONS-EN-ATTENTE.md`).
    * Le `0.5 * (rowInt & 1)` n'est PAS du centrage : c'est le décalage odd-r qui aligne la
    * colonne des rangées impaires, il reste.
+   * ⛔ Lecture du RÉSEAU (`hexShiftX` compris) : pour les pions. La géométrie d'étage se lit par
+   * `mapFromGeometryPoint` (D-11).
    *
    * @param {CellPoint} cp
    * @returns {MapPoint}
@@ -98,14 +108,41 @@ export class HexGrid {
   mapFromCellPoint(cp) {
     const rowInt = Math.floor(cp.cellY);
     return {
-      x: this.offsetX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1)),
+      x: this.latticeX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1)),
       y: this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2),
     };
   }
 
   /**
+   * Géométrie d'étage → pixels carte, **lue en carré** (amendement D-11) : ni décalage odd-r,
+   * ni pas √3/2, ni `hexShiftX`. Identique à `SquareGrid.mapFromGeometryPoint`.
+   *
+   * @param {CellPoint} cp
+   * @returns {MapPoint}
+   */
+  mapFromGeometryPoint(cp) {
+    return {
+      x: this.offsetX + cp.cellX * this.pxPerCell,
+      y: this.offsetY + cp.cellY * this.pxPerCell,
+    };
+  }
+
+  /**
+   * Réciproque exacte de `mapFromGeometryPoint`.
+   *
+   * @param {MapPoint} p
+   * @returns {CellPoint}
+   */
+  geometryPointFromMap(p) {
+    return {
+      cellX: (p.x - this.offsetX) / this.pxPerCell,
+      cellY: (p.y - this.offsetY) / this.pxPerCell,
+    };
+  }
+
+  /**
    * Étendue de la carte en pixels, depuis l'origine de l'espace carte — voir le contrat dans
-   * `GridAdapter.js`.
+   * `GridAdapter.js`. ⛔ Cadre de l'image : `hexShiftX` n'y entre pas (D-11).
    *
    * ⭐ **L'axe Y n'a pas la même échelle que l'axe X** : les rangées hexagonales ne sont espacées
    * que de √3/2 case. Et la largeur ne porte **aucun** décalage odd-r — c'est tout l'objet de
@@ -133,6 +170,11 @@ export class HexGrid {
    * Rectangle couvert par un masque de l'étage — voir le contrat dans `GridAdapter.js`. Même
    * échelle par axe que `composeVisibleMask` : une colonne vaut `pxPerCell`, une rangée
    * `pxPerCell × √3/2`.
+   * ⛔ Il commence à l'origine de l'IMAGE (`offsetX`), pas à celle du réseau : ses dimensions sont
+   * figées à `widthCells × 8` pixels de masque (`CONVENTIONS.md` §3), et calé sur un réseau décalé
+   * de `hexShiftX` il laissait hors de tout masque une bande de |hexShiftX| pixels au bord droit
+   * de l'image — sous le voile et sans lumière pour toujours (D-11). Le décalage du réseau par
+   * rapport au masque est rendu par `maskLatticeShift`.
    *
    * @returns {{x: number, y: number, width: number, height: number}}
    */
@@ -143,6 +185,17 @@ export class HexGrid {
       width: this.widthCells * this.pxPerCell,
       height: this.heightCells * this.pxPerCell * SQRT3_OVER_2,
     };
+  }
+
+  /**
+   * Décalage horizontal du réseau par rapport au masque, en colonnes — voir le contrat dans
+   * `GridAdapter.js`. `hexShiftX / pxPerCell` : −0,25 sur un étage passé en hexagones depuis le
+   * panneau, 0 sinon.
+   *
+   * @returns {number}
+   */
+  maskLatticeShift() {
+    return this.hexShiftX / this.pxPerCell;
   }
 
   /**
@@ -171,7 +224,7 @@ export class HexGrid {
   cellBounds(cp, sizeCells) {
     const size = Math.max(1, sizeCells || 1);
     const rowInt = Math.floor(cp.cellY);
-    const centerX = this.offsetX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1) + 0.5);
+    const centerX = this.latticeX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1) + 0.5);
     const centerY = this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2 + 0.5);
     // ⛔ **La boîte doit couvrir exactement les cases de `cellsOccupied`, ni plus ni moins.**
     // Un pion qui déborde semble bloquer un passage qu'il laisse libre ; un pion trop petit
@@ -208,7 +261,7 @@ export class HexGrid {
     const dy = (p.y - this.offsetY) / this.pxPerCell;
     const cellY = dy / SQRT3_OVER_2;
     const rowInt = Math.floor(cellY);
-    const dx = (p.x - this.offsetX) / this.pxPerCell - 0.5 * (rowInt & 1);
+    const dx = (p.x - this.latticeX) / this.pxPerCell - 0.5 * (rowInt & 1);
     return { cellX: dx, cellY };
   }
 

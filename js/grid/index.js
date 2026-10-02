@@ -53,3 +53,18 @@ export function cellDimensionsForGridType(level, type, imageSize = null) {
   const heightCells = Math.max(1, Math.ceil((hauteur - offsetY) / pasRangee - 1e-6));
   return { widthCells: level.widthCells, heightCells };
 }
+
+/**
+ * Décalage `hexShiftX` du réseau d'un étage passé en `type` depuis le panneau MJ (amendement D-11,
+ * `docs/CONVENTIONS.md` §1) : un quart de case vers la gauche en hexagonal, pour qu'aucun centre
+ * d'hexagone ne tombe sur une bordure de case carrée — là où passent les murs, lus en carré —, et
+ * 0 au retour en carré. ⛔ Une carte nativement hexagonale (grille dessinée dans l'image) garde 0 :
+ * ce n'est pas cette fonction qui le décide pour elle.
+ *
+ * @param {import('../core/types.js').Level} level
+ * @param {import('../core/types.js').GridType} type Pavage cible
+ * @returns {number} Pixels carte
+ */
+export function hexShiftXForGridType(level, type) {
+  return type === 'hex' ? -level.pxPerCell / 4 : 0;
+}

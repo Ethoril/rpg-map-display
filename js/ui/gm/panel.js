@@ -18,7 +18,7 @@ import {
   VISION_MAX_RANGE_CELLS,
 } from '../../core/constants.js';
 import { isStatusMarker } from '../../core/schema.js';
-import { cellDimensionsForGridType } from '../../grid/index.js';
+import { cellDimensionsForGridType, hexShiftXForGridType } from '../../grid/index.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
@@ -535,11 +535,13 @@ export function createGMPanel(container, options = {}) {
                  fontes sont plus larges. La contrainte tient quelle que soit la fonte, là où
                  raccourcir le libellé n'aurait protégé que jusqu'au prochain libellé. -->
             <select id="grid-type"
-                    title="Le pavage de l’étage actif. Pointe en haut, rangées impaires décalées. Les imports UVTT sont carrés ; l’hexagone se pose sur une carte-décor.">
+                    title="Le pavage de l’étage actif. Pointe en haut, rangées impaires décalées. Murs, portes et lumières restent à leur place ; pions, escaliers et coûts de terrain passent sur la case qui contient leur ancien centre.">
               <option value="square">Carrée</option>
               <option value="hex">Hexagonale</option>
             </select>
           </div>
+          <!-- D-11 : ce que la conversion du dernier changement de pavage n'a pas pu faire. -->
+          <p id="grid-type-notice" class="gm-hint gm-warn" hidden></p>
 
           <div class="gm-field">
             <label for="grid-color">Couleur</label>
@@ -1227,11 +1229,34 @@ export function createGMPanel(container, options = {}) {
   /** Jeton du dernier changement de pavage demandé : seul le plus récent s'applique. */
   let jetonPavage = 0;
 
+  const gridTypeNotice = /** @type {HTMLElement|null} */ (container.querySelector('#grid-type-notice'));
+
   /**
-   * Change le pavage de l'étage actif sans toucher à la carte (C-16, `QUESTIONS-EN-ATTENTE.md`).
+   * Affiche, sous le sélecteur de pavage, ce que le dernier changement n'a pas pu faire (D-11) —
+   * ou rien. Rien ne se déplace dans le dos du MJ (CLAUDE.md, règle n°4) : un pion rangé faute de
+   * place ou un escalier resté sur place se disent ici, pas seulement en console.
    *
-   * Le nombre de rangées se recalcule depuis l'image au pas de la nouvelle grille ; les pions
-   * gardent leur case, ceux que la grille ne contient plus partent en réserve, et le brouillard de
+   * L'avis ne vaut que pour l'étage qui l'a reçu : il s'efface quand on change d'étage.
+   *
+   * @param {string[]} lignes
+   */
+  function afficherAvisPavage(lignes) {
+    if (!gridTypeNotice) return;
+    gridTypeNotice.textContent = lignes.join(' ');
+    gridTypeNotice.hidden = lignes.length === 0;
+    etageAvisPavage = lignes.length > 0 ? store.getActiveLevelId() : null;
+  }
+  /** Étage auquel se rapporte l'avis affiché, `null` sans avis. */
+  let etageAvisPavage = /** @type {string|null} */ (null);
+
+  /**
+   * Change le pavage de l'étage actif sans toucher à la carte (C-16 complété par D-11,
+   * `QUESTIONS-EN-ATTENTE.md`).
+   *
+   * Le nombre de rangées se recalcule depuis l'image au pas de la nouvelle grille ; en hexagonal le
+   * réseau est décalé d'un quart de case (`hexShiftX`) par rapport aux murs, qui se lisent toujours
+   * en carré. Pions, escaliers et coûts de terrain passent sur la case qui contient le centre de
+   * l'ancienne (`store.regridLevel`) ; les pions sans place partent en réserve, et le brouillard de
    * l'étage repart de zéro — son masque était calé sur l'ancien pavage. Même enchaînement que le
    * remplacement de carte de `importPanel.js` : l'étage, puis un `token.reserve` par pion rangé,
    * puis le brouillard.
@@ -1256,20 +1281,45 @@ export function createGMPanel(container, options = {}) {
     const level = store.getActiveLevel();
     if (!level) return;
     const { widthCells, heightCells } = cellDimensionsForGridType(level, type, imageSize);
-    const gridConfig = gridConfigFromUI(type);
+    // ⭐ D-11 : un quart de case de décalage en hexagonal, pour qu'aucun centre d'hexagone ne tombe
+    // sur une bordure de case carrée, là où passent les murs ; 0 au retour en carré.
+    const gridConfig = { ...gridConfigFromUI(type), hexShiftX: hexShiftXForGridType(level, type) };
 
-    /** @type {string[]} */
-    let reservedTokenIds;
+    /** @type {import('../../state/store.js').RegridReport} */
+    let rapport;
     try {
-      reservedTokenIds = store.regridLevel(levelId, { grid: gridConfig, widthCells, heightCells });
+      rapport = store.regridLevel(levelId, { grid: gridConfig, widthCells, heightCells });
     } catch (err) {
       // La liste revient au pavage réel : elle ne doit pas annoncer un changement refusé.
       gridTypeSelect.value = store.getActiveLevel()?.grid?.type ?? 'square';
-      console.error(
-        `Changement de pavage refusé : ${err instanceof Error ? err.message : String(err)}`
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Changement de pavage refusé : ${message}`);
+      afficherAvisPavage([`Changement de pavage refusé : ${message}`]);
       return;
     }
+    const { reservedTokenIds, collidedTokenIds, linkConflicts } = rapport;
+
+    const campagne = store.getCampaign();
+    /** @param {string} id */
+    const nomPion = (id) => campagne?.reserve?.find((t) => t.id === id)?.label || id;
+    /** @param {string} id */
+    const nomLiaison = (id) => {
+      const lien = campagne?.links?.find((l) => l.id === id);
+      return lien?.label || lien?.kind || id;
+    };
+    /** @type {string[]} */
+    const avis = [];
+    if (collidedTokenIds.length > 0) {
+      avis.push(`Rangés en réserve, leur nouvelle case étant déjà prise : ${collidedTokenIds.map(nomPion).join(', ')}.`);
+    }
+    for (const conflit of linkConflicts) {
+      avis.push(
+        conflit.reason === 'collision'
+          ? `Escalier « ${nomLiaison(conflit.linkId)} » (extrémité ${conflit.side.toUpperCase()}) laissé sur place : sa nouvelle case est déjà prise par un autre escalier.`
+          : `Escalier « ${nomLiaison(conflit.linkId)} » (extrémité ${conflit.side.toUpperCase()}) laissé sur place : aucune case de la nouvelle grille ne contient son centre.`
+      );
+    }
+    afficherAvisPavage(avis);
 
     if (transport) {
       await transport.publish({
@@ -2443,6 +2493,7 @@ export function createGMPanel(container, options = {}) {
     tokenMaker.setDefaultLevelId(store.getActiveLevelId());
     updateElevationUIFromStore();
     updateTokenEditUIFromStore();
+    if (etageAvisPavage !== null && store.getActiveLevelId() !== etageAvisPavage) afficherAvisPavage([]);
     const currentLvl = store.getActiveLevel();
     if (currentLvl && currentLvl.grid) {
       gridVisibleInput.checked = currentLvl.grid.visible ?? true;

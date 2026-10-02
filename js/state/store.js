@@ -14,7 +14,7 @@ import {
 } from './selection.js';
 import { gridFor } from '../grid/index.js';
 import { numberLibraryCopy } from '../import/tokenCatalog.js';
-import { cellKey } from '../core/cellKey.js';
+import { cellKey, parseCellKey } from '../core/cellKey.js';
 
 /** @typedef {import('../core/types.js').Campaign} Campaign */
 /** @typedef {import('../core/types.js').Level} Level */
@@ -1264,20 +1264,61 @@ export function replaceLevelMap(levelId, patch) {
 }
 
 /**
- * Change le pavage d'un étage et ses dimensions en cases, en une seule transaction (C-16).
+ * Identité du réseau de cases d'un étage : ce qui, s'il change, fait désigner à un même `{a, b}`
+ * un autre endroit de l'image (D-11). Ni les dimensions — elles ne font qu'ajouter ou retirer des
+ * cases au bord — ni l'offset : un recalage laisse les pions sur leurs cases (`CONVENTIONS.md`
+ * §1, tranché le 22/09/2026).
  *
- * ⭐ Contrairement à `replaceLevelMap`, la carte reste : les pions **gardent leur case**, seuls
- * ceux que la nouvelle grille ne contient plus partent en réserve. Les deux vues l'appliquent à
- * l'identique — le MJ au changement de pavage, la tablette à la réception de `level.grid` — si bien
- * que les `token.reserve` qui suivent trouvent leur pion déjà rangé et ne font rien. Sans ce
- * rangement local, la tablette refuserait la hauteur réduite tant qu'un pion de la dernière rangée
- * n'aurait pas encore été rangé par son `token.reserve`.
+ * @param {Level} level
+ * @returns {string}
+ */
+function reseauDe(level) {
+  return level.grid.type === 'hex' ? `hex:${level.grid.hexShiftX ?? 0}` : 'square';
+}
+
+/**
+ * Rapport d'un changement de pavage (D-11), pour le panneau MJ.
  *
- * Rejeu inoffensif : les mêmes dimensions ne rangent plus rien.
+ * @typedef {Object} RegridReport
+ * @property {string[]} reservedTokenIds Pions rangés en réserve, quelle qu'en soit la raison
+ * @property {string[]} collidedTokenIds Ceux d'entre eux rangés parce que leur nouvelle case était
+ *   déjà prise par un pion converti avant eux
+ * @property {Array<{linkId: string, side: 'a'|'b', reason: 'collision'|'outside'}>} linkConflicts
+ *   Extrémités d'escalier restées sur leurs anciennes coordonnées : nouvelle case déjà prise par une
+ *   autre extrémité (`collision`), ou centre hors de la nouvelle grille (`outside`)
+ */
+
+/**
+ * Change le pavage d'un étage et ses dimensions en cases, en une seule transaction (C-16,
+ * complété par D-11).
+ *
+ * ⭐ Contrairement à `replaceLevelMap`, la carte reste. Quand le **réseau** change (`reseauDe`),
+ * chaque pion, extrémité d'escalier et case de coût de terrain de l'étage passe sur la case de la
+ * nouvelle grille qui contient le **centre** de son ancienne case : il reste au même endroit de
+ * l'image, à une demi-case près. ⛔ Garder le même `{a, b}` (l'ancienne règle C-16) faisait remonter
+ * un pion de la rangée 40 de plus de 5 cases à l'écran.
+ *
+ * - un pion sans case d'arrivée, ou qui déborde, part en réserve ; deux pions sur la même case
+ *   (emprise comprise, C-6) → le second dans l'ordre du tableau part en réserve ;
+ * - une extrémité d'escalier sans case d'arrivée, ou dont la case est déjà prise par une autre
+ *   extrémité, **reste** où elle est et le conflit est rendu pour le MJ — rien n'est inventé à sa
+ *   place. Deux extrémités qui partageaient déjà une case la partagent encore : ce n'est pas un
+ *   conflit créé par la conversion ;
+ * - deux cases de terrain sur la même case → le coût le plus élevé ; sans case d'arrivée →
+ *   abandonnée.
+ *
+ * La conversion est **déterministe** et ne lit que l'état local : le MJ l'applique au changement
+ * de pavage, la tablette à la réception de `level.grid`, avec cette même fonction et donc le même
+ * résultat — si bien que les `token.reserve` qui suivent trouvent leur pion déjà rangé et ne font
+ * rien. Sans ce rangement local, la tablette refuserait la hauteur réduite tant qu'un pion de la
+ * dernière rangée n'aurait pas encore été rangé par son `token.reserve`.
+ *
+ * Rejeu inoffensif : le réseau étant déjà le bon, rien n'est converti, et les mêmes dimensions ne
+ * rangent plus rien. Un `level.grid` de couleur ou d'opacité ne déplace rien non plus.
  *
  * @param {string} levelId
  * @param {{grid: Partial<import('../core/types.js').GridConfig>, widthCells?: number, heightCells?: number}} patch
- * @returns {string[]} Identifiants des pions rangés en réserve
+ * @returns {RegridReport}
  */
 export function regridLevel(levelId, patch) {
   if (!campaign) {
@@ -1302,26 +1343,96 @@ export function regridLevel(levelId, patch) {
   };
   candidate.levels[idx] = level;
 
+  const ancienneGrille = gridFor(currentLevel);
+  const nouvelleGrille = gridFor(level);
+  const reseauChange = reseauDe(currentLevel) !== reseauDe(level);
+  /**
+   * La case de la nouvelle grille qui contient le centre de l'ancienne ; l'identité quand le
+   * réseau ne change pas (seuls les bords bougent), `null` hors de la nouvelle grille.
+   * @param {Cell} cell
+   * @returns {Cell|null}
+   */
+  const convertir = (cell) =>
+    reseauChange ? nouvelleGrille.cellFromPoint(ancienneGrille.cellCenter(cell)) : cell;
+
   /** @type {string[]} */
   const reservedTokenIds = [];
+  /** @type {string[]} */
+  const collidedTokenIds = [];
   /** @type {import('../core/types.js').Token[]} */
   const remainingTokens = [];
+  /** @type {import('../core/types.js').Token[]} Pions déjà posés sur l'étage converti */
+  const poses = [];
   for (const token of candidate.tokens) {
+    if (token.levelId !== levelId) {
+      remainingTokens.push(token);
+      continue;
+    }
+    const cell = convertir(token.cell);
     // Même règle de bornes que `validateCampaign` : en hexagonal, seul l'ancrage compte (D-8).
     const horsCarte =
-      token.levelId === levelId &&
+      !cell ||
       (level.grid.type === 'hex'
-        ? token.cell.a >= level.widthCells || token.cell.b >= level.heightCells
-        : token.cell.a + token.sizeCells > level.widthCells ||
-          token.cell.b + token.sizeCells > level.heightCells);
-    if (horsCarte) {
+        ? cell.a >= level.widthCells || cell.b >= level.heightCells
+        : cell.a + token.sizeCells > level.widthCells || cell.b + token.sizeCells > level.heightCells);
+    const collision =
+      !horsCarte && cell && findStackingConflict(poses, level, levelId, cell, token.sizeCells || 1, null);
+    if (horsCarte || collision || !cell) {
+      // Le pion rangé garde son ancienne case : la réserve n'en lit aucune.
       candidate.reserve.push(token);
       reservedTokenIds.push(token.id);
-    } else {
-      remainingTokens.push(token);
+      if (collision) collidedTokenIds.push(token.id);
+      continue;
     }
+    if (reseauChange) {
+      token.cell = { a: cell.a, b: cell.b };
+      // ⛔ Le dernier `move` reste sur le pion après l'animation, et le rendu le lit : son `to`,
+      // exprimé dans l'ancien réseau, redessinerait le pion à l'ancien numéro de case.
+      delete token.move;
+    }
+    poses.push(token);
+    remainingTokens.push(token);
   }
   candidate.tokens = remainingTokens;
+
+  /** @type {RegridReport['linkConflicts']} */
+  const linkConflicts = [];
+  if (reseauChange && Array.isArray(candidate.links)) {
+    /** @type {Map<string, string>} nouvelle case → ancienne case de l'extrémité qui l'occupe */
+    const prises = new Map();
+    for (const lien of candidate.links) {
+      for (const side of /** @type {const} */ (['a', 'b'])) {
+        const extremite = lien[side];
+        if (extremite.levelId !== levelId) continue;
+        const ancienne = { a: extremite.at.cellX, b: extremite.at.cellY };
+        const cell = convertir(ancienne);
+        if (!cell) {
+          linkConflicts.push({ linkId: lien.id, side, reason: 'outside' });
+          continue;
+        }
+        const occupant = prises.get(cellKey(cell));
+        if (occupant !== undefined && occupant !== cellKey(ancienne)) {
+          linkConflicts.push({ linkId: lien.id, side, reason: 'collision' });
+          continue;
+        }
+        prises.set(cellKey(cell), cellKey(ancienne));
+        extremite.at = { cellX: cell.a, cellY: cell.b };
+      }
+    }
+  }
+
+  if (reseauChange && level.terrainCost) {
+    /** @type {Record<string, number>} */
+    const couts = {};
+    for (const [cle, cout] of Object.entries(level.terrainCost)) {
+      const cell = convertir(parseCellKey(cle));
+      if (!cell) continue;
+      const nouvelle = cellKey(cell);
+      couts[nouvelle] = nouvelle in couts ? Math.max(couts[nouvelle], cout) : cout;
+    }
+    // `null` est l'idiome d'absence du champ (`createLevel`) : un étage vidé de ses coûts y revient.
+    level.terrainCost = Object.keys(couts).length > 0 ? couts : null;
+  }
 
   assertValidCampaign(candidate, `Changement de pavage de l'étage "${levelId}"`);
   replaceCampaign(candidate);
@@ -1334,7 +1445,7 @@ export function regridLevel(levelId, patch) {
   }
 
   notifySubscribers();
-  return reservedTokenIds;
+  return { reservedTokenIds, collidedTokenIds, linkConflicts };
 }
 
 /**

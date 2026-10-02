@@ -48,6 +48,8 @@
  * @property {HexOrientation} [hexOrientation]
  * @property {number} offsetX
  * @property {number} offsetY
+ * @property {number} [hexShiftX] Décalage horizontal du réseau hexagonal par rapport à la
+ *   géométrie d'étage, en pixels carte ; absent vaut 0 (amendement D-11, `docs/CONVENTIONS.md` §1)
  * @property {string} [color]
  * @property {number} [opacity]
  * @property {boolean} [visible]

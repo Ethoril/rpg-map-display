@@ -333,3 +333,51 @@ test('10. Aucune directive @ts-nocheck ni @ts-ignore (règle 1)', () => {
     .map(toRelativeJsPath);
   assert.deepEqual(fautifs, [], `directive de typage interdite dans : ${fautifs.join(', ')}`);
 });
+
+test('11. La géométrie d’étage se lit en carré : jamais par la lecture de la grille (D-11)', () => {
+  // ⭐ Amendement D-11 de `docs/CONVENTIONS.md` §1 : un sommet de mur, une extrémité de portail ou
+  // une lumière posée passent par `mapFromGeometryPoint` / `geometryPointFromMap`. Les deux lectures
+  // partagent la forme `{cellX, cellY}` : le compilateur ne les distingue pas, ce test si.
+  /** @param {string} rel */
+  const codeDe = (rel) =>
+    fs
+      .readFileSync(path.join(rootDir, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*/g, '');
+  const lectureGrille = /\b(?:mapFromCellPoint|cellPointFromMap)\s*\(/;
+
+  // 1. Les fichiers qui ne manipulent QUE de la géométrie : aucune lecture de grille du tout.
+  const geometrieSeule = [
+    'js/render/layers/walls.js',
+    'js/render/layers/portals.js',
+    'js/render/layers/templates.js',
+    'js/render/layers/lightMarkers.js',
+    'js/input/portalHit.js',
+    'js/input/lightHit.js',
+    'js/ui/gm/wallEditor.js',
+  ];
+  for (const rel of geometrieSeule) {
+    const code = codeDe(rel);
+    assert.ok(/\bmapFromGeometryPoint\s*\(/.test(code), `${rel} ne lit plus la géométrie : liste à revoir`);
+    assert.ok(!lectureGrille.test(code), `${rel} lit la géométrie d’étage par la grille courante`);
+  }
+
+  // 2. `extractBlockedSegments` mêle les deux lectures dans son fichier (les seaux sont des cases
+  // du réseau, légitimement), mais l'extraction des segments, elle, est pure géométrie.
+  const blocked = codeDe('js/import/blockedEdges.js');
+  const debut = blocked.indexOf('export function extractBlockedSegments');
+  const fin = blocked.indexOf('export function computeBlockedEdges');
+  assert.ok(debut >= 0 && fin > debut, 'extractBlockedSegments introuvable : garde à revoir');
+  const extraction = blocked.slice(debut, fin);
+  assert.ok(/\bmapFromGeometryPoint\s*\(/.test(extraction));
+  assert.ok(!lectureGrille.test(extraction), 'extractBlockedSegments lit murs et portails par la grille');
+
+  // 3. Partout ailleurs, aucune lumière, aucun portail, aucun mur passé à la lecture de grille.
+  const argumentGeometrique =
+    /\b(?:mapFromCellPoint|cellPointFromMap)\s*\(\s*(?:light|portal|wall|polyline|draft)\b/;
+  for (const filePath of getAllJsFiles(jsDir)) {
+    const rel = toRelativeJsPath(filePath);
+    if (rel.startsWith('js/grid/')) continue;
+    assert.ok(!argumentGeometrique.test(codeDe(rel)), `géométrie lue par la grille dans ${rel}`);
+  }
+});

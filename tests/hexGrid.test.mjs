@@ -2,11 +2,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLevel, createCampaign } from '../js/core/schema.js';
-import { gridFor, cellDimensionsForGridType } from '../js/grid/index.js';
+import { gridFor, cellDimensionsForGridType, hexShiftXForGridType } from '../js/grid/index.js';
 import { HexGrid } from '../js/grid/HexGrid.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { cellKey } from '../js/core/cellKey.js';
+import { reachableCells } from '../js/movement/reachable.js';
+import fs from 'node:fs';
 
 const SQRT3 = Math.sqrt(3);
 
@@ -166,8 +168,9 @@ test('G-04 Critère 3 : cellsInRange avec 6 voisines et respect d’un mur (bloc
     heightCells: 5,
     pxPerCell: 140,
     walls: [
-      // Mur bloquant l'arête entre (1,1) et sa voisine de droite (2,1)
-      [{ cellX: 2.0, cellY: 1.0 }, { cellX: 2.0, cellY: 1.6 }],
+      // Mur bloquant l'arête entre (1,1) et sa voisine de droite (2,1). Lu en carré (D-11) : x = 350,
+      // y = 140..224 — entre les centres (280, 191) et (420, 191), sans toucher les autres arêtes.
+      [{ cellX: 2.5, cellY: 1.0 }, { cellX: 2.5, cellY: 1.6 }],
     ],
   });
 
@@ -508,4 +511,147 @@ test('C-16 : sans image, l’étendue courante sert de repère, offset de grille
   });
   // Étendue 70 + 1400 ; (1470 − 70) / (140 × √3/2) = 11,55 → 12.
   assert.equal(cellDimensionsForGridType(decale, 'hex', null).heightCells, 12);
+});
+
+// ── D-11 : la géométrie se lit en carré, quel que soit le pavage ──────────────────────
+
+/**
+ * @param {'square'|'hex'} type
+ * @param {number} [hexShiftX]
+ */
+function etageD11(type, hexShiftX) {
+  return createLevel({
+    grid: { type, offsetX: 30, offsetY: -17, ...(hexShiftX === undefined ? {} : { hexShiftX }) },
+    pxPerCell: 140,
+    widthCells: 10,
+    heightCells: 12,
+  });
+}
+
+test('D-11 : la lecture de la géométrie est la même en carré et en hexagonal, décalage compris', () => {
+  const carre = gridFor(etageD11('square'));
+  const hexa = gridFor(etageD11('hex', -35));
+  for (const cp of [
+    { cellX: 0, cellY: 0 },
+    { cellX: 4.5, cellY: 2 },
+    { cellX: 3, cellY: 7 }, // rangée impaire : ni décalage odd-r, ni pas √3/2
+    { cellX: -0.5, cellY: 11.25 },
+  ]) {
+    const attendu = { x: 30 + cp.cellX * 140, y: -17 + cp.cellY * 140 };
+    assert.deepEqual(carre.mapFromGeometryPoint(cp), attendu);
+    assert.deepEqual(hexa.mapFromGeometryPoint(cp), attendu);
+    // Aller-retour exact, contrairement à la lecture de grille hexagonale (E-1).
+    const retour = hexa.geometryPointFromMap(attendu);
+    assert.ok(Math.abs(retour.cellX - cp.cellX) < 1e-12 && Math.abs(retour.cellY - cp.cellY) < 1e-12);
+  }
+  // En carré, les deux lectures coïncident.
+  assert.deepEqual(carre.mapFromGeometryPoint({ cellX: 3, cellY: 7 }), carre.mapFromCellPoint({ cellX: 3, cellY: 7 }));
+});
+
+test('D-11 : hexShiftX décale tout le réseau, mais ni le cadre de l’image ni la géométrie', () => {
+  const sans = gridFor(etageD11('hex'));
+  const avec = gridFor(etageD11('hex', -35));
+  // Le réseau : centres, coins de case, boîtes, masque, attribution d'un point.
+  for (const cell of [{ a: 0, b: 0 }, { a: 3, b: 7 }, { a: 9, b: 11 }]) {
+    assert.equal(avec.cellCenter(cell).x, sans.cellCenter(cell).x - 35);
+    assert.equal(avec.cellCenter(cell).y, sans.cellCenter(cell).y);
+    assert.equal(avec.pointFromCell(cell).x, sans.pointFromCell(cell).x - 35);
+    // Le centre décalé retombe dans sa propre case : cellFromPoint suit le même réseau.
+    assert.deepEqual(avec.cellFromPoint(avec.cellCenter(cell)), cell);
+  }
+  const cp = { cellX: 3.25, cellY: 7.5 };
+  assert.equal(avec.mapFromCellPoint(cp).x, sans.mapFromCellPoint(cp).x - 35);
+  assert.equal(avec.cellPointFromMap(avec.mapFromCellPoint(cp)).cellX, cp.cellX);
+  assert.equal(avec.cellBounds(cp, 1).x, sans.cellBounds(cp, 1).x - 35);
+  // ⛔ Le masque, lui, reste calé sur l'image (dimensions figées, CONVENTIONS §3) : seul le
+  // décalage du réseau par rapport à lui change.
+  assert.deepEqual(avec.maskRect(), sans.maskRect());
+  assert.equal(avec.maskLatticeShift(), -0.25);
+  assert.equal(sans.maskLatticeShift(), 0);
+  // Un point à 50 px à droite du centre de (0,0) change de case quand le réseau recule de 35 px.
+  const p = { x: sans.cellCenter({ a: 0, b: 0 }).x + 50, y: sans.cellCenter({ a: 0, b: 0 }).y };
+  assert.deepEqual(sans.cellFromPoint(p), { a: 0, b: 0 });
+  assert.deepEqual(avec.cellFromPoint(p), { a: 1, b: 0 });
+
+  // ⛔ Le cadre de l'image et la géométrie, eux, ne bougent pas.
+  assert.deepEqual(avec.mapExtent(), sans.mapExtent());
+  assert.deepEqual(avec.mapFromGeometryPoint(cp), sans.mapFromGeometryPoint(cp));
+  // Et les dimensions d'un repavage ne dépendent pas du décalage.
+  assert.deepEqual(
+    cellDimensionsForGridType(etageD11('hex', -35), 'square', null),
+    cellDimensionsForGridType(etageD11('hex'), 'square', null)
+  );
+});
+
+test('D-11 : le passage en hexagones depuis le panneau décale d’un quart de case, le retour en carré remet 0', () => {
+  assert.equal(hexShiftXForGridType(etageD11('square'), 'hex'), -35);
+  assert.equal(hexShiftXForGridType(etageD11('hex', -35), 'square'), 0);
+});
+
+/**
+ * Composantes connexes d'un étage, portes dans l'état donné : nombre de composantes de plus de
+ * 3 cases, et nombre d'hexagones seuls dont le centre est dans l'image. Passe par le vrai code —
+ * `computeBlockedEdges` et `reachableCells` —, sans aucune conversion de mur à la main.
+ *
+ * @param {import('../js/core/types.js').Level} level
+ * @returns {{grandes: number, seuls: number}}
+ */
+function connexite(level) {
+  const grid = gridFor(level);
+  const bloquees = computeBlockedEdges(level, grid, { portals: 'closed' });
+  /** @type {Map<string, number>} */
+  const composante = new Map();
+  /** @type {number[]} */
+  const tailles = [];
+  for (const cell of grid.allCells(level.widthCells, level.heightCells)) {
+    if (composante.has(cellKey(cell))) continue;
+    const id = tailles.length;
+    let n = 0;
+    for (const cle of [cellKey(cell), ...reachableCells(grid, cell, Infinity, bloquees).keys()]) {
+      if (!composante.has(cle)) {
+        composante.set(cle, id);
+        n++;
+      }
+    }
+    tailles.push(n);
+  }
+  const cadre = grid.mapExtent();
+  let seuls = 0;
+  for (const cell of grid.allCells(level.widthCells, level.heightCells)) {
+    const centre = grid.cellCenter(cell);
+    const z = /** @type {number} */ (composante.get(cellKey(cell)));
+    if (tailles[z] === 1 && centre.x < cadre.width && centre.y < cadre.height) seuls++;
+  }
+  return { grandes: tailles.filter((n) => n > 3).length, seuls };
+}
+
+test('⭐ D-11 : le manoir passé en hexagones garde sa connexité — mêmes pièces, aucun hexagone isolé', () => {
+  // La fixture dédiée (⛔ jamais une carte de maps/) : 48 × 45 cases, murs exactement sur les
+  // bordures — le cas défavorable, celui où un centre d'hexagone non décalé tombe sur un mur.
+  const scene = JSON.parse(fs.readFileSync('fixtures/scenes/manoir-rdc.scene.json', 'utf8'));
+  /** @type {import('../js/core/types.js').Level} */
+  const source = scene.levels[0];
+  const dims = cellDimensionsForGridType(source, 'hex', gridFor(source).mapExtent());
+
+  for (const [etat, attendu] of /** @type {const} */ ([['open', 5], ['closed', 38]])) {
+    const carre = { ...source, id: `manoir-carre-${etat}`, portals: source.portals.map((p) => ({ ...p, state: etat })) };
+    /** @param {number} hexShiftX */
+    const hexa = (hexShiftX) => ({
+      ...carre,
+      id: `manoir-hex-${etat}-${hexShiftX}`,
+      ...dims,
+      grid: { ...carre.grid, type: /** @type {const} */ ('hex'), hexShiftX },
+    });
+
+    const enCarre = connexite(carre);
+    assert.equal(enCarre.grandes, attendu, `${etat} : ${attendu} pièces en carré`);
+
+    const decale = connexite(hexa(-35));
+    assert.equal(decale.grandes, enCarre.grandes, `${etat} : mêmes pièces en hexagonal décalé`);
+    assert.equal(decale.seuls, 0, `${etat} : aucun hexagone isolé`);
+
+    // Contre-test : sans le décalage, les centres des rangées impaires tombent sur les murs.
+    const nonDecale = connexite(hexa(0));
+    assert.ok(nonDecale.seuls > 100, `${etat} : sans décalage, ${nonDecale.seuls} hexagones isolés attendus > 100`);
+  }
 });

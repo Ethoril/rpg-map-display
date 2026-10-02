@@ -266,6 +266,7 @@ test('R-04a : computeBlockedEdges lève si l’adaptateur ne fournit pas allCell
     type: complet.type,
     pointFromCell: complet.pointFromCell.bind(complet),
     mapFromCellPoint: complet.mapFromCellPoint.bind(complet),
+    mapFromGeometryPoint: complet.mapFromGeometryPoint.bind(complet),
     cellPointFromMap: complet.cellPointFromMap.bind(complet),
     neighbors: complet.neighbors.bind(complet),
   });
@@ -337,6 +338,17 @@ test('Le cache d’arêtes tient compte du pavage et des dimensions, pas seuleme
     refBas,
     'le cache doit être invalidé par le changement de dimensions'
   );
+
+  // 3. D-11 : le décalage du réseau hexagonal, à pavage, dimensions et murs identiques.
+  /** @param {number} hexShiftX */
+  const decale = (hexShiftX) => ({ ...etage('hex', 5), grid: { ...etage('hex', 5).grid, hexShiftX } });
+  /** @param {import('../js/core/types.js').Level} level */
+  const aretes = (level) => [...computeBlockedEdges(level, gridFor(level))].sort();
+  invalidateBlockedEdgesCache();
+  const refDecale = aretes(decale(-35));
+  invalidateBlockedEdgesCache();
+  assert.notDeepEqual(aretes(decale(0)), refDecale, 'les deux réseaux doivent bien différer');
+  assert.deepEqual(aretes(decale(-35)), refDecale, 'le cache doit être invalidé par hexShiftX');
 });
 
 test('R-06 : Équivalence stricte index spatial vs force brute (9 formes carré/hex, 122 murs déterministes)', () => {

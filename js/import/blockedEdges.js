@@ -126,8 +126,10 @@ function getGeometrySignature(level) {
   // mêmes voisinages ni les mêmes arêtes. Sans ces trois champs, un recalibrage ou un changement de
   // pavage sur un étage de même identifiant resservait le masque périmé du cache — **les murs
   // bloquaient les mauvaises arêtes, en silence**. Mesuré le 12/08/2026 : 16 arêtes servies depuis
-  // le cache contre 19 après recalcul.
-  const grille = `${level.grid?.type ?? 'square'}:${level.widthCells}x${level.heightCells}`;
+  // le cache contre 19 après recalcul. `hexShiftX` aussi (D-11) : il déplace le réseau des
+  // hexagones par rapport aux murs, donc les arêtes qu'ils coupent.
+  const grille =
+    `${level.grid?.type ?? 'square'}:${level.widthCells}x${level.heightCells}:${level.grid?.hexShiftX ?? 0}`;
   return `${level.id || 'default'}_g:${grille}_w:${wallParts.join(';')}_p:${portalParts.join(';')}`;
 }
 
@@ -228,7 +230,8 @@ export function segmentsIntersect(A, B, C, D, eps = 1e-9) {
 
 /**
  * Extrait tous les segments d'obstacles (murs et portails non ouverts) d'un étage.
- * Si un GridAdapter est fourni, les coordonnées sont converties en pixels carte ({ p1, p2 }).
+ * Si un GridAdapter est fourni, les coordonnées sont converties en pixels carte ({ p1, p2 }),
+ * **lues en carré** quel que soit le pavage (`mapFromGeometryPoint`, amendement D-11).
  * Sinon, elles restent en coordonnées de case ({ A, B }).
  * Avec `portals = 'all'`, tout portail est un obstacle, quel que soit son état (chantier C-9).
  *
@@ -253,8 +256,8 @@ export function extractBlockedSegments(level, grid, portals = 'closed') {
         if (p1 && p2) {
           if (grid) {
             segments.push({
-              p1: grid.mapFromCellPoint(p1),
-              p2: grid.mapFromCellPoint(p2),
+              p1: grid.mapFromGeometryPoint(p1),
+              p2: grid.mapFromGeometryPoint(p2),
             });
           } else {
             segments.push({
@@ -272,8 +275,8 @@ export function extractBlockedSegments(level, grid, portals = 'closed') {
       if (portal && (portals === 'all' || !isPortalOpen(portal))) {
         if (grid) {
           segments.push({
-            p1: grid.mapFromCellPoint(portal.a),
-            p2: grid.mapFromCellPoint(portal.b),
+            p1: grid.mapFromGeometryPoint(portal.a),
+            p2: grid.mapFromGeometryPoint(portal.b),
           });
         } else {
           segments.push({
@@ -331,6 +334,11 @@ export function computeBlockedEdges(level, grid, options = {}) {
     }
 
     // 1. Indexation spatiale par seaux de cases (convertie en unités de cases fractionnaires via cellPointFromMap)
+    // ⭐ Lecture du RÉSEAU, et c'est voulu (D-11) : les seaux sont des cases de la grille, qu'on
+    // interroge plus bas avec les centres de cette même grille. Les segments, eux, sont déjà en
+    // pixels carte, lus en carré par `extractBlockedSegments`. `hexShiftX` translate le réseau
+    // tout entier : la démonstration ci-dessous, qui ne porte que sur la parité des rangées, tient
+    // telle quelle.
     /** @type {Map<number, Array<{ p1: Point, p2: Point, id: number }>>} */
     const buckets = new Map();
 

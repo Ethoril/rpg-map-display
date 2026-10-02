@@ -7,6 +7,7 @@ import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import * as store from '../js/state/store.js';
 import { createFogTools } from '../js/ui/gm/fogTools.js';
 import { ExploredFog } from '../js/vision/fog.js';
+import { gridFor, cellDimensionsForGridType } from '../js/grid/index.js';
 
 function createMockElement() {
   return {
@@ -563,11 +564,14 @@ test('UX-16 : Réseau — rejouer level.delete converge sans lever', () => {
 
 // ── C-16 : level.grid porte les dimensions recalculées ─────────────────────────────────
 
-test('C-16 : Réseau — level.grid applique widthCells/heightCells, garde les cases et range les pions sortis', () => {
+test('C-16 / D-11 : Réseau — level.grid applique les dimensions, convertit les cases et range les pions sortis', () => {
   setupCampagneTest();
-  const grilleHex = { type: 'hex', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true };
+  // Le payload réel du panneau : en hexagonal, le réseau recule d'un quart de case (100 px/case).
+  const grilleHex = { type: 'hex', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true, hexShiftX: -25 };
 
-  // Passage en hexagonal : la grille grandit, aucun pion ne sort, aucun ne bouge.
+  // Passage en hexagonal : la grille grandit, aucun pion ne sort. Chacun passe sur l'hexagone qui
+  // contient le centre de son ancienne case (D-11) : le héros (centre 250, 250) reste en (2, 2), le
+  // garde (centre 450, 450) passe en (4, 5) — le même endroit de l'image, pas le même numéro.
   assert.equal(
     applyNetworkEvent({
       type: 'level.grid',
@@ -579,15 +583,17 @@ test('C-16 : Réseau — level.grid applique widthCells/heightCells, garde les c
   );
   let rdc = store.getState().campaign?.levels.find((l) => l.id === 'rdc');
   assert.equal(rdc?.grid.type, 'hex');
+  assert.equal(rdc?.grid.hexShiftX, -25);
   assert.equal(rdc?.widthCells, 10);
   assert.equal(rdc?.heightCells, 9);
-  assert.deepEqual(store.getState().campaign?.tokens.find((t) => t.id === 'garde-rdc')?.cell, { a: 4, b: 4 });
+  assert.deepEqual(store.getState().campaign?.tokens.find((t) => t.id === 'heros-rdc')?.cell, { a: 2, b: 2 });
+  assert.deepEqual(store.getState().campaign?.tokens.find((t) => t.id === 'garde-rdc')?.cell, { a: 4, b: 5 });
   assert.equal(store.getReserve().length, 0);
 
-  // Retour en carré sur 4 rangées : le garde (rangée 4) n'est plus dans la grille. Il part en
+  // Retour en carré sur 4 rangées : le garde revient en (4, 4), hors de la grille. Il part en
   // réserve **ici même** — sinon la validation refuserait la hauteur réduite tant que son
   // `token.reserve` n'est pas arrivé. Le héros garde sa case ; le spectre est sur un autre étage.
-  const grilleCarree = { ...grilleHex, type: 'square' };
+  const grilleCarree = { ...grilleHex, type: 'square', hexShiftX: 0 };
   assert.equal(
     applyNetworkEvent({
       type: 'level.grid',
@@ -643,18 +649,180 @@ test('C-16 : Réseau — un level.grid sans dimensions, ou avec des dimensions i
 });
 
 test('C-16 : regridLevel applique la règle de bornes D-8 — en hexagonal, seul l’ancrage compte', () => {
+  // Réseau inchangé, seules les dimensions bougent : les pions gardent leur case (D-11 ne convertit
+  // que quand le réseau change), et seule la règle de bornes décide.
   store.resetStore();
-  const level = createLevel({ id: 'plaine', widthCells: 10, heightCells: 10, pxPerCell: 100 });
+  const hexa = createLevel({ id: 'plaine', widthCells: 10, heightCells: 10, pxPerCell: 100, grid: { type: 'hex' } });
   const grand = createToken({ id: 'ogre', levelId: 'plaine', kind: 'npc', cell: { a: 3, b: 4 }, sizeCells: 2 });
-  store.loadCampaign(createCampaign({ levels: [level], tokens: [grand] }));
+  store.loadCampaign(createCampaign({ levels: [hexa], tokens: [grand] }));
   store.selectLevel('plaine');
 
   // Hexagonal sur 5 rangées : l'ancrage (rangée 4) est dans la grille, l'ogre reste.
-  const rangesHex = store.regridLevel('plaine', { grid: { type: 'hex' }, heightCells: 5 });
-  assert.deepEqual(rangesHex, []);
+  assert.deepEqual(store.regridLevel('plaine', { grid: { type: 'hex' }, heightCells: 5 }).reservedTokenIds, []);
+  assert.deepEqual(store.getCampaign()?.tokens[0]?.cell, { a: 3, b: 4 });
 
   // Carré sur 5 rangées : le bloc 2 × 2 déborde de la dernière rangée, il part en réserve.
-  const rangesCarre = store.regridLevel('plaine', { grid: { type: 'square' }, heightCells: 5 });
-  assert.deepEqual(rangesCarre, ['ogre']);
+  store.resetStore();
+  const carre = createLevel({ id: 'plaine', widthCells: 10, heightCells: 10, pxPerCell: 100 });
+  store.loadCampaign(createCampaign({ levels: [carre], tokens: [grand] }));
+  store.selectLevel('plaine');
+  assert.deepEqual(store.regridLevel('plaine', { grid: { type: 'square' }, heightCells: 5 }).reservedTokenIds, ['ogre']);
   assert.deepEqual(store.getReserve()[0]?.cell, { a: 3, b: 4 }, 'le pion rangé garde sa case');
+});
+
+// ── D-11 : changer de pavage convertit pions, escaliers et coûts de terrain ────────────
+
+const SQRT3 = Math.sqrt(3);
+
+test('⭐ D-11 : un pion de la rangée 40 reste au même endroit de l’image, pas au même numéro', () => {
+  store.resetStore();
+  const level = createLevel({ id: 'long', widthCells: 10, heightCells: 50, pxPerCell: 140 });
+  const pion = createToken({
+    id: 'eclaireur',
+    levelId: 'long',
+    cell: { a: 3, b: 40 },
+    // Le dernier déplacement reste sur le pion, et le rendu lit son `to` : il doit disparaître.
+    move: { from: { a: 3, b: 39 }, to: { a: 3, b: 40 }, path: [{ a: 3, b: 39 }, { a: 3, b: 40 }], startedAt: 1 },
+  });
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [pion] }));
+  store.selectLevel('long');
+  const avant = gridFor(level).cellCenter({ a: 3, b: 40 });
+  const dims = cellDimensionsForGridType(level, 'hex', null);
+
+  const rapport = store.regridLevel('long', { grid: { type: 'hex', hexShiftX: -35 }, ...dims });
+  assert.deepEqual(rapport, { reservedTokenIds: [], collidedTokenIds: [], linkConflicts: [] });
+
+  const apres = /** @type {import('../js/core/types.js').Level} */ (store.getCampaign()?.levels[0]);
+  const converti = /** @type {import('../js/core/types.js').Token} */ (store.getCampaign()?.tokens[0]);
+  const centre = gridFor(apres).cellCenter(converti.cell);
+  const ecart = Math.hypot(centre.x - avant.x, centre.y - avant.y);
+  // L'hexagone d'arrivée contient l'ancien centre : au plus son rayon, 140/√3 ≈ 81 px.
+  assert.ok(ecart <= 140 / SQRT3 + 1e-9, `le pion a bougé de ${ecart} px`);
+  assert.equal(converti.move, undefined);
+  // Ce que l'ancienne règle C-16 (« même {a, b} ») aurait fait : plus de 5 cases plus haut.
+  const memeNumero = gridFor(apres).cellCenter({ a: 3, b: 40 });
+  assert.ok(avant.y - memeNumero.y > 5 * 140);
+});
+
+/**
+ * Campagne hexagonale décalée d'un quart de case, à repasser en carré. À 140 px/case, les centres
+ * des hexagones (0, 3) — (105 ; 433,7) — et (0, 4) — (35 ; 554,9) — tombent tous deux dans la case
+ * carrée (0, 3) : c'est la collision qu'il faut savoir traiter.
+ */
+function campagneHexaDecalee() {
+  const hexa = createLevel({
+    id: 'h',
+    widthCells: 10,
+    heightCells: 12,
+    pxPerCell: 140,
+    grid: { type: 'hex', hexShiftX: -35 },
+    terrainCost: { '0,3': 2, '0,4': 3, '1,0': 5, '2,11': 4 },
+  });
+  const autre = createLevel({ id: 'autre', widthCells: 5, heightCells: 5 });
+  return createCampaign({
+    levels: [hexa, autre],
+    tokens: [
+      createToken({ id: 'premier', levelId: 'h', label: 'Premier', cell: { a: 0, b: 3 } }),
+      createToken({ id: 'second', levelId: 'h', label: 'Second', cell: { a: 0, b: 4 } }),
+      createToken({ id: 'ailleurs', levelId: 'autre', cell: { a: 0, b: 4 } }),
+    ],
+    links: [
+      createLink({ id: 'L1', a: { levelId: 'h', at: { cellX: 0, cellY: 3 } }, b: { levelId: 'autre', at: { cellX: 1, cellY: 1 } } }),
+      createLink({ id: 'L2', a: { levelId: 'h', at: { cellX: 0, cellY: 4 } }, b: { levelId: 'autre', at: { cellX: 2, cellY: 2 } } }),
+      // Partageait déjà la case de L1 : la partager encore n'est pas un conflit créé par la conversion.
+      createLink({ id: 'L3', a: { levelId: 'autre', at: { cellX: 3, cellY: 3 } }, b: { levelId: 'h', at: { cellX: 0, cellY: 3 } } }),
+    ],
+  });
+}
+
+const VERS_CARRE = { grid: { type: /** @type {const} */ ('square'), hexShiftX: 0 }, widthCells: 10, heightCells: 10 };
+
+test('D-11 : deux pions sur la même case → le second en réserve, et le MJ le sait', () => {
+  store.resetStore();
+  store.loadCampaign(campagneHexaDecalee());
+  store.selectLevel('h');
+  const rapport = store.regridLevel('h', VERS_CARRE);
+  assert.deepEqual(rapport.reservedTokenIds, ['second']);
+  assert.deepEqual(rapport.collidedTokenIds, ['second']);
+  const campagne = store.getCampaign();
+  assert.deepEqual(campagne?.tokens.find((t) => t.id === 'premier')?.cell, { a: 0, b: 3 });
+  assert.deepEqual(store.getReserve().map((t) => t.id), ['second']);
+  // L'autre étage n'est pas touché.
+  assert.deepEqual(campagne?.tokens.find((t) => t.id === 'ailleurs')?.cell, { a: 0, b: 4 });
+});
+
+test('D-11 : les extrémités d’escalier sont converties, un conflit est signalé et l’extrémité reste', () => {
+  store.resetStore();
+  store.loadCampaign(campagneHexaDecalee());
+  store.selectLevel('h');
+  const rapport = store.regridLevel('h', VERS_CARRE);
+  const liens = store.getCampaign()?.links ?? [];
+  assert.deepEqual(liens.find((l) => l.id === 'L1')?.a.at, { cellX: 0, cellY: 3 });
+  // L2 visait l'hexagone (0, 4), dont le centre tombe dans la case déjà prise par L1 : il reste.
+  assert.deepEqual(liens.find((l) => l.id === 'L2')?.a.at, { cellX: 0, cellY: 4 });
+  assert.deepEqual(liens.find((l) => l.id === 'L3')?.b.at, { cellX: 0, cellY: 3 });
+  assert.deepEqual(rapport.linkConflicts, [{ linkId: 'L2', side: 'a', reason: 'collision' }]);
+  // Les extrémités de l'autre étage ne bougent pas.
+  assert.deepEqual(liens.find((l) => l.id === 'L1')?.b.at, { cellX: 1, cellY: 1 });
+  assert.deepEqual(liens.find((l) => l.id === 'L3')?.a.at, { cellX: 3, cellY: 3 });
+
+  // Et l'escalier converti suit l'image : carré (4, 4) → l'hexagone qui contient son centre.
+  store.resetStore();
+  const carre = createLevel({ id: 'c', widthCells: 10, heightCells: 10, pxPerCell: 140 });
+  store.loadCampaign(
+    createCampaign({
+      levels: [carre, createLevel({ id: 'autre', widthCells: 5, heightCells: 5 })],
+      links: [createLink({ id: 'E', a: { levelId: 'c', at: { cellX: 4, cellY: 4 } }, b: { levelId: 'autre', at: { cellX: 1, cellY: 1 } } })],
+    })
+  );
+  store.selectLevel('c');
+  store.regridLevel('c', { grid: { type: 'hex', hexShiftX: -35 }, widthCells: 10, heightCells: 12 });
+  // Centre carré (630, 630) : plus près de l'hexagone (4, 5), centré en (665 ; 676), que de (4, 4).
+  assert.deepEqual(store.getCampaign()?.links[0]?.a.at, { cellX: 4, cellY: 5 });
+});
+
+test('D-11 : coût de terrain — collision au plus cher, sans case d’arrivée abandonné', () => {
+  store.resetStore();
+  store.loadCampaign(campagneHexaDecalee());
+  store.selectLevel('h');
+  store.regridLevel('h', VERS_CARRE);
+  // (0, 3) et (0, 4) → (0, 3) au plus cher ; (1, 0) → (1, 0) ; (2, 11), centré à 1 403,7 px, sort
+  // des 10 rangées carrées (1 400 px) et disparaît.
+  assert.deepEqual(store.getCampaign()?.levels.find((l) => l.id === 'h')?.terrainCost, { '0,3': 3, '1,0': 5 });
+});
+
+test('D-11 : rejouer le changement ne convertit plus rien', () => {
+  store.resetStore();
+  store.loadCampaign(campagneHexaDecalee());
+  store.selectLevel('h');
+  store.regridLevel('h', VERS_CARRE);
+  const apresPremier = structuredClone(store.getCampaign());
+  const rapport = store.regridLevel('h', VERS_CARRE);
+  assert.deepEqual(rapport, { reservedTokenIds: [], collidedTokenIds: [], linkConflicts: [] });
+  assert.deepEqual(store.getCampaign(), apresPremier);
+  // Une couleur, de même, ne déplace rien.
+  applyNetworkEvent({ type: 'level.grid', payload: { levelId: 'h', grid: { type: 'square', color: '#ff0000' } }, at: 1, by: 'gm' });
+  assert.deepEqual(store.getCampaign()?.tokens, apresPremier?.tokens);
+  assert.deepEqual(store.getCampaign()?.links, apresPremier?.links);
+});
+
+test('⭐ D-11 : la tablette, à réception de level.grid, obtient exactement l’état du MJ', () => {
+  const source = campagneHexaDecalee();
+
+  store.resetStore();
+  store.loadCampaign(structuredClone(source));
+  store.selectLevel('h');
+  store.regridLevel('h', VERS_CARRE);
+  const mj = structuredClone(store.getCampaign());
+
+  store.resetStore();
+  store.loadCampaign(structuredClone(source));
+  store.selectLevel('h');
+  assert.equal(
+    applyNetworkEvent({ type: 'level.grid', payload: { levelId: 'h', ...VERS_CARRE }, at: 1, by: 'gm' }),
+    true
+  );
+  assert.deepEqual(store.getCampaign(), mj);
+  // Et le `token.reserve` que le MJ publie ensuite ne fait rien : le pion est déjà rangé.
+  assert.equal(applyNetworkEvent({ type: 'token.reserve', payload: { tokenId: 'second' }, at: 2, by: 'gm' }), false);
 });

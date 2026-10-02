@@ -38,8 +38,8 @@ import {
 export function findHitLight(grid, activeLevel, mapPos, zoom = 1) {
   if (!activeLevel || !activeLevel.lights || activeLevel.lights.length === 0) return null;
 
-  const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
-  const origin1 = grid.mapFromCellPoint({ cellX: 1, cellY: 0 });
+  const origin0 = grid.mapFromGeometryPoint({ cellX: 0, cellY: 0 });
+  const origin1 = grid.mapFromGeometryPoint({ cellX: 1, cellY: 0 });
   const gridScale = Math.abs(origin1.x - origin0.x);
   const safeZoom = zoom > 0 ? zoom : 1;
   const maxDist = Math.min(
@@ -54,7 +54,7 @@ export function findHitLight(grid, activeLevel, mapPos, zoom = 1) {
     if (!light || !light.at) continue;
     // La MÊME conversion que celle qui DESSINE la lampe (`lightMarkers.js`) et son halo
     // (`light.js`) : viser ce qu'on voit. `light.at` est un `CellPoint` (audit du 22/09, E2).
-    const point = grid.mapFromCellPoint(light.at);
+    const point = grid.mapFromGeometryPoint(light.at);
     const dist = Math.hypot(mapPos.x - point.x, mapPos.y - point.y);
     if (dist < maxDist) {
       // Départage stable par identifiant : deux lampes à égalité de distance ne doivent pas

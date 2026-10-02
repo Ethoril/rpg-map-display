@@ -121,8 +121,10 @@ export function applyNetworkEvent(event) {
       if (dimensionValide(payload.widthCells)) dimensions.widthCells = payload.widthCells;
       if (dimensionValide(payload.heightCells)) dimensions.heightCells = payload.heightCells;
       try {
-        // Les pions que la nouvelle grille ne contient plus sont rangés ici aussi : les
-        // `token.reserve` du MJ, qui suivent, les trouveront déjà en réserve.
+        // ⭐ D-11 : la conversion des pions, escaliers et coûts de terrain est reproduite ici, par
+        // la même fonction et depuis l'état local — il n'y a pas d'autre événement. Les pions
+        // rangés le sont ici aussi : les `token.reserve` du MJ, qui suivent, les trouveront déjà
+        // en réserve.
         store.regridLevel(payload.levelId, { grid: payload.grid, ...dimensions });
       } catch (err) {
         console.error(

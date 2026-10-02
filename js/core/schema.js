@@ -867,7 +867,9 @@ export function validateCampaign(campaign) {
         typeof level.grid !== 'object' ||
         (level.grid.type !== 'square' && level.grid.type !== 'hex') ||
         !Number.isFinite(level.grid.offsetX) ||
-        !Number.isFinite(level.grid.offsetY)
+        !Number.isFinite(level.grid.offsetY) ||
+        // Amendement D-11 : décalage du réseau hexagonal, optionnel, en pixels carte.
+        (level.grid.hexShiftX !== undefined && !Number.isFinite(level.grid.hexShiftX))
       ) {
         errors.push(`Étage "${levelId || 'inconnu'}" : configuration de grille invalide`);
       } else if (level.grid.color !== undefined && !isValidHexColor(level.grid.color)) {

@@ -27,9 +27,9 @@ function fauxContexte() {
   return ctx;
 }
 
-/** Adaptateur minimal, carré à 100 px : `light.at` est un `CellPoint`, lu par `mapFromCellPoint`. */
+/** Adaptateur minimal, carré à 100 px : `light.at` est un `CellPoint`, lu par `mapFromGeometryPoint` (D-11). */
 const GRID = /** @type {any} */ ({
-  mapFromCellPoint: (/** @type {{cellX: number, cellY: number}} */ { cellX, cellY }) => ({ x: cellX * 100, y: cellY * 100 }),
+  mapFromGeometryPoint: (/** @type {{cellX: number, cellY: number}} */ { cellX, cellY }) => ({ x: cellX * 100, y: cellY * 100 }),
 });
 
 test('LightMarkersLayer dessine les DEUX états, allumée et éteinte, avec des couleurs distinctes', () => {
@@ -95,11 +95,13 @@ for (const type of /** @type {const} */ (['square', 'hex'])) {
   test(`E2 (${type}) : marqueur, zone de tap et halo d’une lampe au même point`, () => {
     const level = createLevel({
       id: 'e2', widthCells: 10, heightCells: 10, pxPerCell: 100,
-      grid: { type, offsetX: 30, offsetY: 20, color: '#000000', opacity: 0.25, visible: true },
+      grid: { type, offsetX: 30, offsetY: 20, color: '#000000', opacity: 0.25, visible: true, hexShiftX: type === 'hex' ? -25 : 0 },
       lights: [{ id: 'uvtt', at: { cellX: 4.5, cellY: 2.5 }, range: 3, intensity: 1, color: '#ffffff', shadows: true, on: true }],
     });
     const grid = gridFor(level);
     const halo = collectLightSources(level, [], grid)[0].center;
+    // D-11 : la lampe est lue en carré dans les deux pavages, décalage du réseau hexagonal compris.
+    assert.deepEqual(halo, { x: 30 + 4.5 * 100, y: 20 + 2.5 * 100 });
 
     const ctx = fauxContexte();
     new LightMarkersLayer().render(/** @type {any} */ (ctx), grid, level, { zoom: 1 });

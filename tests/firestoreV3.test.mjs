@@ -257,3 +257,31 @@ test('C-15 — numéros d’exemplaire et compteur de campagne survivent à l’
   assert.equal(relu.campaign.tokens[0].copyNumber, 2);
   assert.deepEqual(relu.campaign.settings, { copyCounters: { gob: 3 } });
 });
+
+test('D-11 — le décalage du réseau hexagonal survit à l’aller-retour Firestore v3, et la validation le borne', async () => {
+  // Même trou que C-15 : un champ que le découpage v3 n'écrirait pas disparaîtrait au premier F5 du
+  // MJ — et les hexagones reviendraient sur les murs.
+  const schema = await import('../js/core/schema.js');
+  const campaign = schema.createCampaign({
+    campaignId: 'd11',
+    name: 'D11',
+    levels: [schema.createLevel({ id: 'l1', name: 'N', grid: { type: 'hex', hexShiftX: -35 } })],
+  });
+  assert.deepEqual(schema.validateCampaign(campaign), []);
+  const v3 = splitSnapshotForFirestoreV3({ campaign, activeLevelId: 'l1' }, 's1', 5);
+  const relu = joinSnapshotFromFirestoreV3(
+    v3.parent,
+    v3.levels.map((/** @type {any} */ e) => ({ id: e.id, data: e.data })),
+    v3.tokens.map((/** @type {any} */ e) => ({ id: e.id, data: e.data })),
+    v3.state
+  );
+  assert.equal(relu.campaign.levels[0].grid.hexShiftX, -35);
+  // Et le repli LocalStorage, qui est du JSON.
+  assert.equal(JSON.parse(JSON.stringify(campaign)).levels[0].grid.hexShiftX, -35);
+
+  for (const invalide of [Number.NaN, Infinity, '-35']) {
+    const fausse = structuredClone(campaign);
+    fausse.levels[0].grid.hexShiftX = /** @type {any} */ (invalide);
+    assert.notDeepEqual(schema.validateCampaign(fausse), [], `hexShiftX ${String(invalide)} accepté`);
+  }
+});

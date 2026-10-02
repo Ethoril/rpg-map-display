@@ -57,7 +57,7 @@ export class LightMarkersLayer {
     ctx.save();
     for (const light of level.lights) {
       if (!light || !light.at) continue;
-      // ⛔ Le marqueur se pose LÀ OÙ LA LAMPE ÉCLAIRE : `mapFromCellPoint(light.at)`, exactement
+      // ⛔ Le marqueur se pose LÀ OÙ LA LAMPE ÉCLAIRE : `mapFromGeometryPoint(light.at)`, exactement
       // comme le halo (`light.js`) — audit du 22/09, E2. `light.at` est un `CellPoint` à la
       // convention de l'UVTT, où 4,5 désigne le centre de la case 4. Le lire comme un `Cell`
       // (`cellCenter({a: at.cellX, …})`) décalait d'une demi-case toute lampe importée.
@@ -67,7 +67,7 @@ export class LightMarkersLayer {
       const point =
         options.dragPreview?.lightId === light.id
           ? options.dragPreview.mapPos
-          : grid.mapFromCellPoint(light.at);
+          : grid.mapFromGeometryPoint(light.at);
       // ⭐ Booléen à deux états, jamais un troisième : `on !== false` traite une valeur absente
       // comme allumée, ceinture de la normalisation faite par `schema.normalizeLevel`.
       const on = light.on !== false;

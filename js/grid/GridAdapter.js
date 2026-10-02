@@ -20,18 +20,32 @@
  *
  * @property {(cp: CellPoint) => MapPoint} mapFromCellPoint
  *   Unité de case fractionnaire → pixels carte. Applique `pxPerCell` ET l'offset issu de
- *   `map_origin`. Sert au rendu des murs, portails et lumières importés.
- *   ⭐ Rend le COIN de la case — le même point sur les deux pavages (C-5,
- *   `docs/QUESTIONS-EN-ATTENTE.md`) : les entiers dénotent l'origine de la grille, pas son
- *   centre, en carré comme en hexagonal. C'est la convention de l'UVTT (murs, portes,
- *   lampes en coordonnées de coin) ; **pour un centre, appeler `pointFromCell` /
+ *   `map_origin`, et en hexagonal le décalage `hexShiftX` du réseau.
+ *   ⭐ Rend le COIN de la case (C-5, `docs/QUESTIONS-EN-ATTENTE.md`) : les entiers dénotent
+ *   l'origine de la grille, pas son centre. **Pour un centre, appeler `pointFromCell` /
  *   `cellCenter`, jamais celle-ci.** Ne jamais déduire une boîte englobante par différence
  *   de deux appels — voir `cellBounds`.
+ *   ⛔ **Lecture de la GRILLE courante** (odd-r et pas √3/2 en hexagonal) : elle sert aux
+ *   positions de pions. Un sommet de mur, une extrémité de portail ou une lumière posée se
+ *   lisent par `mapFromGeometryPoint` (amendement D-11, `docs/CONVENTIONS.md` §1).
+ *
+ * @property {(cp: CellPoint) => MapPoint} mapFromGeometryPoint
+ *   Géométrie d'étage (murs, portails, lumières posées) → pixels carte. **Toujours lue en
+ *   carré**, quel que soit le pavage : `offsetX + cellX × pxPerCell`, `offsetY + cellY ×
+ *   pxPerCell` (amendement D-11). La géométrie appartient à l'image, pas à la grille :
+ *   changer de pavage ne la déplace pas d'un pixel. ⛔ `hexShiftX` n'y entre pas — c'est le
+ *   réseau des hexagones qu'il décale par rapport à elle.
+ *
+ * @property {(p: MapPoint) => CellPoint} geometryPointFromMap
+ *   Réciproque exacte de `mapFromGeometryPoint`. Sert à l'éditeur de murs et à la pose de
+ *   lumière.
  *
  * @property {() => {width: number, height: number}} mapExtent
  *   Étendue de la carte en pixels, **mesurée depuis l'origine de l'espace carte (0,0)** —
  *   l'offset de la grille y est donc inclus. C'est la taille sur laquelle on cadre la
  *   caméra. ⛔ **Pas** celle vers laquelle on agrandit un masque : voir `maskRect`.
+ *   ⭐ C'est le **cadre de l'image** (fond, vidéo, caméra) : il ne dépend pas de `hexShiftX`
+ *   (D-11). Décaler le réseau des hexagones ne déplace pas l'image.
  *
  * @property {() => {x: number, y: number}} cellPitch
  *   Pas de la grille en pixels carte, PAR AXE : écart entre deux colonnes (`x`) et entre deux
@@ -46,6 +60,15 @@
  *   compris**, et non en (0,0). ⛔ Étirer un masque sur `mapExtent()` le décalait d'autant
  *   qu'il y a d'offset — jusqu'à une demi-case de vision au-delà d'un mur (audit du 22/09,
  *   A1). Ce qui est hors de ce rectangle n'est couvert par aucun masque.
+ *   ⭐ **C'est aussi l'origine du masque** : tout ce qui projette des pixels carte dans un masque
+ *   (révélation, vision, champ lumineux, pinceau) prend `(maskRect().x, maskRect().y)`. En
+ *   hexagonal décalé (D-11), elle diffère de `mapFromCellPoint({cellX: 0, cellY: 0})` : le masque
+ *   reste calé sur l'image, de dimensions figées, et c'est le réseau qui se décale par rapport à lui.
+ *
+ * @property {() => number} maskLatticeShift
+ *   Décalage horizontal du réseau des cases par rapport à l'origine du masque, en colonnes
+ *   (`hexShiftX / pxPerCell`, 0 en carré). Le seul renseignement dont `isCellVisibleInMask`, qui
+ *   ne connaît pas la grille, a besoin pour retrouver le centre d'une case dans le masque (D-11).
  *
  *   ⛔ **Ne JAMAIS la reconstituer par `mapFromCellPoint({cellX: widthCells, cellY: heightCells})`.**
  *   Ce point porte le décalage odd-r `0,5 × (rangée & 1)`, qui dit où commence une rangée
@@ -55,7 +78,8 @@
  *   à six endroits qui recopiaient tous la même erreur.
  *
  * @property {(p: MapPoint) => CellPoint} cellPointFromMap
- *   Réciproque. Sert à l'éditeur de murs du lot 2.
+ *   Réciproque, dans la lecture de la grille courante. ⛔ Jamais pour la géométrie d'étage :
+ *   voir `geometryPointFromMap`.
  *
  * @property {(cell: Cell) => MapPoint} cellCenter
  *   Cellule → CENTRE de la case, en pixels carte. Sans ambiguïté par construction (G-1) :

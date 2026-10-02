@@ -285,6 +285,8 @@ const fabrique = (w, h) => createMockCanvas(w, h);
 const ADAPTATEUR = {
   /** @param {{cellX: number, cellY: number}} p */
   mapFromCellPoint: (p) => ({ x: p.cellX * 100, y: p.cellY * 100 }),
+  /** @param {{cellX: number, cellY: number}} p Lecture de la géométrie (D-11), carrée elle aussi */
+  mapFromGeometryPoint: (p) => ({ x: p.cellX * 100, y: p.cellY * 100 }),
   /** @param {{cellX: number, cellY: number}} cp @param {number} sizeCells */
   cellBounds: (cp, sizeCells) => {
     const size = Math.max(1, sizeCells || 1);
@@ -1336,4 +1338,33 @@ test('H10. Le halo réduit suit la révision du masque VISIBLE, muté en place',
   const sans = rendre(level, options, true).ctx;
   assert.ok(rgbAu(ctx, 560, 500).red > rgbAu(sans, 560, 500).red + 40, 'la zone désormais vue reçoit le halo');
   assert.deepEqual(rgbAu(ctx, 480, 500), rgbAu(sans, 480, 500), '⛔ la zone qui n’est plus vue n’en garde rien');
+});
+
+test('D-11 : en hexagonal décalé, le champ lumineux se compose dans un masque calé sur l’image', () => {
+  // Le champ se pose sur `maskRect()` (render) : il doit être composé depuis la MÊME origine. Celle
+  // du réseau, reculée de 25 px, décalerait toute lampe de 25 px vers la droite à l'écran.
+  const level = createLevel({
+    id: 'hex-d11', widthCells: 10, heightCells: 10, pxPerCell: 100,
+    grid: { type: 'hex', offsetX: 0, offsetY: 0, hexShiftX: -25 },
+    lights: [{ id: 'l1', at: { cellX: 3, cellY: 3 }, range: 4, intensity: 1, color: '#ffffff', shadows: true, on: true }],
+    ambient: { level: 0, baked: false },
+  });
+  const grid = gridFor(level);
+  const couche = new LightLayer({ createCanvas: fabrique });
+  /** @type {any[]} */
+  const appels = [];
+  // Le champ n'existe qu'après le premier `update` : on l'enrobe au premier passage.
+  couche.update(grid, level, []);
+  const field = champDe(couche);
+  const composer = field.compose.bind(field);
+  field.compose = (/** @type {any} */ sources, /** @type {any} */ options) => {
+    appels.push({ sources, options });
+    return composer(sources, options);
+  };
+  couche.update(grid, { ...level, lights: [{ ...level.lights[0], range: 5 }] }, []);
+  assert.equal(appels.length, 1);
+  const { sources, options } = appels[0];
+  assert.deepEqual(options.mapOrigin, { x: grid.maskRect().x, y: grid.maskRect().y });
+  // La lampe, lue en carré, tombe donc au pixel de masque 8 × 3 = 24 sur X.
+  assert.equal(((sources[0].center.x - options.mapOrigin.x) * 8) / options.gridScaleX, 24);
 });

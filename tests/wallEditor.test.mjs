@@ -109,6 +109,30 @@ describe('Tranche L-07 — Éditeur minimal de murs (Unit tests)', () => {
     });
   });
 
+  // D-11 : sous des hexagones, la géométrie se lit toujours en carré — l'accrochage vise les coins
+  // du quadrillage carré, invisible, et non le réseau odd-r (décalé d'une demi-case une rangée sur
+  // deux, au pas de √3/2).
+  describe('1ter. Étage hexagonal : accrochage aux coins du quadrillage carré (D-11)', () => {
+    const hexa = () => {
+      const base = makeTestCampaign().levels[0];
+      const level = { ...base, pxPerCell: 100, grid: { ...base.grid, type: /** @type {const} */ ('hex'), hexShiftX: -25 } };
+      return { level, grid: gridFor(level) };
+    };
+
+    it('le coin accroché est le coin carré sous le doigt, en rangée impaire comme paire', () => {
+      const { level, grid } = hexa();
+      assert.deepEqual(snapWallVertex({ x: 304, y: 296 }, level, grid), { cellX: 3, cellY: 3 });
+      assert.deepEqual(snapWallVertex({ x: 498, y: 503 }, level, grid), { cellX: 5, cellY: 5 });
+    });
+
+    it('le mur se trouve là où il est dessiné, en carré', () => {
+      const { level, grid } = hexa();
+      // Le mur (0,0)→(4,0) est sur y = 0, de x = 0 à 400, quel que soit le pavage.
+      assert.ok(findWallAt({ x: 390, y: 3 }, level, grid));
+      assert.deepEqual(grid.mapFromGeometryPoint({ cellX: 4, cellY: 0 }), { x: 400, y: 0 });
+    });
+  });
+
   describe('2. Mesure des arêtes bloquées (§1)', () => {
     it('y = 3 — frontière de case entière : exactement 14 arêtes bloquées', () => {
       const level = createLevel({

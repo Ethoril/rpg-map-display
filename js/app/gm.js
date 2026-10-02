@@ -356,7 +356,9 @@ export async function bootstrapGMApp(options = {}) {
     });
 
     // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
-    const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+    // Origine du MASQUE, pas du réseau : en hexagonal décalé (D-11) elles diffèrent.
+    const { x: maskX, y: maskY } = grid.maskRect();
+    const origin0 = { x: maskX, y: maskY };
     const { x: gridScaleX, y: gridScaleY } = grid.cellPitch();
 
     // La règle du mode tactique, assemblée une seule fois et servie deux fois : au masque
@@ -557,7 +559,8 @@ export async function bootstrapGMApp(options = {}) {
       origins,
       extractBlockedSegments(level, grid),
       rangePx,
-      origin0,
+      // Origine du MASQUE, pas du réseau : en hexagonal décalé (D-11) elles diffèrent.
+      { x: grid.maskRect().x, y: grid.maskRect().y },
       gridScaleX,
       gridScaleY
     );
@@ -1462,7 +1465,9 @@ export async function bootstrapGMApp(options = {}) {
 
       const grid = gridFor(activeLevel);
       // ⛔ DEUX échelles, jamais une seule — E-11 : voir `js/vision/fog.js`.
-      const origin0 = grid.mapFromCellPoint({ cellX: 0, cellY: 0 });
+      // Origine du MASQUE, pas du réseau : en hexagonal décalé (D-11) elles diffèrent.
+      const { x: maskX, y: maskY } = grid.maskRect();
+      const origin0 = { x: maskX, y: maskY };
       const { x: gridScaleX, y: gridScaleY } = grid.cellPitch();
 
       const radiusCells = gmPanel?.fogTools?.getBrushRadiusCells() ?? 1;
@@ -1688,7 +1693,7 @@ export async function bootstrapGMApp(options = {}) {
             // ⛔ Le CENTRE de la case tapée, en `CellPoint` (audit du 22/09, E2). `light.at` est un
             // point fractionnaire à la convention de l'UVTT — `{cellX: a, cellY: b}` en désigne le
             // COIN, et le halo éclairait depuis là.
-            at: grid.cellPointFromMap(grid.cellCenter(cell)),
+            at: grid.geometryPointFromMap(grid.cellCenter(cell)),
             ...LIGHT_DEFAULT,
           };
           store.placeLight(activeLevel.id, light);
@@ -1931,14 +1936,14 @@ export async function bootstrapGMApp(options = {}) {
 
       // Relâchée dans sa propre case : rien ne bouge et rien ne part (décision du 02/10/2026).
       // Recentrer la lampe déplacerait en douce une lampe importée hors centre.
-      const currentCell = grid.cellFromPoint(grid.mapFromCellPoint(light.at));
+      const currentCell = grid.cellFromPoint(grid.mapFromGeometryPoint(light.at));
       if (currentCell && currentCell.a === targetCell.a && currentCell.b === targetCell.b) {
         requestRender();
         return;
       }
 
       // Le centre de la case d'arrivée, comme à la pose (E2).
-      const at = grid.cellPointFromMap(grid.cellCenter(targetCell));
+      const at = grid.geometryPointFromMap(grid.cellCenter(targetCell));
       store.moveLight(levelId, intention.lightId, at);
       transport?.publish({
         type: 'light.move',

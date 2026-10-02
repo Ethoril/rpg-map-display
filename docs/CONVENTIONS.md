@@ -57,6 +57,29 @@ MapPoint  ⇄ ScreenPoint   →  Camera uniquement        (js/render/camera.js)
 > de `map_origin`**. Oublier l'offset est le second piège UVTT. Il n'a lieu qu'à un seul
 > endroit, donc il ne peut être oublié qu'une fois.
 
+> **Amendement D-11 (02/10/2026) — la géométrie se lit toujours en carré.** Un `CellPoint` a
+> **deux lectures**, et le nom de la conversion dit laquelle :
+>
+> | Ce qui est converti | Conversion (`js/grid/*`) | Lecture |
+> |---|---|---|
+> | **géométrie d'étage** — murs, portails, lumières posées | `mapFromGeometryPoint` / `geometryPointFromMap` | **toujours carrée** : `origine + cellX × pxPerCell`, `origine + cellY × pxPerCell`, quel que soit `grid.type` |
+> | **position de pion** (ancre fractionnaire d'animation, emprise) | `mapFromCellPoint` / `cellPointFromMap` | celle de la grille courante (odd-r et pas √3/2 en hexagonal) |
+>
+> La géométrie appartient à l'**image**, pas à la grille : changer de pavage ne la déplace pas
+> d'un pixel, et c'est déjà la convention UVTT (`pixels_per_grid`). L'origine de la géométrie est
+> `(grid.offsetX, grid.offsetY)` dans les deux pavages, et `mapExtent()` (le cadre de l'image) en
+> dépend seul. Le réseau des hexagones peut en être **décalé** par le champ optionnel
+> `grid.hexShiftX` (pixels carte, 0 par défaut — l'exception est à ajouter à la liste ci-dessous) :
+> le passage en hexagones depuis le panneau MJ le pose à `−pxPerCell / 4`, pour qu'aucun centre
+> d'hexagone ne tombe sur une bordure de case carrée, là où passent les murs ; le retour en carré
+> le remet à 0. Une carte nativement hexagonale (grille dessinée dans l'image) garde 0.
+> Mesure et garantie : D-11 de `QUESTIONS-EN-ATTENTE.md`.
+>
+> ⚠ Les deux lectures partagent la forme `{cellX, cellY}` : le compilateur ne les distingue pas.
+> Renommer les propriétés de la géométrie aurait changé le format persisté de tous les murs ; le
+> garde-fou est donc le **nom de la conversion**. Passer un sommet de mur à `mapFromCellPoint`, ou
+> une ancre de pion à `mapFromGeometryPoint`, est un bug — le test d'architecture le surveille.
+
 Additionner une valeur de deux espaces différents est un bug, jamais une optimisation.
 Une fonction ne renvoie jamais des coordonnées sans que son nom ou son JSDoc dise dans
 quel espace.
@@ -71,7 +94,8 @@ Exceptions explicites, et rien d'autre :
 - `pxPerCell` dans le document d'étage, et les dimensions du masque de fog ;
 - `Template.origin`, un `MapPoint` persisté et transmis par `template.move` (amendement
   L-10 du cahier des charges) ;
-- `ping.mapPos`, un `MapPoint` transmis (cahier des charges §7).
+- `ping.mapPos`, un `MapPoint` transmis (cahier des charges §7) ;
+- `grid.hexShiftX`, le décalage en pixels carte du réseau hexagonal (amendement D-11, §1).
 
 Conséquence assumée (tranché le 22/09/2026) : recaler la grille d'un étage laisse les pions
 sur leurs cases, mais les gabarits restent sur leurs pixels et se décalent par rapport aux
@@ -180,8 +204,16 @@ toutes deux obtenues par `grid.mapFromCellPoint()`. Cette conversion vit dans
 `js/vision/fog.js` et nulle part ailleurs.
 
 ⚠ **L'origine du masque ne correspond pas forcément au point (0, 0) de la carte** : un étage
-peut porter un décalage. Prendre `grid.mapFromCellPoint({ cellX: 0, cellY: 0 })`, ne jamais la
-supposer nulle.
+peut porter un décalage. Prendre `grid.maskRect()` (son `x`, `y`), ne jamais la supposer nulle.
+
+> **Amendement D-11 (02/10/2026, validé par le mainteneur).** L'origine du masque était
+> `grid.mapFromCellPoint({ cellX: 0, cellY: 0 })`. En hexagonal décalé (`grid.hexShiftX`), ce point
+> suit le réseau, et le masque laissait au bord droit de l'image une bande d'un quart de case
+> toujours voilée. Le masque se cale désormais sur le **cadre de l'image** : `maskRect()` part de
+> `(offsetX, offsetY)`, et c'est le réseau qui est décalé par rapport à lui, de
+> `grid.maskLatticeShift()` colonnes, que reçoit `isCellVisibleInMask`. **La structure figée
+> ci-dessus ne change pas** — mêmes dimensions, même PNG, même format réseau et persisté. En carré
+> et en hexagonal non décalé, les deux origines coïncident.
 
 ---
 

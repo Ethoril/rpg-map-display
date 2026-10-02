@@ -96,7 +96,8 @@ function promptAtCellOf(state, activeLevel, visibleCanvas) {
       maskAlpha,
       activeLevel.widthCells,
       activeLevel.heightCells,
-      activeLevel.grid?.type === 'hex' ? 'hex' : 'square'
+      activeLevel.grid?.type === 'hex' ? 'hex' : 'square',
+      gridFor(activeLevel).maskLatticeShift()
     )
   ) {
     return null;
