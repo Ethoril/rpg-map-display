@@ -560,3 +560,101 @@ test('UX-16 : Réseau — rejouer level.delete converge sans lever', () => {
     console.error = journal;
   }
 });
+
+// ── C-16 : level.grid porte les dimensions recalculées ─────────────────────────────────
+
+test('C-16 : Réseau — level.grid applique widthCells/heightCells, garde les cases et range les pions sortis', () => {
+  setupCampagneTest();
+  const grilleHex = { type: 'hex', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true };
+
+  // Passage en hexagonal : la grille grandit, aucun pion ne sort, aucun ne bouge.
+  assert.equal(
+    applyNetworkEvent({
+      type: 'level.grid',
+      payload: { levelId: 'rdc', grid: grilleHex, widthCells: 10, heightCells: 9 },
+      at: Date.now(),
+      by: 'gm',
+    }),
+    true
+  );
+  let rdc = store.getState().campaign?.levels.find((l) => l.id === 'rdc');
+  assert.equal(rdc?.grid.type, 'hex');
+  assert.equal(rdc?.widthCells, 10);
+  assert.equal(rdc?.heightCells, 9);
+  assert.deepEqual(store.getState().campaign?.tokens.find((t) => t.id === 'garde-rdc')?.cell, { a: 4, b: 4 });
+  assert.equal(store.getReserve().length, 0);
+
+  // Retour en carré sur 4 rangées : le garde (rangée 4) n'est plus dans la grille. Il part en
+  // réserve **ici même** — sinon la validation refuserait la hauteur réduite tant que son
+  // `token.reserve` n'est pas arrivé. Le héros garde sa case ; le spectre est sur un autre étage.
+  const grilleCarree = { ...grilleHex, type: 'square' };
+  assert.equal(
+    applyNetworkEvent({
+      type: 'level.grid',
+      payload: { levelId: 'rdc', grid: grilleCarree, widthCells: 10, heightCells: 4 },
+      at: Date.now(),
+      by: 'gm',
+    }),
+    true
+  );
+  rdc = store.getState().campaign?.levels.find((l) => l.id === 'rdc');
+  assert.equal(rdc?.heightCells, 4);
+  assert.deepEqual(store.getReserve().map((t) => t.id), ['garde-rdc']);
+  assert.deepEqual(store.getState().campaign?.tokens.find((t) => t.id === 'heros-rdc')?.cell, { a: 2, b: 2 });
+  assert.ok(store.getState().campaign?.tokens.some((t) => t.id === 'spectre-et1'));
+
+  // Le `token.reserve` du MJ, qui suit, et le rejeu de `level.grid` : inoffensifs.
+  assert.equal(
+    applyNetworkEvent({ type: 'token.reserve', payload: { tokenId: 'garde-rdc' }, at: Date.now(), by: 'gm' }),
+    false
+  );
+  applyNetworkEvent({
+    type: 'level.grid',
+    payload: { levelId: 'rdc', grid: grilleCarree, widthCells: 10, heightCells: 4 },
+    at: Date.now(),
+    by: 'gm',
+  });
+  assert.deepEqual(store.getReserve().map((t) => t.id), ['garde-rdc']);
+  assert.equal(store.getState().campaign?.tokens.filter((t) => t.levelId === 'rdc').length, 1);
+});
+
+test('C-16 : Réseau — un level.grid sans dimensions, ou avec des dimensions invalides, les laisse intactes', () => {
+  setupCampagneTest();
+  const grille = { type: 'square', offsetX: 0, offsetY: 0, color: '#ff0000', opacity: 0.5, visible: true };
+
+  applyNetworkEvent({ type: 'level.grid', payload: { levelId: 'rdc', grid: grille }, at: Date.now(), by: 'gm' });
+  let rdc = store.getState().campaign?.levels.find((l) => l.id === 'rdc');
+  assert.equal(rdc?.grid.color, '#ff0000', 'la couleur, elle, est appliquée');
+  assert.equal(rdc?.widthCells, 10);
+  assert.equal(rdc?.heightCells, 8);
+
+  for (const invalide of [0, -3, 2.5, '7', null]) {
+    applyNetworkEvent({
+      type: 'level.grid',
+      payload: { levelId: 'rdc', grid: grille, widthCells: invalide, heightCells: invalide },
+      at: Date.now(),
+      by: 'gm',
+    });
+    rdc = store.getState().campaign?.levels.find((l) => l.id === 'rdc');
+    assert.equal(rdc?.widthCells, 10, `widthCells ${String(invalide)} aurait dû être ignoré`);
+    assert.equal(rdc?.heightCells, 8, `heightCells ${String(invalide)} aurait dû être ignoré`);
+  }
+  assert.equal(store.getReserve().length, 0);
+});
+
+test('C-16 : regridLevel applique la règle de bornes D-8 — en hexagonal, seul l’ancrage compte', () => {
+  store.resetStore();
+  const level = createLevel({ id: 'plaine', widthCells: 10, heightCells: 10, pxPerCell: 100 });
+  const grand = createToken({ id: 'ogre', levelId: 'plaine', kind: 'npc', cell: { a: 3, b: 4 }, sizeCells: 2 });
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [grand] }));
+  store.selectLevel('plaine');
+
+  // Hexagonal sur 5 rangées : l'ancrage (rangée 4) est dans la grille, l'ogre reste.
+  const rangesHex = store.regridLevel('plaine', { grid: { type: 'hex' }, heightCells: 5 });
+  assert.deepEqual(rangesHex, []);
+
+  // Carré sur 5 rangées : le bloc 2 × 2 déborde de la dernière rangée, il part en réserve.
+  const rangesCarre = store.regridLevel('plaine', { grid: { type: 'square' }, heightCells: 5 });
+  assert.deepEqual(rangesCarre, ['ogre']);
+  assert.deepEqual(store.getReserve()[0]?.cell, { a: 3, b: 4 }, 'le pion rangé garde sa case');
+});

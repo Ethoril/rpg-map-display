@@ -7,6 +7,7 @@ import { parseUvtt } from '../js/import/uvtt.js';
 import { createCampaign, createLevel, validateCampaign } from '../js/core/schema.js';
 import { resample, imageDimensions, MAX_PREPARED_TEXTURE_PX, WEBP_QUALITY } from './resample.mjs';
 import { ambianceProposee } from '../js/import/ambianceImage.js';
+import { cellDimensionsForGridType } from '../js/grid/index.js';
 import { videoWarnings } from './videoProbe.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -697,6 +698,16 @@ export async function buildDecorLevel(imagePath, lvlSpec, generatedDir, targetPx
     // doubler, ce qui n'est pas le cas ici — on ne sait simplement rien de l'éclairage.
     ambient: { level: 1, baked: false },
   });
+  // ⭐ En hexagonal, les rangées du nom ne couvrent pas l'image : 28 rangées au pas de √3/2 case
+  // laissaient 105 px de la ferme isolée hors de la grille, et le « contain » du fond la
+  // rapetissait d'autant (C-16). La hauteur se recalcule depuis l'image rééchantillonnée, par la
+  // même fonction que le changement de pavage du panneau MJ.
+  if (pavageHex) {
+    level.heightCells = cellDimensionsForGridType(level, 'hex', {
+      width: resampleResult.width,
+      height: resampleResult.height,
+    }).heightCells;
+  }
 
   return {
     level,

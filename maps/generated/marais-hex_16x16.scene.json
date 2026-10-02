@@ -10,7 +10,7 @@
       "imageUrl": "maps/generated/marais-hex_16x16.webp",
       "pxPerCell": 140,
       "widthCells": 16,
-      "heightCells": 16,
+      "heightCells": 19,
       "grid": {
         "type": "hex",
         "offsetX": 0,

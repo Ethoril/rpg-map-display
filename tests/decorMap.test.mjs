@@ -247,11 +247,14 @@ test('un marqueur « hex » dans le nom pose une grille hexagonale sur la carte-
       'en hexagonal, le quadrillage peint est carré : il ne remplace pas celui de l’application'
     );
 
-    // ⛔ Le marqueur ne touche ni les cases ni la densité. `pxPerCell` reste la largeur d'un
+    // ⛔ Le marqueur ne touche ni les colonnes ni la densité. `pxPerCell` reste la largeur d'un
     // hexagone ; c'est `HexGrid` qui en déduit le pas vertical.
     assert.equal(a.level.widthCells, 10);
-    assert.equal(a.level.heightCells, 10);
     assert.equal(a.level.pxPerCell, b.level.pxPerCell);
+    // ⭐ Les rangées, si (C-16) : 10 rangées au pas de √3/2 case ne couvrent que 866 px des 1 000
+    // de l'image, et le fond rapetissait d'autant. Il en faut 12, arrondi au-dessus.
+    assert.equal(a.level.heightCells, 12, 'la grille hexagonale doit couvrir toute l’image');
+    assert.equal(b.level.heightCells, 10, 'en carré, les rangées du nom couvrent déjà l’image');
 
     // Et le mot ne doit pas être attrapé au milieu d'un autre : « Hexenwald » n'est pas « hex ».
     const piege = path.join(dir, 'hexenwald_10x10.png');

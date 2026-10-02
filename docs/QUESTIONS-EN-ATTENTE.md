@@ -1023,6 +1023,34 @@ bibliothèque ; un simple outil pour montrer en grand l'image d'un monstre.
 >
 > ⏳ **À éprouver sur le vrai Firebase et la tablette** : les e2e passent par le transport de test.
 
+### C-16 Changer de pavage ne touche jamais à la carte — demande du mainteneur, 02/10/2026
+
+« L'outil doit poser les hexagones de la taille voulue, et s'il y a plus d'hexagones qu'il n'y
+aurait eu de cases, c'est totalement ok. Mais la carte ne doit jamais changer. »
+
+**Le constat.** Le sélecteur de pavage du panneau MJ ne changeait que `grid.type` : 50 × 50 cases
+carrées devenaient 50 × 50 hexagones, soit 6 062 px de haut au lieu de 7 000. Le fond, posé en
+« contain » sur `mapExtent()`, rapetissait de 13 % et laissait deux bandes grises que la grille
+couvrait (Barrage — Ulric). ⚠ Deux cartes publiées par l'outil de préparation ont le même défaut :
+`ferme-isolee` (28 rangées au lieu de 29) et `marais-hex_16x16` (16 au lieu de 19).
+
+> ## ✅ TRANCHÉ le 02/10/2026, en séance de choix multiples
+>
+> - **L'image est la vérité.** Changer de pavage recalcule le nombre de cases depuis l'image, au
+>   pas de la nouvelle grille ; la carte n'est jamais réduite ni déplacée.
+> - **`level.grid` est élargi** : il porte en plus `widthCells` et `heightCells` (amendement C-16
+>   du §7 du cahier des charges). Pas de nouvel événement.
+> - **Pions : même case, sinon réserve.** Chaque pion garde ses coordonnées de case ; ceux que la
+>   nouvelle grille ne contient plus partent en réserve (`token.reserve`). **Le brouillard de
+>   l'étage est réinitialisé**, son masque étant calé sur l'ancien pavage.
+>
+> ⭐ **Appliqué sans nouvel arbitrage** : la largeur de l'image vaut `widthCells × pxPerCell` dans
+> les deux pavages (`mapExtent().width` ne dépend pas du type) ; elle ne change donc jamais. Seule
+> la hauteur est recalculée — **arrondie au-dessus**, pour que la grille couvre toute l'image et que
+> le « contain » rende une échelle de 1 exactement. La proportion vient des dimensions naturelles
+> de l'image ; sans image, de l'étendue courante. Les deux cartes hexagonales publiées sont
+> corrigées, et l'outil de préparation calcule désormais la hauteur au pas hexagonal.
+
 ### C-15 Exemplaires numérotés — demande du mainteneur, 01/10/2026
 
 « Quand j'instancie plusieurs exemplaires d'un même pion, je voudrais que l'outil leur attribue un

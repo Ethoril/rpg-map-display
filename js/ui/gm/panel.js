@@ -17,6 +17,7 @@ import {
   TOKEN_TORCH_DEFAULT,
 } from '../../core/constants.js';
 import { isStatusMarker } from '../../core/schema.js';
+import { cellDimensionsForGridType } from '../../grid/index.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
@@ -39,6 +40,31 @@ import * as store from '../../state/store.js';
  * @property {() => import('../../state/presence.js').ClientPresence[]} [getOtherGmSessions]
  * @property {() => boolean} [onEvictOtherGms]
  */
+
+/**
+ * Dimensions naturelles de l'image d'un étage, ou `null` sans image lisible (C-16).
+ *
+ * ⚠ `load` et non `decode()` : seules les dimensions servent, et décoder une carte de
+ * 7 000 px coûte des centaines de millisecondes pour rien (Chantier N). L'image est d'ordinaire
+ * déjà dans le cache du navigateur, puisque le fond l'affiche.
+ *
+ * @param {string|null|undefined} url
+ * @returns {Promise<{width: number, height: number}|null>}
+ */
+function naturalImageSize(url) {
+  if (!url) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () =>
+      resolve(
+        img.naturalWidth > 0 && img.naturalHeight > 0
+          ? { width: img.naturalWidth, height: img.naturalHeight }
+          : null
+      );
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
 
 /**
  * Monte le panneau latéral complet de la vue MJ.
@@ -1153,28 +1179,33 @@ export function createGMPanel(container, options = {}) {
   const gridOpacityInput = /** @type {HTMLInputElement} */ (container.querySelector('#grid-opacity'));
   const gridOpacityVal = /** @type {HTMLElement} */ (container.querySelector('#grid-opacity-val'));
 
-  function updateGridFromUI() {
-    const visible = gridVisibleInput.checked;
-    // ⛔ Lu depuis le champ, jamais figé. Cette ligne a valu `'square'` en dur pendant tout le
-    // temps où `HexGrid` n'existait pas ; la rendre constante à nouveau ferait de la liste un
-    // décor qui ne change rien, ce qu'aucune vérification d'affichage ne verrait.
-    const type = /** @type {import('../../core/types.js').GridType} */ (
-      gridTypeSelect.value === 'hex' ? 'hex' : 'square'
-    );
-    const color = gridColorInput.value;
-    const opacity = parseFloat(gridOpacityInput.value);
-
-    gridOpacityVal.textContent = String(opacity);
-
+  /**
+   * Configuration de grille lue dans les champs, au pavage donné.
+   *
+   * @param {import('../../core/types.js').GridType} type
+   */
+  function gridConfigFromUI(type) {
     const activeLvl = store.getActiveLevel();
-    const gridConfig = {
-      visible,
+    return {
+      visible: gridVisibleInput.checked,
       type,
-      color,
-      opacity,
+      color: gridColorInput.value,
+      opacity: parseFloat(gridOpacityInput.value),
       offsetX: activeLvl?.grid?.offsetX ?? 0,
       offsetY: activeLvl?.grid?.offsetY ?? 0,
     };
+  }
+
+  /**
+   * Couleur, opacité, visibilité : rien de tout cela ne touche aux dimensions (C-16).
+   *
+   * ⚠ Le pavage publié est celui de l'ÉTAGE, pas celui de la liste. Pendant qu'un changement de
+   * pavage attend les dimensions de l'image, la liste annonce déjà le nouveau ; publier sa valeur
+   * ici ferait passer le type sans les dimensions — exactement le défaut que C-16 corrige.
+   */
+  function updateGridFromUI() {
+    const gridConfig = gridConfigFromUI(store.getActiveLevel()?.grid?.type ?? 'square');
+    gridOpacityVal.textContent = String(gridConfig.opacity);
 
     store.updateActiveLevel({ grid: gridConfig });
 
@@ -1192,8 +1223,76 @@ export function createGMPanel(container, options = {}) {
     }
   }
 
+  /** Jeton du dernier changement de pavage demandé : seul le plus récent s'applique. */
+  let jetonPavage = 0;
+
+  /**
+   * Change le pavage de l'étage actif sans toucher à la carte (C-16, `QUESTIONS-EN-ATTENTE.md`).
+   *
+   * Le nombre de rangées se recalcule depuis l'image au pas de la nouvelle grille ; les pions
+   * gardent leur case, ceux que la grille ne contient plus partent en réserve, et le brouillard de
+   * l'étage repart de zéro — son masque était calé sur l'ancien pavage. Même enchaînement que le
+   * remplacement de carte de `importPanel.js` : l'étage, puis un `token.reserve` par pion rangé,
+   * puis le brouillard.
+   */
+  async function updateGridTypeFromUI() {
+    // ⛔ Lu depuis le champ, jamais figé. Cette ligne a valu `'square'` en dur pendant tout le
+    // temps où `HexGrid` n'existait pas ; la rendre constante à nouveau ferait de la liste un
+    // décor qui ne change rien, ce qu'aucune vérification d'affichage ne verrait.
+    const type = /** @type {import('../../core/types.js').GridType} */ (
+      gridTypeSelect.value === 'hex' ? 'hex' : 'square'
+    );
+    const levelId = store.getActiveLevelId();
+    const avant = store.getActiveLevel();
+    if (!levelId || !avant) return;
+
+    const jeton = ++jetonPavage;
+    const imageSize = await naturalImageSize(avant.imageUrl);
+    // Un second changement, ou un changement d'étage, est arrivé pendant le chargement de
+    // l'image : celui-ci est périmé, et l'appliquer écraserait le plus récent.
+    if (jeton !== jetonPavage || store.getActiveLevelId() !== levelId) return;
+
+    const level = store.getActiveLevel();
+    if (!level) return;
+    const { widthCells, heightCells } = cellDimensionsForGridType(level, type, imageSize);
+    const gridConfig = gridConfigFromUI(type);
+
+    /** @type {string[]} */
+    let reservedTokenIds;
+    try {
+      reservedTokenIds = store.regridLevel(levelId, { grid: gridConfig, widthCells, heightCells });
+    } catch (err) {
+      // La liste revient au pavage réel : elle ne doit pas annoncer un changement refusé.
+      gridTypeSelect.value = store.getActiveLevel()?.grid?.type ?? 'square';
+      console.error(
+        `Changement de pavage refusé : ${err instanceof Error ? err.message : String(err)}`
+      );
+      return;
+    }
+
+    if (transport) {
+      await transport.publish({
+        type: 'level.grid',
+        payload: { levelId, grid: gridConfig, widthCells, heightCells },
+        at: Date.now(),
+        by: 'gm',
+      });
+      for (const tokenId of reservedTokenIds) {
+        await transport.publish({
+          type: 'token.reserve',
+          payload: { tokenId },
+          at: Date.now(),
+          by: 'gm',
+        });
+      }
+    }
+
+    // Le changement local a eu lieu : le brouillard suit l'état d'ici, publié ou non.
+    fogTools?.clearFog();
+  }
+
   gridVisibleInput.addEventListener('change', updateGridFromUI, { signal: listeners.signal });
-  gridTypeSelect.addEventListener('change', updateGridFromUI, { signal: listeners.signal });
+  gridTypeSelect.addEventListener('change', () => void updateGridTypeFromUI(), { signal: listeners.signal });
   gridColorInput.addEventListener('input', updateGridFromUI, { signal: listeners.signal });
   gridOpacityInput.addEventListener('input', updateGridFromUI, { signal: listeners.signal });
 

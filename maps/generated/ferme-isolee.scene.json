@@ -10,7 +10,7 @@
       "imageUrl": "maps/generated/ferme-isolee.webp",
       "pxPerCell": 140,
       "widthCells": 38,
-      "heightCells": 28,
+      "heightCells": 29,
       "grid": {
         "type": "hex",
         "offsetX": 0,

@@ -1968,6 +1968,22 @@ d'acceptation du §11.
 >
 > ⏳ **À éprouver à la table** : lisibilité de la pastille sur la TV.
 
+> ### ✅ Chantier C-16 — changer de pavage ne touche plus à la carte, livré le 02/10/2026 (hors §11)
+>
+> Passer un étage de carré à hexagonal (ou l'inverse) recalcule sa hauteur en cases depuis la
+> proportion de l'image, arrondie au-dessus : la carte garde sa taille, plus de bandes grises
+> (Barrage — Ulric, 50 × 50 carrés → 50 × 58 hexagones). `level.grid` porte les dimensions
+> (amendement C-16 du §7) ; les pions gardent leur case, ceux qui sortent vont en réserve, le
+> brouillard est réinitialisé. L'outil de préparation calcule la hauteur au pas hexagonal ;
+> `ferme-isolee` (29 rangées) et `marais-hex_16x16` (19) sont corrigées. **Vérifié par mutation** :
+> proportion de l'image, règle d'ancrage hex D-8, dimensions lues par le récepteur et publiées
+> par le panneau.
+>
+> ⚠ Murs, portes, lumières et liaisons, stockés en unités de case, ne sont pas recalés : sur un
+> étage qui en porte, changer de pavage les décale verticalement (inchangé par rapport à avant).
+> ⏳ **À éprouver à la table** : un étage déjà passé en hex avec l'ancien sélecteur se répare en
+> repassant par carré puis hex.
+
 > ### ✅ Chantier C-9 — le pion monté, livré le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur, arbitrée le jour même en deux séances de choix multiples (trace en C-9 de

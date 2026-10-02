@@ -861,6 +861,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `token.create` / `update` / `delete` | MJ | ponctuel |
 | `portal.toggle` | MJ, joueurs si autorisé | ponctuel — `{levelId, portalId, state}`, état **absolu** |
 | `level.select` | MJ, tablette | ponctuel |
+| `level.grid` | MJ | ponctuel — `{ levelId, grid, widthCells?, heightCells? }`, voir l amendement C-16 |
 | `vision.update` | **Mac seul** | après chaque mouvement, throttlé |
 | `fog.update` | **Mac seul** | throttlé 1 Hz ou à la révélation |
 | `vision.request` | tablette | ponctuel — **sans payload** depuis l'amendement C-8 |
@@ -881,6 +882,8 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `light.place` | **MJ seul** | ponctuel — `{ levelId, light }`, idempotent par identifiant, voir l amendement C-2 |
 | `light.move` | **MJ seul** | ponctuel — `{ levelId, lightId, at }`, position **absolue**, émis par le glisser depuis la tranche 3 (11/09/2026), voir l amendement C-2 |
 | `light.delete` | **MJ seul** | ponctuel — `{ levelId, lightId }`, voir l amendement C-2 |
+
+> **Amendement C-16 (02/10/2026) — changer de pavage ne touche jamais à la carte.** `level.grid` porte, en plus de `{ levelId, grid }`, les dimensions `widthCells` et `heightCells` recalculées par le MJ depuis l'image au pas de la nouvelle grille, la hauteur arrondie au-dessus pour que la grille couvre toute l'image. Les deux champs sont **optionnels** : un `level.grid` qui ne les porte pas (couleur, opacité, visibilité) laisse les dimensions intactes. Quand les dimensions changent, le MJ range en réserve, par autant de `token.reserve` distincts, les pions que la nouvelle grille ne contient plus ; les autres gardent leurs coordonnées de case. Le brouillard de l'étage est réinitialisé. Arbitrage : C-16 de `QUESTIONS-EN-ATTENTE.md`.
 
 > **Amendement L-08 (04/08/2026)** : `template.place` porte `{ template: Template, cells: string[] }` (idempotent, un `id` existant remplace). `template.move` n'est pas émis (`template.place` au même `id` déplace). `template.clear` porte `{ levelId: string }` et efface les gabarits de l'étage.
 

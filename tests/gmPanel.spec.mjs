@@ -538,12 +538,53 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     await expect(page.locator('#grid-type')).toBeEnabled();
     expect((await readGrid())?.type).toBe('square');
 
+    /**
+     * Dimensions de l'étage actif, et échelle à laquelle le « contain » du fond poserait son
+     * image dans l'étendue de la grille — 1 quand la grille couvre toute l'image (C-16).
+     */
+    const readFit = () =>
+      page.evaluate(async () => {
+        const [store, grid] = await Promise.all([
+          import('../js/state/store.js'),
+          import('../js/grid/index.js'),
+        ]);
+        const level = store.getActiveLevel();
+        if (!level) throw new Error('aucun étage actif');
+        const img = new Image();
+        img.src = level.imageUrl;
+        await img.decode();
+        const extent = grid.gridFor(level).mapExtent();
+        const echelleLargeur = extent.width / img.naturalWidth;
+        const echelleContain = Math.min(echelleLargeur, extent.height / img.naturalHeight);
+        return {
+          widthCells: level.widthCells,
+          heightCells: level.heightCells,
+          reduction: echelleContain / echelleLargeur,
+        };
+      });
+    const carre = await readFit();
+    expect(carre.reduction).toBe(1);
+
+    // ⭐ C-16 : le pavage change aussi le nombre de rangées, et l'image n'est jamais réduite. Le
+    // changement attend les dimensions de l'image, d'où l'attente plutôt qu'une lecture immédiate.
     await page.selectOption('#grid-type', 'hex');
-    expect((await readGrid())?.type).toBe('hex');
+    await expect.poll(async () => (await readGrid())?.type).toBe('hex');
+    const hex = await readFit();
+    expect(hex.widthCells).toBe(carre.widthCells);
+    expect(hex.heightCells).toBeGreaterThan(carre.heightCells);
+    expect(hex.reduction, 'le fond rapetisse : la grille hexagonale ne couvre pas l’image').toBe(1);
+    // Le Chevalier, posé plus haut, garde sa case.
+    expect(
+      await page.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        return store.getCampaign()?.tokens.find((/** @type {any} */ t) => t.label === 'Chevalier')?.cell;
+      })
+    ).toEqual({ a: 2, b: 2 });
 
     // Et le retour, sinon on ne prouve que le sens facile.
     await page.selectOption('#grid-type', 'square');
-    expect((await readGrid())?.type).toBe('square');
+    await expect.poll(async () => (await readGrid())?.type).toBe('square');
+    expect(await readFit()).toEqual(carre);
   });
 
   test('PC6 Validation : synchronisation du pion créé et déplacé vers le store', async ({ page }) => {

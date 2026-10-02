@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLevel, createCampaign } from '../js/core/schema.js';
-import { gridFor } from '../js/grid/index.js';
+import { gridFor, cellDimensionsForGridType } from '../js/grid/index.js';
 import { HexGrid } from '../js/grid/HexGrid.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
@@ -435,4 +435,77 @@ test('E-13 : en grille CARRÉE, mapExtent rend exactement ce que rendait le coin
     assert.equal(grille.mapExtent().width, ancien.x, `largeur inchangée à ${heightCells} rangées`);
     assert.equal(grille.mapExtent().height, ancien.y, `hauteur inchangée à ${heightCells} rangées`);
   }
+});
+
+// ── C-16 : changer de pavage ne touche jamais à la carte ──────────────────────────────
+
+/**
+ * @param {'square'|'hex'} type
+ * @param {number} widthCells
+ * @param {number} heightCells
+ */
+function etage(type, widthCells, heightCells) {
+  return createLevel({ grid: { type, offsetX: 0, offsetY: 0 }, pxPerCell: 140, widthCells, heightCells });
+}
+
+test('C-16 : 50 × 50 cases carrées sur une image 7000 × 7000 deviennent 50 × 58 hexagones', () => {
+  const dims = cellDimensionsForGridType(etage('square', 50, 50), 'hex', { width: 7000, height: 7000 });
+  assert.deepEqual(dims, { widthCells: 50, heightCells: 58 });
+  // L'effet, pas le compte : la grille cible couvre toute l'image, donc le « contain » du fond
+  // rend une échelle de 1 — et une rangée de moins ne la couvrirait plus.
+  const cible = gridFor(etage('hex', dims.widthCells, dims.heightCells)).mapExtent();
+  assert.equal(cible.width, 7000);
+  assert.ok(cible.height >= 7000, `étendue ${cible.height} < 7000 : le fond rapetisserait`);
+  assert.ok(gridFor(etage('hex', 50, 57)).mapExtent().height < 7000);
+});
+
+test('C-16 : le retour 50 × 58 hexagones → carré rend 50 × 50', () => {
+  assert.deepEqual(
+    cellDimensionsForGridType(etage('hex', 50, 58), 'square', { width: 7000, height: 7000 }),
+    { widthCells: 50, heightCells: 50 }
+  );
+});
+
+test('⭐ C-16 : l’état cassé 50 × 50 hexagones se répare — la proportion de l’image fait foi, pas l’étendue', () => {
+  const casse = etage('hex', 50, 50);
+  const image = { width: 7000, height: 7000 };
+  assert.deepEqual(cellDimensionsForGridType(casse, 'square', image), { widthCells: 50, heightCells: 50 });
+  assert.deepEqual(cellDimensionsForGridType(casse, 'hex', image), { widthCells: 50, heightCells: 58 });
+});
+
+test('C-16 : les deux cartes hexagonales publiées — 38 × 28 sur 5320 × 3500, 16 × 16 sur 2240 × 2240', () => {
+  assert.equal(
+    cellDimensionsForGridType(etage('hex', 38, 28), 'hex', { width: 5320, height: 3500 }).heightCells,
+    29
+  );
+  assert.equal(
+    cellDimensionsForGridType(etage('hex', 16, 16), 'hex', { width: 2240, height: 2240 }).heightCells,
+    19
+  );
+});
+
+test('C-16 : le même pavage sur des dimensions déjà justes ne change rien', () => {
+  const image = { width: 7000, height: 7000 };
+  assert.deepEqual(cellDimensionsForGridType(etage('square', 50, 50), 'square', image), {
+    widthCells: 50,
+    heightCells: 50,
+  });
+  assert.deepEqual(cellDimensionsForGridType(etage('hex', 50, 58), 'hex', image), {
+    widthCells: 50,
+    heightCells: 58,
+  });
+});
+
+test('C-16 : sans image, l’étendue courante sert de repère, offset de grille compris', () => {
+  // 50 × 50 carrés à 140 px : 7000 px de haut, donc 58 rangées hexagonales.
+  assert.equal(cellDimensionsForGridType(etage('square', 50, 50), 'hex', null).heightCells, 58);
+  // Un offset vertical est hors de la grille : il ne se compte pas en rangées.
+  const decale = createLevel({
+    grid: { type: 'square', offsetX: 0, offsetY: 70 },
+    pxPerCell: 140,
+    widthCells: 10,
+    heightCells: 10,
+  });
+  // Étendue 70 + 1400 ; (1470 − 70) / (140 × √3/2) = 11,55 → 12.
+  assert.equal(cellDimensionsForGridType(decale, 'hex', null).heightCells, 12);
 });

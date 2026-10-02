@@ -1264,6 +1264,80 @@ export function replaceLevelMap(levelId, patch) {
 }
 
 /**
+ * Change le pavage d'un étage et ses dimensions en cases, en une seule transaction (C-16).
+ *
+ * ⭐ Contrairement à `replaceLevelMap`, la carte reste : les pions **gardent leur case**, seuls
+ * ceux que la nouvelle grille ne contient plus partent en réserve. Les deux vues l'appliquent à
+ * l'identique — le MJ au changement de pavage, la tablette à la réception de `level.grid` — si bien
+ * que les `token.reserve` qui suivent trouvent leur pion déjà rangé et ne font rien. Sans ce
+ * rangement local, la tablette refuserait la hauteur réduite tant qu'un pion de la dernière rangée
+ * n'aurait pas encore été rangé par son `token.reserve`.
+ *
+ * Rejeu inoffensif : les mêmes dimensions ne rangent plus rien.
+ *
+ * @param {string} levelId
+ * @param {{grid: Partial<import('../core/types.js').GridConfig>, widthCells?: number, heightCells?: number}} patch
+ * @returns {string[]} Identifiants des pions rangés en réserve
+ */
+export function regridLevel(levelId, patch) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const idx = campaign.levels.findIndex((l) => l.id === levelId);
+  if (idx === -1) {
+    throw new Error(`Étage inconnu : "${levelId}"`);
+  }
+
+  const candidate = structuredClone(campaign);
+  if (!Array.isArray(candidate.reserve)) {
+    candidate.reserve = [];
+  }
+  const currentLevel = candidate.levels[idx];
+  /** @type {Level} */
+  const level = {
+    ...currentLevel,
+    widthCells: patch.widthCells ?? currentLevel.widthCells,
+    heightCells: patch.heightCells ?? currentLevel.heightCells,
+    grid: { ...currentLevel.grid, ...patch.grid },
+  };
+  candidate.levels[idx] = level;
+
+  /** @type {string[]} */
+  const reservedTokenIds = [];
+  /** @type {import('../core/types.js').Token[]} */
+  const remainingTokens = [];
+  for (const token of candidate.tokens) {
+    // Même règle de bornes que `validateCampaign` : en hexagonal, seul l'ancrage compte (D-8).
+    const horsCarte =
+      token.levelId === levelId &&
+      (level.grid.type === 'hex'
+        ? token.cell.a >= level.widthCells || token.cell.b >= level.heightCells
+        : token.cell.a + token.sizeCells > level.widthCells ||
+          token.cell.b + token.sizeCells > level.heightCells);
+    if (horsCarte) {
+      candidate.reserve.push(token);
+      reservedTokenIds.push(token.id);
+    } else {
+      remainingTokens.push(token);
+    }
+  }
+  candidate.tokens = remainingTokens;
+
+  assertValidCampaign(candidate, `Changement de pavage de l'étage "${levelId}"`);
+  replaceCampaign(candidate);
+
+  const selectedId = getSelectedTokenId();
+  if (selectedId && reservedTokenIds.includes(selectedId)) {
+    clearSelectionState();
+  } else {
+    rafraichirZoneAtteignable(levelId);
+  }
+
+  notifySubscribers();
+  return reservedTokenIds;
+}
+
+/**
  * Modifie l'état d'un portail sur un étage.
  *
  * @param {string} levelId

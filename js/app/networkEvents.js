@@ -111,7 +111,25 @@ export function applyNetworkEvent(event) {
     case 'level.grid': {
       if (!payload.levelId || !payload.grid) return false;
       if (!campaign?.levels.some((level) => level.id === payload.levelId)) return false;
-      store.updateLevel(payload.levelId, { grid: payload.grid });
+      // ⭐ Amendement C-16 : un changement de pavage porte aussi les dimensions recalculées par
+      // le MJ. Les deux champs sont optionnels — couleur, opacité et visibilité n'en portent pas
+      // et laissent les dimensions intactes ; une valeur invalide est ignorée de même.
+      /** @param {unknown} n */
+      const dimensionValide = (n) => Number.isInteger(n) && /** @type {number} */ (n) >= 1;
+      /** @type {{widthCells?: number, heightCells?: number}} */
+      const dimensions = {};
+      if (dimensionValide(payload.widthCells)) dimensions.widthCells = payload.widthCells;
+      if (dimensionValide(payload.heightCells)) dimensions.heightCells = payload.heightCells;
+      try {
+        // Les pions que la nouvelle grille ne contient plus sont rangés ici aussi : les
+        // `token.reserve` du MJ, qui suivent, les trouveront déjà en réserve.
+        store.regridLevel(payload.levelId, { grid: payload.grid, ...dimensions });
+      } catch (err) {
+        console.error(
+          `Événement "level.grid" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
       return true;
     }
     case 'level.ambient': {
