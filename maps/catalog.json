@@ -83,6 +83,33 @@
       }
     },
     {
+      "id": "embuscade_ruelle",
+      "name": "Embuscade — Ruelle",
+      "sourceUrl": "maps/embuscade_ruelle.dd2vtt",
+      "sceneUrl": "maps/generated/embuscade_ruelle.scene.json",
+      "imageUrl": "maps/generated/embuscade_ruelle.webp",
+      "thumbUrl": "maps/generated/embuscade_ruelle.thumb.webp",
+      "levels": [
+        {
+          "levelId": "embuscade_ruelle",
+          "name": "Embuscade — Ruelle",
+          "thumbUrl": "maps/generated/embuscade_ruelle.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1790965042441
+        }
+      ],
+      "sourceHash": "sha256-02b1d1031a32fa3be868a364c9132a4b98fb18a9427ed5aec33c7d45842a6a7a",
+      "levelCount": 1,
+      "features": {
+        "walls": 124,
+        "portals": 61,
+        "lights": 88,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
       "id": "marais-hex_16x16",
       "name": "Marais — HEX — 16x16",
       "sourceUrl": "maps/marais-hex_16x16.jpg",
