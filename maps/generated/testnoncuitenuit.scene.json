@@ -516,7 +516,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-2",
@@ -528,7 +528,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-3",
@@ -540,7 +540,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-4",
@@ -552,7 +552,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-5",
@@ -564,7 +564,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-6",
@@ -576,7 +576,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-7",
@@ -588,7 +588,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-8",
@@ -600,7 +600,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-9",
@@ -612,7 +612,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-10",
@@ -624,7 +624,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-11",
@@ -636,7 +636,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-12",
@@ -648,7 +648,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-13",
@@ -660,7 +660,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-14",
@@ -672,7 +672,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-15",
@@ -684,7 +684,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-16",
@@ -696,7 +696,7 @@
           "intensity": 1,
           "color": "#FFAD00",
           "shadows": true,
-          "on": true
+          "on": false
         }
       ],
       "ambient": {

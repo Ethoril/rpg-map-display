@@ -225,10 +225,10 @@
             "cellY": 13.978632
           },
           "range": 5,
-          "intensity": 1,
+          "intensity": 0.8333333333333334,
           "color": "#FFE6BF",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-2",
@@ -240,7 +240,7 @@
           "intensity": 1,
           "color": "#FFEBBF",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-3",
@@ -252,7 +252,7 @@
           "intensity": 1,
           "color": "#FFEBBF",
           "shadows": true,
-          "on": true
+          "on": false
         },
         {
           "id": "light-4",
@@ -264,7 +264,7 @@
           "intensity": 1,
           "color": "#FFEBBF",
           "shadows": true,
-          "on": true
+          "on": false
         }
       ],
       "ambient": {

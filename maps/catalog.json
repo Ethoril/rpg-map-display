@@ -83,33 +83,6 @@
       }
     },
     {
-      "id": "embuscade_ruelle",
-      "name": "Embuscade — Ruelle",
-      "sourceUrl": "maps/embuscade_ruelle.dd2vtt",
-      "sceneUrl": "maps/generated/embuscade_ruelle.scene.json",
-      "imageUrl": "maps/generated/embuscade_ruelle.webp",
-      "thumbUrl": "maps/generated/embuscade_ruelle.thumb.webp",
-      "levels": [
-        {
-          "levelId": "embuscade_ruelle",
-          "name": "Embuscade — Ruelle",
-          "thumbUrl": "maps/generated/embuscade_ruelle.thumb.webp",
-          "gridType": "square",
-          "source": "uvtt",
-          "updatedAt": 1790965042441
-        }
-      ],
-      "sourceHash": "sha256-02b1d1031a32fa3be868a364c9132a4b98fb18a9427ed5aec33c7d45842a6a7a",
-      "levelCount": 1,
-      "features": {
-        "walls": 124,
-        "portals": 61,
-        "lights": 88,
-        "bakedLighting": true,
-        "animated": false
-      }
-    },
-    {
       "id": "marais-hex_16x16",
       "name": "Marais — HEX — 16x16",
       "sourceUrl": "maps/marais-hex_16x16.jpg",
@@ -133,6 +106,33 @@
         "portals": 0,
         "lights": 0,
         "bakedLighting": false,
+        "animated": false
+      }
+    },
+    {
+      "id": "ruellenuitvtt",
+      "name": "Ruellenuitvtt",
+      "sourceUrl": "maps/ruellenuitvtt.dd2vtt",
+      "sceneUrl": "maps/generated/ruellenuitvtt.scene.json",
+      "imageUrl": "maps/generated/ruellenuitvtt.webp",
+      "thumbUrl": "maps/generated/ruellenuitvtt.thumb.webp",
+      "levels": [
+        {
+          "levelId": "ruellenuitvtt",
+          "name": "Ruellenuitvtt",
+          "thumbUrl": "maps/generated/ruellenuitvtt.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1790967343518
+        }
+      ],
+      "sourceHash": "sha256-2c20b470df2603ba203db937e646228254a4eff31f5b1eb49e7b01abe7b7fdad",
+      "levelCount": 1,
+      "features": {
+        "walls": 80,
+        "portals": 1,
+        "lights": 6,
+        "bakedLighting": true,
         "animated": false
       }
     },
