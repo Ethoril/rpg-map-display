@@ -1364,6 +1364,76 @@ seul pavage hexagonal.
 > - **C7 — écritures Firestore** : **n'écrire que ce qui change**. Empreinte par document ; le
 >   format et la transaction de révision de l'ADR-012 restent intacts.
 
+### D-11 ✅ La géométrie se lit en carré, quel que soit le pavage — cahier des charges, 02/10/2026
+
+> ## ✅ TRANCHÉ, en séance de choix multiples — ⛔ non implémenté
+>
+> - **Oui, la géométrie d'étage se lit toujours en carré** : amendement de `CONVENTIONS.md` à
+>   écrire avec le chantier. Rouvre et remplace l'ancien arbitrage « pas d'hexagones sur une
+>   carte à murs » (C-5).
+> - **Escaliers et coût de terrain : la case de la nouvelle grille qui contient le centre de
+>   l'ancienne.** Deux cases de terrain sur la même case → le coût le plus élevé. Un escalier dont
+>   la case d'arrivée est déjà prise par un autre escalier est **signalé au MJ**.
+> - **La mesure des couloirs passe AVANT et conditionne** : si l'essentiel des couloirs verticaux
+>   d'une case devient infranchissable, le chiffre revient au mainteneur avant toute ligne de code.
+>
+> ⏳ Lancement à la demande du mainteneur — il garde ses tokens pour les urgences jusqu'au
+> dimanche 04/10 midi.
+
+**Le besoin.** Pouvoir mettre une grille hexagonale **pour les déplacements** sur une carte qui
+porte murs, portes, escaliers et lumières — typiquement une carte UVTT importée en carré.
+
+**Le défaut actuel.** Murs, portes et lumières sont stockés en `CellPoint` et lus par la grille
+courante (`mapFromCellPoint`). En hexagonal, cette lecture porte le décalage odd-r d'une demi-case,
+**discontinu** entre deux rangées, et le pas vertical √3/2 : un mur droit sur l'image n'y est pas
+exprimable, et changer de pavage déplace toute la géométrie par rapport à l'image (signalé à la
+livraison de C-16).
+
+**La proposition.** La géométrie d'étage se lit **toujours en carré** : `x = offsetX + cellX ×
+pxPerCell`, `y = offsetY + cellY × pxPerCell`, quel que soit `grid.type`. Seuls les pions, le
+brouillard, le coût de terrain et les extrémités d'escalier suivent la grille. On reste en
+coordonnées de case (règle réseau et persistance intacte), c'est déjà la convention UVTT
+(`pixels_per_grid`), et avec C-16 changer de pavage ne déplace plus rien.
+
+**Périmètre (à confirmer par une cartographie fraîche avant d'écrire) :**
+- une conversion « géométrie ⇄ pixels carte » dans `js/grid/` — ⚠ amendement de
+  `CONVENTIONS.md` (espaces de coordonnées), **normatif, au mainteneur** ;
+- ses consommateurs, une dizaine : `import/blockedEdges.js` (extraction des segments et seaux),
+  `render/layers/walls.js`, `portals.js`, `light.js`, `fogLayer.js` (segments de vision),
+  `input/portalHit.js`, `input/lightHit.js`, `ui/gm/wallEditor.js` (accrochage), la pose de lumière
+  dans `app/gm.js` ;
+- les tests qui figent aujourd'hui la géométrie odd-r — à réécrire, **en mutant chacun** ;
+- au changement de pavage (complément de C-16) : extrémités d'escalier (`campaign.links`, lues
+  comme des cases entières) et `terrainCost` (indexé `"a,b"`) à convertir — **règle à trancher**,
+  proposition : l'hexagone qui contient l'ancien centre de la case ;
+- aucune migration : les cartes hexagonales publiées portent 0 mur, 0 porte, 0 lumière.
+
+**Comportements attendus, carte à murs passée en hexagones :**
+- murs, portes, lumières, gabarits restent au pixel près ; ouvrir/fermer une porte inchangé (hit-test
+  en pixels, MJ comme joueurs) ;
+- déplacement : passer d'un hexagone à son voisin est interdit si le segment centre-à-centre croise
+  un mur ou une porte fermée (mécanisme L-01 actuel) ; un hexagone coupé par un mur compte du côté
+  de son centre ; les grands pions (rosette) sont plus encombrants qu'en carré ;
+- vision et lumière : champ calculé en pixels, identique au carré ; brouillard découvert par
+  hexagone entier selon son centre, donc **bordure en dents de scie** contre un mur ;
+- escalier : franchissement inchangé (le PJ retape son pion sur l'hexagone de l'escalier) ;
+- éditeur de murs : accrochage aux coins du quadrillage carré, invisible sous les hexagones ;
+  l'accrochage aux sommets hexagonaux est un chantier à part.
+
+**⚠ Ce que le chantier ne règle pas — à MESURER en premier.** Un couloir **vertical** d'une case
+(140 px) : les rangées impaires, décalées d'une demi-case, ont leur centre **sur** le mur ; le
+couloir peut devenir infranchissable ou se parcourir en zigzag. Les couloirs horizontaux
+n'ont pas ce défaut (rangées espacées de 121 px < 140). Mesure proposée, ~30 min : sur une carte à
+murs réelle (fixture dédiée, ⛔ jamais une carte de `maps/`), compter les paires de cases voisines
+franchissables en carré dont la liaison hexagonale est perdue. Si l'essentiel des couloirs
+casse, le chantier reste juste, mais l'usage « hexagones en donjon » restera décevant.
+
+**Estimation.** Moyen : une séance d'autonomie, un peu plus que C-16. Le volume tient aux tests et
+aux mutations, pas aux algorithmes (vision, lumière et blocage calculent déjà en pixels).
+
+**À trancher à la reprise :** (1) l'amendement de `CONVENTIONS.md` ; (2) la règle de conversion
+des escaliers et du coût de terrain ; (3) lancer la mesure des couloirs avant ou avec le chantier.
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
