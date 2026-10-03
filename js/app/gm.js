@@ -735,6 +735,8 @@ export async function bootstrapGMApp(options = {}) {
           // ⭐ La vision courante, déjà composée par `syncVision` : c'est elle qui donne au
           // stencil « vu sans lumière » sa zone (voir `light.js`). Sans elle, aucun stencil.
           visibleCanvas: visibleFogMap.get(activeLevel.id)?.canvas,
+          // ⭐ L'exploré aussi (décision du 03/10/2026) : le plancher nocturne le couvre.
+          exploredCanvas: getExploredFog(activeLevel)?.canvas,
         });
         layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },

@@ -591,6 +591,9 @@ export async function bootstrapPlayerApp(options = {}) {
           // ⭐ Même masque que la couche de fog utilise plus bas — le stencil « vu sans
           // lumière » en a besoin pour savoir ce que la table VOIT (voir `light.js`).
           visibleCanvas: getPlayerVisibleCanvas(activeLevel),
+          // ⭐ L'exploré aussi (décision du 03/10/2026) : de nuit, une zone révélée au pinceau ou
+          // déjà vue montre son décor en gris sous son voile. Les pions, eux, suivent le visible.
+          exploredCanvas: getPlayerExploredCanvas(activeLevel),
         });
         layerDurations.light = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },

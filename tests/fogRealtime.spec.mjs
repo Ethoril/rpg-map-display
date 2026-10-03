@@ -161,3 +161,89 @@ test('Le MJ privé de frames publie quand même la vision, et la tablette la ren
   expect(erreurs).toEqual([]);
   await context.close();
 });
+
+test('⭐ De nuit, une zone révélée au pinceau par le MJ montre son décor sur la tablette (03/10/2026)', async ({
+  browser,
+}) => {
+  // Défaut de table du 03/10/2026 : sur un étage réglé sur Nuit, le pinceau « Révéler »
+  // marchait côté MJ mais la tablette restait noire — le fog arrivait, mais l'exploré non
+  // éclairé n'y recevait aucun plancher. Décision du mainteneur : il reçoit le même plancher
+  // gris que la vision nocturne. Ce test passe par la VRAIE page joueurs : c'est son
+  // branchement (`exploredCanvas` vers la couche lumière) qu'il épingle.
+  const context = await browser.newContext();
+  const sessionId = 'pinceau-de-nuit';
+  /** @type {string[]} */
+  const erreurs = [];
+
+  const nuit = structuredClone(SNAPSHOT);
+  nuit.campaign.levels[0].ambient = { level: 0, baked: false };
+  nuit.campaign.levels[0].walls = [];
+  // Un fond uni et clair : le noir de la nuit et le gris du plancher s'y distinguent sans doute.
+  // ⚠ URL relative, servie par `context.route` : le schéma refuse `data:` pour un étage.
+  nuit.campaign.levels[0].imageUrl = 'fond-nuit-pinceau.svg';
+  await context.route('**/fond-nuit-pinceau.svg', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1600"><rect width="2000" height="1600" fill="#c8c8c8"/></svg>',
+    })
+  );
+  nuit.campaign.tokens[0].visionDim = 2;
+  nuit.campaign.tokens[0].visionBright = 0;
+
+  const gm = await context.newPage();
+  gm.on('pageerror', (err) => erreurs.push(`mj: ${err.message}`));
+  await installBrowserTransport(gm, sessionId, nuit);
+  await gm.goto('/gm.html');
+  await waitForApp(gm);
+
+  const player = await context.newPage();
+  player.on('pageerror', (err) => erreurs.push(`joueur: ${err.message}`));
+  await installBrowserTransport(player, sessionId, nuit);
+  await player.goto('/player.html');
+  await waitForApp(player);
+
+  // Loin du PJ (case 2,2) et de sa portée nocturne : la case 15,12.
+  const cible = { x: 1550, y: 1250 };
+  /** Somme R+V+B du canvas joueurs au point carte donné. */
+  const luminance = () =>
+    player.evaluate(([mx, my]) => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const board = /** @type {HTMLCanvasElement} */ (app.canvas);
+      const ecran = app.camera.mapToScreen({ x: mx, y: my });
+      const echelle = board.width / board.getBoundingClientRect().width;
+      const ctx = /** @type {CanvasRenderingContext2D} */ (board.getContext('2d'));
+      const d = ctx.getImageData(Math.round(ecran.screenX * echelle), Math.round(ecran.screenY * echelle), 1, 1).data;
+      return d[0] + d[1] + d[2];
+    }, [cible.x, cible.y]);
+
+  // Le point doit être à l'écran de la tablette, sinon la mesure ne veut rien dire.
+  await player.evaluate(([mx, my]) => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    app.camera.setZoom(0.3);
+    app.camera.setPan(mx - 1000, my - 800);
+  }, [cible.x, cible.y]);
+
+  await expect.poll(() => published(gm), { timeout: 5000 }).toContain('vision.update');
+  await player.waitForTimeout(1200);
+  expect(await luminance(), 'avant le pinceau : noir de nuit').toBeLessThan(15);
+
+  await gm.click('#gm-rail-fog-tools');
+  await gm.click('#fog-btn-tool-reveal');
+  const dejaPublies = (await published(gm)).length;
+  await gm.evaluate(([mx, my]) => {
+    const input = /** @type {any} */ (window).__RPG_APP__.pointerInput;
+    for (const phase of ['start', 'end']) {
+      input.emit({ type: 'brushStroke', mapPos: { x: mx, y: my }, screenPos: { screenX: 0, screenY: 0 }, phase });
+    }
+  }, [cible.x, cible.y]);
+
+  await expect
+    .poll(() => published(gm).then((types) => types.slice(dejaPublies)), { timeout: 5000 })
+    .toContain('fog.update');
+  await expect
+    .poll(luminance, { timeout: 8000, message: '⛔ la zone peinte doit sortir du noir sur la tablette' })
+    .toBeGreaterThan(40);
+
+  expect(erreurs).toEqual([]);
+  await context.close();
+});

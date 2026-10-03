@@ -834,6 +834,70 @@ test('16. Une passe `saturation` est dessinée quand la zone existe, et seulemen
   );
 });
 
+test('16 bis. ⭐ EXPLORÉ SANS LUMIÈRE : la zone explorée hors de vue porte aussi le plancher (03/10/2026)', () => {
+  // Décision du mainteneur du 03/10/2026 : de nuit, une zone révélée au pinceau ou déjà vue
+  // montre son décor en gris, comme de jour sous son voile. Étage sans source : seul le stencil
+  // peut expliquer une différence.
+  const level = etage({ ambient: { level: 0, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+  const maskW = champDe(couche).maskWidth;
+  const maskH = champDe(couche).maskHeight;
+  // Visible : quart gauche. Exploré : moitié gauche, donc un quart exploré HORS de vue.
+  const visible = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW / 4, h: maskH });
+  const explore = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW / 2, h: maskH });
+
+  const ctx = createMockCanvas(1000, 1000)._ctx;
+  couche.render(ctx, ADAPTATEUR, level, { role: 'players', visibleCanvas: visible, exploredCanvas: explore });
+
+  const modulation = couche._modulation._ctx;
+  const plancher = 255 * LIGHT_NIGHT_VISION_FLOOR;
+  const vu = pixelAu(modulation, maskW / 8, maskH / 2);
+  const exploreHorsVue = pixelAu(modulation, (3 * maskW) / 8, maskH / 2);
+  const jamaisVu = pixelAu(modulation, (3 * maskW) / 4, maskH / 2);
+
+  assert.ok(Math.abs(vu.red - plancher) < 2, `visible : plancher attendu, obtenu ${vu.red}`);
+  assert.ok(
+    Math.abs(exploreHorsVue.red - plancher) < 2,
+    `⛔ exploré hors de vue : plancher attendu (${plancher}), obtenu ${exploreHorsVue.red}`
+  );
+  assert.equal(jamaisVu.red, 0, 'jamais exploré : toujours noir');
+
+  // Exploré sans aucune vision publiée (tablette juste démarrée) : le plancher est là quand même.
+  const seul = new LightLayer({ createCanvas: fabrique });
+  seul.update(ADAPTATEUR, level, []);
+  seul.render(createMockCanvas(1000, 1000)._ctx, ADAPTATEUR, level, { role: 'players', exploredCanvas: explore });
+  assert.ok(
+    Math.abs(pixelAu(seul._modulation._ctx, (3 * maskW) / 8, maskH / 2).red - plancher) < 2,
+    '⛔ exploré seul, sans masque visible : plancher attendu'
+  );
+});
+
+test('16 ter. Un pinceau qui étend l’exploré EN PLACE reconstruit le plancher au rendu suivant', () => {
+  // Côté MJ, `ExploredFog` mute son canvas en place et n'estampille que `__fogRevision` : sans
+  // relire cette estampille, le cache du masque vu figerait le plancher sur le premier rendu.
+  const level = etage({ ambient: { level: 0, baked: false } });
+  const couche = new LightLayer({ createCanvas: fabrique });
+  couche.update(ADAPTATEUR, level, []);
+  const maskW = champDe(couche).maskWidth;
+  const maskH = champDe(couche).maskHeight;
+  const explore = masqueVisible(maskW, maskH, { x: 0, y: 0, w: maskW / 4, h: maskH });
+  explore.__fogRevision = 1;
+
+  couche.render(createMockCanvas(1000, 1000)._ctx, ADAPTATEUR, level, { role: 'gm', mode: 'play', exploredCanvas: explore });
+  assert.equal(pixelAu(couche._modulation._ctx, (3 * maskW) / 4, maskH / 2).red, 0);
+
+  // Coup de pinceau : tout l'étage exploré, même objet, révision suivante.
+  explore._ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+  explore._ctx.fillRect(0, 0, maskW, maskH);
+  explore.__fogRevision = 2;
+  couche.render(createMockCanvas(1000, 1000)._ctx, ADAPTATEUR, level, { role: 'gm', mode: 'play', exploredCanvas: explore });
+  assert.ok(
+    Math.abs(pixelAu(couche._modulation._ctx, (3 * maskW) / 4, maskH / 2).red - 255 * LIGHT_NIGHT_VISION_FLOOR) < 2,
+    '⛔ la zone peinte au pinceau doit recevoir le plancher'
+  );
+});
+
 test('17. ⭐ Ambiante PLEINE : aucune passe supplémentaire — le test 13 doit rester vert', () => {
   // Économie du brief : à ambiante pleine, le stencil serait vide de toute façon (rien de
   // non-éclairé). On ne le construit ni ne le peint, MÊME si un masque visible est fourni.

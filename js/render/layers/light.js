@@ -276,6 +276,15 @@ export class LightLayer {
     this._haloVisibleChampRev = -1;
     /** @type {any} Révision du masque visible dont le halo réduit est issu. */
     this._haloVisibleVisibleRev = null;
+    /** @type {any} Masque VU : visible ∪ exploré — voir `_construireMasqueVu`. */
+    this._masqueVu = null;
+    this._masqueVuCtx = null;
+    /** @type {any} Révisions des masques visible et exploré dont le masque vu est issu. */
+    this._masqueVuVisibleRev = null;
+    this._masqueVuExploreRev = null;
+    /** @type {number} Compteur de reconstruction du masque vu, posé en `__fogRevision` : les
+     *  stencils qui le consomment le lisent comme n'importe quel masque de fog. */
+    this._masqueVuRevisionCounter = 0;
     /** @type {boolean} Ambiante pleine au dernier `update` : le stencil y serait vide. */
     this._pleineLumiere = false;
     /** @type {number} Sources peintes au dernier calcul, pour observation extérieure. */
@@ -445,6 +454,75 @@ export class LightLayer {
     this._modulationRevision = champ.revision;
     this._modulationStencilRev = stencilRev;
     return this._modulation;
+  }
+
+  /**
+   * Masque VU : visible ∪ exploré, à la résolution du masque — ce que les deux stencils
+   * nocturnes réduisent ensuite à ce qui n'est pas éclairé.
+   *
+   * ⭐ Décision du mainteneur du 03/10/2026 : une zone révélée au pinceau, ou déjà vue, reçoit
+   * de nuit le même plancher gris que la vision nocturne — comme de jour, la table voit à quoi
+   * ressemble l'exploré sous son voile. Sans cela, l'exploré non éclairé restait noir côté joueurs
+   * et le pinceau du MJ semblait ne rien transmettre.
+   *
+   * ⛔ **Le décor seulement, jamais les pions** : leur affichage côté joueurs se décide sur le
+   * masque VISIBLE (`tokens.js`), que ceci ne touche pas. Un ennemi dans une zone explorée hors
+   * de vue reste caché. Le halo des lampes reste lui aussi réduit au visible (`_peindreHalo`).
+   *
+   * Sans masque exploré, c'est le masque visible tel quel : rien ne change. Sans aucun des deux,
+   * `null` — aucun stencil.
+   *
+   * @param {any} mainCtx
+   * @param {any} visibleCanvas
+   * @param {any} exploredCanvas
+   * @returns {any}
+   */
+  _construireMasqueVu(mainCtx, visibleCanvas, exploredCanvas) {
+    if (!exploredCanvas) return visibleCanvas ?? null;
+    const champ = this._field;
+    if (!champ || !champ.canvas) return null;
+
+    const visibleRev = visibleCanvas ? visibleCanvas.__fogRevision ?? visibleCanvas : null;
+    const exploreRev = exploredCanvas.__fogRevision ?? exploredCanvas;
+    if (
+      this._masqueVu &&
+      this._masqueVu.width === champ.maskWidth &&
+      this._masqueVu.height === champ.maskHeight &&
+      this._masqueVuVisibleRev === visibleRev &&
+      this._masqueVuExploreRev === exploreRev
+    ) {
+      return this._masqueVu;
+    }
+
+    if (
+      !this._masqueVu ||
+      this._masqueVu.width !== champ.maskWidth ||
+      this._masqueVu.height !== champ.maskHeight
+    ) {
+      this._masqueVu = canvasHorsEcran(champ.maskWidth, champ.maskHeight, mainCtx, this._fabrique);
+      if (this._masqueVu) {
+        this._masqueVu.width = champ.maskWidth;
+        this._masqueVu.height = champ.maskHeight;
+        this._masqueVuCtx = this._masqueVu.getContext('2d');
+      }
+    }
+    const ctx = this._masqueVuCtx;
+    if (!ctx) return null;
+
+    // Union par `source-over` : alpha = v + e·(1 − v). Seule l'alpha sert en aval
+    // (`destination-in`), la couleur des masques est indifférente.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, champ.maskWidth, champ.maskHeight);
+    if (visibleCanvas) ctx.drawImage(visibleCanvas, 0, 0);
+    ctx.drawImage(exploredCanvas, 0, 0);
+
+    this._masqueVuVisibleRev = visibleRev;
+    this._masqueVuExploreRev = exploreRev;
+    this._masqueVuRevisionCounter += 1;
+    // Préfixée : un nombre seul pourrait égaler le `__fogRevision` d'un masque visible servi
+    // directement au tour d'avant, et les caches des stencils se croiraient à jour.
+    this._masqueVu.__fogRevision = `vu:${this._masqueVuRevisionCounter}`;
+    return this._masqueVu;
   }
 
   /**
@@ -684,6 +762,9 @@ export class LightLayer {
    * @param {any} [options.visibleCanvas] Le masque visible courant (MJ : `visibleFogMap`,
    *        joueurs : `getPlayerVisibleCanvas`) — à la résolution du masque. Sans lui, aucun
    *        stencil « vu sans lumière » n'est construit : voir l'économie plus bas.
+   * @param {any} [options.exploredCanvas] Le masque exploré (MJ : `ExploredFog.canvas`, joueurs :
+   *        `getPlayerExploredCanvas`). ⭐ Décision du mainteneur du 03/10/2026 : le plancher de
+   *        vision nocturne couvre aussi l'exploré, voir `_construireMasqueVu`.
    * @returns {boolean} `true` si quelque chose a été peint
    */
   render(ctx, adaptateur, level, options = {}) {
@@ -732,16 +813,15 @@ export class LightLayer {
     // (rien de non-éclairé, ou rien à y découper) — on ne le construit ni ne le peint. Sans
     // cette garde, le test « plein jour, décor intact, sans cas particulier » verrait passer
     // un stencil vide à chaque image pour rien.
-    const stencil = (this._pleineLumiere || !options.visibleCanvas)
+    const masqueVu = this._pleineLumiere
       ? null
-      : this._construireStencilNocturne(ctx, options.visibleCanvas);
+      : this._construireMasqueVu(ctx, options.visibleCanvas, options.exploredCanvas);
+    const stencil = masqueVu ? this._construireStencilNocturne(ctx, masqueVu) : null;
 
     // ⭐ Stencil de DÉSATURATION — décision du 10/09/2026, même économie que ci-dessus : à
     // ambiante pleine ou sans masque, il serait vide de toute façon. Distinct de `stencil`,
     // qui ne nourrit plus que le plancher de luminosité (voir `_construireStencilCouleur`).
-    const stencilCouleur = (this._pleineLumiere || !options.visibleCanvas)
-      ? null
-      : this._construireStencilCouleur(ctx, options.visibleCanvas);
+    const stencilCouleur = masqueVu ? this._construireStencilCouleur(ctx, masqueVu) : null;
 
     if (options.suppressed) {
       // Voile : noir, d'opacité complémentaire à l'éclairement. `destination-out` retire du

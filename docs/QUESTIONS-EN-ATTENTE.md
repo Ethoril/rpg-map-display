@@ -1453,6 +1453,18 @@ aux mutations, pas aux algorithmes (vision, lumière et blocage calculent déjà
 **À trancher à la reprise :** (1) l'amendement de `CONVENTIONS.md` ; (2) la règle de conversion
 des escaliers et du coût de terrain ; (3) lancer la mesure des couloirs avant ou avec le chantier.
 
+### D-12 ✅ De nuit, l'exploré non éclairé montre son décor — 03/10/2026
+
+**Constat de table.** Étage réglé sur Nuit : le pinceau « Révéler » marchait côté MJ, la tablette
+restait noire. Le fog arrivait bien ; mais la vue joueurs, toujours éclairée et sans atténuation,
+peignait en noir toute zone explorée qu'aucune lumière n'atteint.
+
+**✅ TRANCHÉ.** L'exploré (révélé au pinceau ou déjà vu) reçoit de nuit le même plancher gris que
+la vision nocturne (`LIGHT_NIGHT_VISION_FLOOR`), sous son voile d'exploré : c'est le comportement
+de jour. ⛔ **Le décor seulement** : un pion n'apparaît côté joueurs que dans le masque VISIBLE
+(`tokens.js`) — un ennemi dans une zone explorée hors de vue reste caché. Le halo des lampes reste
+lui aussi réduit au visible. Implémenté dans `light.js` (`_construireMasqueVu` : visible ∪ exploré).
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
