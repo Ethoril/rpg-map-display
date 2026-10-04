@@ -8,6 +8,7 @@ import { VideoBackdrop } from '../render/videoBackdrop.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
 import { LightLayer } from '../render/layers/light.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
+import { MovePlanLayer } from '../render/layers/movePlan.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer, buildVisionSignature } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
@@ -20,7 +21,7 @@ import { MeasureLayer } from '../render/layers/measure.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
-import { findHitTemplate, templateDragPose, withTemplatePreview } from '../input/templateHit.js';
+import { findHitTemplate, findSelectedTemplateHandle, templateDragPose, withTemplatePreview } from '../input/templateHit.js';
 import { findHitToken, exactTokenAtCell } from '../input/tokenHit.js';
 import { findHitLight } from '../input/lightHit.js';
 import { FrameProbe } from '../render/probe.js';
@@ -50,6 +51,9 @@ import {
   CLE_REPRISE_HORS_LIGNE,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
+import { MovePlanningController } from './movePlanning.js';
+import { movePlanPreview } from '../state/movePlan.js';
+import { cellKey } from '../core/cellKey.js';
 import * as store from '../state/store.js';
 import { getPresenceList, listOtherGmClients } from '../state/presence.js';
 
@@ -106,6 +110,18 @@ export async function bootstrapGMApp(options = {}) {
   const linksLayer = new LinksLayer();
   const lightMarkersLayer = new LightMarkersLayer();
   const moveZoneLayer = new MoveZoneLayer();
+  const movePlanLayer = new MovePlanLayer();
+  /** @type {(reason:string)=>void} */
+  let notifyMoveInvalidation = (_reason) => {};
+  /** @type {(error:unknown)=>void} */
+  let notifyMovePublicationError = (_error) => {};
+  const movePlanning = new MovePlanningController({
+    onChange: requestRender,
+    onInvalidated: (reason) => notifyMoveInvalidation(reason),
+    onPublicationError: (error) => notifyMovePublicationError(error),
+  });
+  /** @type {import('../core/types.js').Cell|null} */
+  let cancelledMoveAt = null;
   const templatesLayer = new TemplatesLayer();
   const pingsLayer = new PingsLayer();
   const measureLayer = new MeasureLayer();
@@ -765,10 +781,11 @@ export async function bootstrapGMApp(options = {}) {
       },
       moveZone: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const plan = movePlanning.getPlan();
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
-          reachableCells: state.reachableCells,
-        });
+          reachableCells: plan ? plan.reachable : state.reachableCells,
+        }, camera.zoom);
         // Retour « case occupée » d'un pion lâché sur un voisin (B1), le même que la tablette.
         animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
           now: Date.now(),
@@ -776,11 +793,22 @@ export async function bootstrapGMApp(options = {}) {
         });
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
+      movePlan: () => {
+        const plan = movePlanning.getPlan();
+        const localPreview = plan?.steps.length ? movePlanPreview(plan) : null;
+        const remotes = Object.fromEntries(Object.entries(movePlanning.getRemotePreviews()).filter(([, preview]) => {
+          const owner = state.campaign?.tokens.find((token) => token.id === preview.tokenId);
+          return preview.levelId === activeLevel.id && owner && owner.levelId === preview.levelId &&
+            owner.cell.a === preview.start.a && owner.cell.b === preview.start.b;
+        }));
+        movePlanLayer.render(stage.context, grid, activeLevel.id, localPreview, remotes, camera.zoom);
+      },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         templatesLayer.render(
           stage.context, grid, activeLevel,
-          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), false, camera.zoom
+          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), false, camera.zoom,
+          gmPanel?.templateTools?.getSelectedTemplateId?.() ?? null
         );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -800,6 +828,17 @@ export async function bootstrapGMApp(options = {}) {
             resolution: stage.resolution,
           }
         );
+        const selectedTemplateId = gmPanel?.templateTools?.getSelectedTemplateId?.() ?? null;
+        if (selectedTemplateId) {
+          templatesLayer.renderSelectedHandle(
+            stage.context,
+            grid,
+            activeLevel,
+            state.campaign?.templates ?? [],
+            selectedTemplateId,
+            camera.zoom
+          );
+        }
         // `||=` et non `=` : les pions ne sont plus la seule couche qui s'anime. Écrite en
         // affectation, cette ligne effaçait le drapeau posé par les portes — qui se dessinent
         // AVANT les pions —, la boucle à la demande s'arrêtait après une frame et le battement
@@ -905,6 +944,8 @@ export async function bootstrapGMApp(options = {}) {
   }
 
   const networkStatus = createNetworkStatus('gm', sessionId);
+  notifyMoveInvalidation = (reason) => networkStatus.update('warning', `Trajet préparé annulé : ${reason}`);
+  notifyMovePublicationError = (error) => networkStatus.update('warning', `Aperçu non synchronisé : ${String(error || 'erreur réseau')}`);
   /** @type {Transport|null} */
   let transport = null;
   /** @type {ReturnType<typeof createGMPanel>|null} */
@@ -928,6 +969,7 @@ export async function bootstrapGMApp(options = {}) {
   });
   const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
   transport = connexion.transport;
+  movePlanning.setTransport(transport);
   /** Campagne chargée hors ligne, pour savoir au retour du réseau si le MJ l'a modifiée. */
   let campagneHorsLigne = /** @type {string|null} */ (null);
   if (connexion.delaiDepasse) {
@@ -1008,6 +1050,9 @@ export async function bootstrapGMApp(options = {}) {
   const etageMemorise = lireEtageMemorise();
 
   const unsubscribeStore = store.subscribe((change) => {
+    const moveState = store.getState();
+    movePlanning.clearIfLevelDiffers(moveState.activeLevelId || '');
+    if (!change?.session) movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel);
     memoriserEtage(store.getActiveLevelId());
     syncVision();
     requestRender();
@@ -1031,6 +1076,7 @@ export async function bootstrapGMApp(options = {}) {
   function acceptEviction(label) {
     unsubscribeEvents?.();
     unsubscribeEvents = null;
+    movePlanning.dispose();
     // Le transport va être coupé : sans ce retrait, un MJ congédié qui revient au premier plan
     // relancerait une resynchro sur un transport déconnecté et se verrait afficher une erreur
     // réseau purement cosmétique par-dessus l'écran d'éviction.
@@ -1456,6 +1502,7 @@ export async function bootstrapGMApp(options = {}) {
    * @param {import('../input/gestures.js').InputIntention} intention
    */
   function handleIntention(intention) {
+    if (intention.type !== 'tap') cancelledMoveAt = null;
     if (intention.type === 'brushStroke') {
       const activeTool = gmPanel?.getActiveToolName?.() ?? 'none';
       if (activeTool !== 'fog-reveal' && activeTool !== 'fog-hide') return;
@@ -1519,6 +1566,7 @@ export async function bootstrapGMApp(options = {}) {
       if (!state.activeLevel) return;
       const activeLevel = state.activeLevel;
       const activeToolName = gmPanel?.getActiveToolName?.() ?? 'none';
+      if (activeToolName !== 'none') cancelledMoveAt = null;
 
       if (activeToolName === 'ping') {
         // Affichage local immédiat, sans attendre l'aller-retour réseau : le MJ doit voir que son
@@ -1733,11 +1781,18 @@ export async function bootstrapGMApp(options = {}) {
       const { kind: winner, tokenHit, lightHit, portalHit } = arbitrateHit(intention.mapPos);
 
       if (winner === 'token' && tokenHit) {
-        store.selectToken(tokenHit.token.id);
+        cancelledMoveAt = null;
+        if (state.selectedTokenId !== tokenHit.token.id) {
+          movePlanning.cancel();
+          cancelledMoveAt = null;
+          store.selectToken(tokenHit.token.id);
+          movePlanning.start(tokenHit.token, activeLevel);
+        }
         return;
       }
 
       if (winner === 'light' && lightHit) {
+        cancelledMoveAt = null;
         const light = lightHit.light;
         // Bascule (C-2) : l'état ABSOLU est publié, jamais « inverse-le » (comme
         // `portal.toggle`) — c'est ce qui rend l'événement rejouable sans diverger.
@@ -1753,6 +1808,7 @@ export async function bootstrapGMApp(options = {}) {
       }
 
       if (winner === 'portal' && portalHit) {
+        cancelledMoveAt = null;
         const portal = portalHit.portal;
         /** @type {'open'|'closed'|null} */
         let targetState = null;
@@ -1781,6 +1837,63 @@ export async function bootstrapGMApp(options = {}) {
             at: Date.now(),
             by: 'gm',
           });
+        }
+        return;
+      }
+
+      if (activeToolName === 'none' && state.selectedToken) {
+        const selectedToken = state.selectedToken;
+        const grid = gridFor(activeLevel);
+        const targetCell = grid.cellFromPoint(intention.mapPos);
+        if (!targetCell) {
+          if (movePlanning.getPlan()?.steps.length) movePlanning.cancel();
+          else store.selectToken(null);
+          return;
+        }
+        const plan = movePlanning.getPlan();
+        if (cancelledMoveAt && targetCell.a === cancelledMoveAt.a && targetCell.b === cancelledMoveAt.b) {
+          cancelledMoveAt = null;
+          movePlanning.cancel();
+          store.selectToken(null);
+          return;
+        }
+        cancelledMoveAt = null;
+        const endpoint = plan?.steps.length ? plan.path[plan.path.length - 1] : null;
+        if (endpoint && endpoint.a === targetCell.a && endpoint.b === targetCell.b) {
+          const latest = store.getCampaign()?.tokens.find((item) => item.id === selectedToken.id);
+          if (!latest) return;
+          const validation = movePlanning.validate(latest, activeLevel, (path, destination) => {
+            if (store.findMoveConflict(latest.id, destination)) {
+              moveZoneLayer.showDestinationFeedback(destination, 'occupied');
+              return false;
+            }
+            const from = { ...latest.cell };
+            const startedAt = Date.now();
+            try { store.moveTokenToCell(latest.id, destination, { from, to: destination, path, startedAt }); }
+            catch {
+              moveZoneLayer.showDestinationFeedback(destination, 'occupied');
+              return false;
+            }
+            transport?.publish({
+              type: 'token.move', payload: { tokenId: latest.id, from, to: destination, path, startedAt },
+              at: startedAt, by: 'gm',
+            });
+            store.selectToken(null);
+            return true;
+          });
+          if (!validation.ok) moveZoneLayer.showDestinationFeedback(targetCell, 'refused');
+          requestRender();
+          return;
+        }
+        const activePlan = plan ?? movePlanning.start(selectedToken, activeLevel);
+        if (activePlan.reachable.has(cellKey(targetCell))) {
+          movePlanning.extend(targetCell, selectedToken, activeLevel);
+        } else if (activePlan.steps.length) {
+          movePlanning.cancel();
+          cancelledMoveAt = { ...targetCell };
+        } else {
+          movePlanning.cancel();
+          store.selectToken(null);
         }
         return;
       }
@@ -1852,6 +1965,9 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
       if (intention.phase !== 'end') {
+        if (intention.phase === 'start' && movePlanning.getPlan()?.tokenId === intention.tokenId) {
+          movePlanning.cancel();
+        }
         dragPreview = { tokenId: intention.tokenId, mapPos: intention.mapPos };
         requestRender();
         return;
@@ -2013,6 +2129,17 @@ export async function bootstrapGMApp(options = {}) {
       const tool = gmPanel?.getActiveToolName?.() ?? 'none';
       return tool === 'fog-reveal' || tool === 'fog-hide';
     },
+    canStartSelectedTemplateHandle: (_screenPos, mapPos) => {
+      if (gmPanel?.getActiveToolName?.() !== 'none') return null;
+      const state = store.getState();
+      if (!state.activeLevel || !state.campaign) return null;
+      const hit = findSelectedTemplateHandle(
+        state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom,
+        gridFor(state.activeLevel).cellPitch().x,
+        gmPanel?.templateTools?.getSelectedTemplateId?.() ?? null
+      );
+      return hit ? { templateId: hit.template.id, dragMode: hit.mode } : null;
+    },
     canStartTokenDrag: (_screenPos, mapPos) => {
       if (gmPanel?.getActiveToolName?.() !== 'none') return null;
       const state = store.getState();
@@ -2096,6 +2223,7 @@ export async function bootstrapGMApp(options = {}) {
     frameProbe.stop();
     unsubscribeStore();
     unsubscribeEvents?.();
+    movePlanning.dispose();
     if (snapshotTimer !== null) clearTimeout(snapshotTimer);
     window.removeEventListener('resize', onResize);
     frameLoop.stop();

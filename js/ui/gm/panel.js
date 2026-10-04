@@ -1098,6 +1098,11 @@ export function createGMPanel(container, options = {}) {
           by: 'gm',
         });
       },
+      onSelectionChange: (templateId) => {
+        // Une poignée sélectionnée doit rester saisissable au-dessus de tout autre objet :
+        // aucun pinceau, ping ou outil de placement ne peut conserver la priorité du pointeur.
+        if (templateId) setActiveTool('none');
+      },
       onArmChange: (armed) => {
         if (armed) {
           setActiveTool('template-place');

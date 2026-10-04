@@ -25,11 +25,31 @@ Les règles essentielles :
 
 - Canvas 2D est le moteur officiel. Ne pas réintroduire l’ancienne implantation Pixi.
 - La boucle de rendu s’arrête complètement lorsque la scène est immobile.
-- La vue joueurs utilise `tap pion → tap destination`; aucun drag de pion côté joueurs.
+- Le déplacement par clic utilise `sélection → préparation des étapes → second clic sur l’arrivée pour valider`. Aucun drag de pion côté joueurs ; le glisser libre du MJ est conservé.
 - Une image durable est une URL relative ou HTTPS publiée, jamais une URL temporaire.
 - Toute mutation est validée avant de remplacer l’état courant.
 - Les mesures de tenue thermique et de fluidité sous cast restent à valider sur la tablette.
 - Ne pas commiter automatiquement : le mainteneur relit puis commite.
+
+## Gestes de déplacement et de ping
+
+Sélectionner un personnage puis cliquer sur une case accessible prépare son déplacement sans
+le déplacer ni modifier sa vision ou le brouillard exploré. Chaque nouvelle case accessible
+prolonge le chemin et recalcule la portée restante.
+Le chemin est partagé entre les postes du même étage. Recliquer sur la dernière arrivée valide
+le trajet complet, puis désélectionne le personnage.
+
+Cliquer sur le fond hors de la zone de déplacement annule un trajet préparé en gardant le
+personnage sélectionné. Un second clic au même endroit désélectionne ; sans trajet préparé,
+un clic hors zone désélectionne directement. Le clic sur son personnage conserve le geste
+existant de franchissement d’une liaison.
+
+Côté joueurs, sans personnage sélectionné, un double tap produit un ping, y compris sur un
+pion ou une porte. Un tap simple attend brièvement la reconnaissance du double tap avant son
+action habituelle. Avec une sélection active, les gestes de déplacement sont immédiats.
+
+Le [cahier des charges du retour de session](docs/CAHIER-DES-CHARGES-RETOUR-SESSION-2026-10-04.md)
+et son [plan d’implémentation](docs/PLAN-IMPLEMENTATION-RETOUR-SESSION-2026-10-04.md) détaillent le chantier.
 
 ## Démarrage
 

@@ -1,5 +1,11 @@
 # Chantier X — Le ping
 
+> Amendement du 04/10/2026 : le retour de session étend l’émission aux joueurs par double tap
+> sans personnage sélectionné, y compris sur les pions et portes. Le bouton MJ et le rendu
+> éphémère sur horloge locale restent conservés. Les sections ci-dessous relatent le chantier
+> initial ; la restriction historique au MJ est remplacée par le
+> [cahier des charges du retour de session](CAHIER-DES-CHARGES-RETOUR-SESSION-2026-10-04.md).
+
 > Livré le 12 août 2026. Ferme le critère « **Un ping est visible sur les trois postes en < 500 ms** »
 > du lot 4 (CdC §11), et amende le §5.5 qui le décrivait.
 

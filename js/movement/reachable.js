@@ -53,41 +53,11 @@ export function computeReachable(grid, from, budget, blockedEdges, terrainCost) 
     const neighbors = grid.neighbors(current.cell);
     for (const nextCell of neighbors) {
       const nextKey = cellKey(nextCell);
-      const edge = edgeKey(current.cell, nextCell);
-
       // 1. Arête directe bloquée
-      if (blockedEdges.has(edge)) {
+      if (!stepEdgesAreOpen(grid, current.cell, nextCell, blockedEdges)) {
         continue;
       }
-
-      // 2. Anti-corner-cutting pour les diagonales en grille carrée
-      const da = nextCell.a - current.cell.a;
-      const db = nextCell.b - current.cell.b;
-      const isDiagonal = da !== 0 && db !== 0;
-
-      if (isDiagonal && grid.type === 'square') {
-        const o1 = { a: current.cell.a + da, b: current.cell.b };
-        const o2 = { a: current.cell.a, b: current.cell.b + db };
-
-        const e1 = edgeKey(current.cell, o1);
-        const e2 = edgeKey(current.cell, o2);
-        const e3 = edgeKey(nextCell, o1);
-        const e4 = edgeKey(nextCell, o2);
-
-        if (
-          blockedEdges.has(e1) ||
-          blockedEdges.has(e2) ||
-          blockedEdges.has(e3) ||
-          blockedEdges.has(e4)
-        ) {
-          continue;
-        }
-      }
-
-      // 3. Coût du déplacement (octile via grid.distance)
-      const baseDistance = grid.distance(current.cell, nextCell);
-      const terrainMult = terrainCost?.get(nextKey) ?? 1;
-      const stepCost = baseDistance * (terrainMult > 0 ? terrainMult : 1);
+      const stepCost = movementStepCost(grid, current.cell, nextCell, terrainCost);
       const newCost = current.cost + stepCost;
 
       if (newCost > budget) {
@@ -105,6 +75,37 @@ export function computeReachable(grid, from, budget, blockedEdges, terrainCost) 
   }
 
   return { distances, predecessors };
+}
+
+/** Même validation d'arête et de coin que Dijkstra, réutilisable lors d'une revalidation.
+ * @param {GridAdapter} grid @param {Cell} from @param {Cell} to @param {Set<string>} blockedEdges
+ * @returns {boolean}
+ */
+export function canTraverseStep(grid, from, to, blockedEdges) {
+  if (!grid.neighbors(from).some((cell) => cell.a === to.a && cell.b === to.b)) return false;
+  return stepEdgesAreOpen(grid, from, to, blockedEdges);
+}
+
+/** @param {GridAdapter} grid @param {Cell} from @param {Cell} to @param {Set<string>} blockedEdges @returns {boolean} */
+function stepEdgesAreOpen(grid, from, to, blockedEdges) {
+  if (blockedEdges.has(edgeKey(from, to))) return false;
+  const da = to.a - from.a;
+  const db = to.b - from.b;
+  if (grid.type !== 'square' || da === 0 || db === 0) return true;
+  const o1 = { a: from.a + da, b: from.b };
+  const o2 = { a: from.a, b: from.b + db };
+  return ![
+    edgeKey(from, o1), edgeKey(from, o2), edgeKey(to, o1), edgeKey(to, o2),
+  ].some((edge) => blockedEdges.has(edge));
+}
+
+/** Coût identique au pas utilisé par `computeReachable`.
+ * @param {GridAdapter} grid @param {Cell} from @param {Cell} to @param {Map<string,number>} [terrainCost]
+ * @returns {number}
+ */
+export function movementStepCost(grid, from, to, terrainCost) {
+  const multiplier = terrainCost?.get(cellKey(to)) ?? 1;
+  return grid.distance(from, to) * (multiplier > 0 ? multiplier : 1);
 }
 
 /**

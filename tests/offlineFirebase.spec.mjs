@@ -91,6 +91,14 @@ test('R0-03 : une session locale joue avec le CDN Firebase bloqué', async ({ pa
       mapPos: { x: 450, y: 450 },
     });
   });
+  await page.evaluate(() => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    app.pointerInput.onIntention({
+      type: 'tap',
+      screenPos: app.camera.mapToScreen({ x: 450, y: 450 }),
+      mapPos: { x: 450, y: 450 },
+    });
+  });
 
   await expect
     .poll(() =>

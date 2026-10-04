@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   findHitTemplate,
+  findSelectedTemplateHandle,
   getTemplateHandleRadiusMap,
   isPointInCone,
   normalizeAngleDeg,
@@ -17,6 +18,28 @@ test('normalizeAngleDeg ramène les angles dans [-180, 180]', () => {
   assert.equal(normalizeAngleDeg(270), -90);
   assert.equal(normalizeAngleDeg(360), 0);
   assert.equal(normalizeAngleDeg(-90), -90);
+});
+
+test('findSelectedTemplateHandle limite la priorité à la poignée du gabarit sélectionné', () => {
+  const level = createLevel({ id: 'lvl1', pxPerCell: 140 });
+  const templates = [
+    {
+      id: 'tpl-circle', levelId: 'lvl1', shape: /** @type {const} */ ('circle'),
+      origin: { x: 200, y: 200 }, radiusCells: 2, directionDeg: 0, widthCells: 1,
+      color: '#ef4444', visibleToPlayers: true,
+    },
+    {
+      id: 'tpl-cone', levelId: 'lvl1', shape: /** @type {const} */ ('cone'),
+      origin: { x: 200, y: 200 }, radiusCells: 3, directionDeg: 0, widthCells: 1,
+      color: '#3b82f6', visibleToPlayers: true,
+    },
+  ];
+
+  const hit = findSelectedTemplateHandle(level, templates, { x: 205, y: 200 }, 1, 140, 'tpl-circle');
+  assert.equal(hit?.template.id, 'tpl-circle');
+  assert.equal(hit?.mode, 'move');
+  assert.equal(findSelectedTemplateHandle(level, templates, { x: 250, y: 200 }, 1, 140, 'tpl-circle'), null);
+  assert.equal(findSelectedTemplateHandle(level, templates, { x: 205, y: 200 }, 1, 140, null), null);
 });
 
 test('getTemplateHandleRadiusMap borne la taille de la poignée de pointe sur cône dézoomé', () => {

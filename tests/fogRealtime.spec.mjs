@@ -149,6 +149,7 @@ test('Le MJ privé de frames publie quand même la vision, et la tablette la ren
   // Le joueur sélectionne son pion, puis le déplace derrière le mur.
   await tap(player, 250, 250);
   await tap(player, 650, 250);
+  await tap(player, 650, 250);
 
   await expect
     .poll(() => published(gm).then((types) => types.slice(dejaPublies)), { timeout: 8000 })

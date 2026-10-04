@@ -14,6 +14,14 @@
  */
 
 /**
+ * Tap reconnu comme double tap quand la vue déclare le contexte admissible.
+ * @typedef {Object} DoubleTapIntention
+ * @property {'doubleTap'} type
+ * @property {ScreenPoint} screenPos Point du second tap
+ * @property {MapPoint} mapPos Point carte capturé au second pointerup
+ */
+
+/**
  * @typedef {Object} PanIntention
  * @property {'panBy'} type
  * @property {number} deltaX Pixels écran (négatif = pan gauche)
@@ -72,7 +80,7 @@
  */
 
 /**
- * @typedef {TapIntention | PanIntention | DragTokenIntention | DragLightIntention | DragTemplateIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
+ * @typedef {TapIntention | DoubleTapIntention | PanIntention | DragTokenIntention | DragLightIntention | DragTemplateIntention | PinchZoomIntention | LongPressIntention | BrushStrokeIntention} InputIntention
  */
 
 /**

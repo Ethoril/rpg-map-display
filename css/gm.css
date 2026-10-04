@@ -758,6 +758,11 @@ details.gm-disclosure > .gm-disclosure-body {
   font-size: 12px;
 }
 
+.tpl-select[aria-pressed="true"] {
+  outline: 2px solid var(--gm-accent, #60a5fa);
+  outline-offset: 1px;
+}
+
 #gm-uvtt-diag {
   margin-top: 16px;
 }

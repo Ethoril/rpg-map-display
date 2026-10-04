@@ -45,6 +45,8 @@ const camera = new Camera(stage.width, stage.height);
 const emittedIntentions = [];
 /** @type {PointerInput|null} */
 let currentInput = null;
+let gestureAllowed = false;
+let gestureContextKey = 'probe';
 
 /** @param {number} width @param {number} height */
 function resetCanvas(width, height) {
@@ -96,6 +98,11 @@ const probe = {
   clearIntentions: () => {
     emittedIntentions.length = 0;
   },
+  setGestureContext: (/** @type {boolean} */ allowed, /** @type {string} */ key) => {
+    gestureAllowed = allowed;
+    gestureContextKey = key;
+    currentInput?.invalidatePendingTapIfContextChanged();
+  },
   setupInput: (
     /** @type {'gm'|'players'} */ role = 'players',
     /** @type {boolean} */ canDrag = true,
@@ -105,16 +112,20 @@ const probe = {
      * `tests/input.spec.mjs`.
      * `throwOnDragEnd` fait lever l'application à la fin d'un glisser de pion, comme
      * `moveTokenToCell` sur une case occupée (audit du 22/09, B1).
-     * @type {{longPressMs?: number, dragHoldMs?: number, throwOnDragEnd?: boolean}}
+     * @type {{longPressMs?: number, dragHoldMs?: number, throwOnDragEnd?: boolean, doubleTapMs?: number, doubleTapAllowed?: boolean, contextKey?: string}}
      */
     options = {}
   ) => {
     currentInput?.detach();
     emittedIntentions.length = 0;
-    const { throwOnDragEnd = false, ...seuils } = options;
+    const { throwOnDragEnd = false, doubleTapAllowed = false, contextKey = 'probe', ...seuils } = options;
+    gestureAllowed = Boolean(doubleTapAllowed);
+    gestureContextKey = contextKey;
     currentInput = new PointerInput(canvasElem, camera, {
       role,
       ...seuils,
+      canDoubleTap: () => gestureAllowed,
+      contextKey: () => gestureContextKey,
       // ⛔ AUCUNE garde de rôle ici (audit du 22/09, D1). Le hit-test de l'application répond
       // « il y a un pion » quel que soit le rôle : c'est `pointer.js` qui doit refuser le
       // glisser côté joueurs. Une garde `role === 'gm'` dans ce mock produisait elle-même le

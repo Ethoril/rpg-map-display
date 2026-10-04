@@ -72,7 +72,7 @@ test('MoveZoneLayer : surlignage exact des cases atteignables et non-interactivi
       const alpha = resSelected.cellAlphaMap[key];
 
       if (isReachable) {
-        expect(alpha).toBeGreaterThan(0);
+        expect(alpha).toBeGreaterThan(100);
       } else {
         expect(alpha).toBe(0);
       }

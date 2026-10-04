@@ -17,6 +17,7 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   'portals',
   'links',
   'moveZone',
+  'movePlan',
   'templates',
   'tokens',
   'fog',

@@ -170,6 +170,7 @@ test('Un déplacement joueur révèle tout le trajet, y compris son milieu', asy
       const input = /** @type {any} */ (window).__RPG_APP__.pointerInput;
       input.emit({ type: 'tap', mapPos: depart, screenPos: { x: 0, y: 0 } });
       input.emit({ type: 'tap', mapPos: arrivee, screenPos: { x: 0, y: 0 } });
+      input.emit({ type: 'tap', mapPos: arrivee, screenPos: { x: 0, y: 0 } });
     },
     [centre(CELL_DEPART), centre(CELL_ARRIVEE)]
   );

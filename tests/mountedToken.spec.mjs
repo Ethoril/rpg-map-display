@@ -134,6 +134,7 @@ test('C-9 tablette : le chemin animé d’un pion monté contourne la porte ouve
       .poll(() => page.evaluate(async () => (await import('../js/state/store.js')).getState().selectedTokenId))
       .toBe('pj');
     await taper(page, 6, 4);
+    await taper(page, 6, 4);
 
     await expect.poll(async () => (await publies(page)).some((/** @type {any} */ e) => e.type === 'token.move')).toBe(true);
     const move = (await publies(page)).find((/** @type {any} */ e) => e.type === 'token.move');

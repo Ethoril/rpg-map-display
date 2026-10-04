@@ -377,10 +377,10 @@ test('C-9 bande : jamais ouverte pour un PNJ, même sélectionné par un autre c
   expect(await selection(page)).toBe(null);
   await expect(page.locator(BANDE)).toBeHidden();
 
-  // Une sélection héritée — instantané, ou état posé autrement — ne doit pas l'ouvrir non plus.
+  // Une sélection héritée (instantané ou autre mutation du store) est aussitôt purgée côté
+  // joueurs : le garde-fou de manipulation ne laisse pas un PNJ devenir sélection active.
   await page.evaluate(async () => (await import('../js/state/store.js')).setSelection('pnj'));
-  expect(await selection(page)).toBe('pnj');
-  await page.waitForTimeout(200);
+  expect(await selection(page)).toBe(null);
   await expect(page.locator(BANDE)).toBeHidden();
   await expect(page.locator(`${BANDE} .player-selection-mount`)).toHaveCount(0);
 });

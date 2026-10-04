@@ -151,6 +151,20 @@ async function tapPortalAtZoom(page, zoom, errorPx = 0) {
   await page.mouse.down();
   await page.mouse.up();
 
+  // Sans pion sélectionné, le tap simple reste suspendu jusqu'à la fin de la fenêtre de
+  // reconnaissance du double tap. Attendre le résultat garde le vrai geste et sa précision
+  // mesurée, sans transformer le test en intention synthétique.
+  await expect.poll(async () => page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return {
+      state: store.getCampaign()?.levels.find((/** @type {any} */ l) => l.id === 'etage-02')
+        ?.portals[0].state,
+      published: /** @type {any} */ (window).__RPG_TEST_WIRE__.published.some(
+        (/** @type {any} */ e) => e.type === 'portal.toggle'
+      ),
+    };
+  }), { timeout: 5000 }).toEqual({ state: 'open', published: true });
+
   const stateAfter = await page.evaluate(async () => {
     const store = await import('../js/state/store.js');
     return store.getCampaign()?.levels.find((/** @type {any} */ l) => l.id === 'etage-02')

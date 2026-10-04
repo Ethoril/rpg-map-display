@@ -24,9 +24,12 @@ export async function waitForApp(page) {
  * @type {Map<string, any>}
  */
 const imagesPartagees = new Map();
+/** @type {Map<string, Record<string, any>>} */
+const apercusPartages = new Map();
 
 /** Pages qui ont déjà reçu la fonction d'accès au nœud : l'exposer deux fois lèverait. */
 const pagesAvecNoeudImage = new WeakSet();
+const pagesAvecNoeudApercus = new WeakSet();
 
 /**
  * Injecte un transport BroadcastChannel dans la vraie page, sans relais manuel
@@ -52,6 +55,32 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         if (op === 'set') imagesPartagees.set(sid, arg);
         if (op === 'close' && imagesPartagees.get(sid)?.id === arg) imagesPartagees.delete(sid);
         return imagesPartagees.get(sid) ?? null;
+      }
+    );
+  }
+  if (!pagesAvecNoeudApercus.has(page)) {
+    pagesAvecNoeudApercus.add(page);
+    await page.exposeFunction(
+      '__rpgTestMovePreviews',
+      (/** @type {'get'|'set'|'clear'|'remove-client'} */ op, /** @type {string} */ sid, /** @type {string} */ clientId, /** @type {any} */ arg) => {
+        const entries = apercusPartages.get(sid) ?? {};
+        if (op === 'set') {
+          const current = entries[clientId];
+          if (
+            !current || current.planId !== arg.planId ||
+            !Number.isSafeInteger(current.revision) || current.revision < arg.revision
+          ) entries[clientId] = structuredClone(arg);
+          apercusPartages.set(sid, entries);
+        }
+        if (op === 'clear' && entries[clientId]?.planId === arg) {
+          delete entries[clientId];
+          apercusPartages.set(sid, entries);
+        }
+        if (op === 'remove-client') {
+          delete entries[clientId];
+          apercusPartages.set(sid, entries);
+        }
+        return structuredClone(apercusPartages.get(sid) ?? {});
       }
     );
   }
@@ -98,6 +127,20 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       });
       /** @type {any} */ (window).__RPG_TEST_WIRE__ = wire;
 
+      const validCell = (/** @type {any} */ cell) => Boolean(
+        cell && Number.isSafeInteger(cell.a) && cell.a >= 0 && Number.isSafeInteger(cell.b) && cell.b >= 0
+      );
+      const validPreview = (/** @type {any} */ preview) => Boolean(
+        preview && typeof preview.planId === 'string' && preview.planId.length > 0 && preview.planId.length <= 128 &&
+        Number.isSafeInteger(preview.revision) && preview.revision >= 0 &&
+        typeof preview.levelId === 'string' && preview.levelId.length > 0 && preview.levelId.length <= 128 &&
+        typeof preview.tokenId === 'string' && preview.tokenId.length > 0 && preview.tokenId.length <= 128 &&
+        validCell(preview.start) && Array.isArray(preview.path) && preview.path.length > 0 && preview.path.length <= 4096 &&
+        preview.path.every(validCell) && preview.path[0].a === preview.start.a && preview.path[0].b === preview.start.b &&
+        validCell(preview.destination) && preview.path.at(-1).a === preview.destination.a &&
+        preview.path.at(-1).b === preview.destination.b && Number.isFinite(preview.remaining) && preview.remaining >= 0
+      );
+
       class BrowserTestTransport {
         constructor() {
           this.clientId = crypto.randomUUID();
@@ -109,6 +152,12 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           this.imageListeners = new Set();
           /** @type {BroadcastChannel|null} Signal « le nœud a changé » entre écrans */
           this.imageChannel = null;
+          /** @type {Set<(previews: Record<string, any>) => void>} */
+          this.movePreviewListeners = new Set();
+          /** @type {BroadcastChannel|null} */
+          this.movePreviewChannel = null;
+          /** @type {Promise<any>} */
+          this.movePreviewQueue = Promise.resolve();
           /** @type {string|null} */
           this.sessionId = null;
         }
@@ -118,6 +167,12 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           if (!this.sessionId) return;
           const image = await /** @type {any} */ (window).__rpgTestSharedImage('get', this.sessionId);
           for (const listener of this.imageListeners) listener(image);
+        }
+
+        async relireApercus() {
+          if (!this.sessionId) return;
+          const previews = await /** @type {any} */ (window).__rpgTestMovePreviews('get', this.sessionId, this.clientId, null);
+          for (const listener of this.movePreviewListeners) listener(previews);
         }
 
         async connect(/** @type {string} */ connectedSessionId) {
@@ -140,6 +195,10 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           this.imageChannel = new BroadcastChannel(`rpg-test-image-${connectedSessionId}`);
           this.imageChannel.addEventListener('message', () => {
             void this.relireImage();
+          });
+          this.movePreviewChannel = new BroadcastChannel(`rpg-test-move-previews-${connectedSessionId}`);
+          this.movePreviewChannel.addEventListener('message', () => {
+            void this.relireApercus();
           });
           const livrer = (/** @type {any} */ data) => {
             wire.received.push(data);
@@ -204,6 +263,49 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           return { ok: true };
         }
 
+        async publishMovePreview(/** @type {any} */ preview) {
+          if (!this.sessionId) return { ok: false, error: new Error('Transport non connecté') };
+          if (!validPreview(preview)) return { ok: false, error: new Error('Aperçu de déplacement invalide') };
+          const operation = this.movePreviewQueue.then(async () => {
+            await /** @type {any} */ (window).__rpgTestMovePreviews('set', this.sessionId, this.clientId, preview);
+            this.movePreviewChannel?.postMessage('changed');
+            await this.relireApercus();
+          });
+          this.movePreviewQueue = operation.catch(() => {});
+          try {
+            await operation;
+            return { ok: true };
+          } catch (error) {
+            return { ok: false, error };
+          }
+        }
+
+        async clearMovePreview(/** @type {string} */ planId) {
+          if (!this.sessionId) return { ok: false, error: new Error('Transport non connecté') };
+          const operation = this.movePreviewQueue.then(async () => {
+            await /** @type {any} */ (window).__rpgTestMovePreviews('clear', this.sessionId, this.clientId, planId);
+            this.movePreviewChannel?.postMessage('changed');
+            await this.relireApercus();
+          });
+          this.movePreviewQueue = operation.catch(() => {});
+          try {
+            await operation;
+            return { ok: true };
+          } catch (error) {
+            return { ok: false, error };
+          }
+        }
+
+        subscribeMovePreviews(/** @type {(previews: Record<string, any>) => void} */ callback) {
+          this.movePreviewListeners.add(callback);
+          if (this.sessionId) void this.relireApercus();
+          return () => this.movePreviewListeners.delete(callback);
+        }
+
+        getClientId() {
+          return this.clientId;
+        }
+
         subscribeSharedImage(/** @type {(image: any) => void} */ callback) {
           this.imageListeners.add(callback);
           // Comme `onValue` : la valeur courante est remise dès l'abonnement — c'est ce qui fait
@@ -247,6 +349,17 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           this.imageChannel?.close();
           this.imageChannel = null;
           this.imageListeners.clear();
+          if (this.sessionId) {
+            void /** @type {any} */ (window).__rpgTestMovePreviews('remove-client', this.sessionId, this.clientId, null)
+              .then(() => {
+                const channel = new BroadcastChannel(`rpg-test-move-previews-${this.sessionId}`);
+                channel.postMessage('changed');
+                channel.close();
+              });
+          }
+          this.movePreviewChannel?.close();
+          this.movePreviewChannel = null;
+          this.movePreviewListeners.clear();
         }
       }
 

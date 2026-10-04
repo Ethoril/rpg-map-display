@@ -174,7 +174,7 @@ test("6. Règles d'importation (tableau §2 d'ARCHITECTURE.md vérifié fichier 
     core: [],
     grid: ['core', 'movement'],
     transport: ['core'],
-    state: ['core', 'grid', 'import'],
+    state: ['core', 'grid', 'import', 'movement'],
     import: ['core', 'grid'],
     movement: ['core', 'grid'],
     vision: ['core'],

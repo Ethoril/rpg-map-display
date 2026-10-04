@@ -1,5 +1,28 @@
 # ÉTAT D’AVANCEMENT ET REPRISE
 
+## Retour de session — 4 octobre 2026
+
+Les améliorations du [cahier des charges de session](CAHIER-DES-CHARGES-RETOUR-SESSION-2026-10-04.md) sont implantées dans le dépôt, selon le [plan d’implémentation](PLAN-IMPLEMENTATION-RETOUR-SESSION-2026-10-04.md). Elles ne sont pas encore validées sur le matériel de jeu.
+
+- Déplacement préparé au clic pour MJ et joueurs : étapes cumulées, chemin partagé, portée restante et compteur, validation par nouveau clic sur la dernière arrivée, puis désélection. Le glisser libre MJ est conservé.
+- Un clic sur le fond hors portée annule le trajet en conservant la sélection ; un second clic au même endroit désélectionne, même si cette case redevient accessible après annulation. Sans trajet, un clic hors portée désélectionne directement. Les gestes des escaliers et autres liaisons sont conservés.
+- Aucun mouvement, changement de champ de vision ni révélation de brouillard pendant la préparation. Seule la validation applique le trajet et ses effets. Les aperçus restent temporaires, hors journal de campagne et hors sauvegarde.
+- Ping joueurs par double tap sans sélection, y compris sur pion ou porte. Les taps simples attendent la distinction entre simple et double tap ; avec un personnage sélectionné, les clics de déplacement sont immédiats.
+- Gabarit sélectionnable dans la liste MJ, avec une poignée prioritaire visible au-dessus des pions. L’appui maintenu de 150 ms avant le glisser est conservé.
+- Cases accessibles avec remplissage renforcé d’opacité 0,55 et contour opaque de 2,5 pixels écran, indépendamment du zoom.
+
+Le partage des aperçus utilise un emplacement RTDB par client, des révisions et des suppressions conditionnelles ; la déconnexion retire l’aperçu sans rejouer un trajet périmé au retour. Côté joueurs, un aperçu dont le pion est masqué ou hors du champ de vision courant n’est pas dessiné.
+
+La vérification inclut la conservation des pixels des masques de vision et d’exploration pendant plusieurs étapes préparées, puis leur changement après validation sur les vraies vues MJ et joueurs. Elle couvre aussi l’annulation sans mouvement, le retrait d’un aperçu devenu illégal, le masquage du pion pendant la préparation et l’absence d’aperçu de PNJ hors vision. La manipulation de gabarit sous un pion est exercée par un vrai glisser navigateur, avec une sonde des pixels de la poignée. Les tests de grille couvrent carré, hexagone, diagonales, terrain et cheval.
+
+Les émulateurs Firebase ont passé `pnpm run test:firebase-rules` : un scénario exécuté, un scénario facultatif ignoré, aucun échec. Le scénario exécuté inclut les vrais SDK, les révisions d’aperçu, la suppression conditionnelle, les refus d’accès et deux cycles de déconnexion/reconnexion avec `onDisconnect`.
+
+Validation finale locale du 4 octobre : **`pnpm run verify` réussi**, typage et cohérence des dépendances compris. Résultats : **737 tests unitaires réussis, 2 ignorés ; 309 tests Chromium réussis, 6 ignorés ; 4 gestes diagnostiques réussis**. Les navigateurs ont utilisé un seul worker. **`git diff --check` réussi.** Les scénarios ignorés ne sont pas comptés comme réussis ; les contrôles Firebase par émulateurs ont été exécutés séparément. Les anciennes assertions de déplacement immédiat ont été adaptées au geste préparation/validation, sans changer les critères de chemin, vision ou transport.
+
+La recette matérielle reste ouverte : manipulation sur tablette, contraste du vidéoprojecteur sur fonds clairs et sombres, double tap tactile, et latence réelle à plusieurs postes. Aucun constat matériel ni délai Firebase en conditions de session n’est déduit des tests navigateur. Le mainteneur a autorisé la publication en production le 4 octobre, après la validation locale complète ; le workflow Pages conserve ses portes de vérification et estampille le build automatiquement.
+
+## Historique antérieur
+
 > Dernière mise à jour : 16 août 2026 — **séance MJ + tablette, trois retours du mainteneur et
 > trois correctifs.** Lire « Séance du 16 août 2026 » plus bas. En une ligne chacun : les liaisons
 > d'étage **fonctionnaient** mais leur geste en deux temps était introuvable ; la désynchro de la

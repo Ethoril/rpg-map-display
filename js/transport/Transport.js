@@ -1,6 +1,7 @@
 // @ts-check
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
 /** @typedef {import('../core/types.js').SharedImage} SharedImage */
+/** @typedef {import('../core/types.js').MovePreview} MovePreview */
 
 /**
  * Issue d'une publication. `ok: false` signifie que RIEN n'est parti sur le canal : événement
@@ -38,6 +39,13 @@
  *   s'il porte encore cet `id`** : une fermeture tardive n'emporte pas une image plus récente.
  * @property {(callback: (image: SharedImage|null) => void) => () => void} [subscribeSharedImage]
  *   suit le nœud, dès l'abonnement puis à chaque changement ; rend le désabonnement.
+ * @property {(preview: MovePreview) => Promise<PublishResult>} [publishMovePreview]
+ *   remplace l'aperçu temporaire de ce client, sans écrire dans la campagne.
+ * @property {(planId: string) => Promise<PublishResult>} [clearMovePreview]
+ *   retire l'aperçu courant seulement s'il appartient encore à cette préparation.
+ * @property {(callback: (previews: Record<string, MovePreview>) => void) => () => void} [subscribeMovePreviews]
+ *   suit les aperçus temporaires indexés par clientId ; les entrées invalides sont ignorées.
+ * @property {() => string|null} [getClientId]
  * @property {() => void} disconnect
  */
 export {}

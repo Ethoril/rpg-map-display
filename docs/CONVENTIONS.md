@@ -307,6 +307,12 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    testé puis abandonné au profit du déplacement tap-tap. Le drag à un doigt est réservé au
    **pan de la carte**. C'est la violation la plus probable, parce que le drag paraît être
    le geste « naturel » d'un VTT. Il ne l'est pas ici.
+
+   Amendement du 04/10/2026 : le déplacement par taps prépare plusieurs étapes avant validation
+   par un second tap sur l’arrivée. Un clic sur le fond hors zone annule la préparation ; le
+   suivant désélectionne. Le clic sur le pion conserve les liaisons. Sans sélection active,
+   le double tap émet un ping. Le chemin et le nombre restant sont dessinés sur la carte,
+   sans bouton ni panneau joueur supplémentaire.
 2. **Ne jamais ajouter d'élément d'interface à la vue joueurs** : ni barre d'outils, ni
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, l'indicateur d'état des portes,
    les pions, le fog, le sélecteur d'étage et les gabarits s'affichent.

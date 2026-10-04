@@ -80,6 +80,50 @@ export class TemplatesLayer {
   }
 
   /**
+   * Redessine seulement la poignée sélectionnée au-dessus des pions, sans relever les formes.
+   * L'appelant place cette méthode après la couche des pions et avant le brouillard.
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import('../../grid/GridAdapter.js').GridAdapter} grid
+   * @param {import('../../core/types.js').Level} level
+   * @param {import('../../core/types.js').Template[]} templates
+   * @param {string|null} selectedTemplateId
+   * @param {number} [cameraZoom]
+   * @returns {boolean} true si une poignée a été dessinée
+   */
+  renderSelectedHandle(ctx, grid, level, templates, selectedTemplateId, cameraZoom) {
+    if (!ctx || !grid || !level || !selectedTemplateId || !Array.isArray(templates)) return false;
+    const template = templates.find((item) => item?.id === selectedTemplateId && item.levelId === level.id);
+    if (!template?.origin || typeof template.origin.x !== 'number' || typeof template.origin.y !== 'number') return false;
+
+    const p0 = grid.mapFromGeometryPoint({ cellX: 0, cellY: 0 });
+    const p1 = grid.mapFromGeometryPoint({ cellX: 1, cellY: 0 });
+    const cellPx = Math.abs(p1.x - p0.x);
+    const radiusPx = (template.radiusCells || 1) * cellPx;
+    const transform = ctx.getTransform ? ctx.getTransform() : null;
+    const zoom = cameraZoom && cameraZoom > 0
+      ? cameraZoom
+      : transform ? Math.hypot(transform.a, transform.b) || 1 : 1;
+    const handleRadiusMap = getTemplateHandleRadiusMap(radiusPx, zoom);
+    const { x, y } = template.origin;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, handleRadiusMap, 0, 2 * Math.PI);
+    ctx.fillStyle = template.color || '#ef4444';
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 4 / zoom;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2 / zoom;
+    ctx.stroke();
+    ctx.restore();
+    return true;
+  }
+
+  /**
    * Rendu des gabarits.
    *
    * @param {CanvasRenderingContext2D} ctx Contexte Canvas 2D
@@ -91,9 +135,10 @@ export class TemplatesLayer {
    *   (`findHitTemplate`). ⛔ Pas le zoom du contexte (audit du 22/09, E6) : `ctx.getTransform()`
    *   inclut la résolution de la scène (jusqu'à 1,5 sur la tablette), et la poignée se dessinait
    *   1,5 fois plus petite que la zone qui réagit au doigt.
+   * @param {string|null} [selectedTemplateId] Gabarit MJ dont la poignée de translation est mise en évidence
    * @returns {number} Nombre de gabarits rendus
    */
-  render(ctx, grid, level, templates, isPlayerView = false, cameraZoom) {
+  render(ctx, grid, level, templates, isPlayerView = false, cameraZoom, selectedTemplateId = null) {
     if (!ctx || !grid || !level || !Array.isArray(templates) || templates.length === 0) {
       return 0;
     }

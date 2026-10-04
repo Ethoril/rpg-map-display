@@ -4,9 +4,7 @@ import { PointerInput } from '../../input/pointer.js';
 import { findHitPortal } from '../../input/portalHit.js';
 import { gridFor } from '../../grid/index.js';
 import { cellKey } from '../../core/cellKey.js';
-import { findPath } from '../../movement/path.js';
 import * as store from '../../state/store.js';
-import { movementRulesFor } from '../../state/selection.js';
 
 import { findHitTemplate, templateDragPose } from '../../input/templateHit.js';
 import {
@@ -31,18 +29,25 @@ import {
  *   Retour transitoire demandé par la vue pour une destination qui ne peut pas recevoir le pion.
  * @property {(preview: {templateId: string, origin: import('../../core/types.js').MapPoint, directionDeg: number}|null) => void} [onTemplatePreview]
  *   Pose d'aperçu d'un gabarit en cours de glisser, `null` quand il s'achève ou s'interrompt (B4).
+ * @property {()=>void} [onMovePlanChanged] Demande un rendu après un changement de préparation.
+ * @property {MovePlanningApi} [movePlanning] Contrôleur injecté par la vue applicative.
  */
+
+/** @typedef {import('../../app/movePlanning.js').MovePlanningController} MovePlanningApi */
 
 /**
  * Monte la vue joueurs : attache les écouteurs d'input et synchronise le store et le réseau.
  *
  * @param {PlayerBootstrapOptions} options
- * @returns {{ detach: () => void, pointerInput: PointerInput }}
+ * @returns {{ detach: () => void, pointerInput: PointerInput, movePlanning?: MovePlanningApi }}
  */
 export function bootstrapPlayerView(options) {
   const { element, camera, transport } = options;
   const onDestinationRejected = options.onDestinationRejected ?? (() => {});
   const onTemplatePreview = options.onTemplatePreview ?? (() => {});
+  const movePlanning = options.movePlanning;
+  /** @type {Cell|null} */
+  let cancelledAtCell = null;
 
   /** @type {import('../../input/templateHit.js').TemplateDragState|null} */
   let playerTemplateDragState = null;
@@ -52,6 +57,7 @@ export function bootstrapPlayerView(options) {
    * @param {InputIntention} intention
    */
   function handleIntention(intention) {
+    if (intention.type !== 'tap') cancelledAtCell = null;
     if (intention.type === 'dragTemplate') {
       if (intention.phase === 'cancel') {
         // Geste interrompu — second doigt, pointercancel (B3, B4) : rien n'a été muté, rien
@@ -98,11 +104,12 @@ export function bootstrapPlayerView(options) {
     }
 
     if (intention.type !== 'tap') {
+      if (intention.type === 'doubleTap') return;
       return;
     }
 
     const state = store.getState();
-    const { campaign, activeLevel, selectedToken, reachableCells } = state;
+    const { campaign, activeLevel, selectedToken } = state;
 
     if (!campaign || !activeLevel) {
       return;
@@ -111,7 +118,8 @@ export function bootstrapPlayerView(options) {
     const grid = gridFor(activeLevel);
     const targetCell = grid.cellFromPoint(intention.mapPos);
     if (!targetCell) {
-      store.selectToken(null);
+      if (movePlanning?.getPlan()?.steps.length) movePlanning.cancel();
+      else store.selectToken(null);
       return;
     }
 
@@ -145,6 +153,7 @@ export function bootstrapPlayerView(options) {
     const portalIsCloser =
       hitPortal && (!tappedHit || hitPortal.dist < tappedHit.dist - 1e-6);
     if (portalIsCloser) {
+      cancelledAtCell = null;
       const portal = hitPortal.portal;
       /** @type {'open'|'closed'|null} */
       let targetState = null;
@@ -173,8 +182,19 @@ export function bootstrapPlayerView(options) {
 
     if (!selectedToken) {
       store.selectToken(tappedMovablePc ? tappedMovablePc.id : null);
+      cancelledAtCell = null;
+      if (tappedMovablePc) movePlanning?.start(tappedMovablePc, activeLevel);
       return;
     }
+
+    const plan = movePlanning?.getPlan();
+    if (!tappedToken && !exactTappedToken && cancelledAtCell && targetCell.a === cancelledAtCell.a && targetCell.b === cancelledAtCell.b) {
+      cancelledAtCell = null;
+      movePlanning?.cancel();
+      store.selectToken(null);
+      return;
+    }
+    cancelledAtCell = null;
 
     // Sélection active : la marge sert à **désigner**, jamais à définir une destination. Un tap
     // sur une case vide voisine d'un autre pion doit déplacer le pion sélectionné, pas annuler la
@@ -190,7 +210,9 @@ export function bootstrapPlayerView(options) {
     // l'invariant venait un jour à être contourné ailleurs, mieux vaut resélectionner que
     // franchir avec le mauvais pion sous le doigt.
     if (exactMovablePc && exactMovablePc.id !== selectedToken.id) {
+      movePlanning?.cancel();
       store.selectToken(exactMovablePc.id);
+      movePlanning?.start(exactMovablePc, activeLevel);
       return;
     }
 
@@ -227,11 +249,14 @@ export function bootstrapPlayerView(options) {
       ) {
         let destination;
         try {
-          destination = store.traverseLink(selectedToken.id, liaison.link.id);
+          destination = movePlanning
+            ? movePlanning.withSuppressedReconcile(() => store.traverseLink(selectedToken.id, liaison.link.id))
+            : store.traverseLink(selectedToken.id, liaison.link.id);
         } catch {
           onDestinationRejected(targetCell, 'refused');
           return;
         }
+        movePlanning?.cancel();
         transport?.publish({
           type: 'link.traverse',
           payload: { tokenId: selectedToken.id, linkId: liaison.link.id, destination },
@@ -245,66 +270,77 @@ export function bootstrapPlayerView(options) {
     if (exactTappedToken && exactTappedToken.id !== selectedToken.id) {
       // Un PNJ ou un pion interdit présent exactement sur la case n'est jamais une destination de mouvement implicite.
       onDestinationRejected(targetCell, 'occupied');
-      store.selectToken(null);
       return;
     }
 
     if (
+      selectedToken.hidden ||
       selectedToken.kind !== 'pc' ||
       selectedToken.locked ||
       selectedToken.playerMovable === false
     ) {
       onDestinationRejected(targetCell, 'refused');
+      movePlanning?.cancel();
       store.selectToken(null);
       return;
     }
 
-    const targetKey = cellKey(targetCell);
-    if (!reachableCells.has(targetKey)) {
-      onDestinationRejected(targetCell, 'refused');
-      store.selectToken(null);
-      return;
-    }
-
-    // ⛔ Les MÊMES règles que la zone atteignable (chantier C-9) : un masque calculé ici à part
-    // laisserait un pion monté traverser une porte ouverte pendant l'animation, la zone l'ayant
-    // pourtant contournée.
-    const { blockedEdges, terrainCost } = movementRulesFor(selectedToken, activeLevel);
-    // Le coût de la cible est déjà dans la zone atteignable : il borne la recherche (G5).
-    const path = findPath(
-      grid, selectedToken.cell, targetCell, blockedEdges, terrainCost,
-      reachableCells.get(cellKey(targetCell))
-    );
-    const startedAt = Date.now();
-
-    const moveData = {
-      from: { a: selectedToken.cell.a, b: selectedToken.cell.b },
-      to: { a: targetCell.a, b: targetCell.b },
-      path,
-      startedAt,
-    };
-
-    store.moveTokenToCell(selectedToken.id, targetCell, moveData);
-
-    if (transport) {
-      transport.publish({
-        type: 'token.move',
-        payload: {
-          tokenId: selectedToken.id,
-          from: moveData.from,
-          to: moveData.to,
-          path: moveData.path,
-          startedAt: moveData.startedAt,
-        },
-        at: startedAt,
-        by: 'players',
+    const currentPlan = movePlanning?.getPlan();
+    const endpoint = currentPlan?.steps.length ? currentPlan.path[currentPlan.path.length - 1] : null;
+    if (endpoint && endpoint.a === targetCell.a && endpoint.b === targetCell.b) {
+      const latestToken = store.getCampaign()?.tokens.find((item) => item.id === selectedToken.id);
+      if (!latestToken) return;
+      const validation = movePlanning?.validate(latestToken, activeLevel, (path, destination) => {
+        if (store.findMoveConflict(latestToken.id, destination)) {
+          onDestinationRejected(destination, 'occupied');
+          return false;
+        }
+        const startedAt = Date.now();
+        try {
+          store.moveTokenToCell(latestToken.id, destination, {
+            from: { ...latestToken.cell }, to: destination, path, startedAt,
+          });
+        } catch {
+          onDestinationRejected(destination, 'occupied');
+          return false;
+        }
+        transport?.publish({
+          type: 'token.move',
+          payload: { tokenId: latestToken.id, from: { ...latestToken.cell }, to: destination, path, startedAt },
+          at: startedAt,
+          by: 'players',
+        });
+        store.selectToken(null);
+        return true;
       });
+      if (!validation?.ok) onDestinationRejected(targetCell, 'refused');
+      return;
     }
+    const candidatePlan = currentPlan ?? movePlanning?.start(selectedToken, activeLevel);
+    if (!candidatePlan) return;
+    const targetKey = cellKey(targetCell);
+    if (!candidatePlan.reachable.has(targetKey)) {
+      if (candidatePlan.steps.length) {
+        movePlanning?.cancel();
+        cancelledAtCell = { ...targetCell };
+      } else {
+        movePlanning?.cancel();
+        store.selectToken(null);
+      }
+      return;
+    }
+    const result = movePlanning?.extend(targetCell, selectedToken, activeLevel);
+    if (result && !result.ok) onDestinationRejected(targetCell, 'refused');
   }
 
   const pointerInput = new PointerInput(element, camera, {
     role: 'players',
     onIntention: handleIntention,
+    canDoubleTap: () => store.getState().selectedTokenId === null,
+    contextKey: () => {
+      const current = store.getState();
+      return `${current.activeLevelId || ''}:${current.selectedTokenId || ''}`;
+    },
     canStartTemplateDrag: (_screenPos, mapPos) => {
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return null;
@@ -318,9 +354,11 @@ export function bootstrapPlayerView(options) {
 
   return {
     detach: () => {
+      // Le contrôleur est détenu par la vue applicative, qui le nettoie après le détachement.
       pointerInput.detach();
     },
     pointerInput,
+    movePlanning,
   };
 }
 

@@ -75,9 +75,18 @@ test.describe('Chantier R — Sondes Canvas indépendantes de validation', () =>
     const pxPerCell = FAKE_LEVEL.pxPerCell;
 
     const res = await pageGM.evaluate(async ({ pxPerCell }) => {
+      let moveZoneLayerPrototype = null;
+      let originalMoveZoneRender = null;
       try {
         const app = /** @type {any} */ (window).__RPG_APP__;
         const store = await import('../js/state/store.js');
+        const { MoveZoneLayer } = await import('../js/render/layers/moveZone.js');
+        moveZoneLayerPrototype = MoveZoneLayer.prototype;
+        originalMoveZoneRender = moveZoneLayerPrototype.render;
+        // Cette sonde isole le liseré du pion : la zone des cases atteignables peut partager sa
+        // couleur et ses pixels. Elle est couverte séparément, et n'est neutralisée que pendant
+        // ces mesures Canvas, sans modifier le rendu réel des pions ni leur géométrie.
+        moveZoneLayerPrototype.render = () => 0;
 
         const forceRender = () => {
           if (app.frameLoop && typeof app.frameLoop._tick === 'function') {
@@ -158,6 +167,10 @@ test.describe('Chantier R — Sondes Canvas indépendantes de validation', () =>
         return { error: null, z02, z20 };
       } catch (e) {
         return { error: String(e) };
+      } finally {
+        if (moveZoneLayerPrototype && originalMoveZoneRender) {
+          moveZoneLayerPrototype.render = originalMoveZoneRender;
+        }
       }
     }, { pxPerCell });
 

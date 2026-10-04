@@ -12,6 +12,7 @@
  * @property {(levelId: string) => void} [onClearTemplates]
  * @property {() => Template[]} [getTemplates] Gabarits de la campagne, tous étages confondus
  * @property {(templateId: string) => void} [onRemoveTemplate]
+ * @property {(templateId: string|null) => void} [onSelectionChange]
  * @property {(armed: boolean) => void} [onArmChange]
  * @property {() => void} [requestRender]
  */
@@ -45,6 +46,7 @@ export function createTemplateTools(container, options) {
     onClearTemplates,
     getTemplates,
     onRemoveTemplate,
+    onSelectionChange,
     onArmChange,
     requestRender,
   } = options;
@@ -57,6 +59,8 @@ export function createTemplateTools(container, options) {
   let widthCells = 1;
   let color = '#ef4444';
   let visibleToPlayers = true;
+  /** @type {string|null} */
+  let selectedTemplateId = null;
   let currentTemplateId = generateTemplateId();
 
   container.innerHTML = `
@@ -165,6 +169,25 @@ export function createTemplateTools(container, options) {
   /** Signature de la dernière liste rendue — voir `refresh`. */
   let signatureRendue = /** @type {string|null} */ (null);
 
+  /** @param {string|null} templateId */
+  function selectTemplate(templateId) {
+    if (templateId === selectedTemplateId) {
+      // Le bouton peut être réutilisé pour rendre la poignée active après l'armement d'un autre
+      // outil survenu depuis sa sélection initiale.
+      if (templateId) onSelectionChange?.(templateId);
+      return;
+    }
+    selectedTemplateId = templateId;
+    if (armed) {
+      armed = false;
+      updateUI();
+      onArmChange?.(false);
+    }
+    onSelectionChange?.(selectedTemplateId);
+    requestRender?.();
+    refresh();
+  }
+
   function refresh() {
     const all = getTemplates?.();
     // Sans source de gabarits, il n'y a pas de liste à tenir : le composant reste utilisable
@@ -173,11 +196,15 @@ export function createTemplateTools(container, options) {
 
     const levelId = getActiveLevelId?.() ?? null;
     const posed = levelId ? all.filter((t) => t && t.levelId === levelId) : [];
+    if (selectedTemplateId && !posed.some((t) => t.id === selectedTemplateId)) {
+      selectedTemplateId = null;
+      onSelectionChange?.(null);
+    }
 
     // ⛔ Ne reconstruire que si la liste a changé (audit du 22/09, B8). Le panneau appelle
     // ceci à chaque notification du store, fog et vision compris : reconstruire à chaque fois
     // remplaçait le bouton « Retirer » entre l'appui et le relâchement, et le clic était perdu.
-    const signature = JSON.stringify([levelId, posed]);
+    const signature = JSON.stringify([levelId, selectedTemplateId, posed]);
     if (signature === signatureRendue) return;
     signatureRendue = signature;
 
@@ -207,17 +234,27 @@ export function createTemplateTools(container, options) {
         const cache = t.visibleToPlayers ? '' : ' · MJ seul';
         text.textContent = `${forme} — rayon ${t.radiusCells}${largeur}${cache}`;
 
+        const select = document.createElement('button');
+        select.type = 'button';
+        select.className = 'tpl-select gm-btn--sm';
+        select.setAttribute('data-template-id', t.id);
+        select.setAttribute('aria-pressed', String(selectedTemplateId === t.id));
+        select.textContent = selectedTemplateId === t.id ? 'Sélectionné' : 'Sélectionner';
+        select.title = 'Sélectionner le gabarit, puis maintenir et glisser sa poignée pour le déplacer';
+        select.addEventListener('click', () => selectTemplate(t.id));
+
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'tpl-remove gm-btn--danger gm-btn--sm';
         remove.setAttribute('data-template-id', t.id);
         remove.textContent = 'Retirer';
         remove.addEventListener('click', () => {
+          if (selectedTemplateId === t.id) selectTemplate(null);
           onRemoveTemplate?.(t.id);
           requestRender?.();
         });
 
-        row.append(chip, text, remove);
+        row.append(chip, text, select, remove);
         return row;
       })
     );
@@ -236,6 +273,10 @@ export function createTemplateTools(container, options) {
   function setArmed(value) {
     const next = Boolean(value);
     if (armed !== next) {
+      if (next && selectedTemplateId) {
+        selectedTemplateId = null;
+        onSelectionChange?.(null);
+      }
       armed = next;
       if (armed) {
         currentTemplateId = generateTemplateId();
@@ -243,6 +284,7 @@ export function createTemplateTools(container, options) {
       updateUI();
       onArmChange?.(armed);
       requestRender?.();
+      refresh();
     }
   }
 
@@ -253,6 +295,7 @@ export function createTemplateTools(container, options) {
   btnClear.addEventListener('click', () => {
     const levelId = getActiveLevelId?.();
     if (levelId) {
+      if (selectedTemplateId) selectTemplate(null);
       onClearTemplates?.(levelId);
       requestRender?.();
     }
@@ -316,6 +359,8 @@ export function createTemplateTools(container, options) {
     setArmed,
     disarm: () => setArmed(false),
     refresh,
+    getSelectedTemplateId: () => selectedTemplateId,
+    clearSelection: () => selectTemplate(null),
     getConfig: () => ({
       templateId: currentTemplateId,
       shape,

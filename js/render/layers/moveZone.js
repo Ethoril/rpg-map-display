@@ -1,5 +1,6 @@
 // @ts-check
 import { parseCellKey } from '../../core/cellKey.js';
+import { MOVE_ZONE_FILL_ALPHA, MOVE_ZONE_OUTLINE_PX } from '../../core/constants.js';
 
 /**
  * @typedef {import('../../core/types.js').Token} Token
@@ -89,9 +90,10 @@ export class MoveZoneLayer {
    * @param {CanvasRenderingContext2D} ctx
    * @param {GridAdapter} grid
    * @param {MoveZoneState} state
+   * @param {number} [zoom=1] Zoom caméra, pour garder le contour constant en pixels écran
    * @returns {number} nombre de cases dessinées
    */
-  render(ctx, grid, state) {
+  render(ctx, grid, state, zoom = 1) {
     const token = state?.selectedToken;
     const reachableCells = state?.reachableCells;
     if (!ctx || !grid || !token || !(reachableCells instanceof Map) || reachableCells.size === 0) {
@@ -100,7 +102,7 @@ export class MoveZoneLayer {
 
     ctx.save();
     ctx.fillStyle = token.borderColor || '#3b82f6';
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA;
     let renderedCells = 0;
 
     // Un seul chemin, un seul fill() : à cette globalAlpha, remplir case par case superposerait
@@ -112,6 +114,18 @@ export class MoveZoneLayer {
       renderedCells++;
     }
     ctx.fill();
+
+    // Le remplissage groupé ne crée pas de coutures. Les contours sont ensuite tracés par
+    // case, en pixels écran constants, pour que la frontière reste lisible au zoom courant.
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = token.borderColor || '#3b82f6';
+    ctx.lineWidth = MOVE_ZONE_OUTLINE_PX / Math.max(0.01, zoom);
+    ctx.lineJoin = 'round';
+    for (const key of reachableCells.keys()) {
+      ctx.beginPath();
+      grid.cellPath(ctx, parseCellKey(key));
+      ctx.stroke();
+    }
 
     ctx.restore();
     return renderedCells;

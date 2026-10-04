@@ -35,7 +35,7 @@ progressivement et non spécifié d'un bloc à l'avance.
 | Écran tiers | La **tablette caste son écran** vers la TV. Duplication, pas vue indépendante. Le Mac ne stream jamais. |
 | Vision joueurs | **Union de tous les pions PJ.** Pas de sélection, pas de vue par personnage. |
 | Fog de guerre | **Persistant.** Les zones explorées restent mémorisées, par étage. |
-| Déplacement joueurs | **Tap pion → tap case de destination**, validée contre les cases atteignables. Aucun drag tactile. |
+| Déplacement joueurs | **Tap pion → préparation des étapes → second tap sur l’arrivée pour valider**. Clic hors zone : annuler le trajet, puis désélectionner. Aucun drag tactile. Amendement du 04/10/2026. |
 | Déplacement MJ | **Drag libre** à la souris, sans contrainte d'atteignabilité. Seuil de ~150 ms pour distinguer tap et drag. |
 | Conflit de saisie | Sans prise continue, **dernière écriture gagne**. Plus de préemption à gérer. |
 | Multi-étage | **Scènes indépendantes reliées par points de liaison.** Pas de superposition alignée. |
@@ -296,10 +296,11 @@ Chaque étage est une **scène autonome** : sa propre image, sa propre grille, s
 murs / portails / lumières, son propre masque de fog. Aucun alignement géométrique.
 
 Une liaison est une paire de coordonnées (escalier, ascenseur, échelle, trappe,
-passage). Traversée : **la case de liaison est une destination atteignable comme une
-autre** — un tap dessus déplace le pion, puis bascule son `levelId` et sa position sur
-l'autre extrémité. Exactement le comportement d'un jeu de plateau, et l'ambiguïté de la
-téléportation accidentelle disparaît avec le drag.
+passage). La case de liaison est une destination atteignable comme une autre. Le personnage
+doit d’abord s’y déplacer réellement ; un nouveau tap sur ce personnage sélectionné demande
+le franchissement, qui change son `levelId` et sa position vers l’autre extrémité. Cette
+description reflète le geste actuel en deux temps. Le chantier du 04/10/2026 conserve ce
+fonctionnement : l’annulation d’un trajet préparé passe par un clic hors zone, pas par le pion.
 
 **Sélecteur d'étage** (vue joueurs et vue MJ) :
 - Un badge par étage = nombre de pions PJ présents.
@@ -355,9 +356,16 @@ Décision structurante, reprise de l'implémentation `shadowrunbank` (`reachable
 
 **Vue joueurs (tactile) — aucun drag.**
 1. Tap sur un pion PJ → sélection (anneau visible) + affichage des **cases atteignables**.
-2. Tap sur une case atteignable → déplacement validé et commité.
-3. Tap sur le vide → désélection.
-4. Le drag à un doigt reste donc **entièrement dédié au pan de la carte**.
+2. Tap sur une case atteignable → arrivée préparée, chemin visible sur les postes du même étage et portée restante recalculée. D’autres cases prolongent le trajet.
+3. Second tap sur la dernière arrivée → validation du trajet complet, mouvement et désélection.
+4. Tap sur le fond hors zone → annulation du trajet en conservant la sélection ; un second clic au même endroit désélectionne. Sans préparation, le premier clic hors zone désélectionne.
+5. Aucun drag de pion. Les gestes existants de pan et de gabarits sont conservés.
+
+Amendement du 04/10/2026 : le [cahier des charges du retour de session](CAHIER-DES-CHARGES-RETOUR-SESSION-2026-10-04.md)
+fixe les cas limites, le compteur restant et le partage éphémère des préparations. Une préparation
+ne modifie ni la position réelle, ni le champ de vision du pion, ni le brouillard exploré, ni
+l’instantané de campagne. La vision reste calculée depuis la position réelle jusqu’à validation ;
+elle suit ensuite le déplacement exécuté selon les règles existantes.
 
 **Bande de sélection** (chantier C-9, demandée par le mainteneur le 01/10/2026). Tant qu'un pion
 est sélectionné — donc tant que sa zone est affichée —, une bande verticale apparaît sur le **bord
@@ -373,13 +381,13 @@ n°2) : son contenu est fixé là, et un bouton de plus s'y décide comme toute 
 s'ouvre que sur un pion que la tablette a le droit de déplacer, puisque c'est le seul qu'elle sache
 sélectionner.
 
-**Vue MJ (souris) — drag conservé**, sans contrainte d'atteignabilité, avec seuil de
+**Vue MJ (souris) — le même parcours par clics est disponible ; drag conservé**, sans contrainte d'atteignabilité pour le glisser, avec seuil de
 ~150 ms pour distinguer tap et drag. Le MJ garde ainsi le placement libre hors grille
 quand il en a besoin.
 
 **Cases atteignables :** Dijkstra pondéré respectant le masque d'arêtes bloquées. Portée =
 `token.speedCells`, **valeur propre à chaque personnage**, éditable dans le créateur de
-pions. Restriction toujours active côté joueurs, jamais côté MJ.
+pions. Restriction active pour les déplacements préparés ; le glisser libre du MJ demeure sans contrainte de portée.
 
 - **Grille carrée** : coût octile (orthogonal 1, diagonale ≈ 1,5), corner-cutting interdit.
 - **Grille hexagonale** : coût uniforme 1, 6 voisins. Ni diagonale, ni octile, ni
@@ -558,13 +566,13 @@ sources portées par les pions (`emitsLight`).
   ⛔ La distance vient de **`grid.distance(a, b)`**, jamais d'un calcul en dur (interdiction n°7).
   C'est ce qui la fera fonctionner en hexagone sans une ligne de plus.
 - **Ping** — ~~deux doigts tap~~, marqueur animé ~2 s, **visible sur les trois postes**.
-  **Amendé le 12/08/2026 : émission MJ seule, par bouton armé.**
+  **Amendé le 04/10/2026 : émission MJ par bouton armé et émission joueurs par double tap sans sélection active.**
 
-  *Ce qui a changé et pourquoi.* Le geste tactile est **supprimé** : côté joueurs il n'y a pas de
-  besoin, parce qu'il leur suffit de **zoomer sur la tablette** pour que le MJ voie de quoi ils
-  parlent. Le ping ne sert donc que dans le sens MJ → table, et le poste MJ est toujours
-  clavier-souris. ⭐ L'affichage, lui, reste sur **les trois postes** : c'est tout l'objet du geste,
-  et le critère du lot 4 est inchangé.
+  Le double tap joueurs fonctionne partout sur la carte, pion et porte compris. Sans sélection,
+  le tap simple est différé le temps de distinguer les deux gestes ; un double tap consomme
+  l’action simple et ne sélectionne pas de pion ni ne bascule de porte. Avec un personnage
+  sélectionné, les clics de déplacement, annulation et désélection sont immédiats et ne pinguent
+  pas. L’affichage reste sur tous les postes du même étage, sans persistance ni rejeu.
 
   *Bouton armé plutôt que double-clic, et pas seulement par facilité.* Sur la vue MJ un clic a déjà
   des effets — sélectionner un pion, désigner une destination. Un double-clic les déclencherait au
@@ -866,7 +874,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `fog.update` | **Mac seul** | throttlé 1 Hz ou à la révélation |
 | `vision.request` | tablette | ponctuel — **sans payload** depuis l'amendement C-8 |
 | `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
-| `ping` | **MJ seul** (amendé le 12/08/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
+| `ping` | **MJ et joueurs** (amendé le 04/10/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
 | `ambient.set` | MJ | throttlé |
 | ~~`handout.show` / `handout.hide`~~ | — | **retirés par C-13** : le partage d'image n'est pas un événement, c'est le nœud d'état `session/{sid}/sharedImage` (§5.8, §6). Un ancien `handout.*` reçu est ignoré comme tout type inconnu |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |

@@ -36,9 +36,11 @@ import {
   runTransaction as runFirestoreTransaction,
 } from 'firebase/firestore';
 import { identifiantAleatoire, isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } from '../core/schema.js';
+import { MOVE_PREVIEW_MAX_PATH_CELLS } from '../core/constants.js';
 
 /** @typedef {import('../core/types.js').NetEvent} NetEvent */
 /** @typedef {import('../core/types.js').SharedImage} SharedImage */
+/** @typedef {import('../core/types.js').MovePreview} MovePreview */
 /** @typedef {import('./Transport.js').Transport} Transport */
 
 /** Champs sans lesquels rien ne peut fonctionner. `databaseURL` n'apparaît dans la console
@@ -46,6 +48,69 @@ import { identifiantAleatoire, isBoundedImageDataUrl, TOKEN_IMAGE_MAX_BYTES } fr
 const CHAMPS_REQUIS = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'appId'];
 const TRANSIENT_ASSET_URL = /^(?:data|blob):/i;
 const PRESENCE_HEARTBEAT_MS = 30_000;
+const MOVE_PREVIEW_ID_MAX_LENGTH = 128;
+
+/** @param {unknown} value */
+function isMovePreviewId(value) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MOVE_PREVIEW_ID_MAX_LENGTH &&
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
+/** @param {unknown} value */
+function isRtdbKey(value) {
+  return isMovePreviewId(value) && !/[\\/.$#[\]]/.test(/** @type {string} */ (value));
+}
+
+/** @param {unknown} value */
+function isMovePreviewCell(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Number.isSafeInteger(/** @type {any} */ (value).a) &&
+      Number.isSafeInteger(/** @type {any} */ (value).b) &&
+      /** @type {any} */ (value).a >= 0 &&
+      /** @type {any} */ (value).b >= 0
+  );
+}
+
+/** @param {unknown} value @returns {value is MovePreview} */
+export function isValidMovePreview(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const preview = /** @type {any} */ (value);
+  return (
+    isMovePreviewId(preview.planId) &&
+    Number.isSafeInteger(preview.revision) &&
+    preview.revision >= 0 &&
+    isMovePreviewId(preview.levelId) &&
+    isMovePreviewId(preview.tokenId) &&
+    isMovePreviewCell(preview.start) &&
+    Array.isArray(preview.path) &&
+    preview.path.length > 0 &&
+    preview.path.length <= MOVE_PREVIEW_MAX_PATH_CELLS &&
+    preview.path.every(isMovePreviewCell) &&
+    preview.path[0].a === preview.start.a &&
+    preview.path[0].b === preview.start.b &&
+    isMovePreviewCell(preview.destination) &&
+    preview.path.at(-1).a === preview.destination.a &&
+    preview.path.at(-1).b === preview.destination.b &&
+    Number.isFinite(preview.remaining) &&
+    preview.remaining >= 0
+  );
+}
+
+/** @param {unknown} current @param {string} planId */
+export function decideMovePreviewClear(current, planId) {
+  // RTDB peut appeler la transaction avec son cache local vide avant de lire le serveur. Écrire
+  // null dans ce cas force une lecture serveur ; abandonner ici pourrait laisser un aperçu distant.
+  if (current === null || current === undefined) return null;
+  if (typeof current !== 'object' || /** @type {any} */ (current).planId !== planId) return undefined;
+  return null;
+}
 
 /**
  * Plafond applicatif volontairement inférieur à la limite Firestore. La marge absorbe les
@@ -989,6 +1054,20 @@ export class FirebaseTransport {
     this._presenceUnsubscribers = new Set();
     /** @type {Set<() => void>} Écoutes du nœud `sharedImage` (C-13) */
     this._sharedImageUnsubscribers = new Set();
+    /** @type {Set<() => void>} Écoutes du nœud temporaire `movePreviews` */
+    this._movePreviewUnsubscribers = new Set();
+    /** @type {Promise<unknown>} File des écritures d'aperçu du propriétaire local */
+    this._movePreviewWriteQueue = Promise.resolve();
+    /** @type {(() => void)|null} Écoute de la connexion RTDB pour réarmer onDisconnect */
+    this._movePreviewConnectionUnsubscribe = null;
+    /** @type {boolean|null} */
+    this._movePreviewWasConnected = null;
+    /** @type {number} Les opérations mises en file avant une perte réseau deviennent obsolètes */
+    this._movePreviewNetworkGeneration = 0;
+    /** @type {Set<string>} Tombstones locaux empêchant un aperçu fermé de ressusciter */
+    this._movePreviewClosedPlanIds = new Set();
+    /** @type {string|null} */
+    this._movePreviewActivePlanId = null;
     /** @type {import('firebase/database').DatabaseReference|null} */
     this._presenceRef = null;
     /** @type {import('firebase/database').OnDisconnect|null} */
@@ -1204,6 +1283,8 @@ export class FirebaseTransport {
     this._firestore = getFirestore(
       /** @type {import('firebase/app').FirebaseApp} */ (this._app)
     );
+
+    this._watchMovePreviewConnection(epoch);
 
     await this._openEventChannel(epoch);
   }
@@ -2133,6 +2214,203 @@ export class FirebaseTransport {
   }
 
   /**
+   * Suit l'état de connexion pour réarmer le filet serveur à chaque reconnexion. Chaque publication
+   * réarme aussi onDisconnect juste avant l'écriture, ce qui ferme la course entre cet écouteur et
+   * un geste immédiatement après le retour du réseau.
+   * @private
+   * @param {number} epoch
+   */
+  _watchMovePreviewConnection(epoch) {
+    if (!this._db) return;
+    this._movePreviewConnectionUnsubscribe?.();
+    this._movePreviewWasConnected = null;
+    this._movePreviewConnectionUnsubscribe = onValue(
+      ref(this._db, '.info/connected'),
+      (snap) => {
+        if (epoch !== this._sessionEpoch) return;
+        const connected = snap.val() === true;
+        const wasConnected = this._movePreviewWasConnected;
+        this._movePreviewWasConnected = connected;
+        if (!connected) {
+          if (wasConnected === true) {
+            this._movePreviewNetworkGeneration += 1;
+            if (this._movePreviewActivePlanId) {
+              this._rememberClosedMovePlan(this._movePreviewActivePlanId);
+              this._movePreviewActivePlanId = null;
+            }
+          }
+          return;
+        }
+        if (wasConnected !== false) return;
+        const sessionId = this._sessionId;
+        const clientId = this._clientId;
+        const db = this._db;
+        void this._queueMovePreviewWork(async () => {
+          if (epoch !== this._sessionEpoch || !db || !sessionId || !clientId ||
+              db !== this._db || sessionId !== this._sessionId || clientId !== this._clientId) return;
+          const previewRef = ref(db, `session/${sessionId}/movePreviews/${clientId}`);
+          await onDisconnect(previewRef).remove();
+          if (epoch !== this._sessionEpoch || db !== this._db ||
+              sessionId !== this._sessionId || clientId !== this._clientId) return;
+          // Un aperçu préparé avant la coupure n'est jamais repris après reconnexion.
+          await remove(previewRef);
+        }).catch((err) => this._reportError(err, 'réarmement des aperçus de déplacement'));
+      },
+      (err) => this._reportError(err, 'connexion des aperçus de déplacement')
+    );
+  }
+
+  /** @private @template T @param {() => Promise<T>} work @returns {Promise<T>} */
+  _queueMovePreviewWork(work) {
+    const result = this._movePreviewWriteQueue.then(work, work);
+    this._movePreviewWriteQueue = result.catch(() => {});
+    return result;
+  }
+
+  /** @private @param {string} planId */
+  _rememberClosedMovePlan(planId) {
+    this._movePreviewClosedPlanIds.add(planId);
+    if (this._movePreviewClosedPlanIds.size > 64) {
+      const oldest = this._movePreviewClosedPlanIds.values().next().value;
+      if (oldest) this._movePreviewClosedPlanIds.delete(oldest);
+    }
+  }
+
+  /**
+   * Publie/remplace l'aperçu éphémère de ce client. Les opérations du client sont sérialisées ;
+   * une ancienne révision ne peut donc pas écraser la suivante. Aucun événement de campagne n'est
+   * créé et aucune donnée de l'aperçu n'entre dans l'instantané.
+   * @param {MovePreview} preview
+   * @returns {Promise<import('./Transport.js').PublishResult>}
+   */
+  async publishMovePreview(preview) {
+    try {
+      if (!this._db || !this._sessionId || !this._clientId) throw new Error('Transport non connecté');
+      if (!isValidMovePreview(preview)) throw new Error('Aperçu de déplacement invalide');
+      const sessionId = this._sessionId;
+      const clientId = this._clientId;
+      const db = this._db;
+      const epoch = this._sessionEpoch;
+      const networkGeneration = this._movePreviewNetworkGeneration;
+      if (this._movePreviewWasConnected === false) throw new Error('Transport RTDB hors ligne');
+      const isCurrent = () => epoch === this._sessionEpoch && db === this._db && sessionId === this._sessionId &&
+        clientId === this._clientId && networkGeneration === this._movePreviewNetworkGeneration &&
+        !this._movePreviewClosedPlanIds.has(preview.planId);
+      await this._queueMovePreviewWork(async () => {
+        if (epoch !== this._sessionEpoch || sessionId !== this._sessionId || clientId !== this._clientId || !db) {
+          throw new Error('La session a changé avant la publication de l’aperçu');
+        }
+        if (!isCurrent()) {
+          throw new Error('Préparation périmée avant la publication de l’aperçu');
+        }
+        const previewRef = ref(db, `session/${sessionId}/movePreviews/${clientId}`);
+        // La requête serveur doit être confirmée avant toute écriture ; ainsi le serveur retirera
+        // ce nœud si le client disparaît brutalement.
+        await onDisconnect(previewRef).remove();
+        if (!isCurrent()) {
+          throw new Error('Préparation périmée avant la publication de l’aperçu');
+        }
+        const result = await runTransaction(previewRef, (current) => {
+          if (!isCurrent()) return undefined;
+          if (
+            current &&
+            current.planId === preview.planId &&
+            Number.isSafeInteger(current.revision) &&
+            current.revision >= preview.revision
+          ) return undefined;
+          return {
+            planId: preview.planId,
+            revision: preview.revision,
+            levelId: preview.levelId,
+            tokenId: preview.tokenId,
+            start: preview.start,
+            path: preview.path,
+            destination: preview.destination,
+            remaining: preview.remaining,
+          };
+        });
+        if (!isCurrent()) {
+          throw new Error('Préparation périmée après la publication de l’aperçu');
+        }
+        if (!result.committed) throw new Error('Révision d’aperçu déjà dépassée');
+        this._movePreviewActivePlanId = preview.planId;
+      });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: this._reportError(err, 'publication de l’aperçu de déplacement') };
+    }
+  }
+
+  /**
+   * Retire l'aperçu seulement s'il appartient toujours à `planId`, afin qu'une fermeture tardive
+   * ne supprime pas un trajet remplacé.
+   * @param {string} planId
+   * @returns {Promise<import('./Transport.js').PublishResult>}
+   */
+  async clearMovePreview(planId) {
+    try {
+      if (!this._db || !this._sessionId || !this._clientId) throw new Error('Transport non connecté');
+      if (!isMovePreviewId(planId)) throw new Error('Identifiant de préparation invalide');
+      const sessionId = this._sessionId;
+      const clientId = this._clientId;
+      const epoch = this._sessionEpoch;
+      this._rememberClosedMovePlan(planId);
+      await this._queueMovePreviewWork(async () => {
+        if (epoch !== this._sessionEpoch || sessionId !== this._sessionId || clientId !== this._clientId || !this._db) {
+          throw new Error('La session a changé avant le retrait de l’aperçu');
+        }
+        await runTransaction(
+          ref(this._db, `session/${sessionId}/movePreviews/${clientId}`),
+          (current) => decideMovePreviewClear(current, planId)
+        );
+        if (this._movePreviewActivePlanId === planId) this._movePreviewActivePlanId = null;
+      });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: this._reportError(err, 'retrait de l’aperçu de déplacement') };
+    }
+  }
+
+  /**
+   * Abonne au dictionnaire des préparations actives, dès la première lecture puis à chaque
+   * changement. Les entrées mal formées sont ignorées sans interrompre les autres clients.
+   * @param {(previews: Record<string, MovePreview>) => void} callback
+   * @returns {() => void}
+   */
+  subscribeMovePreviews(callback) {
+    if (!this._db || !this._sessionId) throw new Error('Transport non connecté');
+    if (typeof callback !== 'function') throw new Error('Le callback d’aperçus doit être une fonction');
+    const previewsRef = ref(this._db, `session/${this._sessionId}/movePreviews`);
+    const unsubscribe = onValue(
+      previewsRef,
+      (snap) => {
+        /** @type {Record<string, MovePreview>} */
+        const previews = {};
+        const raw = snap.val();
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          for (const [clientId, preview] of Object.entries(raw)) {
+            if (!isRtdbKey(clientId) || !isValidMovePreview(preview)) {
+              console.warn('FirebaseTransport : aperçu de déplacement invalide ignoré');
+              continue;
+            }
+            previews[clientId] = preview;
+          }
+        }
+        callback(previews);
+      },
+      (err) => this._reportError(err, 'écoute des aperçus de déplacement')
+    );
+    this._movePreviewUnsubscribers.add(unsubscribe);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      this._movePreviewUnsubscribers.delete(unsubscribe);
+      unsubscribe();
+    };
+  }
+
+  /**
    * Identifiant unique du client connecté courant.
    * @returns {string|null}
    */
@@ -2370,6 +2648,23 @@ export class FirebaseTransport {
       off(this._liveQuery);
     }
     this._liveQuery = null;
+
+    this._movePreviewConnectionUnsubscribe?.();
+    this._movePreviewConnectionUnsubscribe = null;
+    this._movePreviewWasConnected = null;
+    this._movePreviewNetworkGeneration += 1;
+    if (this._movePreviewActivePlanId) this._rememberClosedMovePlan(this._movePreviewActivePlanId);
+    this._movePreviewActivePlanId = null;
+    for (const unsubscribe of this._movePreviewUnsubscribers) unsubscribe();
+    this._movePreviewUnsubscribers.clear();
+    const oldDb = this._db;
+    const oldSessionId = this._sessionId;
+    const oldClientId = this._clientId;
+    if (oldDb && oldSessionId && oldClientId) {
+      void this._queueMovePreviewWork(async () => {
+        await runTransaction(ref(oldDb, `session/${oldSessionId}/movePreviews/${oldClientId}`), () => null);
+      }).catch((err) => this._reportError(err, 'retrait de l’aperçu à la déconnexion'));
+    }
 
     // `disconnect()` reste synchrone par contrat. Le filet onDisconnect reste arm\u00e9 si le
     // navigateur dispara\u00eet avant que cette suppression au mieux ait atteint le serveur.

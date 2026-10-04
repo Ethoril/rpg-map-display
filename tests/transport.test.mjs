@@ -19,6 +19,8 @@ import {
     getAcknowledgedEventFrontier,
     isRetentionLeaseStale,
     isValidSharedImage,
+    isValidMovePreview,
+    decideMovePreviewClear,
     measureFirestoreSnapshot,
     normalizeExplicitSessionIds,
     RETENTION_LEASE_SUSPECT_AFTER_MS,
@@ -700,4 +702,26 @@ test('C-13 : isValidSharedImage n’accepte qu’une image data:image/ complète
     assert.equal(isValidSharedImage({ ...bonne, id: '' }), false);
     assert.equal(isValidSharedImage({ ...bonne, width: 'large' }), false);
     assert.equal(isValidSharedImage(null), false);
+});
+
+test('aperçus de déplacement : forme bornée, cellules entières et destination cohérente', () => {
+    const valide = {
+        planId: 'plan.1', revision: 2, levelId: 'niveau.1', tokenId: 'pion.1',
+        start: { a: 3, b: 4 }, path: [{ a: 3, b: 4 }, { a: 4, b: 4 }],
+        destination: { a: 4, b: 4 }, remaining: 1.5,
+    };
+    assert.equal(isValidMovePreview(valide), true);
+    assert.equal(isValidMovePreview({ ...valide, start: { a: 3.2, b: 4 } }), false);
+    assert.equal(isValidMovePreview({ ...valide, path: [{ a: 3, b: 4 }, { a: Infinity, b: 4 }] }), false);
+    assert.equal(isValidMovePreview({ ...valide, path: [{ a: 3, b: 4 }], destination: { a: 8, b: 8 } }), false);
+    assert.equal(isValidMovePreview({ ...valide, path: [{ a: 3, b: 4 }, { a: 4, b: 4 }], remaining: -1 }), false);
+    assert.equal(isValidMovePreview({ ...valide, path: [{ a: 3, b: 4 }, ...Array(4096).fill({ a: 3, b: 4 })] }), false);
+});
+
+test('aperçus de déplacement : une fermeture tardive respecte la nouvelle préparation', () => {
+    const ancien = { planId: 'ancien', revision: 8 };
+    const recent = { planId: 'recent', revision: 1 };
+    assert.equal(decideMovePreviewClear(ancien, 'ancien'), null);
+    assert.equal(decideMovePreviewClear(recent, 'ancien'), undefined);
+    assert.equal(decideMovePreviewClear(null, 'ancien'), null, 'un cache vide force la lecture de la valeur serveur');
 });

@@ -35,6 +35,21 @@ export const DRAG_HOLD_MS = 150;
  */
 export const PING_DURATION_MS = 2000;
 
+/**
+ * Plafond du chemin envoyé dans un aperçu temporaire RTDB. Ne borne pas les règles de
+ * déplacement : un aperçu trop volumineux est refusé explicitement, jamais tronqué.
+ */
+export const MOVE_PREVIEW_MAX_PATH_CELLS = 4096;
+
+/** Fenêtre du double tap joueurs, en millisecondes ; taps de déplacement immédiats. */
+export const DOUBLE_TAP_MS = 300;
+/** Tolérance entre deux taps, en pixels écran indépendants du zoom. */
+export const DOUBLE_TAP_DISTANCE_PX = 32;
+/** Remplissage de portée renforcé pour la projection, à valider sur le matériel de jeu. */
+export const MOVE_ZONE_FILL_ALPHA = 0.55;
+/** Contour opaque de chaque case accessible, en pixels écran. */
+export const MOVE_ZONE_OUTLINE_PX = 2.5;
+
 
 /**
  * Clé de `sessionStorage` mémorisant le code de session du MJ.

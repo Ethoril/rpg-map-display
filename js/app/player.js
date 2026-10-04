@@ -9,6 +9,7 @@ import { VideoBackdrop } from '../render/videoBackdrop.js';
 import { GridLayer } from '../render/layers/gridLayer.js';
 import { LightLayer } from '../render/layers/light.js';
 import { MoveZoneLayer } from '../render/layers/moveZone.js';
+import { MovePlanLayer } from '../render/layers/movePlan.js';
 import { TokensLayer } from '../render/layers/tokens.js';
 import { FogLayer } from '../render/layers/fogLayer.js';
 import { PortalsLayer } from '../render/layers/portals.js';
@@ -37,6 +38,8 @@ import {
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 import { listOtherGmClients } from '../state/presence.js';
+import { MovePlanningController } from './movePlanning.js';
+import { movePlanPreview } from '../state/movePlan.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 
@@ -103,6 +106,26 @@ function promptAtCellOf(state, activeLevel, visibleCanvas) {
     return null;
   }
   return porteur.cell;
+}
+
+/**
+ * La préparation partagée suit la même visibilité que le pion : étage courant, non masqué,
+ * vision publiée et case d'ancrage visible. Le trajet lui-même n'est pas découpé par le masque.
+ * @param {import('../core/types.js').Token|null|undefined} token
+ * @param {import('../core/types.js').Level} activeLevel
+ * @param {Uint8Array|null} maskAlpha
+ * @returns {boolean}
+ */
+function isMovePreviewOwnerVisible(token, activeLevel, maskAlpha) {
+  if (!token || token.levelId !== activeLevel.id || token.hidden || !maskAlpha) return false;
+  return isCellVisibleInMask(
+    token.cell,
+    maskAlpha,
+    activeLevel.widthCells,
+    activeLevel.heightCells,
+    activeLevel.grid?.type === 'hex' ? 'hex' : 'square',
+    gridFor(activeLevel).maskLatticeShift()
+  );
 }
 
 /**
@@ -310,6 +333,16 @@ export async function bootstrapPlayerApp(options = {}) {
   const portalsLayer = new PortalsLayer();
   const linksLayer = new LinksLayer();
   const moveZoneLayer = new MoveZoneLayer();
+  const movePlanLayer = new MovePlanLayer();
+  /** @type {(reason:string)=>void} */
+  let notifyMoveInvalidation = (_reason) => {};
+  /** @type {(error:unknown)=>void} */
+  let notifyMovePublicationError = (_error) => {};
+  const movePlanning = new MovePlanningController({
+    onChange: requestRender,
+    onInvalidated: (reason) => notifyMoveInvalidation(reason),
+    onPublicationError: (error) => notifyMovePublicationError(error),
+  });
   const templatesLayer = new TemplatesLayer();
   /**
    * Pose d'aperçu du gabarit que la table fait glisser (B4) — transitoire, ni store ni réseau.
@@ -614,17 +647,38 @@ export async function bootstrapPlayerApp(options = {}) {
       },
       moveZone: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const plan = movePlanning.getPlan();
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
-          reachableCells: state.reachableCells,
-        });
+          reachableCells: plan ? plan.reachable : state.reachableCells,
+        }, camera.zoom);
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
+      },
+      movePlan: () => {
+        const plan = movePlanning.getPlan();
+        const localPreview = plan?.steps.length ? movePlanPreview(plan) : null;
+        const campaignTokens = state.campaign?.tokens ?? [];
+        const visibleCanvas = getPlayerVisibleCanvas(activeLevel);
+        const visionPublished = store.getSessionVision(activeLevel.id) !== null;
+        const maskAlpha = visionPublished && visibleCanvas
+          ? getOrExtractMaskAlpha(visibleCanvas, activeLevel.widthCells, activeLevel.heightCells)
+          : null;
+        const previewOwnerIsVisible = /** @param {import('../core/types.js').MovePreview} preview */ (preview) => {
+          const owner = campaignTokens.find((token) => token.id === preview.tokenId);
+          return owner && owner.cell.a === preview.start.a && owner.cell.b === preview.start.b &&
+            isMovePreviewOwnerVisible(owner, activeLevel, maskAlpha);
+        };
+        const visibleLocalPreview = localPreview && previewOwnerIsVisible(localPreview) ? localPreview : null;
+        const remotes = Object.fromEntries(Object.entries(movePlanning.getRemotePreviews()).filter(([, preview]) => {
+          return preview.levelId === activeLevel.id && previewOwnerIsVisible(preview);
+        }));
+        movePlanLayer.render(stage.context, grid, activeLevel.id, visibleLocalPreview, remotes, camera.zoom);
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         templatesLayer.render(
           stage.context, grid, activeLevel,
-          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), true, camera.zoom
+          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), true, camera.zoom, null
         );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -718,6 +772,8 @@ export async function bootstrapPlayerApp(options = {}) {
   }
 
   const networkStatus = createNetworkStatus('players', sessionId);
+  notifyMoveInvalidation = (reason) => networkStatus.update('warning', `Trajet préparé annulé : ${reason}`);
+  notifyMovePublicationError = (error) => networkStatus.update('warning', `Aperçu non synchronisé : ${String(error || 'erreur réseau')}`);
   /** @type {Transport|null} */
   let transport = null;
   // ── C4 : démarrage hors ligne — local, puis reprise (D-10) — même règle que `gm.js` ────────
@@ -735,6 +791,7 @@ export async function bootstrapPlayerApp(options = {}) {
   });
   const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
   transport = connexion.transport;
+  movePlanning.setTransport(transport);
   if (connexion.delaiDepasse) {
     networkStatus.update('offline');
     tentative.then(
@@ -868,7 +925,21 @@ export async function bootstrapPlayerApp(options = {}) {
       })
     : null;
 
+  let invalidatePendingMoveTap = () => {};
+
   const unsubscribeStore = store.subscribe((change) => {
+    const moveState = store.getState();
+    movePlanning.clearIfLevelDiffers(moveState.activeLevelId || '');
+    if (!change?.session) {
+      movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel, true);
+      const selected = moveState.selectedToken;
+      if (selected && (selected.hidden || !isPlayerManipulableToken(selected))) {
+        // Le reconcile supprime d'abord le plan et signale sa cause. La sélection elle-même
+        // doit ensuite cesser d'autoriser les intentions de préparation de bootstrapPlayerView.
+        store.selectToken(null);
+      }
+    }
+    invalidatePendingMoveTap();
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
     if (!change?.session) scheduleSnapshot();
@@ -1055,6 +1126,8 @@ export async function bootstrapPlayerApp(options = {}) {
     element: canvas,
     camera,
     transport: transport || undefined,
+    movePlanning,
+    onMovePlanChanged: requestRender,
     onDestinationRejected: (cell, kind) => {
       moveZoneLayer.showDestinationFeedback(cell, kind);
       requestRender();
@@ -1064,6 +1137,7 @@ export async function bootstrapPlayerApp(options = {}) {
       requestRender();
     },
   });
+  invalidatePendingMoveTap = () => playerControls.pointerInput.invalidatePendingTapIfContextChanged();
   const versionBadge = mountPlayerVersionBadge({
     transport: transport || undefined,
     role: 'players',
@@ -1083,7 +1157,17 @@ export async function bootstrapPlayerApp(options = {}) {
 
   const originalEmit = playerControls.pointerInput.emit.bind(playerControls.pointerInput);
   playerControls.pointerInput.emit = (intention) => {
-    if (intention.type === 'panBy') {
+    if (intention.type === 'doubleTap') {
+      const activeLevel = store.getActiveLevel();
+      if (activeLevel && !store.getSelectedToken()) {
+        currentPing = { levelId: activeLevel.id, mapPos: intention.mapPos, at: Date.now() };
+        transport?.publish({
+          type: 'ping', payload: { levelId: activeLevel.id, mapPos: intention.mapPos },
+          at: Date.now(), by: 'players',
+        });
+        requestRender();
+      }
+    } else if (intention.type === 'panBy') {
       camera.setPan(
         camera.x - intention.deltaX / camera.zoom,
         camera.y - intention.deltaY / camera.zoom
@@ -1124,6 +1208,7 @@ export async function bootstrapPlayerApp(options = {}) {
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     if (repriseDiffereeTimer !== null) clearTimeout(repriseDiffereeTimer);
     playerControls.detach();
+    movePlanning.dispose();
     versionBadge.detach();
     imageShareOverlay.detach();
     playerLevelSelector?.destroy();

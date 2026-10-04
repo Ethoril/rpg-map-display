@@ -196,6 +196,8 @@ test('Bail valide : aucune resynchro, et aucune régression de l’état', async
   // périmé, exactement comme l'instantané réel écrit 250 ms après la mutation.
   await tap(player, 250, 250);
   await tap(player, 650, 250);
+  // Le second tap prépare désormais le déplacement ; retaper le même endpoint le valide.
+  await tap(player, 650, 250);
   await expect.poll(() => caseDuPion(player), { timeout: 5000 }).toBe('6,2');
 
   await endormirPuisReveiller(player, false);

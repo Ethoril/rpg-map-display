@@ -37,6 +37,143 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
     expect(isArmed).toBe(true);
   });
 
+  test('La liste sélectionne un gabarit et sa poignée passe devant un pion au vrai glisser', async ({ page }) => {
+    const sessionId = `test-template-handle-${Date.now()}`;
+    await installBrowserTransport(page, sessionId, null);
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+
+    await page.evaluate(async () => {
+      const [store, schema] = await Promise.all([
+        import('../js/state/store.js'),
+        import('../js/core/schema.js'),
+      ]);
+      const level = schema.createLevel({
+        id: 'level-handle', name: 'Étage poignée', widthCells: 8, heightCells: 8, pxPerCell: 140,
+      });
+      const token = schema.createToken({
+        id: 'token-sous-poignee', levelId: level.id, cell: { a: 1, b: 1 }, kind: 'pc',
+        visionDim: 10,
+      });
+      store.loadCampaign(schema.createCampaign({ levels: [level], tokens: [token] }));
+      store.placeTemplate({
+        id: 'template-poignee', levelId: level.id, shape: 'circle',
+        origin: { x: 210, y: 210 }, radiusCells: 2, directionDeg: 0, widthCells: 1,
+        color: '#ef4444', visibleToPlayers: true,
+      });
+    });
+    // La poignée est rendue au-dessus du pion puis sous le fog MJ. Révéler cette zone réelle
+    // garantit que la sonde mesure le rendu prévu, sans neutraliser la couche de brouillard.
+    await page.click('#gm-rail-fog-tools');
+    await page.click('#fog-btn-reveal-all');
+    await expect(page.locator('#fog-btn-undo')).toHaveText(/Annuler \((?!0\))\d+\)/);
+    await page.click('#gm-rail-fog-tools');
+    await page.click('#gm-rail-template-tools');
+    await page.click('#gm-ping-arm');
+    expect(await page.evaluate(() =>
+      /** @type {any} */ (window).__RPG_APP__.gmPanel.getActiveToolName()
+    )).toBe('ping');
+    await page.locator('.tpl-select[data-template-id="template-poignee"]').click();
+    await expect(page.locator('.tpl-select[data-template-id="template-poignee"]')).toHaveAttribute('aria-pressed', 'true');
+    const selectionState = await page.evaluate(() => {
+      const panel = /** @type {any} */ (window).__RPG_APP__.gmPanel;
+      return { templateId: panel.templateTools.getSelectedTemplateId(), activeTool: panel.getActiveToolName() };
+    });
+    expect(selectionState).toEqual({ templateId: 'template-poignee', activeTool: 'none' });
+
+    // Réactiver la sélection après l'armement d'un outil doit également rendre la poignée active.
+    await page.click('#gm-ping-arm');
+    await expect(page.locator('#gm-ping-arm')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('.tpl-select[data-template-id="template-poignee"]').click();
+    expect(await page.evaluate(() =>
+      /** @type {any} */ (window).__RPG_APP__.gmPanel.getActiveToolName()
+    )).toBe('none');
+    /** @returns {Promise<number>} Pixels blancs dans la couronne écran réelle de la poignée. */
+    const whiteHandlePixels = async () => page.evaluate(async () => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const store = await import('../js/state/store.js');
+      const { getTemplateHandleRadiusMap } = await import('../js/input/templateHit.js');
+      const level = store.getState().activeLevel;
+      if (!level) return 0;
+      const radiusMap = level.pxPerCell * 2;
+      const handleRadiusScreen = getTemplateHandleRadiusMap(radiusMap, app.camera.zoom) * app.camera.zoom;
+      const canvas = /** @type {HTMLCanvasElement} */ (app.canvas);
+      const rect = canvas.getBoundingClientRect();
+      const scale = canvas.width / rect.width;
+      const center = app.camera.mapToScreen({ x: 210, y: 210 });
+      const cx = Math.round(center.screenX * scale);
+      const cy = Math.round(center.screenY * scale);
+      const ctx = /** @type {CanvasRenderingContext2D} */ (app.context);
+      const extent = Math.ceil((handleRadiusScreen + 2) * scale);
+      const left = Math.max(0, cx - extent);
+      const top = Math.max(0, cy - extent);
+      const right = Math.min(canvas.width, cx + extent + 1);
+      const bottom = Math.min(canvas.height, cy + extent + 1);
+      const image = ctx.getImageData(left, top, right - left, bottom - top);
+      let white = 0;
+      for (let dy = top - cy; dy < bottom - cy; dy++) {
+        for (let dx = left - cx; dx < right - cx; dx++) {
+          const r = Math.hypot(dx / scale, dy / scale);
+          if (r < handleRadiusScreen - 1 || r > handleRadiusScreen + 1) continue;
+          const index = ((dy + cy - top) * (right - left) + dx + cx - left) * 4;
+          const pixel = image.data;
+          if (pixel[index] > 220 && pixel[index + 1] > 220 && pixel[index + 2] > 220 && pixel[index + 3] > 200) white++;
+        }
+      }
+      return white;
+    });
+    const waitForCanvasFrames = () => page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__RPG_APP__.gmPanel.templateTools.clearSelection();
+    });
+    await expect(page.locator('.tpl-select[data-template-id="template-poignee"]')).toHaveAttribute('aria-pressed', 'false');
+    await waitForCanvasFrames();
+    const whitePixelsBefore = await whiteHandlePixels();
+    await page.locator('.tpl-select[data-template-id="template-poignee"]').click();
+    await expect(page.locator('.tpl-select[data-template-id="template-poignee"]')).toHaveAttribute('aria-pressed', 'true');
+    await waitForCanvasFrames();
+    await expect.poll(whiteHandlePixels).toBeGreaterThan(whitePixelsBefore + 20);
+
+    // La palette est une surcouche dans l'angle de la carte; on la ferme avant de saisir la
+    // poignée, ce qui teste bien le canvas sous le pion et non un bouton interceptant le pointeur.
+    await page.click('#gm-rail-template-tools');
+    await expect(page.locator('#palette-template-tools')).toBeHidden();
+
+    const coords = await page.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const rect = app.canvas.getBoundingClientRect();
+      const start = app.camera.mapToScreen({ x: 210, y: 210 });
+      const end = app.camera.mapToScreen({ x: 420, y: 210 });
+      return {
+        start: { x: rect.left + start.screenX, y: rect.top + start.screenY },
+        end: { x: rect.left + end.screenX, y: rect.top + end.screenY },
+      };
+    });
+    await page.mouse.move(coords.start.x, coords.start.y);
+    await page.mouse.down();
+    // Le déplacement d'un gabarit conserve son seuil d'appui maintenu historique.
+    await page.waitForTimeout(180);
+    await page.mouse.move(coords.end.x, coords.end.y, { steps: 5 });
+    await page.mouse.up();
+
+    await expect.poll(() => page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return store.getState().campaign?.templates.find((t) => t.id === 'template-poignee')?.origin;
+    })).toEqual({ x: 420, y: 210 });
+    const final = await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const state = store.getState();
+      return {
+        tokenCell: state.campaign?.tokens.find((t) => t.id === 'token-sous-poignee')?.cell,
+        selectedTokenId: state.selectedToken?.id ?? null,
+      };
+    });
+    expect(final.tokenCell).toEqual({ a: 1, b: 1 });
+    expect(final.selectedTokenId).toBeNull();
+  });
+
   test('2. Exclusivité mutuelle : Armer les gabarits désarme le fog et l\'éditeur de murs', async ({ page }) => {
     const sessionId = `test-template-e2e-2-${Date.now()}`;
     await installBrowserTransport(page, sessionId, null);

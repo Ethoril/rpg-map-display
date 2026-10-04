@@ -158,6 +158,29 @@ export function findHitTemplate(level, templates, mapPos, zoom, cellScale, isPla
 }
 
 /**
+ * Hit-test limité à la poignée de translation du gabarit sélectionné. Cette petite zone peut
+ * passer devant une lampe ou un pion au début du glisser; le reste du gabarit garde l'arbitrage
+ * ordinaire de la vue.
+ *
+ * @param {Level} level Étage actif
+ * @param {Template[]} templates Gabarits présents
+ * @param {MapPoint} mapPos Position carte
+ * @param {number} zoom Zoom caméra
+ * @param {number} cellScale Taille d'une case en pixels carte
+ * @param {string|null} selectedTemplateId Identifiant sélectionné
+ * @returns {{template: Template, mode: 'move'}|null}
+ */
+export function findSelectedTemplateHandle(level, templates, mapPos, zoom, cellScale, selectedTemplateId) {
+  if (!level || !selectedTemplateId || !Array.isArray(templates) || !(cellScale > 0)) return null;
+  const template = templates.find((item) => item?.id === selectedTemplateId && item.levelId === level.id);
+  if (!template?.origin || typeof template.origin.x !== 'number' || typeof template.origin.y !== 'number') return null;
+  const radiusPx = (template.radiusCells || 1) * cellScale;
+  const handleRadiusMap = getTemplateHandleRadiusMap(radiusPx, zoom);
+  if (Math.hypot(mapPos.x - template.origin.x, mapPos.y - template.origin.y) > handleRadiusMap) return null;
+  return { template, mode: 'move' };
+}
+
+/**
  * État d'un glisser de gabarit, posé au `start` : tout ce qu'il faut pour calculer la pose à
  * n'importe quel instant sans relire le store.
  *

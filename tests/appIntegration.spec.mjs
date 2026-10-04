@@ -186,6 +186,7 @@ test('deux vraies pages joueurs convergent via leur transport, sans relais du te
 
   await page1.mouse.click(points.token.screenX, points.token.screenY);
   await page1.mouse.click(points.target.screenX, points.target.screenY);
+  await page1.mouse.click(points.target.screenX, points.target.screenY);
 
   await expect
     .poll(() =>

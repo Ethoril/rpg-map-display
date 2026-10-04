@@ -1,5 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { createToken } from '../js/core/schema.js';
 
 /**
  * Monte la sonde d'interaction de la vue joueurs dans la page.
@@ -17,6 +19,7 @@ async function mountPlayerViewInPage(page) {
       import * as store from './js/state/store.js';
       import { bootstrapPlayerView } from './js/ui/player/bootstrap.js';
       import { applyNetworkEvent } from './js/app/networkEvents.js';
+      import { MovePlanningController } from './js/app/movePlanning.js';
       import { createCampaign, createLevel, createToken } from './js/core/schema.js';
       import { Camera } from './js/render/camera.js';
 
@@ -52,6 +55,7 @@ async function mountPlayerViewInPage(page) {
       };
 
       let mounted = null;
+      let movePlanning = null;
 
       window.__playerProbe = {
         store,
@@ -65,12 +69,14 @@ async function mountPlayerViewInPage(page) {
         destinationFeedbacks,
         fakeTransport,
         getMounted: () => mounted,
+        getMovePlan: () => movePlanning?.getPlan?.() ?? null,
         lastTapLog: null,
 
         initFixture: (overrides = {}) => {
           if (mounted) {
             mounted.detach();
           }
+          movePlanning?.dispose();
           netEventsPublished.length = 0;
           destinationFeedbacks.length = 0;
           camera.setPan(canvas.width / 2, canvas.height / 2);
@@ -111,10 +117,12 @@ async function mountPlayerViewInPage(page) {
 
           store.loadCampaign(campaign);
 
+          movePlanning = new MovePlanningController();
           mounted = bootstrapPlayerView({
             element: canvas,
             camera,
             transport: fakeTransport,
+            movePlanning,
             onDestinationRejected: (cell, kind) => {
               destinationFeedbacks.push({ cell: { ...cell }, kind });
             },
@@ -182,6 +190,26 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
       // Centre de la case (4,4) à 140px par case = (4.5 * 140, 4.5 * 140) = (630, 630)
       probe.dispatchTap(630, 630);
     });
+
+    const statePrepared = await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      const state = probe.store.getState();
+      const token = state.campaign.tokens.find((/** @type {any} */ t) => t.id === 'token-pj');
+      const plan = probe.getMovePlan();
+      return {
+        cell: token.cell,
+        selectedTokenId: state.selectedTokenId,
+        steps: plan?.steps,
+        moveEvents: probe.netEventsPublished.filter((/** @type {any} */ e) => e.type === 'token.move').length,
+      };
+    });
+    expect(statePrepared.cell, 'la première arrivée ne déplace pas le pion').toEqual({ a: 2, b: 2 });
+    expect(statePrepared.selectedTokenId).toBe('token-pj');
+    expect(statePrepared.steps).toEqual([{ a: 4, b: 4 }]);
+    expect(statePrepared.moveEvents).toBe(0);
+
+    // Le tap rapide sur le même endpoint valide la préparation, sans fenêtre de ping.
+    await page.evaluate(() => /** @type {any} */ (window).__playerProbe.dispatchTap(630, 630));
 
     const stateMoved = await page.evaluate(() => {
       const store = /** @type {any} */ (window).__playerProbe.store;
@@ -319,6 +347,7 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
       const probe = /** @type {any} */ (window).__playerProbe;
       probe.dispatchTap(350, 350);
       probe.dispatchTap(630, 630);
+      probe.dispatchTap(630, 630);
     });
 
     // Attendre la synchronisation réseau sur Onglet 2
@@ -348,6 +377,120 @@ test.describe('T-20 — Déplacement type plateau (vue joueurs)', () => {
     expect(page2State.move.to).toEqual({ a: 4, b: 4 });
     expect(Array.isArray(page2State.move.path)).toBe(true);
   });
+
+  test('Préparation et validation rapides sans ping parasite', async ({ page }) => {
+    await mountPlayerViewInPage(page);
+    await page.evaluate(() => /** @type {any} */ (window).__playerProbe.initFixture());
+
+    // La sonde appelle directement l'intention de sélection pour isoler ici les deux taps
+    // de préparation/validation. Le double tap DOM sans sélection est éprouvé par le test de ping.
+    await page.evaluate(() => /** @type {any} */ (window).__playerProbe.dispatchTap(350, 350));
+    expect(await page.evaluate(() =>
+      /** @type {any} */ (window).__playerProbe.store.getState().selectedTokenId
+    )).toBe('token-pj');
+
+    await page.evaluate(() => /** @type {any} */ (window).__playerProbe.dispatchTap(630, 630));
+    const prepared = await page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      const token = probe.store.getState().campaign.tokens[0];
+      return { cell: token.cell, steps: probe.getMovePlan()?.steps ?? [] };
+    });
+    expect(prepared.cell).toEqual({ a: 2, b: 2 });
+    expect(prepared.steps).toEqual([{ a: 4, b: 4 }]);
+
+    await page.evaluate(() => /** @type {any} */ (window).__playerProbe.dispatchTap(630, 630));
+    await expect.poll(() => page.evaluate(() => {
+      const probe = /** @type {any} */ (window).__playerProbe;
+      return probe.store.getState().campaign.tokens[0].cell;
+    })).toEqual({ a: 4, b: 4 });
+    const events = await page.evaluate(() => /** @type {any} */ (window).__playerProbe.netEventsPublished);
+    expect(events.filter((/** @type {any} */ event) => event.type === 'token.move')).toHaveLength(1);
+    expect(events.filter((/** @type {any} */ event) => event.type === 'ping')).toHaveLength(0);
+  });
+});
+
+test('Ping joueur au double tap réel sur un pion ou une porte sans sélection', async ({ page }) => {
+  const sessionId = `player-ping-double-tap-${Date.now()}`;
+  const level = {
+    id: 'lvl', name: 'Carte', order: 0, imageUrl: '', videoUrl: null, animatedOverlays: [],
+    pxPerCell: 100, widthCells: 20, heightCells: 16,
+    grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true },
+    terrainCost: null, walls: [],
+    portals: [{ id: 'porte-ping', a: { cellX: 4, cellY: 3 }, b: { cellX: 5, cellY: 3 }, state: 'closed', freestanding: false }],
+    lights: [], ambient: { level: 1, baked: false },
+  };
+  const snapshot = {
+    campaign: {
+      schemaVersion: 2, campaignId: 'campaign-player-ping', name: 'Ping joueur',
+      levels: [level], links: [],
+      tokens: [createToken({ id: 'pion-ping', levelId: 'lvl', cell: { a: 2, b: 2 }, kind: 'pc' })],
+      templates: [], settings: {},
+    },
+    activeLevelId: 'lvl', selectedTokenId: null, activeHandout: null,
+  };
+  await installBrowserTransport(page, sessionId, snapshot);
+  await page.goto(`/player.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  /** @param {{x: number, y: number}} mapPoint */
+  const clickMap = async (mapPoint, count = 1) => {
+    const point = await page.evaluate((map) => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const rect = app.canvas.getBoundingClientRect();
+      const screen = app.camera.mapToScreen(map);
+      return { x: rect.left + screen.screenX, y: rect.top + screen.screenY };
+    }, mapPoint);
+    for (let tap = 0; tap < count; tap++) await page.mouse.click(point.x, point.y);
+  };
+
+  await clickMap({ x: 250, y: 250 }, 2);
+  await expect.poll(() => page.evaluate(() => {
+    const events = /** @type {any[]} */ ((/** @type {any} */ (window).__RPG_TEST_WIRE__).published);
+    return events.filter((event) => event.type === 'ping').length;
+  })).toBe(1);
+  expect(await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getState().selectedTokenId;
+  })).toBeNull();
+
+  // Le double tap sur la porte doit aussi devenir un ping. Les taps simples différés ne doivent
+  // donc jamais basculer son état fermé vers ouvert.
+  await clickMap({ x: 450, y: 300 }, 2);
+  await expect.poll(() => page.evaluate(() => {
+    const events = /** @type {any[]} */ ((/** @type {any} */ (window).__RPG_TEST_WIRE__).published);
+    return events.filter((event) => event.type === 'ping').length;
+  })).toBe(2);
+  const outcome = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const state = store.getState();
+    return {
+      selectedTokenId: state.selectedTokenId,
+      portalState: state.campaign?.levels[0].portals[0].state,
+      pingPositions: /** @type {any[]} */ ((/** @type {any} */ (window).__RPG_TEST_WIRE__).published)
+        .filter((event) => event.type === 'ping').map((event) => event.payload.mapPos),
+    };
+  });
+  expect(outcome.selectedTokenId).toBeNull();
+  expect(outcome.portalState).toBe('closed');
+  expect(outcome.pingPositions).toEqual([{ x: 250, y: 250 }, { x: 450, y: 300 }]);
+
+  // Une fois sélectionné, le premier tap prépare et le second valide immédiatement : aucun des
+  // deux ne doit être requalifié en ping.
+  await clickMap({ x: 250, y: 250 });
+  await expect.poll(() => page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getState().selectedTokenId;
+  })).toBe('pion-ping');
+  await clickMap({ x: 450, y: 450 }, 2);
+  await expect.poll(() => page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getState().campaign?.tokens[0].cell;
+  })).toEqual({ a: 4, b: 4 });
+  const finalEvents = await page.evaluate(() => /** @type {any[]} */ (
+    (/** @type {any} */ (window).__RPG_TEST_WIRE__).published
+  ));
+  expect(finalEvents.filter((event) => event.type === 'ping')).toHaveLength(2);
+  expect(finalEvents.filter((event) => event.type === 'token.move')).toHaveLength(1);
 });
 
 test.describe('T-23 — Vue joueurs autonome', () => {
@@ -457,6 +600,7 @@ test.describe('T-23 — Vue joueurs autonome', () => {
     await page1.evaluate(() => {
       const probe = /** @type {any} */ (window).__playerProbe;
       probe.dispatchTap(350, 350);
+      probe.dispatchTap(630, 630);
       probe.dispatchTap(630, 630);
     });
 
@@ -731,7 +875,7 @@ test.describe('T-24b — Badge de version & détection de désynchronisation', (
   });
 });
 
-test('Vue joueurs : une destination refusée ou occupée déclenche un retour transitoire ciblé', async ({ page }) => {
+test('Vue joueurs : une destination occupée signale le conflit; un tap hors portée désélectionne', async ({ page }) => {
   await mountPlayerViewInPage(page);
 
   await page.evaluate(() => {
@@ -756,7 +900,18 @@ test('Vue joueurs : une destination refusée ou occupée déclenche un retour tr
   const refused = await page.evaluate(
     () => /** @type {any} */ (window).__playerProbe.destinationFeedbacks
   );
-  expect(refused).toEqual([{ cell: { a: 8, b: 2 }, kind: 'refused' }]);
+  expect(refused).toEqual([]);
+  const afterOutOfRange = await page.evaluate(() => {
+    const probe = /** @type {any} */ (window).__playerProbe;
+    return {
+      cell: probe.store.getState().campaign.tokens[0].cell,
+      selectedTokenId: probe.store.getState().selectedTokenId,
+      plan: probe.getMovePlan(),
+    };
+  });
+  expect(afterOutOfRange.cell).toEqual({ a: 2, b: 2 });
+  expect(afterOutOfRange.selectedTokenId).toBeNull();
+  expect(afterOutOfRange.plan).toBeNull();
 });
 
 // B9 (audit du 22/09/2026) — une erreur de transport affichait « Connexion impossible » jusqu'au

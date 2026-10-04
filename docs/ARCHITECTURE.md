@@ -76,6 +76,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   ├─ state/
 │   │   ├─ store.js               [1a, R2-01] source de vérité + signal de changement + snapshot de rendu partagé
 │   │   ├─ selection.js           [1a] pion sélectionné, cases atteignables courantes
+│   │   ├─ movePlan.js             [Retour session] moteur pur des étapes cumulatives et validation
 │   │   └─ presence.js            [1a] clients connectés + détection d'écart de build
 │   │
 │   ├─ import/
@@ -157,6 +158,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │       ├─ portals.js         [2]  indicateur d'état des trois états
 │   │       ├─ links.js           [3]  marqueurs de liaisons MJ/joueurs
 │   │       ├─ moveZone.js        [1a] cases atteignables — NON interactif
+│   │       ├─ movePlan.js        [Retour session] trajet préparé, arrivée et capacité restante
 │   │       ├─ tokens.js          [1a] pions, badges élévation/marqueurs
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
 │   │       ├─ templates.js       [2]  gabarits de zone d'effet
@@ -203,6 +205,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  nom — 5e dérogation de CONVENTIONS.md §8 n°2
 │   │
 │   └─ app/
+│       ├─ movePlanning.js        [Retour session] contrôleur commun et aperçus éphémères
 │       ├─ runtimeConfig.js       [1a] résolution de la configuration Firebase Web publique
 │       ├─ session.js             [1a] authentification et connexion d'une page
 │       ├─ networkEvents.js       [1a] application idempotente des NetEvent au store
@@ -259,6 +262,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │                                      d'états, mais HORS de status/ : elle n'est pas un
 │                                      marqueur, et ce dossier-là est clos
 ├─ tests/                         [1a] deux familles, deux exécuteurs :
+│   ├─ movePlanning.spec.mjs      [Retour session] préparation visible, vision inchangée avant validation, annulation et invalidation
+│   ├─ movePlan.test.mjs          [Retour session] étapes, coûts cumulatifs et revalidation
+│   ├─ movePlanning.test.mjs      [Retour session] contrôleur, ordre présence/aperçus et validation unique
 │                                      *.test.mjs → node:test (logique pure)
 │                                      *.spec.mjs → Playwright (navigateur, vrai Canvas)
 │                                      mountStage.mjs, mountTransport.mjs → sondes chargées
@@ -363,7 +369,7 @@ mécaniquement (§4).
 | `core/*` | rien (sauf `core/*`) | tout le reste |
 | `grid/*` | `core/*`, `movement/*` | `render/*`, `state/*`, `transport/*`, `ui/*` |
 | `transport/*` | `core/*` | `render/*`, `grid/*`, `ui/*` |
-| `state/*` | `core/*`, `grid/*`, `import/*` | `render/*`, `ui/*`, `transport/*` |
+| `state/*` | `core/*`, `grid/*`, `import/*`, `movement/*` | `render/*`, `ui/*`, `transport/*` |
 | `import/*` | `core/*`, `grid/*` | `render/*`, `ui/*`, `transport/*`, `state/*` |
 | `movement/*` | `core/*`, `grid/*` | tout le reste |
 | `vision/*` | `core/*` | `grid/*`, `render/*`, `ui/*`, `state/*` |
@@ -385,6 +391,10 @@ mécaniquement (§4).
 > les arêtes bloquées deviendront un **état vivant** — une porte qui s'ouvre les change en
 > cours de partie. Elles appartiennent donc au store, avec un cache par étage, et non à une
 > couche d'import appelée une fois. Aucune des trois règles portantes n'est touchée.
+
+> **Retour de session (04/10/2026).** `state/movePlan.js` réutilise `computeReachable` et
+> `reconstructPath` pour que le coût des étapes et la zone restante viennent du même Dijkstra.
+> Cette dépendance ne fait entrer ni rendu ni transport dans l'état.
 
 **Trois règles portantes, à ne jamais assouplir :**
 
@@ -517,6 +527,12 @@ export {}
  */
 export {}
 ```
+
+Le partage des trajets préparés utilise le nœud temporaire RTDB
+`session/{sessionId}/movePreviews/{clientId}`. `publishMovePreview` remplace l'aperçu courant,
+`clearMovePreview(planId)` le retire sous condition et `subscribeMovePreviews` renvoie un
+dictionnaire indexé par propriétaire. `onDisconnect` retire les entrées orphelines ; ce canal
+n'entre ni dans les événements de campagne ni dans l'instantané Firestore.
 
 > **Amendements de T-14.** Trois membres s'ajoutent à l'implémentation Firebase, hors du
 > contrat minimal ci-dessus :

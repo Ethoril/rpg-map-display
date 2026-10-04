@@ -653,6 +653,7 @@ test('groupe séparé — un PJ bouge sur un étage que le MJ ne regarde pas : s
   // Il déplace son PJ, posté là-haut, d'une case : sélection puis destination.
   await taper(joueur, 5, 5, 100);
   await taper(joueur, 6, 5, 100);
+  await taper(joueur, 6, 5, 100);
   await expect.poll(() => etageDuPion(joueur, 'pj-etage'), { timeout: 8000 }).toBe('etage:6,5');
 
   // Le MJ n'a pas bougé : la scène exacte du groupe séparé.

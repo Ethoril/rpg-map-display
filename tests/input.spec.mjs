@@ -31,7 +31,7 @@ const SANS_SEUILS_TEMPORELS = { longPressMs: 100_000, dragHoldMs: 100_000 };
  * Helper pour monter la scène gm.html avec le Probe d'input.
  * @param {import('@playwright/test').Page} page
  * @param {'players'|'gm'} [role='players']
- * @param {{longPressMs?: number, dragHoldMs?: number, throwOnDragEnd?: boolean}} [options] seuils temporels, et la panne simulée de B1
+ * @param {{longPressMs?: number, dragHoldMs?: number, throwOnDragEnd?: boolean, doubleTapMs?: number, doubleTapAllowed?: boolean, contextKey?: string}} [options] seuils temporels et reconnaissance de ping
  */
 async function mountInputStage(page, role = 'players', options = {}) {
   /** @type {string[]} */
@@ -156,6 +156,82 @@ test('un micro-mouvement reste un tap unique et ne déplace pas la caméra', asy
   expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(1);
   expect(intentions.filter((/** @type {any} */ item) => item.type === 'panBy')).toHaveLength(0);
   expect(intentions.filter((/** @type {any} */ item) => item.type === 'dragToken')).toHaveLength(0);
+});
+
+test('double tap réel : émet un ping unique et consomme les deux taps simples', async ({ page }) => {
+  await mountInputStage(page, 'players', { doubleTapAllowed: true, doubleTapMs: 250 });
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+
+  for (let count = 0; count < 2; count++) {
+    await page.mouse.click(canvasBox.x + 180, canvasBox.y + 160);
+  }
+  await waitForIntention(page, 'doubleTap');
+  await page.waitForTimeout(280);
+
+  const intentions = await page.evaluate(() => /** @type {any} */ (window).__stageProbe.getIntentions());
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'doubleTap')).toHaveLength(1);
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(0);
+});
+
+test('tap différé : conserve le point carte capturé avant un changement de caméra', async ({ page }) => {
+  await mountInputStage(page, 'players', { doubleTapAllowed: true, doubleTapMs: 150 });
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+  const screen = { x: canvasBox.x + 180, y: canvasBox.y + 160 };
+  await page.mouse.click(screen.x, screen.y);
+  const captured = await page.evaluate((point) => {
+    const probe = /** @type {any} */ (window).__stageProbe;
+    return probe.camera.screenToMap({ screenX: point.x, screenY: point.y });
+  }, { x: screen.x - canvasBox.x, y: screen.y - canvasBox.y });
+  await page.evaluate(() => /** @type {any} */ (window).__stageProbe.camera.setPan(500, 600));
+  await waitForIntention(page, 'tap');
+  const tap = await page.evaluate(() => /** @type {any} */ (window).__stageProbe.getIntentions().find((/** @type {any} */ item) => item.type === 'tap'));
+  expect(tap.mapPos).toEqual(captured);
+});
+
+test('tap différé : un changement de contexte annule l’action devenue obsolète', async ({ page }) => {
+  await mountInputStage(page, 'players', { doubleTapAllowed: true, doubleTapMs: 120 });
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+  await page.mouse.click(canvasBox.x + 180, canvasBox.y + 160);
+  await page.evaluate(() => /** @type {any} */ (window).__stageProbe.setGestureContext(false, 'selection-changed'));
+  await page.waitForTimeout(150);
+  const intentions = await page.evaluate(() => /** @type {any} */ (window).__stageProbe.getIntentions());
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(0);
+});
+
+test('deux taps éloignés restent deux actions simples', async ({ page }) => {
+  await mountInputStage(page, 'players', { doubleTapAllowed: true, doubleTapMs: 180 });
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+  await page.mouse.click(canvasBox.x + 120, canvasBox.y + 120);
+  await page.mouse.click(canvasBox.x + 240, canvasBox.y + 120);
+  await expect.poll(() => page.evaluate(
+    () => /** @type {any} */ (window).__stageProbe.getIntentions().filter((/** @type {any} */ item) => item.type === 'tap').length
+  )).toBe(2);
+  const intentions = await page.evaluate(() => /** @type {any} */ (window).__stageProbe.getIntentions());
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'doubleTap')).toHaveLength(0);
+});
+
+test('un pan commencé pendant le délai annule le tap simple en attente', async ({ page }) => {
+  await mountInputStage(page, 'players', { doubleTapAllowed: true, doubleTapMs: 400 });
+  const canvasBox = await page.locator('#board').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) return;
+  await page.mouse.click(canvasBox.x + 120, canvasBox.y + 120);
+  await page.mouse.move(canvasBox.x + 120, canvasBox.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 170, canvasBox.y + 120, { steps: 4 });
+  await page.mouse.up();
+  await waitForIntention(page, 'panBy');
+  await page.waitForTimeout(420);
+  const intentions = await page.evaluate(() => /** @type {any} */ (window).__stageProbe.getIntentions());
+  expect(intentions.filter((/** @type {any} */ item) => item.type === 'tap')).toHaveLength(0);
 });
 
 test('Vue MJ — un drag commencé hors pion pan la caméra sans déplacer de pion', async ({ page }) => {

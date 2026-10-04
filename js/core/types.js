@@ -313,6 +313,20 @@
  */
 
 /**
+ * Aperçu temporaire de déplacement, distinct de la campagne et de son instantané.
+ * Le propriétaire est la clé clientId du dictionnaire rendu par le transport.
+ * @typedef {Object} MovePreview
+ * @property {string} planId
+ * @property {number} revision
+ * @property {string} levelId
+ * @property {string} tokenId
+ * @property {Cell} start
+ * @property {Cell[]} path
+ * @property {Cell} destination
+ * @property {number} remaining
+ */
+
+/**
  * Événement réseau sur le canal temps réel.
  * @typedef {Object} NetEvent
  * @property {string} type

@@ -1,6 +1,6 @@
 // @ts-check
 
-import { DRAG_HOLD_MS } from '../core/constants.js';
+import { DRAG_HOLD_MS, DOUBLE_TAP_DISTANCE_PX, DOUBLE_TAP_MS } from '../core/constants.js';
 import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestures.js';
 
 /** @typedef {import('../core/types.js').ScreenPoint} ScreenPoint */
@@ -28,6 +28,10 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  * @property {number} [dragHoldMs=DRAG_HOLD_MS] Seuil temporel de drag (ms)
  * @property {number} [dragDistanceThreshold=5] Seuil spatial de drag (pixels)
  * @property {number} [longPressMs=500] Seuil pour l'appui long (ms)
+ * @property {number} [doubleTapMs=300] Fenêtre de reconnaissance du double tap
+ * @property {number} [doubleTapDistancePx=32] Distance maximale écran entre deux taps
+ * @property {() => boolean} [canDoubleTap] Prédicat de la vue; l'input ne lit pas le store
+ * @property {() => string|number} [contextKey] Clé à comparer avant de livrer un tap différé
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartTokenDrag]
  *   Hit-test injecté par la vue MJ. L'input ne connaît jamais le store.
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => string|null} [canStartLightDrag]
@@ -35,6 +39,8 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  *   c'est le même arbitrage que le tap qui décide, côté application.
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => { templateId: string, dragMode: 'move'|'rotate' }|null} [canStartTemplateDrag]
  *   Hit-test gabarit injecté par l'application (MJ et joueurs).
+ * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => { templateId: string, dragMode: 'move' }|null} [canStartSelectedTemplateHandle]
+ *   Hit-test de la poignée du gabarit sélectionné, évalué avant les pions et lampes.
  * @property {(screenPos: ScreenPoint, mapPos: MapPoint) => boolean} [canStartBrush]
  *   Prédicat injecté par la vue MJ indiquant si un pinceau est armé.
  */
@@ -57,9 +63,14 @@ export class PointerInput {
     this.dragHoldMs = options.dragHoldMs ?? DRAG_HOLD_MS;
     this.dragDistanceThreshold = options.dragDistanceThreshold ?? 5;
     this.longPressMs = options.longPressMs ?? 500;
+    this.doubleTapMs = options.doubleTapMs ?? DOUBLE_TAP_MS;
+    this.doubleTapDistancePx = options.doubleTapDistancePx ?? DOUBLE_TAP_DISTANCE_PX;
+    this.canDoubleTap = options.canDoubleTap ?? (() => false);
+    this.contextKey = options.contextKey ?? (() => '');
     this.canStartTokenDrag = options.canStartTokenDrag ?? (() => null);
     this.canStartLightDrag = options.canStartLightDrag ?? (() => null);
     this.canStartTemplateDrag = options.canStartTemplateDrag ?? (() => null);
+    this.canStartSelectedTemplateHandle = options.canStartSelectedTemplateHandle ?? (() => null);
     this.canStartBrush = options.canStartBrush ?? (() => false);
 
     /** @type {Map<number, { screenPos: ScreenPoint, timeStamp: number }>} */
@@ -76,6 +87,10 @@ export class PointerInput {
     this.longPressTimer = null;
     /** @type {boolean} */
     this.longPressTriggered = false;
+    /** @type {{intention: Extract<InputIntention, {type:'tap'}>, contextKey: string|number, at: number}|null} */
+    this.pendingTap = null;
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    this.pendingTapTimer = null;
 
     /** @type {'idle'|'tapCandidate'|'panning'|'pinching'|'gmTokenDrag'|'gmLightDrag'|'templateDrag'|'brushing'} */
     this.mode = 'idle';
@@ -143,6 +158,7 @@ export class PointerInput {
    */
   resetInteraction() {
     this.clearLongPressTimer();
+    this.clearPendingTap();
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -183,6 +199,63 @@ export class PointerInput {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
+  }
+
+  /** Annule tout tap différé. Un contexte périmé ne doit jamais agir sur une nouvelle sélection. */
+  clearPendingTap() {
+    if (this.pendingTapTimer !== null) clearTimeout(this.pendingTapTimer);
+    this.pendingTapTimer = null;
+    this.pendingTap = null;
+  }
+
+  /** Exécute le tap simple différé si son contexte est encore celui qui l'a créé. */
+  flushPendingTap() {
+    const pending = this.pendingTap;
+    this.clearPendingTap();
+    if (pending && this.contextKey() === pending.contextKey) this.emit(pending.intention);
+  }
+
+  /**
+   * Reçoit un tap et l'attend uniquement si le contexte courant permet un ping.
+   * @param {Extract<InputIntention, {type:'tap'}>} intention
+   * @param {number} at Horodatage monotone du pointerup
+   */
+  receiveTap(intention, at) {
+    /** @type {boolean} */
+    let eligible = this.canDoubleTap();
+    /** @type {string|number} */
+    let contextKey = this.contextKey();
+    const pending = this.pendingTap;
+    if (pending) {
+      const compatible = eligible && contextKey === pending.contextKey &&
+        at - pending.at <= this.doubleTapMs &&
+        distanceBetween(pending.intention.screenPos, intention.screenPos) <= this.doubleTapDistancePx;
+      if (compatible) {
+        this.clearPendingTap();
+        this.emit({ type: 'doubleTap', screenPos: intention.screenPos, mapPos: intention.mapPos });
+        return;
+      }
+      // Deux taps éloignés/incompatibles restent deux actions simples, dans l'ordre.
+      this.flushPendingTap();
+      // Le premier tap peut avoir changé de cible, d'étage ou de sélection.
+      eligible = this.canDoubleTap();
+      contextKey = this.contextKey();
+      if (!eligible) {
+        this.emit(intention);
+        return;
+      }
+    }
+    if (!eligible) {
+      this.emit(intention);
+      return;
+    }
+    this.pendingTap = { intention, contextKey, at };
+    this.pendingTapTimer = setTimeout(() => this.flushPendingTap(), this.doubleTapMs);
+  }
+
+  /** À appeler après un changement connu de sélection, d'étage ou de session. */
+  invalidatePendingTapIfContextChanged() {
+    if (this.pendingTap && this.contextKey() !== this.pendingTap.contextKey) this.clearPendingTap();
   }
 
   /**
@@ -254,18 +327,20 @@ export class PointerInput {
         });
       } else {
         this.mode = 'tapCandidate';
-        this.dragTokenId =
-          this.role === 'gm'
-            ? this.canStartTokenDrag(screenPos, mapPos)
-            : null;
+        this.dragTemplateHit = this.role === 'gm'
+          ? this.canStartSelectedTemplateHandle(screenPos, mapPos)
+          : null;
+        this.dragTokenId = !this.dragTemplateHit && this.role === 'gm'
+          ? this.canStartTokenDrag(screenPos, mapPos)
+          : null;
         // Un seul des trois l'emporte, dans cet ordre. Pion et lampe sont départagés par
         // l'arbitrage commun au tap (`js/app/gm.js`) : les deux crochets ne peuvent pas
         // répondre pour le même point, la cascade ne fait que refléter cette exclusivité.
         this.dragLightId =
-          this.role === 'gm' && !this.dragTokenId
+          this.role === 'gm' && !this.dragTemplateHit && !this.dragTokenId
             ? this.canStartLightDrag(screenPos, mapPos)
             : null;
-        this.dragTemplateHit =
+        if (!this.dragTemplateHit) this.dragTemplateHit =
           !this.dragTokenId && !this.dragLightId
             ? this.canStartTemplateDrag(screenPos, mapPos)
             : null;
@@ -276,11 +351,13 @@ export class PointerInput {
         this.longPressTimer = setTimeout(() => {
           if (this.activePointers.size === 1 && this.startScreenPos) {
             this.longPressTriggered = true;
+            this.clearPendingTap();
           }
         }, this.longPressMs);
       }
     } else if (this.activePointers.size === 2) {
       // Annulation d'appui long et bascule en mode pinch/pan à 2 doigts
+      this.clearPendingTap();
       this.clearLongPressTimer();
       this.longPressTriggered = false;
       this.interruptGesture();
@@ -316,6 +393,7 @@ export class PointerInput {
       if (distFromStart >= this.dragDistanceThreshold) {
         this.clearLongPressTimer();
         this.longPressTriggered = false;
+        this.clearPendingTap();
       }
 
       if (this.mode === 'brushing') {
@@ -393,14 +471,37 @@ export class PointerInput {
           this.mode = 'templateDrag';
 
           const mapPos = this.camera.screenToMap(screenPos);
-          this.emit({
-            type: 'dragTemplate',
-            templateId: this.dragTemplateHit.templateId,
-            dragMode: this.dragTemplateHit.dragMode,
-            screenPos,
-            mapPos,
-            phase: isFirstDrag ? 'start' : 'move',
-          });
+          if (isFirstDrag) {
+            // Le décalage d'origine est le point où le glisser a commencé, pas celui où
+            // distance + appui maintenu ont enfin franchi le seuil. Sinon un grand premier
+            // déplacement perdrait une partie de la course, et la poignée sauterait au relâchement.
+            const startScreenPos = this.startScreenPos || screenPos;
+            this.emit({
+              type: 'dragTemplate',
+              templateId: this.dragTemplateHit.templateId,
+              dragMode: this.dragTemplateHit.dragMode,
+              screenPos: startScreenPos,
+              mapPos: this.camera.screenToMap(startScreenPos),
+              phase: 'start',
+            });
+            this.emit({
+              type: 'dragTemplate',
+              templateId: this.dragTemplateHit.templateId,
+              dragMode: this.dragTemplateHit.dragMode,
+              screenPos,
+              mapPos,
+              phase: 'move',
+            });
+          } else {
+            this.emit({
+              type: 'dragTemplate',
+              templateId: this.dragTemplateHit.templateId,
+              dragMode: this.dragTemplateHit.dragMode,
+              screenPos,
+              mapPos,
+              phase: 'move',
+            });
+          }
           return;
         }
       }
@@ -514,6 +615,7 @@ export class PointerInput {
           this.longPressTriggered &&
           dist < this.dragDistanceThreshold
         ) {
+          this.clearPendingTap();
           // C'est un APPUI LONG ! (Geste achevé émis au pointerup)
           this.emit({
             type: 'longPress',
@@ -528,11 +630,13 @@ export class PointerInput {
           // C'est un TAP ! Une pression immobile reste un tap tant qu'elle n'a pas atteint
           // l'appui long. `dragHoldMs` décide seulement quand un *mouvement* devient un drag ;
           // l'employer ici créait une zone morte entre 150 et 500 ms.
-          this.emit({
+          const intention = /** @type {Extract<InputIntention, {type:'tap'}>} */ ({
             type: 'tap',
             screenPos: this.startScreenPos,
+            // Capturer les pixels carte maintenant : la caméra peut bouger pendant le délai.
             mapPos: this.camera.screenToMap(this.startScreenPos),
           });
+          this.receiveTap(intention, timeStamp);
         }
       }
     } finally {
@@ -557,6 +661,7 @@ export class PointerInput {
    * @param {PointerEvent} e
    */
   handlePointerCancel(e) {
+    this.clearPendingTap();
     this.clearLongPressTimer();
     this.longPressTriggered = false;
     this.interruptGesture();
@@ -597,6 +702,7 @@ export class PointerInput {
    * @returns {void}
    */
   interruptGesture() {
+    this.clearPendingTap();
     const screenPos = this.lastScreenPos || this.startScreenPos;
     if (!screenPos) return;
     const mapPos = this.camera.screenToMap(screenPos);
@@ -642,6 +748,7 @@ export class PointerInput {
    * @param {WheelEvent} e
    */
   handleWheel(e) {
+    this.clearPendingTap();
     e.preventDefault();
     const center = this.getScreenPoint(e);
     const scaleFactor = e.deltaY < 0 ? 1.1 : 0.9;
