@@ -154,19 +154,73 @@ async function canvasPixelSignature(page, kind) {
   }, kind);
 }
 
+/** @param {Page} page @param {'visible'|'explored'} kind */
+async function currentMaskObservation(page, kind) {
+  return page.evaluate(/** @param {'visible'|'explored'} which */ async (which) => {
+    const store = await import('../js/state/store.js');
+    const { decodeFogPng } = await import('../js/vision/fog.js');
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const level = store.getActiveLevel();
+    if (!level) return null;
+    const png = which === 'visible'
+      ? store.getSessionVision(level.id)
+      : store.getSessionFog(level.id);
+    const canvas = which === 'visible'
+      ? app.getPlayerVisibleCanvas(level)
+      : app.getPlayerExploredCanvas(level);
+    if (!png || !canvas) return null;
+    const expected = await decodeFogPng(png, level.widthCells, level.heightCells);
+    if (!expected) return null;
+    /** @param {any} source */
+    const signature = (source) => {
+      const ctx = source.getContext('2d');
+      if (!ctx) return null;
+      const pixels = ctx.getImageData(0, 0, source.width, source.height).data;
+      let first = 2166136261;
+      let second = 0x9e3779b9;
+      for (const value of pixels) {
+        first = Math.imul(first ^ value, 16777619) >>> 0;
+        second = (Math.imul(second ^ value, 2246822519) + 3266489917) >>> 0;
+      }
+      return `${source.width}x${source.height}:${first.toString(16)}:${second.toString(16)}`;
+    };
+    return { actual: signature(canvas), decodedCurrentPng: signature(expected) };
+  }, kind);
+}
+
 /** @param {Page} player */
 async function waitForActualVisionCanvases(player) {
   await player.evaluate(async () => {
     const app = /** @type {any} */ (window).__RPG_APP__;
     await app.transport.publish({ type: 'vision.request', payload: {}, at: Date.now(), by: 'players' });
   });
+  // Le fog initial est publié avec un délai trailing d'une seconde et son décodage est asynchrone.
+  // L'accesseur de canvas peut alors rendre son ancien cache tout en décodant le PNG courant.
+  // Attendre le décodage exact du PNG stocké, puis 1,2 s sans changement, garantit que le
+  // baseline pris ensuite représente les masques finaux de la session, pas un canvas provisoire.
+  /** @type {string|null} */
+  let signatureStable = null;
+  let stableSince = 0;
   await expect.poll(async () => {
-    const signatures = await Promise.all([
-      canvasPixelSignature(player, 'visible'),
-      canvasPixelSignature(player, 'explored'),
+    const observations = await Promise.all([
+      currentMaskObservation(player, 'visible'),
+      currentMaskObservation(player, 'explored'),
     ]);
-    return signatures.every((signature) => signature !== null);
-  }).toBe(true);
+    if (observations.some((observation) =>
+      !observation || !observation.actual || observation.actual !== observation.decodedCurrentPng
+    )) {
+      signatureStable = null;
+      stableSince = Date.now();
+      return false;
+    }
+    const current = observations.map((observation) => observation?.actual).join('|');
+    if (current !== signatureStable) {
+      signatureStable = current;
+      stableSince = Date.now();
+      return false;
+    }
+    return Date.now() - stableSince >= 1200;
+  }, { timeout: 15000, intervals: [100, 200] }).toBe(true);
 }
 
 test('le MJ prépare et valide un trajet rendu sur les deux vues sans toucher à la vision avant validation', async ({ browser }) => {
