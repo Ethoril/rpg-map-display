@@ -11,8 +11,8 @@ const START = { a: 2, b: 2 };
 const LEVEL_ID = 'rdc';
 const TOKEN_ID = 'hero-preview';
 
-/** @param {{door?:boolean,npcOutsideFog?:boolean}} [options] */
-function makeSnapshot({ door = false, npcOutsideFog = false } = {}) {
+/** @param {{door?:boolean,npcOutsideFog?:boolean,hex?:boolean,hexNeighbor?:boolean}} [options] */
+function makeSnapshot({ door = false, npcOutsideFog = false, hex = false, hexNeighbor = false } = {}) {
   const level = createLevel({
     id: LEVEL_ID,
     name: 'RDC',
@@ -20,6 +20,7 @@ function makeSnapshot({ door = false, npcOutsideFog = false } = {}) {
     widthCells: 10,
     heightCells: 8,
     pxPerCell: 140,
+    ...(hex ? { grid: { type: 'hex' } } : {}),
     ambient: { level: 0, baked: false },
     portals: door ? [{
       id: 'door-preview',
@@ -40,6 +41,18 @@ function makeSnapshot({ door = false, npcOutsideFog = false } = {}) {
     playerMovable: true,
   });
   const tokens = [token];
+  if (hexNeighbor) {
+    tokens.unshift(createToken({
+      id: 'hex-neighbor',
+      levelId: LEVEL_ID,
+      cell: { a: 3, b: 2 },
+      kind: 'pc',
+      imageUrl: 'maps/minimal.webp',
+      speedCells: 3,
+      visionDim: 2,
+      playerMovable: true,
+    }));
+  }
   if (npcOutsideFog) {
     tokens.push(createToken({
       id: 'npc-outside-fog',
@@ -58,13 +71,13 @@ function makeSnapshot({ door = false, npcOutsideFog = false } = {}) {
   };
 }
 
-/** @param {Browser} browser @param {{door?:boolean,npcOutsideFog?:boolean}} [options] */
-async function openPair(browser, { door = false, npcOutsideFog = false } = {}) {
+/** @param {Browser} browser @param {{door?:boolean,npcOutsideFog?:boolean,hex?:boolean,hexNeighbor?:boolean}} [options] */
+async function openPair(browser, options = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const gm = await context.newPage();
   const player = await context.newPage();
   const sessionId = `move-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const snapshot = makeSnapshot({ door, npcOutsideFog });
+  const snapshot = makeSnapshot(options);
   await Promise.all([
     installBrowserTransport(gm, sessionId, snapshot),
     installBrowserTransport(player, sessionId, snapshot),
@@ -114,6 +127,17 @@ async function screenPoint(page, cell) {
 async function tapCell(page, cell) {
   const point = await screenPoint(page, cell);
   await page.mouse.click(point.screenX, point.screenY);
+}
+
+/** @param {Page} page @param {import('../js/core/types.js').MapPoint} mapPoint */
+async function tapMapPoint(page, mapPoint) {
+  const screen = await page.evaluate(/** @param {import('../js/core/types.js').MapPoint} target */ (target) => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const point = app.camera.mapToScreen(target);
+    const rect = app.canvas.getBoundingClientRect();
+    return { x: rect.left + point.screenX, y: rect.top + point.screenY };
+  }, mapPoint);
+  await page.mouse.click(screen.x, screen.y);
 }
 
 /** @param {Page} player @param {string} gmClientId */
@@ -490,5 +514,103 @@ test('une porte refermée ou une position changée invalide la préparation et r
     expect(afterPositionChange.selected).toBe(TOKEN_ID);
   } finally {
     await context.close();
+  }
+});
+
+test('en hexagone, une marge de hit sur un autre pion ne détourne pas le trajet; sa case exacte reste sélectionnable', async ({ browser }) => {
+  const neighbor = { a: 3, b: 2 };
+  const firstEndpoint = { a: 3, b: 1 };
+  const lastEndpoint = { a: 2, b: 1 };
+  for (const role of /** @type {const} */ (['gm', 'player'])) {
+    const { context, gm, player, sessionId } = await openPair(browser, { hex: true, hexNeighbor: true });
+    const page = role === 'gm' ? gm : player;
+    try {
+      const proof = await gm.evaluate(async ({ centerCell, edgeCell }) => {
+        const [{ gridFor }, { findHitToken }, store] = await Promise.all([
+          import('../js/grid/index.js'),
+          import('../js/input/tokenHit.js'),
+          import('../js/state/store.js'),
+        ]);
+        const level = store.getActiveLevel();
+        const tokens = store.getCampaign()?.tokens ?? [];
+        if (!level) throw new Error('Étage hex absent');
+        const grid = gridFor(level);
+        const center = grid.pointFromCell(centerCell);
+        const end = grid.pointFromCell(edgeCell);
+        const neighborCenter = grid.pointFromCell({ a: 3, b: 2 });
+        // Tap proche du bord partagé avec le pion voisin, dans la cellule vide choisie.
+        const edge = {
+          x: end.x + (neighborCenter.x - end.x) * 0.35,
+          y: end.y + (neighborCenter.y - end.y) * 0.35,
+        };
+        const inspect = /** @param {import('../js/core/types.js').MapPoint} point */ (point) => ({
+          cell: grid.cellFromPoint(point),
+          hit: findHitToken(grid, level, point, 0.5, tokens)?.token.id ?? null,
+        });
+        return { center: inspect(center), edge: inspect(edge), edgePoint: edge };
+      }, { centerCell: firstEndpoint, edgeCell: lastEndpoint });
+      expect(proof.center.cell).toEqual(firstEndpoint);
+      expect(proof.center.hit).toBe('hex-neighbor');
+      expect(proof.edge.cell).toEqual(lastEndpoint);
+      expect(proof.edge.hit).toBe('hex-neighbor');
+
+      await page.evaluate(async () => {
+        const { gridFor } = await import('../js/grid/index.js');
+        const store = await import('../js/state/store.js');
+        const app = /** @type {any} */ (window).__RPG_APP__;
+        const level = store.getActiveLevel();
+        if (!level) throw new Error('Étage hex absent');
+        app.camera.setZoom(0.5);
+        const center = gridFor(level).pointFromCell({ a: 3, b: 2 });
+        app.camera.setPan(center.x, center.y);
+      });
+
+      await tapCell(page, START);
+      await expect.poll(() => page.evaluate(async () =>
+        (await import('../js/state/store.js')).getState().selectedTokenId
+      )).toBe(TOKEN_ID);
+
+      // La cellule proprement occupée permet toujours de choisir explicitement l’autre pion.
+      await tapCell(page, neighbor);
+      await expect.poll(() => page.evaluate(async () =>
+        (await import('../js/state/store.js')).getState().selectedTokenId
+      )).toBe('hex-neighbor');
+      await tapCell(page, START);
+      await expect.poll(() => page.evaluate(async () =>
+        (await import('../js/state/store.js')).getState().selectedTokenId
+      )).toBe(TOKEN_ID);
+
+      // Au centre d'une destination puis près du bord d'une seconde, le hit géométrique voit
+      // le voisin, mais les deux cellules vides prolongent le trajet du pion déjà choisi.
+      await tapCell(page, firstEndpoint);
+      await expect.poll(async () => {
+        const previews = await readSharedPreviews(page, sessionId);
+        return Object.values(previews).some((preview) =>
+          preview.tokenId === TOKEN_ID && preview.destination.a === firstEndpoint.a && preview.destination.b === firstEndpoint.b
+        );
+      }).toBe(true);
+      await tapMapPoint(page, proof.edgePoint);
+      await expect.poll(() => page.evaluate(async () =>
+        (await import('../js/state/store.js')).getState().selectedTokenId
+      )).toBe(TOKEN_ID);
+      await expect.poll(async () => {
+        const previews = await readSharedPreviews(page, sessionId);
+        return Object.values(previews).some((preview) =>
+          preview.tokenId === TOKEN_ID && preview.destination.a === lastEndpoint.a && preview.destination.b === lastEndpoint.b
+        );
+      }).toBe(true);
+
+      // Le centre de ce même endpoint valide, même si sa cellule touche la marge du voisin.
+      await tapCell(page, lastEndpoint);
+      await expect.poll(() => page.evaluate(async () => {
+        const store = await import('../js/state/store.js');
+        return store.getCampaign()?.tokens.find((token) => token.id === 'hero-preview')?.cell;
+      })).toEqual(lastEndpoint);
+      await expect.poll(() => page.evaluate(async () =>
+        (await import('../js/state/store.js')).getState().selectedTokenId
+      )).toBeNull();
+    } finally {
+      await context.close();
+    }
   }
 });

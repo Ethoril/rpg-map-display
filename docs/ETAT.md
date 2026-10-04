@@ -25,6 +25,29 @@ La recette matérielle reste ouverte : manipulation sur tablette, contraste du v
 
 ## Historique antérieur
 
+### Correctif après retour sur les trajets hexagonaux — 4 octobre 2026
+
+Le tap MJ évaluait la boîte visuelle et la marge tactile des pions avant la destination du
+trajet. En hexagone, notamment à faible zoom, un clic dans une case vide voisine pouvait
+ainsi sélectionner l’autre pion et abandonner la préparation. Avec une sélection active,
+le candidat pion est désormais limité à la case réellement occupée, avant l’arbitrage avec
+portes et lumières. La sélection sans pion actif et le glisser libre MJ conservent leur marge.
+
+Les appels de recherche exacte des vues MJ/joueurs utilisent aussi `GridAdapter.cellsOccupied`
+pour les grands pions : l’emprise hexagonale en rosette remplace le rectangle carré utilisé
+à tort pour ces clics. Les règles de déplacement et de collision ne changent pas.
+
+Ce correctif succède au build 439 et s’applique aux grilles carrées comme hexagonales.
+Le mainteneur a autorisé sa publication en production après la validation locale complète.
+
+Validation locale : `pnpm run verify` réussi, typage et dépendances compris ; **738 tests
+unitaires réussis (2 ignorés), 310 Chromium réussis (6 ignorés), 4 gestes diagnostiques
+réussis**, avec un seul worker navigateur. Le nouveau scénario exerce les vues MJ et joueur,
+à zoom 0,5, avec des clics au centre et près du bord de cases vides que la détection tactile
+attribuait au pion voisin, puis la validation du trajet et la sélection explicite de l’autre
+pion. Les tests d’appartenance couvrent les deux parités hexagonales et les grandes emprises.
+`git diff --check` réussi. Une revue Luna indépendante a vérifié les portes et le glisser MJ.
+
 > Dernière mise à jour : 16 août 2026 — **séance MJ + tablette, trois retours du mainteneur et
 > trois correctifs.** Lire « Séance du 16 août 2026 » plus bas. En une ligne chacun : les liaisons
 > d'étage **fonctionnaient** mais leur geste en deux temps était introuvable ; la désynchro de la

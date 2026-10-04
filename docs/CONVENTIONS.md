@@ -313,6 +313,13 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    suivant désélectionne. Le clic sur le pion conserve les liaisons. Sans sélection active,
    le double tap émet un ping. Le chemin et le nombre restant sont dessinés sur la carte,
    sans bouton ni panneau joueur supplémentaire.
+
+   Lorsqu’un pion est sélectionné, un tap de déplacement désigne la **case** calculée par
+   `GridAdapter.cellFromPoint`. La marge tactile et le rectangle visuel d’un pion voisin ne
+   doivent pas détourner un tap sur une case vide vers sa sélection. Une case réellement
+   occupée conserve son arbitrage de cible ; son appartenance se calcule avec
+   `GridAdapter.cellsOccupied`, y compris la rosette des grands pions hexagonaux. La marge
+   de sélection sans pion actif et le glisser libre MJ restent distincts de cette règle.
 2. **Ne jamais ajouter d'élément d'interface à la vue joueurs** : ni barre d'outils, ni
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, l'indicateur d'état des portes,
    les pions, le fog, le sélecteur d'étage et les gabarits s'affichent.

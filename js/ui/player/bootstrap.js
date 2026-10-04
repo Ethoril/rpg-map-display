@@ -140,6 +140,7 @@ export function bootstrapPlayerView(options) {
     // déplacement plus bas.
     const exactTappedToken = exactTokenAtCell(activeLevel, targetCell, campaign.tokens, {
       filter: (t) => !t.hidden,
+      grid,
     });
 
     // Arbitrage n°1 (brief distance) : le plus proche gagne, dans une seule et même unité —

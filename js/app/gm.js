@@ -1442,6 +1442,8 @@ export async function bootstrapGMApp(options = {}) {
    * alors que le tap, lui, basculait la lampe plus proche.
    *
    * @param {import('../core/types.js').MapPoint} mapPos
+   * @param {boolean} [exactTokenCellOnly] Pendant un trajet sélectionné, ne désigne un pion
+   *   que si la cellule pointée appartient à son empreinte de grille.
    * @returns {{
    *   kind: 'token'|'light'|'portal'|null,
    *   tokenHit: ReturnType<typeof findHitToken>,
@@ -1449,7 +1451,7 @@ export async function bootstrapGMApp(options = {}) {
    *   portalHit: ReturnType<typeof findHitPortal>,
    * }}
    */
-  function arbitrateHit(mapPos) {
+  function arbitrateHit(mapPos, exactTokenCellOnly = false) {
     const state = store.getState();
     if (!state.activeLevel) {
       return { kind: null, tokenHit: null, lightHit: null, portalHit: null };
@@ -1460,7 +1462,7 @@ export async function bootstrapGMApp(options = {}) {
     // il reste sélectionnable (c'est le geste qui sert à le déverrouiller) mais ne vole pas la
     // désignation d'un voisin libre. ⛔ Ne pas y mettre la manipulabilité *joueur* : elle
     // déclasserait les PNJ, que le MJ manipule autant que les PJ.
-    const tokenHit = findHitToken(
+    let tokenHit = findHitToken(
       grid,
       state.activeLevel,
       mapPos,
@@ -1468,6 +1470,16 @@ export async function bootstrapGMApp(options = {}) {
       state.campaign?.tokens ?? [],
       { deprioritize: (t) => !!t.locked }
     );
+    if (exactTokenCellOnly) {
+      const tappedCell = grid.cellFromPoint(mapPos);
+      const exactToken = tappedCell
+        ? exactTokenAtCell(state.activeLevel, tappedCell, state.campaign?.tokens ?? [], { grid })
+        : null;
+      // Pendant une préparation, la marge rectangle sert à viser quand rien n'est sélectionné,
+      // mais ne doit pas voler une case vide du trajet. Une case réellement occupée reste un
+      // choix explicite de pion et conserve la priorité habituelle sur porte/lumière.
+      tokenHit = exactToken ? { token: exactToken, dist: 0 } : null;
+    }
 
     // Même arbitrage par distance que la vue joueurs (js/ui/player/bootstrap.js) : le plus
     // proche gagne, comparé en unités CARTE — c'est elle qui porte la géométrie. Avant ce
@@ -1652,7 +1664,7 @@ export async function bootstrapGMApp(options = {}) {
           const posGrid = gridFor(activeLevel);
           const tapCell = accrochable ? posGrid.cellFromPoint(intention.mapPos) : null;
           const hitToken = tapCell
-            ? exactTokenAtCell(activeLevel, tapCell, state.campaign?.tokens ?? [])
+            ? exactTokenAtCell(activeLevel, tapCell, state.campaign?.tokens ?? [], { grid: posGrid })
             : null;
           let origin = intention.mapPos;
           if (hitToken) {
@@ -1778,7 +1790,10 @@ export async function bootstrapGMApp(options = {}) {
         return;
       }
 
-      const { kind: winner, tokenHit, lightHit, portalHit } = arbitrateHit(intention.mapPos);
+      const { kind: winner, tokenHit, lightHit, portalHit } = arbitrateHit(
+        intention.mapPos,
+        activeToolName === 'none' && !!state.selectedToken
+      );
 
       if (winner === 'token' && tokenHit) {
         cancelledMoveAt = null;

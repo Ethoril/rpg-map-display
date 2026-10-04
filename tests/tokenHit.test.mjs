@@ -59,6 +59,36 @@ test('exactTokenAtCell — sélection stricte par appartenance de case & filtre'
   assert.equal(exactTokenAtCell(mockLevel, { a: 3, b: 3 }, tokens, { filter: (t) => !t.hidden }), null);
 });
 
+test('exactTokenAtCell avec grille hex suit la rosette de taille 2 aux deux parités', () => {
+  const hexLevel = createLevel({
+    id: 'hex-footprints', name: 'Hex', pxPerCell: 100, widthCells: 12, heightCells: 12,
+    grid: { type: 'hex' },
+  });
+  const hex = gridFor(hexLevel);
+  for (const anchor of [{ a: 5, b: 4 }, { a: 5, b: 5 }]) {
+    const token = createToken({
+      id: `hex-${anchor.b}`, levelId: hexLevel.id, cell: anchor, sizeCells: 2, kind: 'npc',
+    });
+    const footprint = hex.cellsOccupied(anchor, 2);
+    const squareOnlyCell = [
+      { a: anchor.a, b: anchor.b }, { a: anchor.a + 1, b: anchor.b },
+      { a: anchor.a, b: anchor.b + 1 }, { a: anchor.a + 1, b: anchor.b + 1 },
+    ].find((cell) => !footprint.some((occupied) => occupied.a === cell.a && occupied.b === cell.b));
+    const outsideSquare = footprint.find((cell) =>
+      cell.a < anchor.a || cell.a >= anchor.a + 2 || cell.b < anchor.b || cell.b >= anchor.b + 2
+    );
+    assert.ok(outsideSquare, 'la rosette s’étend hors du rectangle pour les deux parités');
+    assert.equal(exactTokenAtCell(hexLevel, outsideSquare, [token], { grid: hex })?.id, token.id);
+    if (squareOnlyCell) assert.equal(exactTokenAtCell(hexLevel, squareOnlyCell, [token], { grid: hex }), null);
+  }
+
+  // La rosette de taille 4 exclut notamment un coin du carré 4×4.
+  const large = createToken({
+    id: 'hex-large', levelId: hexLevel.id, cell: { a: 2, b: 2 }, sizeCells: 4, kind: 'npc',
+  });
+  assert.equal(exactTokenAtCell(hexLevel, { a: 5, b: 5 }, [large], { grid: hex }), null);
+});
+
 test('findHitToken — tap au centre vs dans la marge vs au-delà (constante dynamique)', () => {
   const tokens = [
     makeToken({ id: 't1', levelId: 'level-1', cell: { a: 5, b: 5 }, sizeCells: 1, label: 'Héros', kind: 'pc' }),

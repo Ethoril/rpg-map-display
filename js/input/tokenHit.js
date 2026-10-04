@@ -23,7 +23,8 @@ export function distancePointToRectangle(pt, rect) {
  * @param {import('../core/types.js').Level} activeLevel
  * @param {{a: number, b: number}} cell
  * @param {import('../core/types.js').Token[]} tokens
- * @param {{ filter?: (token: import('../core/types.js').Token) => boolean }} [options]
+ * @param {{ filter?: (token: import('../core/types.js').Token) => boolean,
+ *   grid?: import('../grid/GridAdapter.js').GridAdapter }} [options]
  * @returns {import('../core/types.js').Token|null}
  */
 export function exactTokenAtCell(activeLevel, cell, tokens, options = {}) {
@@ -35,12 +36,11 @@ export function exactTokenAtCell(activeLevel, cell, tokens, options = {}) {
     if (filter && !filter(token)) continue;
 
     const size = token.sizeCells || 1;
-    if (
-      cell.a >= token.cell.a &&
-      cell.a < token.cell.a + size &&
-      cell.b >= token.cell.b &&
-      cell.b < token.cell.b + size
-    ) {
+    const occupiesCell = options.grid
+      ? options.grid.cellsOccupied(token.cell, size).some((occupied) => occupied.a === cell.a && occupied.b === cell.b)
+      : cell.a >= token.cell.a && cell.a < token.cell.a + size &&
+        cell.b >= token.cell.b && cell.b < token.cell.b + size;
+    if (occupiesCell) {
       return token;
     }
   }
