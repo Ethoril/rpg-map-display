@@ -7,6 +7,7 @@ import {
   STATUS_MARKER_LABEL_FR,
 } from '../../core/constants.js';
 import { isPlayerManipulableToken } from '../../input/tokenHit.js';
+import { isLinkedToken } from '../../core/schema.js';
 
 /** @typedef {import('../../core/types.js').Token} Token */
 
@@ -91,9 +92,10 @@ export function createSelectionStrip(container, options) {
 
   /**
    * @param {boolean} monte
+   * @param {boolean} lie pion piloté par l'outil MJ : la bascule s'y fait (contrat de liaison §8.2)
    * @returns {HTMLButtonElement}
    */
-  function creerBoutonMonture(monte) {
+  function creerBoutonMonture(monte, lie) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = monte ? 'player-selection-mount is-mounted' : 'player-selection-mount';
@@ -101,7 +103,8 @@ export function createSelectionStrip(container, options) {
     // d'`aria-pressed`, qui ferait lire « Monter à cheval, enfoncé ».
     const libelle = monte ? 'Descendre de cheval' : 'Monter à cheval';
     btn.setAttribute('aria-label', libelle);
-    btn.title = libelle;
+    btn.title = lie ? 'Géré par l’outil MJ' : libelle;
+    btn.disabled = lie;
     const img = document.createElement('img');
     img.src = MOUNTED_ICON_URL;
     img.alt = '';
@@ -111,7 +114,7 @@ export function createSelectionStrip(container, options) {
       () => {
         // Le pion est relu à l'appui : celui d'une reconstruction antérieure peut avoir changé.
         const token = options.getSelectedToken();
-        if (!token || !isPlayerManipulableToken(token)) return;
+        if (!token || !isPlayerManipulableToken(token) || isLinkedToken(token)) return;
         options.onToggleMounted(token);
       },
       { signal: listeners.signal }
@@ -159,12 +162,13 @@ export function createSelectionStrip(container, options) {
     const monte = token.mounted === true;
     // Ordre canonique de `STATUS_MARKER_IDS`, quel que soit l'ordre du tableau du pion.
     const marqueurs = STATUS_MARKER_IDS.filter((id) => token.markers.includes(id));
-    const signature = JSON.stringify([token.id, monte, marqueurs]);
+    const lie = isLinkedToken(token);
+    const signature = JSON.stringify([token.id, monte, lie, marqueurs]);
     if (container.dataset.signature === signature) return;
     container.dataset.signature = signature;
 
     masquerBulle();
-    container.replaceChildren(creerBoutonMonture(monte), ...marqueurs.map(creerBadge));
+    container.replaceChildren(creerBoutonMonture(monte, lie), ...marqueurs.map(creerBadge));
   }
 
   update();

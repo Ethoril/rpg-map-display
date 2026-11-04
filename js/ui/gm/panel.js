@@ -17,7 +17,7 @@ import {
   TOKEN_TORCH_DEFAULT,
   VISION_MAX_RANGE_CELLS,
 } from '../../core/constants.js';
-import { isStatusMarker } from '../../core/schema.js';
+import { isStatusMarker, isLinkedToken } from '../../core/schema.js';
 import { cellDimensionsForGridType, hexShiftXForGridType } from '../../grid/index.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
@@ -1779,6 +1779,17 @@ export function createGMPanel(container, options = {}) {
     tokenHpMax,
     ...markerCheckboxes,
   ];
+  // Pion lié : l'outil MJ fait foi pour ces champs (docs/CONTRAT-LIAISON-OUTIL-MJ.md §1) ; la carte
+  // garde bordure, caché, déplaçable, verrou et lumière.
+  const mjOwnedControls = new Set([
+    tokenEditLabel,
+    tokenEditKind,
+    tokenEditSizeCells,
+    tokenEditSpeedCells,
+    tokenEditVisionDim,
+    tokenHpMax,
+    ...markerCheckboxes,
+  ]);
 
   function updateTokenEditUIFromStore() {
     // ⚠ La barre de vitalité se rafraîchit ICI et nulle part ailleurs : elle lit le même pion
@@ -1791,7 +1802,8 @@ export function createGMPanel(container, options = {}) {
     roster.hidden = !disabled;
     tokenSheet.hidden = disabled;
     updateSheetSummaries(selectedToken);
-    for (const control of tokenEditControls) control.disabled = disabled;
+    const lie = isLinkedToken(selectedToken);
+    for (const control of tokenEditControls) control.disabled = disabled || (lie && mjOwnedControls.has(control));
     tokenEditBorderSwatches.refresh();
     btnDeleteToken.disabled = disabled;
     btnReserveToken.disabled = disabled;
@@ -1816,7 +1828,7 @@ export function createGMPanel(container, options = {}) {
     if (selectedToken.hp !== null && selectedToken.hp !== undefined) {
       if (document.activeElement !== tokenHpCurrent) tokenHpCurrent.value = String(selectedToken.hp.current);
       if (document.activeElement !== tokenHpMax) tokenHpMax.value = String(selectedToken.hp.max);
-      tokenHpCurrent.disabled = false;
+      tokenHpCurrent.disabled = lie;
     } else {
       if (document.activeElement !== tokenHpCurrent) tokenHpCurrent.value = '';
       if (document.activeElement !== tokenHpMax) tokenHpMax.value = '';
@@ -1830,7 +1842,7 @@ export function createGMPanel(container, options = {}) {
       const hpNull = selectedToken.hp === null || selectedToken.hp === undefined;
       const currentHealth = selectedToken.health || 'unharmed';
       for (const radio of healthRadios) {
-        radio.disabled = hpNull;
+        radio.disabled = hpNull || lie;
         if (document.activeElement !== radio) {
           radio.checked = !hpNull && radio.value === currentHealth;
         }
@@ -2033,6 +2045,11 @@ export function createGMPanel(container, options = {}) {
     }
     vitalsBar.hidden = false;
     if (vitalsLabel) vitalsLabel.textContent = pion.label || pion.id;
+    // Pion lié : PV, santé et monture se changent dans l'outil MJ (contrat §1, §8.2).
+    const lie = isLinkedToken(pion);
+    if (vitalsHpCurrent) vitalsHpCurrent.disabled = lie;
+    for (const btn of vitalsHealthBtns) btn.disabled = lie;
+    if (vitalsMountedBtn) vitalsMountedBtn.disabled = lie;
 
     // ⚠ Une variable locale, et pas un booléen `sansPv` : le typage ne suit pas le rétrécissement
     // à travers un booléen intermédiaire, et `pion.hp` resterait « possiblement nul » à l'usage.
@@ -2042,7 +2059,7 @@ export function createGMPanel(container, options = {}) {
     if (vitalsHpGroup) vitalsHpGroup.hidden = !(estPj && pv);
     if (vitalsHealthGroup) vitalsHealthGroup.hidden = !(!estPj && pv);
     if (vitalsHint) {
-      vitalsHint.textContent = pv ? '' : 'Aucun point de vie défini — voir l’onglet Pions';
+      vitalsHint.textContent = lie ? 'Géré par l’outil MJ' : pv ? '' : 'Aucun point de vie défini — voir l’onglet Pions';
     }
 
     if (estPj && pv && vitalsHpCurrent && vitalsHpMax) {
