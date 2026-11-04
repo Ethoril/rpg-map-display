@@ -1963,6 +1963,29 @@ export function reserveToken(tokenId) {
 }
 
 /**
+ * Crée un pion **directement en réserve** (liaison outil MJ, contrat §7) : un participant de
+ * rencontre arrive hors plateau et le MJ le pose. Sans événement réseau propre : la tablette le
+ * reçoit à la pose, par le `token.add` de `placeTokenFromReserve`, comme tout pion sorti de la réserve.
+ *
+ * @param {import('../core/types.js').Token} token pion complet ; `levelId` et `cell` n'y sont qu'une trace
+ * @returns {void}
+ */
+export function addTokenToReserve(token) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (campaign.tokens.some((t) => t.id === token.id) || (campaign.reserve ?? []).some((t) => t.id === token.id)) {
+    throw new Error(`Pion déjà présent : "${token.id}"`);
+  }
+  const candidate = structuredClone(campaign);
+  if (!Array.isArray(candidate.reserve)) candidate.reserve = [];
+  candidate.reserve.push(structuredClone(token));
+  assertValidCampaign(candidate, `Ajout en réserve du pion "${token.id}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
+/**
  * Ressort un pion de la réserve et le pose sur une case (UX-14).
  *
  * ⭐ **UX-08 est la moitié visible de ce geste** : sortir un pion de la réserve, c'est le poser

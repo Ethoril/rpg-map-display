@@ -90,3 +90,14 @@ test('mjLink : pion lié trouvé → patch des seuls champs changés, bascule mo
   const snap = planMjMessage(campaign, msg('mj.snapshot', { tokens: [{ ref: 'pj:c9', label: 'Ulrika' }] }));
   assert.deepEqual(snap, [{ op: 'update', tokenId: 'u', patch: { label: 'Ulrika' } }, { op: 'remove', tokenId: 'g1', where: 'board' }]);
 });
+
+test('store : addTokenToReserve range un pion lié hors plateau, refuse un doublon', async () => {
+  const { loadCampaign, addTokenToReserve, getCampaign } = await import('../js/state/store.js');
+  loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+  addTokenToReserve(linked({ id: 'r1' }));
+  assert.deepEqual(getCampaign()?.reserve?.map((t) => t.id), ['r1']);
+  assert.equal(getCampaign()?.tokens.length, 0);
+  assert.throws(() => addTokenToReserve(linked({ id: 'r1' })), /déjà présent/);
+  assert.throws(() => addTokenToReserve(linked({ id: 'r2', runCells: -1 })), /runCells/);
+  assert.deepEqual(getCampaign()?.reserve?.map((t) => t.id), ['r1'], 'refus sans mutation');
+});
