@@ -313,6 +313,71 @@ export function normalizeLevel(level) {
 }
 
 /**
+ * Le pion révèle-t-il le brouillard ? `visionSource` explicite (pion lié), sinon un PJ
+ * (docs/CONTRAT-LIAISON-OUTIL-MJ.md §4).
+ *
+ * @param {any} token
+ * @returns {boolean}
+ */
+export function isVisionSource(token) {
+  return typeof token?.visionSource === 'boolean' ? token.visionSource : token?.kind === 'pc';
+}
+
+/**
+ * Pion piloté par l'outil MJ (contrat §3).
+ *
+ * @param {any} token
+ * @returns {boolean}
+ */
+export function isLinkedToken(token) {
+  return token?.link?.source === 'outil-mj';
+}
+
+const CAMP_SET = new Set(['pj', 'allie', 'ennemi', 'neutre']);
+const DEATH_CAUSE_SET = new Set(['blood', 'fire', 'magic', 'poison', 'decapitation', 'dismemberment']);
+
+/**
+ * Champs optionnels d'un pion lié (contrat §4). Absents, aucune erreur : le pion ordinaire ne change pas.
+ *
+ * @param {any} token
+ * @param {string} tokenId
+ * @returns {string[]}
+ */
+function linkedTokenErrors(token, tokenId) {
+  const errors = [];
+  const at = `Pion "${tokenId}"`;
+  if (
+    token.link !== undefined &&
+    (!token.link || token.link.source !== 'outil-mj' || typeof token.link.ref !== 'string' || token.link.ref === '')
+  ) {
+    errors.push(`${at} : link doit être { source: 'outil-mj', ref } avec ref non vide`);
+  }
+  if (token.runCells !== undefined && (!Number.isInteger(token.runCells) || token.runCells < 0)) {
+    errors.push(`${at} : runCells doit être un entier >= 0`);
+  }
+  if (token.visionSource !== undefined && typeof token.visionSource !== 'boolean') {
+    errors.push(`${at} : visionSource doit être un booléen`);
+  }
+  if (token.markerLevels !== undefined) {
+    const levels = token.markerLevels;
+    const ok =
+      levels && typeof levels === 'object' && !Array.isArray(levels) &&
+      Object.entries(levels).every(([id, level]) => STATUS_MARKER_SET.has(/** @type {StatusMarker} */ (id)) && Number.isInteger(level) && level >= 2);
+    if (!ok) errors.push(`${at} : markerLevels doit associer des marqueurs connus à des entiers >= 2`);
+  }
+  if (token.dead !== undefined && typeof token.dead !== 'boolean') {
+    errors.push(`${at} : dead doit être un booléen`);
+  }
+  if (token.deathCause !== undefined && !DEATH_CAUSE_SET.has(token.deathCause)) {
+    errors.push(`${at} : deathCause invalide "${token.deathCause}"`);
+  }
+  if (token.camp !== undefined && !CAMP_SET.has(token.camp)) {
+    errors.push(`${at} : camp invalide "${token.camp}"`);
+  }
+  return errors;
+}
+
+/**
  * Normalise un pion hérité (CdC §6 & Chantier Q §1.1 / §3).
  * S'assure que markers est un tableau, et que hp, health et mounted ont des valeurs par défaut.
  *
@@ -1138,6 +1203,8 @@ export function validateCampaign(campaign) {
       if (token.mounted !== undefined && typeof token.mounted !== 'boolean') {
         errors.push(`Pion "${tokenId}" : mounted doit être un booléen`);
       }
+
+      errors.push(...linkedTokenErrors(token, tokenId));
 
       // Exemplaires numérotés (C-15) : la provenance et le numéro, tous deux optionnels.
       if (token.libraryId !== undefined && (typeof token.libraryId !== 'string' || token.libraryId === '')) {

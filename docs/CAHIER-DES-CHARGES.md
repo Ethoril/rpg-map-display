@@ -349,6 +349,15 @@ MJ. Les PNJ ont un état Visible / Masqué (préparation d'embuscades).
   « +N » prend le relais au-delà. Comme le badge d'élévation, elle disparaît sur un pion trop petit
   à l'écran (paliers des points de la rangée de marqueurs).
 
+- **Pion lié à l'outil MJ Warhammer** (amendement du 04/11/2026, `docs/CONTRAT-LIAISON-OUTIL-MJ.md`).
+  Champs optionnels, absents sur un pion ordinaire, qui ne change donc pas : `link`
+  (`{ source: 'outil-mj', ref }`), `runCells` (Course, second palier), `visionSource` (absent =
+  `kind === 'pc'` ; la monture d'un PJ est `pc` sans révéler le brouillard), `markerLevels`
+  (niveau ≥ 2 d'un marqueur), `dead`, `deathCause`, `camp`. Sur un pion lié, l'outil MJ fait foi
+  pour l'identité et les caractéristiques ; Map Display garde position, étage, élévation, caché,
+  lumière et verrou. Monté, un pion lié n'a **pas** le ×2 du §5.3bis : l'outil MJ envoie déjà la
+  portée de la monture.
+
 ### 5.3bis Modèle de déplacement — style jeu de plateau
 
 Décision structurante, reprise de l'implémentation `shadowrunbank` (`reachableCells` /

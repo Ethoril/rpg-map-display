@@ -54,6 +54,7 @@ import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import { MovePlanningController } from './movePlanning.js';
 import { movePlanPreview } from '../state/movePlan.js';
 import { cellKey } from '../core/cellKey.js';
+import { isVisionSource } from '../core/schema.js';
 import * as store from '../state/store.js';
 import { getPresenceList, listOtherGmClients } from '../state/presence.js';
 
@@ -483,7 +484,7 @@ export async function bootstrapGMApp(options = {}) {
 
       for (const level of levels) {
         if (level.id === activeLevel.id) continue;
-        const aUnPJ = tokens.some((t) => t && t.levelId === level.id && t.kind === 'pc');
+        const aUnPJ = tokens.some((t) => t && t.levelId === level.id && isVisionSource(t));
         const dejaPublie = lastVisibleSignatureMap.has(level.id);
         if (aUnPJ || dejaPublie) syncVisionForLevel(level, false, tokens);
       }
@@ -544,7 +545,7 @@ export async function bootstrapGMApp(options = {}) {
    * @returns {number} Nombre de cases balayées, 0 si le pion ne porte pas de vision
    */
   function revealAlongMove(level, token, cells) {
-    if (!level || !token || token.kind !== 'pc') return 0;
+    if (!level || !token || !isVisionSource(token)) return 0;
     if (!Array.isArray(cells) || cells.length === 0) return 0;
     const rangeCells = Math.min(token.visionDim ?? 0, VISION_MAX_RANGE_CELLS);
     if (rangeCells <= 0) return 0;

@@ -1,7 +1,7 @@
 // @ts-check
 
 import { gridFor } from '../grid/index.js';
-import { terrainCostRecordToMap } from '../core/schema.js';
+import { terrainCostRecordToMap, isLinkedToken } from '../core/schema.js';
 import { computeBlockedEdges } from '../import/blockedEdges.js';
 import { MOUNTED_SPEED_MULTIPLIER } from '../core/constants.js';
 
@@ -30,10 +30,12 @@ let reachableCells = new Map();
 export function movementRulesFor(token, level) {
   const grid = gridFor(level);
   const mounted = token.mounted === true;
+  // Pion lié : l'outil MJ envoie déjà la portée de la monture (contrat §4), pas de ×2.
+  const multiplier = mounted && !isLinkedToken(token) ? MOUNTED_SPEED_MULTIPLIER : 1;
   return {
     grid,
     // Monté, le budget double (chantier C-9).
-    budget: token.speedCells * (mounted ? MOUNTED_SPEED_MULTIPLIER : 1),
+    budget: token.speedCells * multiplier,
     // Masque d'arêtes bloquées obtenu par la fonction dédiée. Recréer un `new Set()` ici rendrait
     // les murs sans effet sur les déplacements, et le symptôme apparaîtrait très loin de sa cause.
     // Monté, tout portail bloque, quel que soit son état : un cheval ne passe pas les portes.

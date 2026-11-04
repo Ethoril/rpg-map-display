@@ -8,6 +8,7 @@ import {
   FOG_VEIL_PLAYER_UNEXPLORED,
   VISION_MAX_RANGE_CELLS,
 } from '../../core/constants.js';
+import { isVisionSource } from '../../core/schema.js';
 import { sweep } from '../../vision/sweep.js';
 
 /** @typedef {import('../../core/types.js').Level} Level */
@@ -109,7 +110,7 @@ export function buildVisionSignature(level, tokens, grid) {
   // désormais une **ligne de vue**, qui découpe le champ lumineux là où il passe. Un PJ sans
   // vision nocturne voit donc parfaitement une pièce éclairée — et le déplacer doit
   // invalider le cache. Le garder exclu aurait figé la vision de la table sur ses pas.
-  const pcTokens = tokens.filter((t) => t && t.levelId === level.id && t.kind === 'pc');
+  const pcTokens = tokens.filter((t) => t && t.levelId === level.id && isVisionSource(t));
   pcTokens.sort((a, b) => a.id.localeCompare(b.id));
 
   for (const t of pcTokens) {
@@ -335,7 +336,7 @@ export class FogLayer {
     this._lastSignature = signature;
     computeCount++;
 
-    const pcTokens = (tokens || []).filter((t) => t && t.levelId === level.id && t.kind === 'pc');
+    const pcTokens = (tokens || []).filter((t) => t && t.levelId === level.id && isVisionSource(t));
 
     // ⚠ **Ce bloc est redevenu une GARANTIE, alors qu'il n'était qu'une optimisation.**
     //

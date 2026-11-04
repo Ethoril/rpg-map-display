@@ -271,6 +271,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │                                      dans la page, typées comme le reste du dépôt
 └─ docs/
     ├─ CAHIER-DES-CHARGES.md      spécification fonctionnelle (source de vérité du « quoi »)
+    ├─ CONTRAT-LIAISON-OUTIL-MJ.md contrat de liaison avec l'outil MJ Warhammer (copie identique
+    │                              dans ce dépôt-là) ; sa validation vaut les amendements de son §11
     ├─ STACK.md                   versions & idiomes
     ├─ CONVENTIONS.md             conventions & interdictions
     ├─ ARCHITECTURE.md            ce document

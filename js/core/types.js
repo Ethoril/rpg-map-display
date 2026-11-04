@@ -197,6 +197,15 @@
  * @property {number|null} [copyNumber] Numéro d'exemplaire, affiché sur le pion et vu des joueurs
  *   (C-15). Donné à partir du deuxième exemplaire posé ; jamais réattribué.
  * @property {TokenMove} [move]
+ * @property {{ source: 'outil-mj', ref: string }} [link] Pion piloté par l'outil MJ Warhammer
+ *   (docs/CONTRAT-LIAISON-OUTIL-MJ.md §3). Absent = pion ordinaire, comportement inchangé.
+ * @property {number} [runCells] Course en cases (contrat §4), second palier après `speedCells`.
+ * @property {boolean} [visionSource] Révèle le brouillard. Absent = `kind === 'pc'` (contrat §4 :
+ *   la monture d'un PJ est `pc` sans être source de vision). Lire par `isVisionSource`.
+ * @property {Record<string, number>} [markerLevels] Niveau d'un marqueur, à partir de 2 (contrat §4).
+ * @property {boolean} [dead] Mort, le pion reste sur sa case (contrat §7).
+ * @property {'blood'|'fire'|'magic'|'poison'|'decapitation'|'dismemberment'} [deathCause]
+ * @property {'pj'|'allie'|'ennemi'|'neutre'} [camp] Camp de l'outil MJ (disque sans image, contrat §6).
  */
 
 /** @typedef {'circle'|'cone'|'line'} TemplateShape */
