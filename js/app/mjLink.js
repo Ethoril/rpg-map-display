@@ -227,3 +227,81 @@ export function executeMjOperations(ops, deps) {
   }
   return { awaiting };
 }
+
+export const MJ_LINK_CHANNEL = 'wfrp-map-link';
+export const MJ_LINK_VERSION = 1;
+export const MJ_LINK_PING_MS = 5000;
+export const MJ_LINK_TIMEOUT_MS = 15000;
+
+/**
+ * Ouvre le canal avec l'outil MJ (contrat §2) : `map.hello` à l'ouverture et sur `mj.hello`,
+ * battement `map.ping`, traduction puis exécution des messages reçus. Sans BroadcastChannel
+ * (navigateur ancien, test), ne fait rien et rend `null`.
+ *
+ * @param {{
+ *   store: Parameters<typeof executeMjOperations>[1]['store'],
+ *   publish: (type: string, payload: any) => void,
+ *   createToken: (overrides: any) => Token,
+ *   activeLevelId: () => string|null,
+ *   sessionId: string,
+ *   onStatus?: (status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[]) => void,
+ *   Channel?: typeof BroadcastChannel,
+ *   now?: () => number,
+ * }} options
+ * @returns {{ tick: () => void, close: () => void }|null}
+ */
+export function startMjLink(options) {
+  const Channel = options.Channel ?? globalThis.BroadcastChannel;
+  if (typeof Channel !== 'function') return null;
+  const now = options.now ?? Date.now;
+  const channel = new Channel(MJ_LINK_CHANNEL);
+  let seq = 0;
+  let lastSeen = 0;
+  /** @type {'connected'|'disconnected'|'version-mismatch'} */
+  let status = 'disconnected';
+  /** @type {Map<string, string>} */
+  const awaiting = new Map();
+  let counter = 0;
+  /** @param {'connected'|'disconnected'|'version-mismatch'} next */
+  const setStatus = (next) => {
+    if (next === status) return;
+    status = next;
+    options.onStatus?.(status, [...awaiting].map(([ref, label]) => ({ ref, label })));
+  };
+  /** @param {string} type @param {any} [payload] */
+  const send = (type, payload = {}) => channel.postMessage({ v: MJ_LINK_VERSION, type, seq: ++seq, at: now(), from: 'map', payload });
+  channel.onmessage = (event) => {
+    const message = event?.data;
+    if (!message || message.from !== 'outil-mj') return;
+    if (message.v !== MJ_LINK_VERSION) {
+      setStatus('version-mismatch');
+      return;
+    }
+    lastSeen = now();
+    setStatus('connected');
+    if (message.type === 'mj.hello') send('map.hello', { v: MJ_LINK_VERSION, sessionId: options.sessionId });
+    const campaign = options.store.getCampaign();
+    if (!campaign) return;
+    const levelId = options.activeLevelId() ?? campaign.levels[0]?.id ?? '';
+    try {
+      const { awaiting: refs } = executeMjOperations(planMjMessage(campaign, message, MJ_LINK_VERSION), {
+        store: options.store,
+        publish: options.publish,
+        createToken: options.createToken,
+        newTokenId: () => `lie-${now().toString(36)}-${++counter}`,
+        trace: { levelId, cell: { a: 0, b: 0 } },
+      });
+      for (const { ref, label } of refs) awaiting.set(ref, label);
+    } catch (err) {
+      console.error(`Liaison outil MJ : message "${message.type}" refusé : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  send('map.hello', { v: MJ_LINK_VERSION, sessionId: options.sessionId });
+  return {
+    tick() {
+      send('map.ping');
+      if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) setStatus('disconnected');
+    },
+    close: () => channel.close(),
+  };
+}

@@ -54,7 +54,8 @@ import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import { MovePlanningController } from './movePlanning.js';
 import { movePlanPreview } from '../state/movePlan.js';
 import { cellKey } from '../core/cellKey.js';
-import { isVisionSource } from '../core/schema.js';
+import { isVisionSource, createToken } from '../core/schema.js';
+import { startMjLink, MJ_LINK_PING_MS } from './mjLink.js';
 import * as store from '../state/store.js';
 import { getPresenceList, listOtherGmClients } from '../state/presence.js';
 
@@ -1307,6 +1308,19 @@ export async function bootstrapGMApp(options = {}) {
     if (persistenceError) networkStatus.update('error', persistenceError);
     if (connexion.delaiDepasse) campagneHorsLigne = JSON.stringify(store.getCampaign());
   }
+
+  // Liaison outil MJ Warhammer (docs/CONTRAT-LIAISON-OUTIL-MJ.md) : onglet du même navigateur,
+  // même origine. Ouverte après le chargement de la campagne, pour que l'instantané reçu trouve
+  // les pions liés déjà là.
+  const mjLink = startMjLink({
+    store,
+    publish: (type, payload) => transport?.publish({ type, payload, at: Date.now(), by: 'gm' }),
+    createToken,
+    activeLevelId: () => store.getActiveLevelId(),
+    sessionId,
+    onStatus: (status, awaiting) => console.info(`Liaison outil MJ : ${status}`, awaiting),
+  });
+  if (mjLink) setInterval(mjLink.tick, MJ_LINK_PING_MS);
 
   /**
    * Le poste MJ dort aussi — c'est même celui dont on change d'onglet. Onglet masqué, il cesse
