@@ -206,6 +206,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │
 │   └─ app/
 │       ├─ movePlanning.js        [Retour session] contrôleur commun et aperçus éphémères
+│       ├─ mjLink.js              [Liaison] messages de l'outil MJ Warhammer → opérations sur la
+│       │                          campagne (docs/CONTRAT-LIAISON-OUTIL-MJ.md)
 │       ├─ runtimeConfig.js       [1a] résolution de la configuration Firebase Web publique
 │       ├─ session.js             [1a] authentification et connexion d'une page
 │       ├─ networkEvents.js       [1a] application idempotente des NetEvent au store

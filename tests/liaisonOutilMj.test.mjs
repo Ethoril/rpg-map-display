@@ -6,6 +6,11 @@ import assert from 'node:assert/strict';
 import { createCampaign, createLevel, createToken, validateCampaign, isVisionSource, isLinkedToken } from '../js/core/schema.js';
 import { movementRulesFor } from '../js/state/selection.js';
 
+/**
+ * @param {string} type
+ * @param {any} payload
+ */
+const msg = (type, payload) => ({ v: 1, type, seq: 1, at: 0, from: 'outil-mj', payload });
 const link = { source: /** @type {'outil-mj'} */ ('outil-mj'), ref: 'p:g1' };
 const level = createLevel({ id: 'rdc', widthCells: 12, heightCells: 12 });
 /** @param {any} token */
@@ -58,4 +63,30 @@ test('store : un pion lié accepte image et champs de liaison, un pion ordinaire
   assert.throws(() => updateToken('g1', { link: { source: 'outil-mj', ref: 'autre' } }), /champ non autorisé/);
   assert.throws(() => updateToken('g1', { mounted: true }), /champ non autorisé/);
   assert.equal(getCampaign()?.tokens.find((t) => t.id === 'o')?.dead, undefined);
+});
+
+test('mjLink : PNJ inconnu en réserve, PJ inconnu en attente de liaison, PJ jamais retiré', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const campaign = createCampaign({ levels: [level], tokens: [] });
+  const gob = { ref: 'p:g9', label: 'Gobelin 2', camp: 'ennemi', kind: 'npc', visionSource: false, imageUrl: null, sizeCells: 1, speedCells: 4, runCells: 8, visionDim: 1, hp: { current: 8, max: 8 }, health: 'unharmed', markers: [], markerLevels: {}, dead: false };
+  const [add] = planMjMessage(campaign, msg('token.add', gob));
+  assert.equal(add.op, 'reserveAdd');
+  assert.deepEqual(add.token.link, { source: 'outil-mj', ref: 'p:g9' });
+  assert.equal('imageUrl' in add.token, false, 'imageUrl nulle : rien n’est écrit');
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...gob, ref: 'pj:c9', kind: 'pc' })).map((o) => o.op), ['awaitBinding']);
+  assert.deepEqual(planMjMessage(campaign, msg('token.remove', { ref: 'pj:c9' })), []);
+  assert.deepEqual(planMjMessage(campaign, { ...msg('token.add', gob), v: 2 }), [], 'autre version ignorée');
+  assert.deepEqual(planMjMessage(campaign, { ...msg('token.add', gob), from: 'map' }), [], 'ses propres messages ignorés');
+});
+
+test('mjLink : pion lié trouvé → patch des seuls champs changés, bascule monté, retrait ; instantané nettoie les PNJ disparus', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const g1 = linked({ label: 'Gobelin 2', hp: { current: 8, max: 8 }, speedCells: 4 });
+  const pj = { ...createToken({ id: 'u', levelId: 'rdc', cell: { a: 5, b: 5 }, kind: 'pc' }), link: { ...link, ref: 'pj:c9' } };
+  const campaign = createCampaign({ levels: [level], tokens: [g1, pj] });
+  const ops = planMjMessage(campaign, msg('token.state', { ref: 'p:g1', label: 'Gobelin 2', hp: { current: 3, max: 8 }, speedCells: 4, mounted: true }));
+  assert.deepEqual(ops, [{ op: 'update', tokenId: 'g1', patch: { hp: { current: 3, max: 8 } } }, { op: 'mounted', tokenId: 'g1', mounted: true }]);
+  assert.deepEqual(planMjMessage(campaign, msg('token.remove', { ref: 'p:g1' })), [{ op: 'remove', tokenId: 'g1', where: 'board' }]);
+  const snap = planMjMessage(campaign, msg('mj.snapshot', { tokens: [{ ref: 'pj:c9', label: 'Ulrika' }] }));
+  assert.deepEqual(snap, [{ op: 'update', tokenId: 'u', patch: { label: 'Ulrika' } }, { op: 'remove', tokenId: 'g1', where: 'board' }]);
 });
