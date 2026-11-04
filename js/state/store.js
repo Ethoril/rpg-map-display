@@ -5,6 +5,7 @@ import {
   createCampaign,
   normalizeCampaign,
   normalizeLevel,
+  isLinkedToken,
 } from '../core/schema.js';
 import {
   setSelectionState,
@@ -1772,6 +1773,22 @@ const ALLOWED_TOKEN_PATCH_KEYS = new Set([
 ]);
 
 /**
+ * Champs de plus qu'accepte un pion **lié** à l'outil MJ (docs/CONTRAT-LIAISON-OUTIL-MJ.md §4, §6) :
+ * l'outil MJ fait foi pour ces valeurs, y compris `imageUrl`, recadrée et bornée de son côté puis
+ * revalidée ici comme toute image de pion. `mounted` garde son écrivain unique, et `link` ne se
+ * patche pas : la liaison se pose à la création ou par la liaison durable d'un PJ.
+ */
+const LINKED_TOKEN_PATCH_KEYS = new Set([
+  'imageUrl',
+  'runCells',
+  'visionSource',
+  'markerLevels',
+  'dead',
+  'deathCause',
+  'camp',
+]);
+
+/**
  * Met à jour les champs autorisés d'un pion existant.
  * La campagne candidate complète est validée avant toute mutation.
  *
@@ -1784,15 +1801,16 @@ export function updateToken(tokenId, patch) {
     throw new Error('Aucune campagne chargée');
   }
 
+  const index = campaign.tokens.findIndex((t) => t.id === tokenId);
+  const linked = index !== -1 && isLinkedToken(campaign.tokens[index]);
   for (const key of Object.keys(patch)) {
-    if (!ALLOWED_TOKEN_PATCH_KEYS.has(key)) {
+    if (!ALLOWED_TOKEN_PATCH_KEYS.has(key) && !(linked && LINKED_TOKEN_PATCH_KEYS.has(key))) {
       throw new Error(
         `Mise à jour du pion "${tokenId}" refusée : champ non autorisé "${key}"`
       );
     }
   }
 
-  const index = campaign.tokens.findIndex((t) => t.id === tokenId);
   if (index === -1) {
     throw new Error(`Pion inconnu : "${tokenId}"`);
   }

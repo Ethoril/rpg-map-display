@@ -42,3 +42,20 @@ test('monté : ×2 pour un pion ordinaire, portée de l’outil MJ telle quelle 
   assert.equal(movementRulesFor({ ...base, link }, level).budget, 7);
   assert.equal(movementRulesFor({ ...base, link, mounted: false }, level).budget, 7);
 });
+
+test('store : un pion lié accepte image et champs de liaison, un pion ordinaire les refuse sans muter', async () => {
+  const { loadCampaign, updateToken, getCampaign } = await import('../js/state/store.js');
+  const ordinaire = createToken({ id: 'o', levelId: 'rdc', cell: { a: 1, b: 1 } });
+  loadCampaign(createCampaign({ levels: [level], tokens: [linked(), ordinaire] }));
+  const image = 'data:image/webp;base64,UklGRg==';
+  updateToken('g1', { imageUrl: image, runCells: 8, markerLevels: { stunned: 2 }, dead: true, deathCause: 'blood', camp: 'ennemi', visionSource: false });
+  const g1 = getCampaign()?.tokens.find((t) => t.id === 'g1');
+  assert.equal(g1?.imageUrl, image);
+  assert.equal(g1?.deathCause, 'blood');
+  for (const patch of [{ imageUrl: image }, { runCells: 8 }, { dead: true }]) {
+    assert.throws(() => updateToken('o', patch), /champ non autorisé/, JSON.stringify(patch));
+  }
+  assert.throws(() => updateToken('g1', { link: { source: 'outil-mj', ref: 'autre' } }), /champ non autorisé/);
+  assert.throws(() => updateToken('g1', { mounted: true }), /champ non autorisé/);
+  assert.equal(getCampaign()?.tokens.find((t) => t.id === 'o')?.dead, undefined);
+});
