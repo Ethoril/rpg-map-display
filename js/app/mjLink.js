@@ -161,3 +161,69 @@ export function planMjMessage(campaign, message, version = 1) {
       return [];
   }
 }
+
+/**
+ * Exécute les opérations de `planMjMessage` : store, puis republication vers la tablette des seuls
+ * changements du plateau. La réserve reste locale au MJ (la tablette reçoit le pion à la pose).
+ * Les dépendances sont injectées : `store` (fonctions du module `state/store.js`), `publish(type,
+ * payload)` du transport, `createToken` du schéma, `newTokenId()`, et `trace` (`levelId` et `cell`
+ * notés sur un pion créé en réserve, qui n'y sont pas une position). Rend les `ref` PJ en attente
+ * de liaison, pour la liste du panneau MJ.
+ *
+ * @param {MjLinkOperation[]} ops
+ * @param {{
+ *   store: { addTokenToReserve: Function, updateToken: Function, updateReserveToken: Function,
+ *            setTokenMounted: Function, removeToken: Function, removeFromReserve: Function,
+ *            getCampaign: () => Campaign|null },
+ *   publish: (type: string, payload: any) => void,
+ *   createToken: (overrides: any) => Token,
+ *   newTokenId: () => string,
+ *   trace: { levelId: string, cell: { a: number, b: number } },
+ * }} deps
+ * @returns {{ awaiting: { ref: string, label: string }[] }}
+ */
+export function executeMjOperations(ops, deps) {
+  const { store, publish } = deps;
+  /** @type {{ ref: string, label: string }[]} */
+  const awaiting = [];
+  /** @param {string} tokenId */
+  const onBoard = (tokenId) => Boolean(store.getCampaign()?.tokens.some((t) => t.id === tokenId));
+  for (const op of ops) {
+    switch (op.op) {
+      case 'reserveAdd': {
+        const { link, mounted, ...fields } = op.token;
+        const token = { ...deps.createToken({ ...fields, id: deps.newTokenId(), levelId: deps.trace.levelId, cell: deps.trace.cell, mounted }), link };
+        store.addTokenToReserve(token);
+        break;
+      }
+      case 'update':
+        if (onBoard(op.tokenId)) {
+          store.updateToken(op.tokenId, op.patch);
+          publish('token.update', { tokenId: op.tokenId, patch: op.patch });
+        } else {
+          store.updateReserveToken(op.tokenId, op.patch);
+        }
+        break;
+      case 'mounted':
+        if (onBoard(op.tokenId)) {
+          store.setTokenMounted(op.tokenId, op.mounted);
+          publish('token.mounted', { tokenId: op.tokenId, mounted: op.mounted });
+        } else {
+          store.updateReserveToken(op.tokenId, { mounted: op.mounted });
+        }
+        break;
+      case 'remove':
+        if (op.where === 'board') {
+          store.removeToken(op.tokenId);
+          publish('token.delete', { tokenId: op.tokenId });
+        } else {
+          store.removeFromReserve(op.tokenId);
+        }
+        break;
+      case 'awaitBinding':
+        awaiting.push({ ref: op.ref, label: op.label });
+        break;
+    }
+  }
+  return { awaiting };
+}

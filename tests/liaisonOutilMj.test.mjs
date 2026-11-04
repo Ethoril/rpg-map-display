@@ -101,3 +101,32 @@ test('store : addTokenToReserve range un pion lié hors plateau, refuse un doubl
   assert.throws(() => addTokenToReserve(linked({ id: 'r2', runCells: -1 })), /runCells/);
   assert.deepEqual(getCampaign()?.reserve?.map((t) => t.id), ['r1'], 'refus sans mutation');
 });
+
+test('mjLink : exécution — réserve locale, plateau republié vers la tablette', async () => {
+  const { planMjMessage, executeMjOperations } = await import('../js/app/mjLink.js');
+  const store = await import('../js/state/store.js');
+  const pose = linked({ id: 'g1' });
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [pose] }));
+  /** @type {[string, any][]} */
+  const published = [];
+  let n = 0;
+  const deps = { store, publish: (/** @type {string} */ type, /** @type {any} */ payload) => { published.push([type, payload]); }, createToken, newTokenId: () => `lie-${++n}`, trace: { levelId: 'rdc', cell: { a: 0, b: 0 } } };
+  const run = (/** @type {string} */ type, /** @type {any} */ payload) => executeMjOperations(planMjMessage(/** @type {any} */ (store.getCampaign()), msg(type, payload)), deps);
+  const gob = { ref: 'p:g9', label: 'Gobelin 3', camp: 'ennemi', kind: 'npc', visionSource: false, imageUrl: null, sizeCells: 1, speedCells: 4, runCells: 8, visionDim: 1, hp: { current: 8, max: 8 }, health: 'unharmed', markers: [], markerLevels: {}, dead: false };
+
+  run('token.add', gob);
+  assert.deepEqual(store.getCampaign()?.reserve?.map((t) => [t.id, t.label, t.link?.ref]), [['lie-1', 'Gobelin 3', 'p:g9']]);
+  run('token.state', { ...gob, hp: { current: 2, max: 8 }, health: 'critical', mounted: true });
+  assert.equal(store.getCampaign()?.reserve?.[0].health, 'critical');
+  assert.equal(store.getCampaign()?.reserve?.[0].mounted, true);
+  assert.deepEqual(published, [], 'rien ne part vers la tablette tant que le pion est en réserve');
+
+  run('token.state', { ref: 'p:g1', hp: { current: 1, max: 20 }, dead: true, deathCause: 'fire' });
+  assert.deepEqual(published, [['token.update', { tokenId: 'g1', patch: { hp: { current: 1, max: 20 }, dead: true, deathCause: 'fire' } }]]);
+  run('token.remove', { ref: 'p:g1' });
+  run('token.remove', { ref: 'p:g9' });
+  assert.deepEqual(published.at(-1), ['token.delete', { tokenId: 'g1' }]);
+  assert.equal(store.getCampaign()?.tokens.length, 0);
+  assert.equal(store.getCampaign()?.reserve?.length, 0);
+  assert.deepEqual(run('token.state', { ...gob, ref: 'pj:c9', label: 'Ulrika' }).awaiting, [{ ref: 'pj:c9', label: 'Ulrika' }]);
+});

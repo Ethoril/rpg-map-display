@@ -1986,6 +1986,58 @@ export function addTokenToReserve(token) {
 }
 
 /**
+ * Met à jour un pion **lié** resté en réserve (liaison outil MJ) : mêmes champs que `updateToken`
+ * sur un pion lié. Local au MJ, comme la réserve qu'il remplit : la tablette reçoit l'état à la pose.
+ *
+ * @param {string} tokenId
+ * @param {Record<string, any>} patch
+ * @returns {boolean} false si le pion n'est pas en réserve
+ */
+export function updateReserveToken(tokenId, patch) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const index = (campaign.reserve ?? []).findIndex((t) => t.id === tokenId);
+  if (index < 0) return false;
+  if (!isLinkedToken(campaign.reserve?.[index])) {
+    throw new Error(`Pion "${tokenId}" : seul un pion lié se met à jour en réserve`);
+  }
+  for (const key of Object.keys(patch)) {
+    // `mounted` aussi : hors plateau, son écrivain réseau (`token.mounted`) n'a rien à dire.
+    if (!ALLOWED_TOKEN_PATCH_KEYS.has(key) && !LINKED_TOKEN_PATCH_KEYS.has(key) && key !== 'mounted') {
+      throw new Error(`Mise à jour du pion "${tokenId}" refusée : champ non autorisé "${key}"`);
+    }
+  }
+  const candidate = structuredClone(campaign);
+  const reserve = /** @type {import('../core/types.js').Token[]} */ (candidate.reserve);
+  reserve[index] = { ...reserve[index], ...structuredClone(patch) };
+  assertValidCampaign(candidate, `Mise à jour en réserve du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
+ * Retire un pion de la réserve (fin de rencontre, liaison outil MJ). Local au MJ.
+ *
+ * @param {string} tokenId
+ * @returns {boolean} false si le pion n'est pas en réserve
+ */
+export function removeFromReserve(tokenId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const index = (campaign.reserve ?? []).findIndex((t) => t.id === tokenId);
+  if (index < 0) return false;
+  const candidate = structuredClone(campaign);
+  candidate.reserve?.splice(index, 1);
+  assertValidCampaign(candidate, `Retrait de la réserve du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
  * Ressort un pion de la réserve et le pose sur une case (UX-14).
  *
  * ⭐ **UX-08 est la moitié visible de ce geste** : sortir un pion de la réserve, c'est le poser
