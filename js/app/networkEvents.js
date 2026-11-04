@@ -562,6 +562,29 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    case 'token.link': {
+      // Liaison outil MJ (contrat §3), patron de `token.mounted` : état absolu, rejouable. Sans
+      // `ref`, le pion est délié — RTDB ne stocke pas `null`, l'absence porte ce sens.
+      if (!payload.tokenId || typeof payload.tokenId !== 'string' || (payload.ref !== undefined && typeof payload.ref !== 'string')) {
+        console.error('Événement "token.link" refusé : payload malformé');
+        return false;
+      }
+      const token = campaign?.tokens.find((t) => t.id === payload.tokenId);
+      if (!token) {
+        console.error(`Événement "token.link" refusé : pion inconnu "${payload.tokenId}"`);
+        return false;
+      }
+      const ref = payload.ref ?? null;
+      if ((token.link?.ref ?? null) === ref) return false;
+      try {
+        store.setTokenLink(payload.tokenId, ref);
+      } catch (err) {
+        console.error(`Événement "token.link" refusé : ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+      }
+      return true;
+    }
+
     case 'token.mounted': {
       // Chantier C-9 — patron de `light.toggle`. Aucun filtre par vue : MJ et tablette
       // l'appliquent tous deux, l'autorisation se fait à l'émission (CdC §7).

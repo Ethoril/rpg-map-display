@@ -888,6 +888,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | ~~`handout.show` / `handout.hide`~~ | — | **retirés par C-13** : le partage d'image n'est pas un événement, c'est le nœud d'état `session/{sid}/sharedImage` (§5.8, §6). Un ancien `handout.*` reçu est ignoré comme tout type inconnu |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
 | `token.markers` / `token.elevation` | MJ | ponctuel |
+| `token.link` | MJ | ponctuel — `{ tokenId, ref? }`, état **absolu** ; sans `ref` le pion est délié ; seul écrivain de `link` sur un pion posé (liaison durable d'un PJ, `docs/CONTRAT-LIAISON-OUTIL-MJ.md` §3) |
 | `token.mounted` | MJ, **joueurs** | ponctuel — `{ tokenId, mounted }`, état **absolu**, seul écrivain de `mounted`, voir l'amendement C-9 |
 | `token.reserve` | MJ | ponctuel — `{ tokenId }`, voir l amendement UX-14 |
 | `level.replace` | MJ | ponctuel — `{ levelId, patch }`, voir l amendement UX-13 |

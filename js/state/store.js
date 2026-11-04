@@ -1884,6 +1884,40 @@ export function setTokenMounted(tokenId, mounted) {
   notifySubscribers();
 }
 
+/**
+ * Lie un pion du plateau à l'outil MJ, ou le délie (contrat de liaison §3) : la liaison durable
+ * d'un PJ, posée par le MJ. Seul écrivain de `link` sur un pion existant, porté par `token.link`.
+ * Un même `ref` ne lie qu'un pion : le lier ailleurs est refusé, il faut d'abord délier.
+ *
+ * @param {string} tokenId
+ * @param {string|null} ref `pj:<id>` ou `p:<id>` ; `null` délie
+ * @returns {void}
+ */
+export function setTokenLink(tokenId, ref) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (ref !== null && (typeof ref !== 'string' || ref === '')) {
+    throw new Error('Référence de liaison invalide');
+  }
+  const candidate = structuredClone(campaign);
+  const token = candidate.tokens.find((t) => t.id === tokenId);
+  if (!token) {
+    throw new Error(`Pion inconnu : "${tokenId}"`);
+  }
+  const autre = [...candidate.tokens, ...(candidate.reserve ?? [])].find(
+    (t) => t.id !== tokenId && isLinkedToken(t) && t.link?.ref === ref
+  );
+  if (ref !== null && autre) {
+    throw new Error(`« ${ref} » est déjà lié au pion "${autre.id}"`);
+  }
+  if (ref === null) delete token.link;
+  else token.link = { source: 'outil-mj', ref };
+  assertValidCampaign(candidate, `Liaison du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
 
 /**
  * Supprime un pion de la campagne par son identifiant.

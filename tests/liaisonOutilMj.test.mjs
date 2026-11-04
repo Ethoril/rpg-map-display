@@ -130,3 +130,26 @@ test('mjLink : exécution — réserve locale, plateau republié vers la tablett
   assert.equal(store.getCampaign()?.reserve?.length, 0);
   assert.deepEqual(run('token.state', { ...gob, ref: 'pj:c9', label: 'Ulrika' }).awaiting, [{ ref: 'pj:c9', label: 'Ulrika' }]);
 });
+
+test('store : setTokenLink lie et délie un pion posé ; un même ref ne lie qu’un pion', async () => {
+  const store = await import('../js/state/store.js');
+  const { applyNetworkEvent } = await import('../js/app/networkEvents.js');
+  const a = createToken({ id: 'a', levelId: 'rdc', cell: { a: 1, b: 1 }, kind: 'pc' });
+  const b = createToken({ id: 'b', levelId: 'rdc', cell: { a: 3, b: 3 }, kind: 'pc' });
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [a, b] }));
+  store.setTokenLink('a', 'pj:c9');
+  assert.deepEqual(store.getCampaign()?.tokens.find((t) => t.id === 'a')?.link, { source: 'outil-mj', ref: 'pj:c9' });
+  assert.throws(() => store.setTokenLink('b', 'pj:c9'), /déjà lié/);
+  store.setTokenLink('a', null);
+  assert.equal(store.getCampaign()?.tokens.find((t) => t.id === 'a')?.link, undefined);
+  store.setTokenLink('b', 'pj:c9');
+  assert.equal(store.getCampaign()?.tokens.find((t) => t.id === 'b')?.link?.ref, 'pj:c9');
+  // Réseau : état absolu ; sans ref, le pion est délié ; un rejeu ne mute rien.
+  /** @param {any} payload */
+  const ev = (payload) => applyNetworkEvent({ type: 'token.link', payload, at: 0, by: 'gm' });
+  assert.equal(ev({ tokenId: 'b' }), true);
+  assert.equal(store.getCampaign()?.tokens.find((t) => t.id === 'b')?.link, undefined);
+  assert.equal(ev({ tokenId: 'a', ref: 'pj:c9' }), true);
+  assert.equal(ev({ tokenId: 'a', ref: 'pj:c9' }), false, 'rejeu sans mutation');
+  assert.equal(ev({ tokenId: 'a', ref: 7 }), false, 'payload malformé');
+});
