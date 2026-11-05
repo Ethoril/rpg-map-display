@@ -25,17 +25,23 @@ let reachableCells = new Map();
  *
  * @param {Token} token
  * @param {Level} level
- * @returns {{ grid: GridAdapter, budget: number, blockedEdges: Set<string>, terrainCost: Map<string, number> }}
+ * @returns {{ grid: GridAdapter, budget: number, walkBudget: number, blockedEdges: Set<string>, terrainCost: Map<string, number> }}
  */
 export function movementRulesFor(token, level) {
   const grid = gridFor(level);
   const mounted = token.mounted === true;
   // Pion lié : l'outil MJ envoie déjà la portée de la monture (contrat §4), pas de ×2.
   const multiplier = mounted && !isLinkedToken(token) ? MOUNTED_SPEED_MULTIPLIER : 1;
+  const walkBudget = token.speedCells * multiplier;
+  // Pion lié : le déplacement peut aller jusqu'à la Course (contrat §4, second palier §11.6) ; au-delà
+  // de `walkBudget` (la Marche), le MJ paie l'Action du Tour. Un pion non lié ou sans `runCells`
+  // n'a qu'un palier.
+  const runBudget = isLinkedToken(token) && Number.isFinite(token.runCells) ? token.runCells ?? 0 : 0;
   return {
     grid,
     // Monté, le budget double (chantier C-9).
-    budget: token.speedCells * multiplier,
+    budget: Math.max(walkBudget, runBudget),
+    walkBudget,
     // Masque d'arêtes bloquées obtenu par la fonction dédiée. Recréer un `new Set()` ici rendrait
     // les murs sans effet sur les déplacements, et le symptôme apparaîtrait très loin de sa cause.
     // Monté, tout portail bloque, quel que soit son état : un cheval ne passe pas les portes.

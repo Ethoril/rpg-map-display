@@ -12,6 +12,8 @@
  * attend la liaison durable faite par le MJ (contrat §3).
  */
 import { isLinkedToken } from '../core/schema.js';
+import { movementRulesFor } from '../state/selection.js';
+import { ranStartIndex } from '../state/movePlan.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
@@ -254,7 +256,7 @@ export const MJ_LINK_ECHO_MS = 4000;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void }|null}
+ * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -353,6 +355,20 @@ export function startMjLink(options) {
       return () => listeners.delete(listener);
     },
     roster: () => roster.map((entry) => ({ ...entry })),
+    /**
+     * Fin de déplacement d'un pion : s'il est lié et que son trajet dépasse la Marche, il a couru
+     * et l'outil MJ en est prévenu (`map.ran`, contrat §10) — une fois par déplacement.
+     * @param {string} tokenId @param {import('../core/types.js').Cell[]} path @returns {boolean} true si `map.ran` est parti
+     */
+    reportMove(tokenId, path) {
+      const campaign = options.store.getCampaign();
+      const token = campaign?.tokens.find((t) => t.id === tokenId);
+      const level = campaign?.levels.find((l) => l.id === token?.levelId);
+      if (!token || !level || !isLinkedToken(token) || !token.link || !Array.isArray(path)) return false;
+      if (ranStartIndex(path, movementRulesFor(token, level)) < 0) return false;
+      send('map.ran', { ref: token.link.ref });
+      return true;
+    },
     /**
      * Liaison durable d'un pion posé à un PJ (`ref`), ou déliaison (`null`) : store, tablette par
      * `token.link`, puis `map.hello` pour que l'outil MJ renvoie l'état du PJ (contrat §3).

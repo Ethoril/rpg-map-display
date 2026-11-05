@@ -1,7 +1,7 @@
 // @ts-check
 
 import { movementRulesFor } from '../state/selection.js';
-import { createMovePlan, extendMovePlan, movePlanPreview, validateMovePlan } from '../state/movePlan.js';
+import { createMovePlan, extendMovePlan, movePlanPreview, validateMovePlan, ranStartIndex } from '../state/movePlan.js';
 import { getPresenceList, PRESENCE_STALE_AFTER_MS, subscribePresence } from '../state/presence.js';
 import { computeReachable } from '../movement/reachable.js';
 import { cellKey } from '../core/cellKey.js';
@@ -273,6 +273,32 @@ export class MovePlanningController {
   }
 }
 
+/**
+ * Coût au-delà duquel la zone passe en Course : ce qui reste de la Marche depuis la fin du trajet
+ * préparé, ou la Marche entière sans préparation. Commun aux deux vues.
+ * @param {import('../state/movePlan.js').MovePlan|null} plan
+ * @param {Token|null} token
+ * @param {Level} level
+ * @returns {number|undefined}
+ */
+export function walkLimitFor(plan, token, level) {
+  if (plan) return Math.max(0, plan.walkBudget - plan.cost);
+  return token ? movementRulesFor(token, level).walkBudget : undefined;
+}
+
+/**
+ * Résolveur « où commence la Course » d'un trajet, pour `MovePlanLayer.render` (écran MJ et tablette).
+ * @param {Token[]} tokens
+ * @param {Level} level
+ * @returns {(preview: MovePreview) => number}
+ */
+export function ranStartResolver(tokens, level) {
+  return (preview) => {
+    const token = tokens.find((item) => item.id === preview.tokenId);
+    return token ? ranStartIndex(preview.path, movementRulesFor(token, level)) : -1;
+  };
+}
+
 /** @returns {string} */
 function makeNewPlanId() {
   return globalThis.crypto?.randomUUID?.() ?? `move-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -282,7 +308,7 @@ function makeNewPlanId() {
 function signatureFor(token, level, rules) {
   return JSON.stringify([
     token.id, token.levelId, token.cell.a, token.cell.b, token.sizeCells,
-    token.speedCells, token.mounted === true, token.hidden === true, token.locked === true,
+    token.speedCells, token.runCells ?? null, token.mounted === true, token.hidden === true, token.locked === true,
     token.playerMovable !== false, level.id, level.widthCells, level.heightCells, rules.grid.type,
     rules.budget, Array.from(rules.blockedEdges).sort(), Array.from(rules.terrainCost.entries()).sort(),
   ]);

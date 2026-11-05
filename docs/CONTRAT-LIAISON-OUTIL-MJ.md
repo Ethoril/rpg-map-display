@@ -228,6 +228,7 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 | `map.placed` / `map.unplaced` | `{ ref, levelId }` | Indicateur « posé » sur le participant, et liste « à poser ». |
 | `map.adjacency` | `{ pairs: [[refA, refB], …] }` (camps opposés seulement) à chaque fin de déplacement | **Suggestion** d'engagement, jamais automatique : le MJ accepte ou ignore. |
 | `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
+| `map.ran` | `{ ref }` quand un pion lié termine un déplacement dont le trajet dépasse sa Marche (`speedCells`), donc a couru, une fois par déplacement | Le participant a utilisé son Action du Tour pour courir. Jamais envoyé pour un déplacement à la Marche ni pour un pion non lié. |
 
 L'outil MJ envoie aussi `mj.engagements { pairs }`. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
 
@@ -248,7 +249,7 @@ Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la
    - deux anneaux et médaillon pour le pion monté ;
    - disque de camp avec initiales pour un pion sans image ;
    - rendu « mort » ;
-   - second palier (Course) dans la zone de trajet préparé ;
+   - second palier (Course) dans la zone de trajet préparé : la Marche en aplat, la Course en anneau extérieur hachuré à bordure pointillée ; au-delà de la Marche le trajet change de style et l'étiquette « Course : Action utilisée » s'affiche à l'arrivée, sur les deux écrans ; le budget d'un pion lié va jusqu'à `runCells` ;
    - effets `fx.*` et tache de sang ;
    - traits d'engagement sur l'écran MJ seulement.
 7. **Événements réseau** (CdC §7) : republication vers la tablette des états liés et des effets éphémères, et fusion et séparation des pions de monture.

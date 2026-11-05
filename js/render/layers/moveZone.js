@@ -7,8 +7,11 @@ import { MOVE_ZONE_FILL_ALPHA, MOVE_ZONE_OUTLINE_PX } from '../../core/constants
  * @typedef {import('../../grid/GridAdapter.js').GridAdapter} GridAdapter
  * @typedef {{
  *   selectedToken: Token|null,
- *   reachableCells: Map<string, number>|null
+ *   reachableCells: Map<string, number>|null,
+ *   walkLimit?: number
  * }} MoveZoneState
+ * `walkLimit` : coût au-delà duquel une case est en Course (second palier, contrat §11.6). Absent
+ * ou ≥ au plus grand coût, la zone n'a qu'un palier — pion non lié, ou sans `runCells`.
  */
 
 /** @typedef {'refused'|'occupied'} DestinationFeedbackKind */
@@ -100,31 +103,81 @@ export class MoveZoneLayer {
       return 0;
     }
 
+    const walkLimit = Number.isFinite(state.walkLimit) ? /** @type {number} */ (state.walkLimit) : Infinity;
+    /** @type {string[]} */
+    const walkKeys = [];
+    /** @type {string[]} */
+    const runKeys = [];
+    for (const [key, cost] of reachableCells) (cost > walkLimit + 1e-9 ? runKeys : walkKeys).push(key);
+    const color = token.borderColor || '#3b82f6';
+
     ctx.save();
-    ctx.fillStyle = token.borderColor || '#3b82f6';
+    ctx.fillStyle = color;
     ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA;
     let renderedCells = 0;
 
     // Un seul chemin, un seul fill() : à cette globalAlpha, remplir case par case superposerait
     // l'alpha sur les bords communs et laisserait des coutures — voir GridAdapter.cellPath.
     ctx.beginPath();
-    for (const key of reachableCells.keys()) {
-      const cell = parseCellKey(key);
-      grid.cellPath(ctx, cell);
+    for (const key of walkKeys) {
+      grid.cellPath(ctx, parseCellKey(key));
       renderedCells++;
     }
     ctx.fill();
 
+    // Course : anneau extérieur plus pâle et hachuré (lisible sans la couleur, donc sur la TV et
+    // dans le brouillard), bordure en pointillés.
+    if (runKeys.length > 0) {
+      ctx.beginPath();
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const key of runKeys) {
+        const cell = parseCellKey(key);
+        grid.cellPath(ctx, cell);
+        renderedCells++;
+        const box = grid.cellBounds({ cellX: cell.a, cellY: cell.b }, 1);
+        minX = Math.min(minX, box.x);
+        minY = Math.min(minY, box.y);
+        maxX = Math.max(maxX, box.x + box.width);
+        maxY = Math.max(maxY, box.y + box.height);
+      }
+      ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA * 0.4;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA * 1.1;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2 / Math.max(0.01, zoom);
+      const step = 9 / Math.max(0.01, zoom);
+      ctx.beginPath();
+      for (let x = minX - (maxY - minY); x < maxX; x += step) {
+        ctx.moveTo(x, maxY);
+        ctx.lineTo(x + (maxY - minY), minY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Le remplissage groupé ne crée pas de coutures. Les contours sont ensuite tracés par
     // case, en pixels écran constants, pour que la frontière reste lisible au zoom courant.
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = token.borderColor || '#3b82f6';
+    ctx.strokeStyle = color;
     ctx.lineWidth = MOVE_ZONE_OUTLINE_PX / Math.max(0.01, zoom);
     ctx.lineJoin = 'round';
-    for (const key of reachableCells.keys()) {
+    for (const key of walkKeys) {
       ctx.beginPath();
       grid.cellPath(ctx, parseCellKey(key));
       ctx.stroke();
+    }
+    if (runKeys.length > 0) {
+      ctx.setLineDash([6 / Math.max(0.01, zoom), 5 / Math.max(0.01, zoom)]);
+      for (const key of runKeys) {
+        ctx.beginPath();
+        grid.cellPath(ctx, parseCellKey(key));
+        ctx.stroke();
+      }
     }
 
     ctx.restore();

@@ -51,7 +51,7 @@ import {
   CLE_REPRISE_HORS_LIGNE,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
-import { MovePlanningController } from './movePlanning.js';
+import { MovePlanningController, walkLimitFor, ranStartResolver } from './movePlanning.js';
 import { movePlanPreview } from '../state/movePlan.js';
 import { cellKey } from '../core/cellKey.js';
 import { isVisionSource, createToken } from '../core/schema.js';
@@ -787,6 +787,7 @@ export async function bootstrapGMApp(options = {}) {
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
           reachableCells: plan ? plan.reachable : state.reachableCells,
+          walkLimit: walkLimitFor(plan, state.selectedToken, activeLevel),
         }, camera.zoom);
         // Retour « case occupée » d'un pion lâché sur un voisin (B1), le même que la tablette.
         animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
@@ -803,7 +804,7 @@ export async function bootstrapGMApp(options = {}) {
           return preview.levelId === activeLevel.id && owner && owner.levelId === preview.levelId &&
             owner.cell.a === preview.start.a && owner.cell.b === preview.start.b;
         }));
-        movePlanLayer.render(stage.context, grid, activeLevel.id, localPreview, remotes, camera.zoom);
+        movePlanLayer.render(stage.context, grid, activeLevel.id, localPreview, remotes, camera.zoom, ranStartResolver(state.campaign?.tokens ?? [], activeLevel));
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -1007,6 +1008,8 @@ export async function bootstrapGMApp(options = {}) {
 
   const transportExtended = /** @type {any} */ (transport);
   let applyingRemote = false;
+  /** Pose `map.ran` quand un pion lié finit un déplacement au-delà de sa Marche (L6) ; câblé avec la liaison. */
+  let reportMove = (/** @type {string} */ _tokenId, /** @type {import('../core/types.js').Cell[]} */ _path) => {};
   /** @type {ReturnType<typeof setTimeout>|null} */
   let snapshotTimer = null;
 
@@ -1222,6 +1225,9 @@ export async function bootstrapGMApp(options = {}) {
       } finally {
         applyingRemote = false;
       }
+      if (event.type === 'token.move' && event.by === 'players' && payload.tokenId && !payload.refus && Array.isArray(payload.path)) {
+        reportMove(payload.tokenId, payload.path);
+      }
 
       // ── UX-10 : le franchissement ne fait plus basculer AUCUN écran ────────────────────
       //
@@ -1320,6 +1326,7 @@ export async function bootstrapGMApp(options = {}) {
     sessionId,
   });
   if (mjLink) setInterval(mjLink.tick, MJ_LINK_PING_MS);
+  if (mjLink) reportMove = (tokenId, path) => { mjLink.reportMove(tokenId, path); };
 
   /**
    * Le poste MJ dort aussi — c'est même celui dont on change d'onglet. Onglet masqué, il cesse
@@ -1908,6 +1915,7 @@ export async function bootstrapGMApp(options = {}) {
               type: 'token.move', payload: { tokenId: latest.id, from, to: destination, path, startedAt },
               at: startedAt, by: 'gm',
             });
+            reportMove(latest.id, path);
             store.selectToken(null);
             return true;
           });

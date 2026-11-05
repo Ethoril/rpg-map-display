@@ -13,19 +13,21 @@ export class MovePlanLayer {
    * @param {MovePreview|null} localPreview
    * @param {Record<string,MovePreview>} remotePreviews
    * @param {number} zoom
+   * @param {((preview: MovePreview) => number)|null} [ranStartOf] Index du trajet où commence la Course
+   *   (`ranStartIndex`), -1 si tout est à la Marche. Absent : un seul style, comme avant.
    * @returns {number} nombre de trajets dessinés
    */
-  render(ctx, grid, levelId, localPreview, remotePreviews = {}, zoom = 1) {
+  render(ctx, grid, levelId, localPreview, remotePreviews = {}, zoom = 1, ranStartOf = null) {
     if (!ctx || !grid) return 0;
     const previews = [localPreview, ...Object.values(remotePreviews)].filter(
       /** @returns {preview is MovePreview} */ (preview) => preview?.levelId === levelId && preview.path?.length > 1
     );
-    for (let i = 0; i < previews.length; i++) this.draw(ctx, grid, previews[i], zoom, i === 0 && previews[i] === localPreview);
+    for (let i = 0; i < previews.length; i++) this.draw(ctx, grid, previews[i], zoom, i === 0 && previews[i] === localPreview, ranStartOf ? ranStartOf(previews[i]) : -1);
     return previews.length;
   }
 
-  /** @param {CanvasRenderingContext2D} ctx @param {GridAdapter} grid @param {MovePreview} preview @param {number} zoom @param {boolean} local */
-  draw(ctx, grid, preview, zoom, local) {
+  /** @param {CanvasRenderingContext2D} ctx @param {GridAdapter} grid @param {MovePreview} preview @param {number} zoom @param {boolean} local @param {number} [ranStart] */
+  draw(ctx, grid, preview, zoom, local, ranStart = -1) {
     const points = preview.path.map((cell) => grid.cellCenter(cell));
     const destination = preview.destination;
     const center = grid.cellCenter(destination);
@@ -40,8 +42,20 @@ export class MovePlanLayer {
     ctx.lineCap = 'round';
     ctx.setLineDash([7 / unit, 4 / unit]);
     ctx.beginPath();
-    points.forEach((point, index) => index === 0 ? ctx.moveTo(point.x, point.y) : ctx.lineTo(point.x, point.y));
+    const walkEnd = ranStart > 0 ? ranStart : points.length;
+    points.slice(0, walkEnd).forEach((point, index) => index === 0 ? ctx.moveTo(point.x, point.y) : ctx.lineTo(point.x, point.y));
     ctx.stroke();
+    if (ranStart > 0) {
+      // Au-delà de la Marche : trait plus épais, en pointillés serrés, d'une autre teinte.
+      ctx.save();
+      ctx.strokeStyle = local ? '#ff7a3d' : '#b69bff';
+      ctx.lineWidth = 5 / unit;
+      ctx.setLineDash([3 / unit, 5 / unit]);
+      ctx.beginPath();
+      points.slice(ranStart - 1).forEach((point, index) => index === 0 ? ctx.moveTo(point.x, point.y) : ctx.lineTo(point.x, point.y));
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.setLineDash([]);
 
     if (points.length >= 2) {
@@ -88,6 +102,17 @@ export class MovePlanLayer {
     ctx.strokeText(label, labelX, labelY);
     ctx.fillStyle = local ? '#fff2c8' : '#d8f6ff';
     ctx.fillText(label, labelX, labelY);
+    if (ranStart > 0) {
+      // Courir coûte l'Action du Tour : dit en toutes lettres, sur l'écran MJ comme sur la tablette.
+      const runLabel = 'Course : Action utilisée';
+      const runY = center.y + bounds.height * 0.62;
+      ctx.font = `700 ${14 / unit}px system-ui, sans-serif`;
+      ctx.lineWidth = 4 / unit;
+      ctx.strokeStyle = '#101820';
+      ctx.strokeText(runLabel, center.x, runY);
+      ctx.fillStyle = '#ffd9b8';
+      ctx.fillText(runLabel, center.x, runY);
+    }
     ctx.restore();
   }
 }

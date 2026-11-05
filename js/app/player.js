@@ -38,7 +38,7 @@ import {
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 import { listOtherGmClients } from '../state/presence.js';
-import { MovePlanningController } from './movePlanning.js';
+import { MovePlanningController, walkLimitFor, ranStartResolver } from './movePlanning.js';
 import { movePlanPreview } from '../state/movePlan.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
@@ -651,6 +651,7 @@ export async function bootstrapPlayerApp(options = {}) {
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
           reachableCells: plan ? plan.reachable : state.reachableCells,
+          walkLimit: walkLimitFor(plan, state.selectedToken, activeLevel),
         }, camera.zoom);
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -672,7 +673,7 @@ export async function bootstrapPlayerApp(options = {}) {
         const remotes = Object.fromEntries(Object.entries(movePlanning.getRemotePreviews()).filter(([, preview]) => {
           return preview.levelId === activeLevel.id && previewOwnerIsVisible(preview);
         }));
-        movePlanLayer.render(stage.context, grid, activeLevel.id, visibleLocalPreview, remotes, camera.zoom);
+        movePlanLayer.render(stage.context, grid, activeLevel.id, visibleLocalPreview, remotes, camera.zoom, ranStartResolver(state.campaign?.tokens ?? [], activeLevel));
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();

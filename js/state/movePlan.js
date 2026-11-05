@@ -8,7 +8,7 @@ import { reconstructPath } from '../movement/path.js';
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Level} Level */
 /** @typedef {import('../grid/GridAdapter.js').GridAdapter} GridAdapter */
-/** @typedef {{grid:GridAdapter,budget:number,blockedEdges:Set<string>,terrainCost:Map<string,number>}} MovementRules */
+/** @typedef {{grid:GridAdapter,budget:number,walkBudget?:number,blockedEdges:Set<string>,terrainCost:Map<string,number>}} MovementRules */
 
 /** @typedef {Object} MovePlan
  * @property {string} planId
@@ -19,6 +19,7 @@ import { reconstructPath } from '../movement/path.js';
  * @property {Cell[]} steps
  * @property {Cell[]} path
  * @property {number} budget
+ * @property {number} walkBudget Marche : part du budget avant que la Course (l'Action du Tour) ne commence
  * @property {number} cost
  * @property {number} remaining
  * @property {Map<string,number>} reachable
@@ -42,7 +43,7 @@ export function createMovePlan(token, level, rules) {
   result.distances.delete(cellKey(start));
   return {
     planId: makePlanId(), revision: 0, tokenId: token.id, levelId: level.id,
-    start, steps: [], path: [start], budget: rules.budget, cost: 0,
+    start, steps: [], path: [start], budget: rules.budget, walkBudget: rules.walkBudget ?? rules.budget, cost: 0,
     remaining: rules.budget, reachable: result.distances, predecessors: result.predecessors,
     status: /** @type {'ready'} */ ('ready'),
   };
@@ -114,6 +115,24 @@ export function validateMovePlan(plan, token, level, rules) {
     return { valid: false, reason: 'la dernière arrivée ne correspond plus au chemin', cost };
   }
   return { valid: true, reason: null, cost };
+}
+
+/**
+ * Index (dans `path`) de la première case dont l'entrée dépasse la Marche, ou -1 si tout le trajet
+ * se fait à la Marche. Pur : la même règle sert à l'étiquette « Course », au trait et au message
+ * `map.ran`.
+ * @param {Cell[]} path
+ * @param {{grid:GridAdapter,walkBudget?:number,budget:number,terrainCost:Map<string,number>}} rules
+ * @returns {number}
+ */
+export function ranStartIndex(path, rules) {
+  const walk = rules.walkBudget ?? rules.budget;
+  let cost = 0;
+  for (let i = 1; i < path.length; i++) {
+    cost += movementStepCost(rules.grid, path[i - 1], path[i], rules.terrainCost);
+    if (cost > walk + MOVE_COST_EPSILON) return i;
+  }
+  return -1;
 }
 
 /** @param {MovePlan} plan @returns {import('../core/types.js').MovePreview} */
