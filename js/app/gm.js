@@ -19,6 +19,7 @@ import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
 import { FxLayer, prefersReducedMotion } from '../render/layers/fx.js';
 import { MeasureLayer } from '../render/layers/measure.js';
+import { EngagementsLayer } from '../render/layers/engagements.js';
 
 import { PointerInput } from '../input/pointer.js';
 import { findHitPortal } from '../input/portalHit.js';
@@ -130,6 +131,9 @@ export async function bootstrapGMApp(options = {}) {
   /** Effets de blessure et de mort (contrat §9) : éphémères, jamais persistés. */
   const fxLayer = new FxLayer();
   const measureLayer = new MeasureLayer();
+  /** Traits d'engagement de l'outil MJ (contrat §10) — ⛔ vue MJ seule ; paires fournies par la liaison. */
+  const engagementsLayer = new EngagementsLayer();
+  let engagementPairs = () => /** @type {[string, string][]} */ ([]);
   /** @type {{ levelId: string, start: import('../core/types.js').MapPoint, end: import('../core/types.js').MapPoint|null, distance: number }|null} */
   let currentMeasure = null;
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -893,6 +897,13 @@ export async function bootstrapGMApp(options = {}) {
         });
         animationActive ||= result.animationActive;
       },
+      engagements: () => {
+        engagementsLayer.render(stage.context, grid, activeLevel, {
+          tokens: state.campaign?.tokens ?? [],
+          pairs: engagementPairs(),
+          zoom: camera.zoom,
+        });
+      },
       measure: () => {
         measureLayer.render(stage.context, grid, activeLevel, {
           measure: currentMeasure,
@@ -1344,6 +1355,10 @@ export async function bootstrapGMApp(options = {}) {
   });
   if (mjLink) setInterval(mjLink.tick, MJ_LINK_PING_MS);
   if (mjLink) reportMove = (tokenId, path) => { mjLink.reportMove(tokenId, path); };
+  if (mjLink) {
+    engagementPairs = () => mjLink.engagements();
+    mjLink.subscribe(() => requestRender());
+  }
 
   /**
    * Le poste MJ dort aussi — c'est même celui dont on change d'onglet. Onglet masqué, il cesse
