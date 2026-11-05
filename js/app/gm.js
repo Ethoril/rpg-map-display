@@ -17,6 +17,7 @@ import { LightMarkersLayer } from '../render/layers/lightMarkers.js';
 import { WallsLayer } from '../render/layers/walls.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
+import { FxLayer, prefersReducedMotion } from '../render/layers/fx.js';
 import { MeasureLayer } from '../render/layers/measure.js';
 
 import { PointerInput } from '../input/pointer.js';
@@ -126,6 +127,8 @@ export async function bootstrapGMApp(options = {}) {
   let cancelledMoveAt = null;
   const templatesLayer = new TemplatesLayer();
   const pingsLayer = new PingsLayer();
+  /** Effets de blessure et de mort (contrat §9) : éphémères, jamais persistés. */
+  const fxLayer = new FxLayer();
   const measureLayer = new MeasureLayer();
   /** @type {{ levelId: string, start: import('../core/types.js').MapPoint, end: import('../core/types.js').MapPoint|null, distance: number }|null} */
   let currentMeasure = null;
@@ -881,6 +884,14 @@ export async function bootstrapGMApp(options = {}) {
           dragPreview: dragLightPreview,
         });
       },
+      fx: () => {
+        const result = fxLayer.render(stage.context, grid, activeLevel, {
+          tokens: state.campaign?.tokens ?? [],
+          now: Date.now(),
+          requestRender,
+        });
+        animationActive ||= result.animationActive;
+      },
       measure: () => {
         measureLayer.render(stage.context, grid, activeLevel, {
           measure: currentMeasure,
@@ -1315,6 +1326,10 @@ export async function bootstrapGMApp(options = {}) {
   const mjLink = startMjLink({
     store,
     publish: (type, payload) => transport?.publish({ type, payload, at: Date.now(), by: 'gm' }),
+    playFx: (fx, tokenId) => {
+      fxLayer.play(fx, { tokenId, now: Date.now(), reducedMotion: prefersReducedMotion() });
+      requestRender();
+    },
     createToken,
     activeLevelId: () => store.getActiveLevelId(),
     sessionId,

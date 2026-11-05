@@ -160,6 +160,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │       ├─ moveZone.js        [1a] cases atteignables — NON interactif
 │   │       ├─ movePlan.js        [Retour session] trajet préparé, arrivée et capacité restante
 │   │       ├─ tokens.js          [1a] pions, badges élévation/marqueurs
+│   │       ├─ fx.js              [L4] effets de blessure et de mort du contrat de liaison §9 —
+│   │                                  ⚠ éphémères, ne lisent PAS l'état de campagne pour décider
+│   │                                  quoi jouer, jamais persistés ; âge compté depuis la réception
+│   │                                  LOCALE ; sur les pions, SOUS le fog
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
 │   │       ├─ templates.js       [2]  gabarits de zone d'effet
 │   │       ├─ measure.js         [4]  mesure de distance au geste (MJ local)
@@ -258,6 +262,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  `token.markers`. Le nom de fichier EST l'identifiant.
 │   │                                  Provenance, licence et normalisation : SOURCES.md du
 │   │                                  dossier. Contenu clos — cf. CdC §12 Q7
+│   ├─ fx/                        [L4] dix WebP des effets (gerbe, flaque, feu, magie, poison ×
+│   │                                  deux variantes), générés avec Magnific. Provenance :
+│   │                                  SOURCES.md du dossier. Contenu clos
 │   └─ icons/mounted.svg        [C-9] tête de cheval du pion monté — game-icons.net
 │                                      `delapouite/horse-head`, CC BY 3.0, crédit dans
 │                                      attributions.html. Mêmes normalisations que les icônes
@@ -638,6 +645,7 @@ Du fond vers la surface. Ordre figé : il détermine la lisibilité à table.
 | 7 | `moveZone` cases atteignables — non interactif | `moveZone` |
 | 8 | `templates` gabarits de zone d'effet | `templates` |
 | 9 | `tokens` pions + badges | `tokens` |
+| 9b | `fx` effets de blessure et de mort — éphémères, **sous le fog** | `fx` |
 | 10 | `fog` masque de fog ← **au-dessus des pions** | `fog` |
 | 11 | — | `feedback` ⚠ **au-dessus du fog**, voir ci-dessous |
 | 12 | `lightMarkers` marqueurs des lampes — ⛔ MJ seul | — ⛔ **jamais côté joueurs** |

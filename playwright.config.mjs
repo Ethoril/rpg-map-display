@@ -10,7 +10,8 @@ import { defineConfig, devices } from '@playwright/test';
 // une partie des tests unitaires par simple effet de bord de la collecte. Sortie verte,
 // commande en échec, et aucun des critères Playwright du lot réellement vérifié.
 
-const PORT = 4173;
+// PW_PORT : un autre port quand plusieurs worktrees se partagent la machine (le serveur du port 4173 est réutilisé).
+const PORT = Number(process.env.PW_PORT ?? 4173);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({

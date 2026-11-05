@@ -20,6 +20,9 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   'movePlan',
   'templates',
   'tokens',
+  // Effets de blessure et de mort (contrat §9) : sur les pions, SOUS le fog — un effet dans une
+  // case non vue ne doit pas la trahir à la tablette.
+  'fx',
   'fog',
   'feedback',
   // ⭐ Rang 12 — chantier C-2, ⛔ vue MJ SEULE. Écart assumé au patron des portes : une porte

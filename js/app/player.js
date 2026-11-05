@@ -16,6 +16,7 @@ import { PortalsLayer } from '../render/layers/portals.js';
 import { LinksLayer } from '../render/layers/links.js';
 import { TemplatesLayer } from '../render/layers/templates.js';
 import { PingsLayer } from '../render/layers/pings.js';
+import { FxLayer, parseFx, prefersReducedMotion, shouldPlayFx } from '../render/layers/fx.js';
 import { decodeFogPng, getOrExtractMaskAlpha, isCellVisibleInMask } from '../vision/fog.js';
 import { createPlayerLevelSelector } from '../ui/player/levelSelector.js';
 import { createSelectionStrip } from '../ui/player/selectionStrip.js';
@@ -350,6 +351,8 @@ export async function bootstrapPlayerApp(options = {}) {
    */
   let templateDragPreview = null;
   const pingsLayer = new PingsLayer();
+  /** Effets de blessure et de mort (contrat §9) : éphémères, `at` posé à la réception locale. */
+  const fxLayer = new FxLayer();
   /**
    * Ping courant. ⛔ `at` est posé à la **réception locale**, jamais lu de `event.at` : c'est le
    * poste où la règle compte le plus, la tablette de ce projet ayant été mesurée 5,3 s en avance.
@@ -732,6 +735,14 @@ export async function bootstrapPlayerApp(options = {}) {
         );
         layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
+      fx: () => {
+        const result = fxLayer.render(stage.context, grid, activeLevel, {
+          tokens: state.campaign?.tokens ?? [],
+          now: Date.now(),
+          requestRender,
+        });
+        animationActive ||= result.animationActive;
+      },
       feedback: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
@@ -968,6 +979,18 @@ export async function bootstrapPlayerApp(options = {}) {
         if (p.mapPos && Number.isFinite(p.mapPos.x) && Number.isFinite(p.mapPos.y)) {
           // ⛔ `Date.now()` local, pas `event.at`. Voir `PING_DURATION_MS`.
           currentPing = { levelId: p.levelId, mapPos: p.mapPos, at: Date.now() };
+          requestRender();
+        }
+        return;
+      }
+      // Effets de blessure et de mort (contrat §9) : éphémères, hors `applyNetworkEvent`, jamais
+      // rejoués. Un pion caché ou inconnu ne joue rien sur la tablette.
+      if (event.type === 'fx') {
+        const p = /** @type {any} */ (event.payload) || {};
+        const fx = parseFx(p.kind, p);
+        const token = typeof p.tokenId === 'string' ? store.getRenderSnapshot().campaign?.tokens.find((t) => t.id === p.tokenId) : null;
+        if (fx && token && shouldPlayFx(token, true)) {
+          fxLayer.play(fx, { tokenId: token.id, now: Date.now(), reducedMotion: prefersReducedMotion() });
           requestRender();
         }
         return;

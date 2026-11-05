@@ -12,6 +12,7 @@
  * attend la liaison durable faite par le MJ (contrat §3).
  */
 import { isLinkedToken } from '../core/schema.js';
+import { parseFx } from '../render/layers/fx.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
@@ -43,7 +44,8 @@ import { isLinkedToken } from '../core/schema.js';
  *   | { op: 'update', tokenId: string, patch: Record<string, any> }
  *   | { op: 'mounted', tokenId: string, mounted: boolean }
  *   | { op: 'remove', tokenId: string, where: 'board'|'reserve' }
- *   | { op: 'awaitBinding', ref: string, label: string }} MjLinkOperation
+ *   | { op: 'awaitBinding', ref: string, label: string }
+ *   | { op: 'fx', tokenId: string, hidden: boolean, fx: NonNullable<ReturnType<typeof parseFx>> }} MjLinkOperation
  */
 
 /** Champs que l'outil MJ écrit sur un pion lié (contrat §1). */
@@ -142,6 +144,13 @@ export function planMjMessage(campaign, message, version = 1) {
       const found = findLinkedToken(campaign, payload.ref);
       return found ? [{ op: 'remove', tokenId: found.token.id, where: found.where }] : [];
     }
+    case 'fx.wound':
+    case 'fx.death': {
+      // Effet éphémère (contrat §9) : joué sur le pion posé, jamais rejoué ni persisté.
+      const fx = parseFx(message.type === 'fx.wound' ? 'wound' : 'death', payload);
+      const token = typeof payload.ref === 'string' ? campaign.tokens.find((t) => isLinkedToken(t) && t.link?.ref === payload.ref) : null;
+      return fx && token ? [{ op: 'fx', tokenId: token.id, hidden: token.hidden === true, fx }] : [];
+    }
     case 'mj.snapshot': {
       /** @type {MjTokenState[]} */
       const tokens = Array.isArray(payload.tokens) ? payload.tokens : [];
@@ -177,6 +186,7 @@ export function planMjMessage(campaign, message, version = 1) {
  *            getCampaign: () => Campaign|null },
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
+ *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
  *   newTokenId: () => string,
  *   trace: { levelId: string, cell: { a: number, b: number } },
  * }} deps
@@ -223,6 +233,11 @@ export function executeMjOperations(ops, deps) {
       case 'awaitBinding':
         awaiting.push({ ref: op.ref, label: op.label });
         break;
+      case 'fx':
+        // L'écran MJ joue toujours l'effet ; la tablette n'en reçoit aucun pour un pion caché.
+        deps.playFx?.(op.fx, op.tokenId);
+        if (!op.hidden) publish('fx', { tokenId: op.tokenId, ...op.fx });
+        break;
     }
   }
   return { awaiting };
@@ -248,6 +263,7 @@ export const MJ_LINK_ECHO_MS = 4000;
  *   store: Parameters<typeof executeMjOperations>[1]['store'] & { setTokenLink: (tokenId: string, ref: string|null) => void },
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
+ *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
  *   activeLevelId: () => string|null,
  *   sessionId: string,
  *   onStatus?: (status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[]) => void,
@@ -322,6 +338,7 @@ export function startMjLink(options) {
         store: options.store,
         publish: options.publish,
         createToken: options.createToken,
+        playFx: options.playFx,
         newTokenId: () => `lie-${now().toString(36)}-${++counter}`,
         trace: { levelId, cell: { a: 0, b: 0 } },
       });

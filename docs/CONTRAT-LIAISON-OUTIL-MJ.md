@@ -237,7 +237,7 @@ Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la
 
 1. **Manifeste** (`ARCHITECTURE.md` §1) :
    - module de liaison côté app MJ, par exemple `js/app/mjLink.js` ;
-   - rendu des effets, par exemple `js/render/layers/fx.js` ;
+   - rendu des effets : `js/render/layers/fx.js` (calque `fx`, entre `tokens` et `fog`) et les images `assets/fx/*.webp` (lot L4, 05/11) ;
    - icônes `fatigued` et `tainted` ;
    - copie de ce contrat dans `docs/`.
 2. **Type `Token`** : `link`, `runCells`, `visionSource`, `markerLevels`, `rider`, `dead`, `deathCause`, `camp`, avec leur validation dans `schema.js` et leur normalisation.
