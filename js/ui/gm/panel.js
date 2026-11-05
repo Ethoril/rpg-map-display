@@ -18,7 +18,8 @@ import {
   VISION_MAX_RANGE_CELLS,
 } from '../../core/constants.js';
 import { isStatusMarker, isLinkedToken } from '../../core/schema.js';
-import { cellDimensionsForGridType, hexShiftXForGridType } from '../../grid/index.js';
+import { cellDimensionsForGridType, hexShiftXForGridType, footprintsAdjacent } from '../../grid/index.js';
+import { tokenRingColor } from '../../render/layers/tokens.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
@@ -74,7 +75,7 @@ function naturalImageSize(url) {
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, armRiderPose: (tokenId: string, around: { levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }) => void, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -698,11 +699,20 @@ export function createGMPanel(container, options = {}) {
    */
   let pendingFromReserve = false;
 
+  /**
+   * Pose armée d'un cavalier qui démonte (contrat de liaison §8.2) : la case tapée doit être libre
+   * et adjacente à sa monture, restée sur la case du pion fusionné. `null` pour toute autre pose.
+   *
+   * @type {{ levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }|null}
+   */
+  let pendingAdjacentTo = null;
+
   function clearPendingToken() {
     if (!pendingToken) return;
     const venaitDeLaReserve = pendingFromReserve;
     pendingToken = null;
     pendingFromReserve = false;
+    pendingAdjacentTo = null;
     // Un pion de la réserve n'est pas perdu quand on annule : il y est resté tout du long, la
     // réserve n'ayant été touchée qu'à la pose. Le dire, sinon le MJ le croit égaré.
     tokenMaker?.setStatus(
@@ -1146,6 +1156,7 @@ export function createGMPanel(container, options = {}) {
   function armerPose(token, { depuisLaReserve = false } = {}) {
     pendingToken = token;
     pendingFromReserve = depuisLaReserve;
+    pendingAdjacentTo = null;
     setActiveTool('token-place');
     tokenMaker.setStatus(`« ${token.label} » prêt : tapez la carte pour le poser.`, '#f5a623');
   }
@@ -1621,7 +1632,7 @@ export function createGMPanel(container, options = {}) {
         const pastille = document.createElement('span');
         pastille.className = 'gm-reserve-swatch';
         // La couleur du pion est une donnée, pas un choix de thème : elle seule reste en ligne.
-        pastille.style.background = pion.borderColor;
+        pastille.style.background = tokenRingColor(pion);
 
         const texte = document.createElement('span');
         texte.className = 'gm-reserve-text';
@@ -1697,7 +1708,7 @@ export function createGMPanel(container, options = {}) {
         const pastille = document.createElement('span');
         pastille.className = pion.hidden ? 'gm-roster-avatar gm-roster-avatar--hidden' : 'gm-roster-avatar';
         // La couleur du pion est une donnée, pas un choix de thème : elle seule reste en ligne.
-        pastille.style.borderColor = pion.borderColor;
+        pastille.style.borderColor = tokenRingColor(pion);
         if (pion.imageUrl) {
           const image = document.createElement('img');
           image.src = pion.imageUrl;
@@ -2623,7 +2634,19 @@ export function createGMPanel(container, options = {}) {
    */
   function placePendingTokenAt(levelId, cell) {
     if (!pendingToken || !levelId || !cell) return false;
-    let token = { ...pendingToken, levelId, cell: { a: cell.a, b: cell.b } };
+    // Un pion de la réserve se pose dans son état du moment : la liaison outil MJ a pu le changer
+    // depuis l'armement (le cavalier qui démonte reprend sa taille au `token.state` suivant).
+    const pendingId = pendingToken.id;
+    const actuel = pendingFromReserve ? store.getReserve().find((t) => t.id === pendingId) : null;
+    let token = { ...(actuel ?? pendingToken), levelId, cell: { a: cell.a, b: cell.b } };
+    if (pendingAdjacentTo) {
+      const monture = pendingAdjacentTo;
+      const niveau = store.getCampaign()?.levels.find((l) => l.id === levelId);
+      if (monture.levelId !== levelId || !niveau || !footprintsAdjacent(niveau, token, monture)) {
+        tokenMaker.setStatus(`« ${token.label} » : tapez une case libre adjacente à sa monture.`, '#e74c3c');
+        return false;
+      }
+    }
     /** @type {{ tokenId: string, patch: { copyNumber: number, label?: string } }[]} */
     let numerotes = [];
     try {
@@ -2658,6 +2681,7 @@ export function createGMPanel(container, options = {}) {
     });
     pendingToken = null;
     pendingFromReserve = false;
+    pendingAdjacentTo = null;
     tokenMaker.setStatus(`Pion posé en ${cell.a}, ${cell.b}.`, '#2ecc71');
     setActiveTool('none');
     updateReserveDrawer();
@@ -2668,6 +2692,19 @@ export function createGMPanel(container, options = {}) {
     /** Y a-t-il un pion généré en attente de sa case ? */
     hasPendingToken: () => pendingToken !== null,
     placePendingTokenAt,
+    /**
+     * Pose armée du cavalier qui démonte (contrat de liaison §8.2), rangé en réserve par la liaison :
+     * le MJ touche une case libre adjacente à la monture ; Échap le laisse en réserve.
+     * @param {string} tokenId
+     * @param {{ levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }} around
+     */
+    armRiderPose(tokenId, around) {
+      const cavalier = store.getReserve().find((t) => t.id === tokenId);
+      if (!cavalier) return;
+      armerPose(cavalier, { depuisLaReserve: true });
+      pendingAdjacentTo = { levelId: around.levelId, cell: { a: around.cell.a, b: around.cell.b }, sizeCells: around.sizeCells };
+      tokenMaker.setStatus(`« ${cavalier.label} » démonte : tapez une case libre adjacente à sa monture.`, '#f5a623');
+    },
     /** Mode actuel du panneau ('play' | 'prep') */
     getMode: () => currentMode,
     /** Bascule le mode du panneau ('play' | 'prep') sans désarmer d'outil actif */

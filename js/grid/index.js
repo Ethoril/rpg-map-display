@@ -1,6 +1,7 @@
 // @ts-check
 import { SquareGrid } from './SquareGrid.js';
 import { HexGrid } from './HexGrid.js';
+import { cellKey } from '../core/cellKey.js';
 
 /**
  * Retourne l'adaptateur de grille pour l'étage fourni.
@@ -67,4 +68,22 @@ export function cellDimensionsForGridType(level, type, imageSize = null) {
  */
 export function hexShiftXForGridType(level, type) {
   return type === 'hex' ? -level.pxPerCell / 4 : 0;
+}
+
+/**
+ * Deux pions sont-ils **adjacents** sur un étage (contrat de liaison §8.2, remonte) ? Vrai quand
+ * une case de l'emprise de l'un touche une case de l'emprise de l'autre, diagonale comprise en
+ * carré ; faux quand les emprises se recouvrent ou sont éloignées.
+ *
+ * @param {import('../core/types.js').Level} level
+ * @param {{ cell: import('../core/types.js').Cell, sizeCells: number }} first
+ * @param {{ cell: import('../core/types.js').Cell, sizeCells: number }} second
+ * @returns {boolean}
+ */
+export function footprintsAdjacent(level, first, second) {
+  const grid = gridFor(level);
+  const firstCells = grid.cellsOccupied(first.cell, first.sizeCells || 1);
+  const secondKeys = new Set(grid.cellsOccupied(second.cell, second.sizeCells || 1).map(cellKey));
+  if (firstCells.some((c) => secondKeys.has(cellKey(c)))) return false;
+  return firstCells.some((c) => grid.neighbors(c).some((n) => secondKeys.has(cellKey(n))));
 }

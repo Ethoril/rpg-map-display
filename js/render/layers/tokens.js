@@ -12,6 +12,7 @@ import {
   computeHpBadgeLayout,
   computeCopyBadgeLayout,
 } from '../statusBadges.js';
+import { DEFAULT_TOKEN_BORDER_COLOR } from '../../core/schema.js';
 
 const TOKEN_IMAGE_CACHE_LIMIT = 64;
 export const TOKEN_MOVE_STEP_MS = 160;
@@ -122,6 +123,41 @@ export function campInitials(label) {
   if (words.length === 0) return '?';
   return words.slice(0, 2).map((w) => Array.from(w)[0]).join('').toUpperCase();
 }
+
+/**
+ * Couleur du liseré d'un pion. Un pion lié dont le liseré n'a pas été choisi à la main (resté à la
+ * couleur par défaut de `createToken`) prend la teinte de son camp : le vert vif par défaut
+ * masquait le disque de camp et rendait tous les pions liés pareils (recette du 05/11). La même
+ * couleur sert aux pastilles du panneau MJ.
+ *
+ * @param {Pick<Token, 'borderColor'|'link'|'camp'>} token
+ * @returns {string}
+ */
+export function tokenRingColor(token) {
+  const color = token.borderColor || '#ffffff';
+  const campColor = token.link && token.camp ? CAMP_FILL[token.camp] : undefined;
+  return campColor && color.toLowerCase() === DEFAULT_TOKEN_BORDER_COLOR ? campColor : color;
+}
+
+/**
+ * Marqueurs d'un pion monté (contrat de liaison §8.1) : ceux du cavalier et de sa monture réunis,
+ * au plus haut des deux niveaux. Sans monture fusionnée, ceux du pion.
+ *
+ * @param {Token} token
+ * @returns {{ markers: Token['markers'], markerLevels: Record<string, number>|undefined }}
+ */
+export function mergedMarkers(token) {
+  const rider = token.rider;
+  if (!rider) return { markers: token.markers ?? [], markerLevels: token.markerLevels };
+  const markers = [...new Set([...(token.markers ?? []), ...rider.markers])];
+  /** @type {Record<string, number>} */
+  const markerLevels = { ...(token.markerLevels ?? {}) };
+  for (const [id, level] of Object.entries(rider.markerLevels)) markerLevels[id] = Math.max(level, markerLevels[id] ?? 0);
+  return { markers, markerLevels };
+}
+
+/** Part du diamètre du pion qu'occupe le médaillon du cavalier sur un pion monté (contrat §8.1). */
+export const RIDER_MEDALLION_RATIO = 0.42;
 
 /**
  * Rendu Canvas des pions, avec cache d'images borné et invalidation asynchrone.
@@ -314,8 +350,11 @@ export class TokensLayer {
     const height = bounds.height;
     const centerX = p0.x + width / 2;
     const centerY = p0.y + height / 2;
-    const borderColor = token.borderColor || '#ffffff';
-    const imageUrl = token.imageUrl?.trim() ?? '';
+    const borderColor = tokenRingColor(token);
+    // Pion monté (contrat §8.1) : le fond est la monture, le cavalier passe en médaillon.
+    const mount = token.rider ?? null;
+    const imageUrl = (mount ? mount.imageUrl : token.imageUrl)?.trim() ?? '';
+    const discLabel = mount ? mount.label : token.label;
     const imageEntry = imageUrl ? this.imageCache.get(imageUrl) : undefined;
     if (imageUrl && !imageEntry) void this.preload(imageUrl);
 
@@ -359,7 +398,7 @@ export class TokensLayer {
       ctx.fillRect(p0.x, p0.y, width, height);
       // Pion lié sans image (contrat §6) : initiales du nom, deux lettres pour deux mots ; sans
       // camp, la lettre unique d'avant.
-      const initial = campFill ? campInitials(token.label) : ((token.label || token.kind || '?').trim().charAt(0).toUpperCase() || '?');
+      const initial = campFill ? campInitials(discLabel) : ((discLabel || token.kind || '?').trim().charAt(0).toUpperCase() || '?');
       ctx.fillStyle = '#ffffff';
       ctx.font = `bold ${Math.max(12, Math.round(Math.min(width, height) * 0.35))}px sans-serif`;
       ctx.textAlign = 'center';
@@ -387,7 +426,24 @@ export class TokensLayer {
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
     ctx.stroke();
+    // Pion monté (contrat §8.1) : deux anneaux, l'extérieur pour la monture (le liseré ci-dessus),
+    // l'intérieur pour le cavalier, séparés d'un filet sombre.
+    if (mount) {
+      const ringWidth = TOKEN_BORDER_SCREEN_PX / zoom;
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, imageRadius - ringWidth * 1.5, imageRadius - ringWidth * 1.5, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.lineWidth = ringWidth;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, imageRadius - ringWidth * 2.5, imageRadius - ringWidth * 2.5, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = ringWidth;
+      ctx.stroke();
+    }
     ctx.restore();
+
+    if (mount) this._drawRiderMedallion(ctx, token, p0, width, zoom, borderColor);
 
     // 3.6. Croix discrète du pion mort (contrat §7), épaisseur constante à l'écran.
     if (token.dead === true) {
@@ -440,7 +496,7 @@ export class TokensLayer {
       }
     }
 
-    drawStatusBadges(ctx, token, p0, {
+    drawStatusBadges(ctx, mount ? { ...token, ...mergedMarkers(token) } : token, p0, {
       widthMap: width,
       zoom,
       resolution,
@@ -510,5 +566,52 @@ export class TokensLayer {
       ctx.fillText(String(token.copyNumber), cx, cy + 0.5 / zoom);
       ctx.restore();
     }
+  }
+
+  /**
+   * Médaillon du portrait du cavalier, en haut à gauche d'un pion monté (contrat §8.1) — coin que
+   * n'occupent ni l'élévation (haut droit), ni le numéro (bas gauche), ni les PV (bas droit).
+   * Sans portrait chargé : disque du camp et initiales du cavalier.
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Token} token
+   * @param {{ x: number, y: number }} p0
+   * @param {number} width
+   * @param {number} zoom
+   * @param {string} borderColor
+   */
+  _drawRiderMedallion(ctx, token, p0, width, zoom, borderColor) {
+    const radius = (width * RIDER_MEDALLION_RATIO) / 2;
+    const cx = p0.x + radius;
+    const cy = p0.y + radius;
+    const url = token.imageUrl?.trim() ?? '';
+    const entry = url ? this.imageCache.get(url) : undefined;
+    if (url && !entry) void this.preload(url);
+    ctx.save();
+    if (token.hidden) ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.save();
+    ctx.clip();
+    if (entry?.status === 'ready' && entry.image) {
+      const image = entry.image;
+      const sw = image.naturalWidth || image.width;
+      const sh = image.naturalHeight || image.height;
+      const scale = Math.max((radius * 2) / sw, (radius * 2) / sh);
+      ctx.drawImage(image, cx - (sw * scale) / 2, cy - (sh * scale) / 2, sw * scale, sh * scale);
+    } else {
+      ctx.fillStyle = (token.camp && CAMP_FILL[token.camp]) || '#555d68';
+      ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.max(8, Math.round(radius * 0.8))}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(campInitials(token.label), cx, cy);
+    }
+    ctx.restore();
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
+    ctx.stroke();
+    ctx.restore();
   }
 }

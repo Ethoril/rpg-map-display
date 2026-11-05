@@ -336,6 +336,31 @@ export function isLinkedToken(token) {
 const CAMP_SET = new Set(['pj', 'allie', 'ennemi', 'neutre']);
 const DEATH_CAUSE_SET = new Set(['blood', 'fire', 'magic', 'poison', 'decapitation', 'dismemberment']);
 
+/** Liseré d'un pion créé sans couleur choisie (`createToken`). */
+export const DEFAULT_TOKEN_BORDER_COLOR = '#00ff00';
+
+/**
+ * La monture fusionnée dans le pion de son cavalier (contrat §8.1) est-elle bien formée ?
+ *
+ * @param {any} rider
+ * @returns {boolean}
+ */
+function isRiderOverlay(rider) {
+  if (!rider || typeof rider !== 'object' || Array.isArray(rider)) return false;
+  const hpOk = rider.hp === null || (
+    rider.hp && typeof rider.hp === 'object' && Number.isFinite(rider.hp.current) && Number.isFinite(rider.hp.max)
+  );
+  const levels = rider.markerLevels;
+  return typeof rider.ref === 'string' && rider.ref !== '' &&
+    typeof rider.label === 'string' &&
+    (rider.imageUrl === null || isTokenImageUrl(rider.imageUrl)) &&
+    Boolean(hpOk) &&
+    HEALTH_STATE_SET.has(rider.health) &&
+    Array.isArray(rider.markers) && rider.markers.every((/** @type {any} */ m) => STATUS_MARKER_SET.has(m)) &&
+    Boolean(levels) && typeof levels === 'object' && !Array.isArray(levels) &&
+    Object.entries(levels).every(([id, level]) => STATUS_MARKER_SET.has(/** @type {StatusMarker} */ (id)) && Number.isInteger(level) && level >= 2);
+}
+
 /**
  * Champs optionnels d'un pion lié (contrat §4). Absents, aucune erreur : le pion ordinaire ne change pas.
  *
@@ -373,6 +398,9 @@ function linkedTokenErrors(token, tokenId) {
   }
   if (token.camp !== undefined && !CAMP_SET.has(token.camp)) {
     errors.push(`${at} : camp invalide "${token.camp}"`);
+  }
+  if (token.rider !== undefined && token.rider !== null && !isRiderOverlay(token.rider)) {
+    errors.push(`${at} : rider doit être { ref, label, imageUrl, hp, health, markers, markerLevels } (contrat §8.1)`);
   }
   return errors;
 }
@@ -643,7 +671,7 @@ export function createToken(overrides = {}) {
     sizeCells: overrides.sizeCells ?? 1,
     kind,
     imageUrl: overrides.imageUrl ?? '',
-    borderColor: overrides.borderColor ?? '#00ff00',
+    borderColor: overrides.borderColor ?? DEFAULT_TOKEN_BORDER_COLOR,
     label: overrides.label ?? 'Héro',
     hidden: overrides.hidden ?? false,
     // ⭐ **1, et non 12, depuis le 21/09/2026** (décision du mainteneur, D-3). Un pion créé sans
@@ -1256,6 +1284,9 @@ export function validateCampaign(campaign) {
         octetsEmbarques += token.imageUrl.length;
         pionsEmbarques += 1;
       }
+      // La monture fusionnée dans son cavalier (contrat §8.1) porte une copie de son image.
+      const imageMonture = token?.rider?.imageUrl;
+      if (typeof imageMonture === 'string' && imageMonture.startsWith('data:')) octetsEmbarques += imageMonture.length;
     }
     if (octetsEmbarques > TOKEN_IMAGE_TOTAL_MAX_BYTES) {
       errors.push(
