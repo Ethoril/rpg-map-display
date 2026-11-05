@@ -369,3 +369,132 @@ test('L2 : pion sans image — disque à la couleur du camp, initiales du nom ; 
     .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
   for (const [camp, color] of Object.entries(CAMP_FILL)) assert.ok(1.05 / (lum(color) + 0.05) >= 4.5, `contraste ${camp}`);
 });
+
+// ── Montures (contrat §8, L3-MD) ─────────────────────────────────────────────────────────────
+const montureEtat = { ref: 'p:m1', label: 'Destrier noir', imageUrl: null, hp: { current: 9, max: 12 }, health: /** @type {const} */ ('wounded'), markers: ['bleeding'], markerLevels: { bleeding: 2 } };
+const cavalierEtat = (/** @type {object} */ patch = {}) => ({ ref: 'pj:c9', label: 'Ulrika Brandt', camp: 'pj', kind: 'pc', visionSource: true, imageUrl: null, sizeCells: 1, speedCells: 4, runCells: 8, visionDim: 1, hp: { current: 10, max: 14 }, health: 'unharmed', markers: ['stunned'], markerLevels: {}, dead: false, deathCause: null, mounted: false, rider: null, ...patch });
+/** Cavalier en (2,2), monture 2×2 en (3,2) : adjacents. */
+const sceneMontee = (/** @type {{ a: number, b: number }} */ cellMonture = { a: 3, b: 2 }) => createCampaign({
+  levels: [level],
+  tokens: [
+    { ...createToken({ id: 'cav', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc', label: 'Ulrika Brandt' }), link: { ...link, ref: 'pj:c9' }, camp: /** @type {const} */ ('pj') },
+    { ...createToken({ id: 'mon', levelId: 'rdc', cell: cellMonture, kind: 'pc', sizeCells: 2, label: 'Destrier noir' }), link: { ...link, ref: 'p:m1' }, camp: /** @type {const} */ ('pj') },
+  ],
+});
+
+test('schéma : rider bien formé accepté, null accepté, mal formé refusé', () => {
+  assert.deepEqual(errorsOf(linked({ rider: montureEtat })), []);
+  assert.deepEqual(errorsOf(linked({ rider: null })), []);
+  for (const rider of [{ ...montureEtat, ref: '' }, { ...montureEtat, health: 'mort' }, { ...montureEtat, markers: ['inconnu'] }, { ...montureEtat, hp: { current: 'x', max: 2 } }, { ...montureEtat, imageUrl: 'blob:x' }, 'cheval']) {
+    assert.equal(errorsOf(linked({ rider })).length, 1, JSON.stringify(rider));
+  }
+});
+
+test('grille : adjacence des emprises (diagonale comprise, recouvrement exclu, pion 2×2)', async () => {
+  const { footprintsAdjacent } = await import('../js/grid/index.js');
+  const at = (/** @type {number} */ a, /** @type {number} */ b, size = 1) => ({ cell: { a, b }, sizeCells: size });
+  assert.equal(footprintsAdjacent(level, at(2, 2), at(3, 3)), true, 'diagonale');
+  assert.equal(footprintsAdjacent(level, at(2, 2), at(4, 2)), false, 'deux cases');
+  assert.equal(footprintsAdjacent(level, at(3, 2), at(3, 2, 2)), false, 'recouvrement');
+  assert.equal(footprintsAdjacent(level, at(5, 2), at(3, 2, 2)), true, 'contre le flanc droit d un 2×2');
+  assert.equal(footprintsAdjacent(level, at(6, 2), at(3, 2, 2)), false);
+});
+
+test('mjLink : mount.request — accord si adjacents, refus not-adjacent sinon, accord sans vérification si un pion n est pas posé', async () => {
+  const { answerMountRequest } = await import('../js/app/mjLink.js');
+  const req = { riderRef: 'pj:c9', mountRef: 'p:m1' };
+  assert.deepEqual(answerMountRequest(sceneMontee(), req), { type: 'mount.accepted', payload: req });
+  assert.deepEqual(answerMountRequest(sceneMontee({ a: 6, b: 6 }), req), { type: 'mount.refused', payload: { ...req, reason: 'not-adjacent' } });
+  const sansMonture = sceneMontee();
+  sansMonture.reserve = sansMonture.tokens.splice(1, 1);
+  assert.deepEqual(answerMountRequest(sansMonture, req), { type: 'mount.accepted', payload: req });
+  assert.equal(answerMountRequest(sceneMontee(), { riderRef: 'pj:c9' }), null);
+});
+
+test('mjLink : canal — mount.request reçoit sa réponse sur le canal', async () => {
+  const campagne = sceneMontee({ a: 6, b: 6 });
+  const { channel } = await openLink({ campaign: () => campagne });
+  channel.deliver(msg('mount.request', { riderRef: 'pj:c9', mountRef: 'p:m1' }));
+  const reponse = FakeChannel.sent.find((m) => m.type.startsWith('mount.'));
+  assert.deepEqual([reponse?.type, reponse?.payload], ['mount.refused', { riderRef: 'pj:c9', mountRef: 'p:m1', reason: 'not-adjacent' }]);
+  assert.equal(reponse?.from, 'map');
+});
+
+test('mjLink : fusion puis séparation — un seul pion monté sur la case de la monture, monture conservée hors plateau, tablette convergente', async () => {
+  const { planMjMessage, executeMjOperations } = await import('../js/app/mjLink.js');
+  const store = await import('../js/state/store.js');
+  const { applyNetworkEvent } = await import('../js/app/networkEvents.js');
+  const depart = sceneMontee();
+  store.loadCampaign(structuredClone(depart));
+  /** @type {[string, any][]} */
+  const published = [];
+  /** @type {any[]} */
+  const poses = [];
+  const deps = { store, publish: (/** @type {string} */ type, /** @type {any} */ payload) => { published.push([type, payload]); }, createToken, newTokenId: () => 'x', trace: { levelId: 'rdc', cell: { a: 0, b: 0 } }, onRiderToPlace: (/** @type {string} */ id, /** @type {any} */ around) => poses.push([id, around]) };
+  const run = (/** @type {string} */ type, /** @type {any} */ payload) => executeMjOperations(planMjMessage(/** @type {any} */ (store.getCampaign()), msg(type, payload)), deps);
+  const pion = (/** @type {string} */ id) => store.getCampaign()?.tokens.find((t) => t.id === id);
+  const enReserve = (/** @type {string} */ id) => store.getCampaign()?.reserve?.find((t) => t.id === id);
+
+  // Remonte : token.state du cavalier monté (contrat §8.1).
+  const monte = cavalierEtat({ sizeCells: 2, speedCells: 8, runCells: 16, mounted: true, rider: montureEtat });
+  run('token.state', monte);
+  assert.deepEqual(pion('cav')?.cell, { a: 3, b: 2 }, 'le cavalier prend la case de la monture');
+  assert.equal(pion('cav')?.sizeCells, 2);
+  assert.equal(pion('cav')?.mounted, true);
+  assert.deepEqual(pion('cav')?.rider, montureEtat);
+  assert.equal(pion('mon'), undefined, 'la monture sort du plateau');
+  assert.equal(enReserve('mon')?.label, 'Destrier noir', '… conservée, pas supprimée');
+  assert.deepEqual(published.map(([t]) => t), ['token.reserve', 'token.move', 'token.update', 'token.mounted']);
+  assert.deepEqual(run('token.state', monte).awaiting, [], 'rejeu');
+  assert.equal(published.length, 4, 'rejeu : rien ne bouge ni ne part');
+
+  // Démontage : mount.split puis token.state du cavalier à pied.
+  run('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' });
+  assert.deepEqual(pion('mon')?.cell, { a: 3, b: 2 }, 'la monture reste sur la case');
+  assert.equal(pion('cav'), undefined, 'le cavalier attend sa pose');
+  assert.equal(enReserve('cav')?.mounted, false);
+  assert.equal(enReserve('cav')?.rider, null);
+  assert.deepEqual(poses, [['cav', { levelId: 'rdc', cell: { a: 3, b: 2 }, sizeCells: 2 }]], 'pose armée, rien ne bouge seul');
+  run('token.state', cavalierEtat());
+  assert.equal(enReserve('cav')?.sizeCells, 1, 'reprend sa taille en réserve');
+  run('token.state', cavalierEtat());
+  run('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' });
+  assert.equal(poses.length, 1, 'séparation rejouée sans effet');
+
+  // Le MJ pose le cavalier en (2,2) : ce que publie le panneau, le pion entier dans token.add.
+  store.placeTokenFromReserve('cav', 'rdc', { a: 2, b: 2 });
+  published.push(['token.add', { token: pion('cav') }]);
+  const finalMj = store.getCampaign();
+
+  // Tablette : la campagne de départ, puis tout ce qui a été publié, dans l'ordre.
+  store.loadCampaign(structuredClone(depart));
+  for (const [type, payload] of published) applyNetworkEvent({ type, payload: structuredClone(payload), at: 0, by: 'gm' });
+  const resume = (/** @type {any} */ c) => c.tokens.map((/** @type {any} */ t) => JSON.stringify([t.id, t.cell, t.sizeCells, t.mounted === true, t.rider ?? null, t.hp, t.markers])).sort();
+  assert.deepEqual(resume(store.getCampaign()), resume(finalMj));
+  assert.deepEqual(resume(finalMj).length, 2);
+});
+
+test('mjLink : séparation déduite du token.state seul (sans mount.split) ; rien si la paire n est pas fusionnée', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const fusionne = sceneMontee();
+  fusionne.reserve = fusionne.tokens.splice(1, 1);
+  Object.assign(fusionne.tokens[0], { mounted: true, rider: montureEtat, cell: { a: 3, b: 2 }, sizeCells: 2 });
+  assert.deepEqual(planMjMessage(fusionne, msg('token.state', cavalierEtat())).slice(0, 1), [{ op: 'split', riderTokenId: 'cav', mountTokenId: 'mon' }]);
+  assert.deepEqual(planMjMessage(fusionne, msg('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' })), [{ op: 'split', riderTokenId: 'cav', mountTokenId: 'mon' }]);
+  assert.deepEqual(planMjMessage(sceneMontee(), msg('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' })), [], 'pas fusionné : rien');
+  const aPied = planMjMessage(sceneMontee(), msg('token.state', cavalierEtat()));
+  assert.equal(aPied.some((o) => o.op === 'update' && 'rider' in o.patch), false, 'rider nul sur un pion sans monture : rien à republier');
+});
+
+test('rendu : liseré du pion lié à la teinte du camp sauf choix à la main ; badges du pion monté réunis', async () => {
+  const { tokenRingColor, mergedMarkers, CAMP_FILL } = await import('../js/render/layers/tokens.js');
+  const base = createToken({ id: 'r', levelId: 'rdc', cell: { a: 0, b: 0 } });
+  assert.equal(base.borderColor, '#00ff00');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi' }), CAMP_FILL.ennemi);
+  assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi', borderColor: '#123456' }), '#123456', 'choisi à la main');
+  assert.equal(tokenRingColor(base), '#00ff00', 'pion ordinaire inchangé');
+  assert.equal(tokenRingColor({ ...base, link }), '#00ff00', 'lié sans camp');
+  const fusion = { ...base, markers: /** @type {any[]} */ (['stunned', 'bleeding']), markerLevels: { bleeding: 3 }, rider: { ...montureEtat, markers: /** @type {any[]} */ (['bleeding', 'prone']), markerLevels: { bleeding: 2, prone: 2 } } };
+  assert.deepEqual(mergedMarkers(fusion), { markers: ['stunned', 'bleeding', 'prone'], markerLevels: { bleeding: 3, prone: 2 } });
+  assert.deepEqual(mergedMarkers(base).markers, []);
+});

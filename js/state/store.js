@@ -1786,6 +1786,8 @@ const LINKED_TOKEN_PATCH_KEYS = new Set([
   'dead',
   'deathCause',
   'camp',
+  // Monture fusionnée (contrat §8.1) : écrite par la liaison, avec la bascule `token.mounted`.
+  'rider',
 ]);
 
 /**
@@ -2077,12 +2079,18 @@ export function removeFromReserve(tokenId) {
  * ⭐ **UX-08 est la moitié visible de ce geste** : sortir un pion de la réserve, c'est le poser
  * quelque part. Les deux ne font qu'un, et c'est pourquoi le panneau réutilise le même armement.
  *
+ * ⭐ `latest`, quand il est donné, est l'état **à poser** : celui que porte le `token.add` reçu. La
+ * copie de réserve d'un poste peut dater du rangement, alors que l'émetteur a pu changer le pion
+ * entre-temps (pion lié à l'outil MJ : le cavalier qui démonte reprend sa taille en réserve, local
+ * au MJ). `token.add` porte le pion entier : c'est lui qui fait foi.
+ *
  * @param {string} tokenId
  * @param {string} levelId
  * @param {import('../core/types.js').Cell} cell
+ * @param {import('../core/types.js').Token|null} [latest] état à poser, même identifiant
  * @returns {boolean} true si un pion a été posé
  */
-export function placeTokenFromReserve(tokenId, levelId, cell) {
+export function placeTokenFromReserve(tokenId, levelId, cell, latest = null) {
   if (!campaign) {
     throw new Error('Aucune campagne chargée');
   }
@@ -2096,7 +2104,10 @@ export function placeTokenFromReserve(tokenId, levelId, cell) {
   const index = (campaign.reserve ?? []).findIndex((t) => t.id === tokenId);
   if (index < 0) return false;
 
-  const pionEnReserve = /** @type {Token} */ ((campaign.reserve ?? [])[index]);
+  if (latest && latest.id !== tokenId) {
+    throw new Error(`Pose du pion "${tokenId}" depuis la réserve : état d'un autre pion ("${latest.id}")`);
+  }
+  const pionEnReserve = /** @type {Token} */ (latest ?? (campaign.reserve ?? [])[index]);
 
   // Une case, un pion (C-6) : le pion reste en réserve si sa destination est déjà occupée, comme
   // une case hors carte — même transaction, même idiome.
@@ -2118,7 +2129,8 @@ export function placeTokenFromReserve(tokenId, levelId, cell) {
   }
 
   const candidate = structuredClone(campaign);
-  const [pion] = (candidate.reserve ?? []).splice(index, 1);
+  const [enReserve] = (candidate.reserve ?? []).splice(index, 1);
+  const pion = latest ? structuredClone(latest) : enReserve;
   candidate.tokens.push({ ...pion, levelId, cell: { a: cell.a, b: cell.b } });
 
   // ⚠ La validation est celle du plateau, bornes comprises : c'est ici que se refuse une case

@@ -316,10 +316,13 @@ export function applyNetworkEvent(event) {
       // case dans la même transaction.
       if (campaign?.reserve?.some((token) => token.id === payload.token.id)) {
         try {
+          // Le pion posé est celui du `token.add` : la copie de réserve de ce poste peut dater du
+          // rangement (pion lié changé entre-temps par l'outil MJ, contrat de liaison §8).
           return store.placeTokenFromReserve(
             payload.token.id,
             payload.token.levelId,
-            payload.token.cell
+            payload.token.cell,
+            payload.token
           );
         } catch (err) {
           console.error(

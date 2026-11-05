@@ -816,6 +816,14 @@ details.gm-disclosure > .gm-disclosure-body {
   border-radius: var(--gm-r);
 }
 
+/* PJ en attente de liaison : une ligne de texte seule, sans avatar. Dans la grille de la liste
+   (avatar 28px | nom | extra), le texte tombait dans la colonne de 28px et se cassait à un mot par
+   ligne dans la colonne étroite du panneau (recette du 05/11). */
+.gm-roster-row.gm-mj-link-awaiting {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 .gm-roster-row:hover:not(:disabled) {
   background: var(--gm-releve);
   border-color: var(--gm-trait);

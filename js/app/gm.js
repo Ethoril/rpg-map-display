@@ -1339,6 +1339,8 @@ export async function bootstrapGMApp(options = {}) {
     createToken,
     activeLevelId: () => store.getActiveLevelId(),
     sessionId,
+    // Démontage (contrat §8.2) : le cavalier attend en réserve que le MJ touche une case adjacente.
+    onRiderToPlace: (tokenId, around) => gmPanel?.armRiderPose?.(tokenId, around),
   });
   if (mjLink) setInterval(mjLink.tick, MJ_LINK_PING_MS);
   if (mjLink) reportMove = (tokenId, path) => { mjLink.reportMove(tokenId, path); };

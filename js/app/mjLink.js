@@ -15,6 +15,7 @@ import { isLinkedToken } from '../core/schema.js';
 import { movementRulesFor } from '../state/selection.js';
 import { ranStartIndex } from '../state/movePlan.js';
 import { parseFx } from '../render/layers/fx.js';
+import { footprintsAdjacent } from '../grid/index.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
@@ -39,6 +40,7 @@ import { parseFx } from '../render/layers/fx.js';
  * @property {boolean} dead
  * @property {string|null} [deathCause]
  * @property {boolean} [mounted]
+ * @property {import('../core/types.js').RiderOverlay|null} [rider] monture fusionnée (contrat §8.1)
  */
 
 /**
@@ -47,7 +49,9 @@ import { parseFx } from '../render/layers/fx.js';
  *   | { op: 'mounted', tokenId: string, mounted: boolean }
  *   | { op: 'remove', tokenId: string, where: 'board'|'reserve' }
  *   | { op: 'awaitBinding', ref: string, label: string }
- *   | { op: 'fx', tokenId: string, hidden: boolean, fx: NonNullable<ReturnType<typeof parseFx>> }} MjLinkOperation
+ *   | { op: 'fx', tokenId: string, hidden: boolean, fx: NonNullable<ReturnType<typeof parseFx>> }
+ *   | { op: 'merge', riderTokenId: string, mountTokenId: string }
+ *   | { op: 'split', riderTokenId: string, mountTokenId: string }} MjLinkOperation
  */
 
 /** Champs que l'outil MJ écrit sur un pion lié (contrat §1). */
@@ -71,6 +75,8 @@ export function patchFromState(state) {
     const value = /** @type {any} */ (state)[key];
     if (value !== null && value !== undefined) patch[key] = value;
   }
+  // La monture fusionnée (contrat §8.1) : `null` y a un sens, la fusion est défaite.
+  if (state.rider !== undefined) patch.rider = state.rider;
   return patch;
 }
 
@@ -97,7 +103,7 @@ export function findLinkedToken(campaign, ref) {
  */
 function changedOnly(token, patch) {
   return Object.fromEntries(
-    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key]) !== JSON.stringify(value))
+    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' ? null : undefined)) !== JSON.stringify(value))
   );
 }
 
@@ -112,16 +118,61 @@ export function planTokenState(campaign, state) {
   const found = findLinkedToken(campaign, state.ref);
   if (!found) {
     if (state.ref.startsWith('pj:')) return [{ op: 'awaitBinding', ref: state.ref, label: state.label }];
-    return [{ op: 'reserveAdd', ref: state.ref, token: { ...patchFromState(state), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true } }];
+    const { rider, ...fields } = patchFromState(state);
+    return [{ op: 'reserveAdd', ref: state.ref, token: { ...fields, ...(rider ? { rider } : {}), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true } }];
   }
   /** @type {MjLinkOperation[]} */
   const ops = [];
+  // Montures (contrat §8) : fusion quand le cavalier passe monté et que sa monture est sur le
+  // plateau ; séparation quand il descend alors que sa monture attend hors plateau. Avant le patch,
+  // qui donne au pion fusionné la taille de la monture une fois sur sa case.
+  const mergeWith = state.mounted === true && state.rider?.ref ? findLinkedToken(campaign, state.rider.ref) : null;
+  if (mergeWith?.where === 'board') ops.push({ op: 'merge', riderTokenId: found.token.id, mountTokenId: mergeWith.token.id });
+  const splitFrom = state.mounted === false ? planSplit(campaign, found, found.token.rider?.ref) : null;
+  if (splitFrom) ops.push(splitFrom);
   const patch = changedOnly(found.token, patchFromState(state));
   if (Object.keys(patch).length) ops.push({ op: 'update', tokenId: found.token.id, patch });
   if (typeof state.mounted === 'boolean' && state.mounted !== (found.token.mounted === true)) {
     ops.push({ op: 'mounted', tokenId: found.token.id, mounted: state.mounted });
   }
   return ops;
+}
+
+/**
+ * Séparation d'un pion fusionné (contrat §8.2) : seulement si le cavalier est monté sur le plateau
+ * et sa monture hors plateau. Sinon rien, ce qui rend `mount.split` et le `token.state` qui le
+ * suit rejouables dans n'importe quel ordre.
+ *
+ * @param {Campaign} campaign
+ * @param {{ token: Token, where: 'board'|'reserve' }|null} rider
+ * @param {string|null|undefined} mountRef
+ * @returns {MjLinkOperation|null}
+ */
+function planSplit(campaign, rider, mountRef) {
+  if (!rider || rider.where !== 'board' || rider.token.mounted !== true || typeof mountRef !== 'string') return null;
+  const mount = findLinkedToken(campaign, mountRef);
+  return mount?.where === 'reserve' ? { op: 'split', riderTokenId: rider.token.id, mountTokenId: mount.token.id } : null;
+}
+
+/**
+ * Réponse à `mount.request { riderRef, mountRef }` (contrat §8.2) : refus `not-adjacent` quand les
+ * deux pions sont posés sans se toucher, accord sinon. Un pion absent du plateau ne se vérifie pas.
+ *
+ * @param {Campaign} campaign
+ * @param {any} payload
+ * @returns {{ type: 'mount.accepted'|'mount.refused', payload: { riderRef: string, mountRef: string, reason?: 'not-adjacent' } }|null}
+ */
+export function answerMountRequest(campaign, payload) {
+  const riderRef = payload?.riderRef;
+  const mountRef = payload?.mountRef;
+  if (typeof riderRef !== 'string' || typeof mountRef !== 'string') return null;
+  const rider = findLinkedToken(campaign, riderRef);
+  const mount = findLinkedToken(campaign, mountRef);
+  const accepted = { type: /** @type {const} */ ('mount.accepted'), payload: { riderRef, mountRef } };
+  if (rider?.where !== 'board' || mount?.where !== 'board') return accepted;
+  const level = campaign.levels.find((l) => l.id === mount.token.levelId);
+  const adjacent = rider.token.levelId === mount.token.levelId && level !== undefined && footprintsAdjacent(level, rider.token, mount.token);
+  return adjacent ? accepted : { type: 'mount.refused', payload: { riderRef, mountRef, reason: 'not-adjacent' } };
 }
 
 /**
@@ -153,6 +204,11 @@ export function planMjMessage(campaign, message, version = 1) {
       const token = typeof payload.ref === 'string' ? campaign.tokens.find((t) => isLinkedToken(t) && t.link?.ref === payload.ref) : null;
       return fx && token ? [{ op: 'fx', tokenId: token.id, hidden: token.hidden === true, fx }] : [];
     }
+    case 'mount.split': {
+      if (typeof payload.riderRef !== 'string') return [];
+      const split = planSplit(campaign, findLinkedToken(campaign, payload.riderRef), payload.mountRef);
+      return split ? [split] : [];
+    }
     case 'mj.snapshot': {
       /** @type {MjTokenState[]} */
       const tokens = Array.isArray(payload.tokens) ? payload.tokens : [];
@@ -181,16 +237,25 @@ export function planMjMessage(campaign, message, version = 1) {
  * notés sur un pion créé en réserve, qui n'y sont pas une position). Rend les `ref` PJ en attente
  * de liaison, pour la liste du panneau MJ.
  *
+ * Montures (contrat §8) : la fusion range la monture (`token.reserve`) puis amène le cavalier sur
+ * sa case (`token.move`, ou `token.add` s'il attendait en réserve) ; la séparation range le
+ * cavalier, repose la monture sur la case du pion fusionné et confie le cavalier à `onRiderToPlace`
+ * pour la pose armée. Aucun événement réseau nouveau.
+ *
  * @param {MjLinkOperation[]} ops
  * @param {{
  *   store: { addTokenToReserve: Function, updateToken: Function, updateReserveToken: Function,
  *            setTokenMounted: Function, removeToken: Function, removeFromReserve: Function,
+ *            reserveToken?: (tokenId: string) => boolean,
+ *            placeTokenFromReserve?: (tokenId: string, levelId: string, cell: { a: number, b: number }) => boolean,
+ *            moveTokenToCell?: (tokenId: string, cell: { a: number, b: number }, moveData?: any) => void,
  *            getCampaign: () => Campaign|null },
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
  *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
  *   newTokenId: () => string,
  *   trace: { levelId: string, cell: { a: number, b: number } },
+ *   onRiderToPlace?: (riderTokenId: string, around: { levelId: string, cell: { a: number, b: number }, sizeCells: number }) => void,
  * }} deps
  * @returns {{ awaiting: { ref: string, label: string }[] }}
  */
@@ -240,9 +305,88 @@ export function executeMjOperations(ops, deps) {
         deps.playFx?.(op.fx, op.tokenId);
         if (!op.hidden) publish('fx', { tokenId: op.tokenId, ...op.fx });
         break;
+      case 'merge':
+        mergeMount(op, deps);
+        break;
+      case 'split':
+        splitMount(op, deps);
+        break;
     }
   }
   return { awaiting };
+}
+
+/**
+ * Pose sur le plateau un pion lié de la réserve et le publie par `token.add`, qui porte le pion
+ * entier : la tablette pose cet état, pas sa copie de réserve d'avant le rangement.
+ *
+ * @param {Parameters<typeof executeMjOperations>[1]} deps
+ * @param {string} tokenId @param {string} levelId @param {{ a: number, b: number }} cell
+ */
+function placeLinkedFromReserve(deps, tokenId, levelId, cell) {
+  const { store, publish } = deps;
+  if (!store.placeTokenFromReserve?.(tokenId, levelId, cell)) return;
+  const token = store.getCampaign()?.tokens.find((t) => t.id === tokenId);
+  if (!token) return;
+  publish('token.add', { token });
+}
+
+/**
+ * Fusion (contrat §8.1) : la monture sort du plateau, conservée en réserve, et le cavalier prend sa
+ * case. Le `token.update` qui suit dans le même message lui donne la taille de la monture. Deux
+ * étages différents : rien ne se fusionne, personne ne change d'étage dans le dos du MJ.
+ *
+ * @param {{ riderTokenId: string, mountTokenId: string }} op
+ * @param {Parameters<typeof executeMjOperations>[1]} deps
+ */
+function mergeMount(op, deps) {
+  const { store, publish } = deps;
+  const campaign = store.getCampaign();
+  const mount = campaign?.tokens.find((t) => t.id === op.mountTokenId);
+  if (!campaign || !mount) return;
+  const rider = campaign.tokens.find((t) => t.id === op.riderTokenId);
+  if (rider && rider.levelId !== mount.levelId) return;
+  const cell = { a: mount.cell.a, b: mount.cell.b };
+  if (!store.reserveToken?.(mount.id)) return;
+  publish('token.reserve', { tokenId: mount.id });
+  if (!rider) {
+    placeLinkedFromReserve(deps, op.riderTokenId, mount.levelId, cell);
+    return;
+  }
+  const from = { a: rider.cell.a, b: rider.cell.b };
+  if (from.a === cell.a && from.b === cell.b) return;
+  const startedAt = Date.now();
+  try {
+    store.moveTokenToCell?.(rider.id, cell, { from, to: cell, path: [from, cell], startedAt });
+  } catch (err) {
+    // La monture reprend sa case : un refus ne doit pas la faire disparaître du plateau.
+    placeLinkedFromReserve(deps, mount.id, mount.levelId, cell);
+    throw err;
+  }
+  publish('token.move', { tokenId: rider.id, from, to: cell, path: [from, cell], startedAt });
+}
+
+/**
+ * Séparation (contrat §8.2) : la monture revient sur la case du pion fusionné, le cavalier passe en
+ * réserve, à pied, et attend que le MJ touche une case adjacente libre (`onRiderToPlace`). Rien ne
+ * bouge seul.
+ *
+ * @param {{ riderTokenId: string, mountTokenId: string }} op
+ * @param {Parameters<typeof executeMjOperations>[1]} deps
+ */
+function splitMount(op, deps) {
+  const { store, publish } = deps;
+  const campaign = store.getCampaign();
+  const rider = campaign?.tokens.find((t) => t.id === op.riderTokenId);
+  const mount = (campaign?.reserve ?? []).find((t) => t.id === op.mountTokenId);
+  if (!rider || !mount) return;
+  const levelId = rider.levelId;
+  const cell = { a: rider.cell.a, b: rider.cell.b };
+  if (!store.reserveToken?.(rider.id)) return;
+  publish('token.reserve', { tokenId: rider.id });
+  placeLinkedFromReserve(deps, mount.id, levelId, cell);
+  store.updateReserveToken(rider.id, { mounted: false, rider: null });
+  deps.onRiderToPlace?.(rider.id, { levelId, cell, sizeCells: mount.sizeCells || 1 });
 }
 
 export const MJ_LINK_CHANNEL = 'wfrp-map-link';
@@ -269,6 +413,7 @@ export const MJ_LINK_ECHO_MS = 4000;
  *   activeLevelId: () => string|null,
  *   sessionId: string,
  *   onStatus?: (status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[]) => void,
+ *   onRiderToPlace?: Parameters<typeof executeMjOperations>[1]['onRiderToPlace'],
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
@@ -334,6 +479,11 @@ export function startMjLink(options) {
       if (message.type !== 'mj.ping') missedWithoutCampaign = true;
       return;
     }
+    if (message.type === 'mount.request') {
+      const answer = answerMountRequest(campaign, message.payload);
+      if (answer) send(answer.type, answer.payload);
+      return;
+    }
     const levelId = options.activeLevelId() ?? campaign.levels[0]?.id ?? '';
     try {
       const { awaiting: refs } = executeMjOperations(planMjMessage(campaign, message, MJ_LINK_VERSION), {
@@ -343,6 +493,7 @@ export function startMjLink(options) {
         playFx: options.playFx,
         newTokenId: () => `lie-${now().toString(36)}-${++counter}`,
         trace: { levelId, cell: { a: 0, b: 0 } },
+        onRiderToPlace: options.onRiderToPlace,
       });
       let changed = false;
       for (const { ref, label } of refs) {

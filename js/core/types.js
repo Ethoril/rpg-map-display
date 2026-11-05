@@ -206,6 +206,22 @@
  * @property {boolean} [dead] Mort, le pion reste sur sa case (contrat §7).
  * @property {'blood'|'fire'|'magic'|'poison'|'decapitation'|'dismemberment'} [deathCause]
  * @property {'pj'|'allie'|'ennemi'|'neutre'} [camp] Camp de l'outil MJ (disque sans image, contrat §6).
+ * @property {RiderOverlay|null} [rider] Pion lié **monté** (contrat §8.1) : la monture fusionnée
+ *   dans le pion du cavalier, qui garde son `ref`. Absent ou `null` = pas de fusion.
+ */
+
+/**
+ * La monture portée par le pion fusionné de son cavalier (contrat §8.1). Malgré son nom, ce sont
+ * les données **de la monture** : son image fait le fond du pion, ses PV l'anneau extérieur.
+ *
+ * @typedef {Object} RiderOverlay
+ * @property {string} ref `ref` de la monture
+ * @property {string} label
+ * @property {string|null} imageUrl
+ * @property {{ current: number, max: number }|null} hp
+ * @property {'unharmed'|'wounded'|'critical'} health
+ * @property {import('./constants.js').StatusMarker[]} markers
+ * @property {Record<string, number>} markerLevels
  */
 
 /** @typedef {'circle'|'cone'|'line'} TemplateShape */
