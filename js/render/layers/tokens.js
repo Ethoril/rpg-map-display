@@ -427,7 +427,8 @@ export class TokensLayer {
     ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
     ctx.stroke();
     // Pion monté (contrat §8.1) : deux anneaux, l'extérieur pour la monture (le liseré ci-dessus),
-    // l'intérieur pour le cavalier, séparés d'un filet sombre.
+    // l'intérieur, clair, pour le cavalier, séparés d'un filet sombre. Deux anneaux de la même
+    // teinte de camp ne se distinguaient pas (contrôle à l'écran du 05/11).
     if (mount) {
       const ringWidth = TOKEN_BORDER_SCREEN_PX / zoom;
       ctx.beginPath();
@@ -437,7 +438,7 @@ export class TokensLayer {
       ctx.stroke();
       ctx.beginPath();
       ctx.ellipse(centerX, centerY, imageRadius - ringWidth * 2.5, imageRadius - ringWidth * 2.5, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = borderColor;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.lineWidth = ringWidth;
       ctx.stroke();
     }
@@ -569,8 +570,9 @@ export class TokensLayer {
   }
 
   /**
-   * Médaillon du portrait du cavalier, en haut à gauche d'un pion monté (contrat §8.1) — coin que
-   * n'occupent ni l'élévation (haut droit), ni le numéro (bas gauche), ni les PV (bas droit).
+   * Médaillon du portrait du cavalier, en haut à droite d'un pion monté (contrat §8.1) — le haut
+   * gauche porte les PV, le bas la rangée d'états et le numéro. Le badge d'élévation, dessiné
+   * après, reste lisible par-dessus.
    * Sans portrait chargé : disque du camp et initiales du cavalier.
    *
    * @param {CanvasRenderingContext2D} ctx
@@ -582,7 +584,7 @@ export class TokensLayer {
    */
   _drawRiderMedallion(ctx, token, p0, width, zoom, borderColor) {
     const radius = (width * RIDER_MEDALLION_RATIO) / 2;
-    const cx = p0.x + radius;
+    const cx = p0.x + width - radius;
     const cy = p0.y + radius;
     const url = token.imageUrl?.trim() ?? '';
     const entry = url ? this.imageCache.get(url) : undefined;
