@@ -56,7 +56,8 @@ Le MJ est le seul utilisateur. **L'onglet gm.html ouvert fait foi.**
 
 1. À l'ouverture et à chaque rechargement, la carte émet `map.hello { v, sessionId, campaignName }`.
 2. L'outil MJ répond `mj.snapshot`, l'état complet de tous les pions liés (§4). Il émet aussi `mj.hello` à son propre démarrage, et la carte répond par un `map.hello`.
-3. Les deux côtés affichent un indicateur « carte connectée » ou « outil MJ connecté ». Un battement toutes les 5 s (`*.ping`) détecte la fermeture de l'autre onglet. Après 15 s sans battement, l'indicateur passe à « déconnecté ».
+3. Les deux côtés affichent un indicateur « carte connectée » ou « outil MJ connecté ». Un battement toutes les 5 s (`*.ping`) détecte la fermeture de l'autre onglet. Après 15 s sans battement, l'indicateur passe à « déconnecté ». Un onglet caché voit ses minuteries ralenties par le navigateur (une par minute après 5 min) : chaque côté **répond au battement reçu par le sien** s'il n'a pas battu depuis 4 s. L'onglet visible entretient ainsi la liaison, sans boucle (amendement du 05/11, constaté en recette).
+   - Si la carte reçoit un message alors qu'aucune campagne n'est chargée, elle réémet `map.hello` dès qu'une campagne l'est, pour recevoir l'instantané (amendement du 05/11).
 4. Rien n'est rejoué à la reconnexion, sauf l'état. Les effets manqués sont perdus, et c'est voulu.
 
 ## 3. Identité et liaison
@@ -69,6 +70,8 @@ link: { source: 'outil-mj', ref: 'pj:<persistentCharacterId>' | 'p:<participantI
 
 - **PJ** : la liaison est **durable**, attachée au personnage persistant et non à une rencontre. Le pion PJ existant sur la carte est lié une fois pour toutes.
   - Le MJ lie le pion depuis le panneau MJ de Map Display (« Lier à un PJ de l'outil MJ »). Il choisit dans la liste des PJ que l'outil MJ envoie (`mj.roster`).
+    - `mj.roster { characters: [{ ref: 'pj:<id>', label }] }`, trié par nom, part avec chaque `mj.snapshot` et à chaque changement de la liste (05/11).
+    - La carte publie `token.link { tokenId, ref? }` vers la tablette, puis réémet `map.hello` pour recevoir l'état du PJ.
   - Le lien vaut aussi **hors combat** : PV, états, monté et mort restent pilotés par l'outil MJ en exploration. L'outil MJ lit alors le personnage persistant (réserve).
 - **PNJ, créatures, alliés, participants improvisés** : liaison par rencontre (`p:<participantId>`). Map Display crée le pion à la réception de `token.add`.
 - **Montures des PJ** : liaison par rencontre (`p:<participantId>`) comme les autres participants. Leur `kind` est `pc` (§4).

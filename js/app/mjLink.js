@@ -232,6 +232,12 @@ export const MJ_LINK_CHANNEL = 'wfrp-map-link';
 export const MJ_LINK_VERSION = 1;
 export const MJ_LINK_PING_MS = 5000;
 export const MJ_LINK_TIMEOUT_MS = 15000;
+/**
+ * Écho du battement (contrat §2.3) : un onglet caché voit ses minuteries ralenties à une par minute,
+ * mais reçoit toujours les messages ; il répond au battement de l'outil MJ s'il n'a pas battu depuis
+ * ce délai. Pas de boucle : l'écho reçu en retour tombe dans le délai.
+ */
+export const MJ_LINK_ECHO_MS = 4000;
 
 /**
  * Ouvre le canal avec l'outil MJ (contrat §2) : `map.hello` à l'ouverture et sur `mj.hello`,
@@ -239,7 +245,7 @@ export const MJ_LINK_TIMEOUT_MS = 15000;
  * (navigateur ancien, test), ne fait rien et rend `null`.
  *
  * @param {{
- *   store: Parameters<typeof executeMjOperations>[1]['store'],
+ *   store: Parameters<typeof executeMjOperations>[1]['store'] & { setTokenLink: (tokenId: string, ref: string|null) => void },
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
  *   activeLevelId: () => string|null,
@@ -248,7 +254,7 @@ export const MJ_LINK_TIMEOUT_MS = 15000;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void }|null}
+ * @returns {{ tick: () => void, close: () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -257,10 +263,16 @@ export function startMjLink(options) {
   const channel = new Channel(MJ_LINK_CHANNEL);
   let seq = 0;
   let lastSeen = 0;
+  let lastPing = -Infinity;
+  // Message reçu sans campagne chargée : l'état est perdu, on le redemande dès qu'une campagne existe.
+  let missedWithoutCampaign = false;
   /** @type {'connected'|'disconnected'|'version-mismatch'} */
   let status = 'disconnected';
   /** @type {Map<string, string>} */
   const awaiting = new Map();
+  /** Liste des PJ de l'outil MJ (`mj.roster`, contrat §3), pour « Lier à un PJ de l'outil MJ ». */
+  /** @type {{ ref: string, label: string }[]} */
+  let roster = [];
   let counter = 0;
   /** @param {'connected'|'disconnected'|'version-mismatch'} next */
   const setStatus = (next) => {
@@ -270,6 +282,11 @@ export function startMjLink(options) {
   };
   /** @param {string} type @param {any} [payload] */
   const send = (type, payload = {}) => channel.postMessage({ v: MJ_LINK_VERSION, type, seq: ++seq, at: now(), from: 'map', payload });
+  const ping = () => {
+    lastPing = now();
+    send('map.ping');
+  };
+  const hello = () => send('map.hello', { v: MJ_LINK_VERSION, sessionId: options.sessionId });
   channel.onmessage = (event) => {
     const message = event?.data;
     if (!message || message.from !== 'outil-mj') return;
@@ -279,9 +296,19 @@ export function startMjLink(options) {
     }
     lastSeen = now();
     setStatus('connected');
-    if (message.type === 'mj.hello') send('map.hello', { v: MJ_LINK_VERSION, sessionId: options.sessionId });
+    if (message.type === 'mj.hello') hello();
+    if (message.type === 'mj.ping' && now() - lastPing > MJ_LINK_ECHO_MS) ping();
+    if (message.type === 'mj.roster') {
+      const characters = Array.isArray(message.payload?.characters) ? message.payload.characters : [];
+      roster = characters.filter((/** @type {any} */ c) => typeof c?.ref === 'string' && c.ref.startsWith('pj:') && typeof c.label === 'string')
+        .map((/** @type {any} */ c) => ({ ref: c.ref, label: c.label }));
+      return;
+    }
     const campaign = options.store.getCampaign();
-    if (!campaign) return;
+    if (!campaign) {
+      if (message.type !== 'mj.ping') missedWithoutCampaign = true;
+      return;
+    }
     const levelId = options.activeLevelId() ?? campaign.levels[0]?.id ?? '';
     try {
       const { awaiting: refs } = executeMjOperations(planMjMessage(campaign, message, MJ_LINK_VERSION), {
@@ -296,12 +323,28 @@ export function startMjLink(options) {
       console.error(`Liaison outil MJ : message "${message.type}" refusé : ${err instanceof Error ? err.message : String(err)}`);
     }
   };
-  send('map.hello', { v: MJ_LINK_VERSION, sessionId: options.sessionId });
+  hello();
   return {
     tick() {
-      send('map.ping');
+      ping();
+      if (missedWithoutCampaign && options.store.getCampaign()) {
+        missedWithoutCampaign = false;
+        hello();
+      }
       if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) setStatus('disconnected');
     },
     close: () => channel.close(),
+    roster: () => roster.map((entry) => ({ ...entry })),
+    /**
+     * Liaison durable d'un pion posé à un PJ (`ref`), ou déliaison (`null`) : store, tablette par
+     * `token.link`, puis `map.hello` pour que l'outil MJ renvoie l'état du PJ (contrat §3).
+     * @param {string} tokenId @param {string|null} ref
+     */
+    bind(tokenId, ref) {
+      options.store.setTokenLink(tokenId, ref);
+      options.publish('token.link', ref === null ? { tokenId } : { tokenId, ref });
+      if (ref !== null) awaiting.delete(ref);
+      hello();
+    },
   };
 }

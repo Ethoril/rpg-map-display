@@ -1385,6 +1385,7 @@ export async function bootstrapGMApp(options = {}) {
     ? createGMPanel(panelContainer, {
         transport: transport || undefined,
         sessionId,
+        mjLink,
         getExploredFog: (levelId) => getExploredFog(levelId || store.getActiveLevelId() || ''),
         scheduleFogPublish: (immediate = true) => {
           const activeLvl = store.getActiveLevel();

@@ -337,6 +337,17 @@ export class TokensLayer {
       ctx.textBaseline = 'middle';
       ctx.fillText(initial, centerX, centerY);
     }
+    // Rendu « mort » d'un pion lié (docs/CONTRAT-LIAISON-OUTIL-MJ.md §7) : portrait désaturé
+    // puis assombri, dans la découpe du portrait. Le mode de fusion « saturation » retire la
+    // couleur sans dépendre de `ctx.filter`, absent de certains Safari.
+    if (token.dead === true) {
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(p0.x, p0.y, width, height);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(p0.x, p0.y, width, height);
+    }
     ctx.restore();
 
     // 3.5. Liseré d'identité du pion (tracé à imageRadius, épaisseur écran TOKEN_BORDER_SCREEN_PX)
@@ -349,6 +360,21 @@ export class TokensLayer {
     ctx.stroke();
     ctx.restore();
 
+    // 3.6. Croix discrète du pion mort (contrat §7), épaisseur constante à l'écran.
+    if (token.dead === true) {
+      const arm = imageRadius * 0.5;
+      ctx.save();
+      if (token.hidden) ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.moveTo(centerX - arm, centerY - arm);
+      ctx.lineTo(centerX + arm, centerY + arm);
+      ctx.moveTo(centerX + arm, centerY - arm);
+      ctx.lineTo(centerX - arm, centerY + arm);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // 4. Anneau de sélection (Épaisseur constante à l'écran)
     if (selected) {

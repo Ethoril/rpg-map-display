@@ -534,6 +534,26 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
         ctx.fillStyle = color;
         ctx.fill();
       }
+
+      // Niveau d'un état cumulable (pion lié, contrat outil MJ §5) : chiffre en exposant, dès 2.
+      const level = token.markerLevels?.[markerId];
+      if (typeof level === 'number' && level > 1) {
+        const lr = r * 0.55;
+        const lx = cx + r * 0.75;
+        const ly = cy - r * 0.75;
+        ctx.beginPath();
+        ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+        ctx.fillStyle = '#7f1d1d';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1 / safeZoom;
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.max(8, Math.round(lr * 1.3 * safeZoom)) / safeZoom}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(level), lx, ly);
+      }
     }
 
     // Pastillon d'overflow '+N' sur le dernier emplacement

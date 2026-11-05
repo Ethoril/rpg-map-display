@@ -1,11 +1,11 @@
 # Icônes d'états — provenance et attribution
 
-Les quatorze icônes de ce dossier viennent de **[game-icons.net](https://game-icons.net)**,
+Les seize icônes de ce dossier viennent de **[game-icons.net](https://game-icons.net)**,
 sous licence **[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)**.
 
 > Icônes par Carl Olsen, Delapouite, Lorc, Sbed, Skoll — game-icons.net — CC BY 3.0
 
-Treize sur quatorze sont attribuables à un auteur nommé ; la quatorzième (`surprised`) vient
+Quinze sur seize sont attribuables à un auteur nommé ; la seizième (`surprised`) vient
 du dossier `badges/` du dépôt, couvert par la même licence mais sans auteur individuel.
 
 Depuis R1-07, l'application publiée expose `attributions.html` depuis l'accueil et la vue MJ.
@@ -16,7 +16,9 @@ d'attribution livrée avec les fichiers.
 ## Table
 
 Le nom de fichier **est** l'identifiant attendu dans `token.markers`. Le jeu de valeurs est
-clos : quatorze, et le schéma doit rejeter tout le reste (CdC Q7, tranchée le 04/08/2026).
+clos : seize, et le schéma doit rejeter tout le reste (CdC Q7, tranchée le 04/08/2026 à quatorze,
+rouverte le 04/11/2026 par le contrat de liaison avec l'outil MJ : `fatigued` et `tainted`, dessins
+choisis par le mainteneur le 05/11/2026 ; leur taux d'encre n'a pas été mesuré).
 
 Les dessins ont été revus le 05/08/2026 : **six cases sur quatorze ont changé de tracé** (★),
 cinq sur l'avis de l'illustratrice consultée et la sixième (`bleeding`) après une seconde
@@ -39,6 +41,8 @@ liste close.
 | `frenzy` | Frénésie | [`lorc/crossed-axes`](https://game-icons.net/1x1/lorc/crossed-axes.html) | Lorc |
 | `fear` ★ | Peur | [`lorc/terror`](https://game-icons.net/1x1/lorc/terror.html) | Lorc |
 | `terror` ★ | Terreur | [`skoll/burning-skull`](https://game-icons.net/1x1/skoll/burning-skull.html) | Skoll |
+| `fatigued` | Exténué | [`lorc/despair`](https://game-icons.net/1x1/lorc/despair.html) | Lorc |
+| `tainted` | Souillé | [`delapouite/fly`](https://game-icons.net/1x1/delapouite/fly.html) | Delapouite |
 
 Trois lignes de cette table demandent une explication, sans quoi elles se liront comme des
 erreurs :
@@ -74,7 +78,7 @@ erreurs :
 ## Installation
 
 ```sh
-node scripts/install-status-icons.mjs              # les quatorze
+node scripts/install-status-icons.mjs              # les seize
 node scripts/install-status-icons.mjs broken fear  # seulement celles-là
 ```
 

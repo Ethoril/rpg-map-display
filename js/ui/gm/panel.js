@@ -40,6 +40,8 @@ import * as store from '../../state/store.js';
  * @property {(linkId: string) => void} [onRemoveLink]
  * @property {() => import('../../state/presence.js').ClientPresence[]} [getOtherGmSessions]
  * @property {() => boolean} [onEvictOtherGms]
+ * @property {{ roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void }|null} [mjLink]
+ *   Liaison outil MJ (docs/CONTRAT-LIAISON-OUTIL-MJ.md §3) : liste des PJ et liaison durable d'un pion PJ.
  */
 
 /**
@@ -87,6 +89,7 @@ export function createGMPanel(container, options = {}) {
     requestRender = () => {},
     getOtherGmSessions = () => [],
     onEvictOtherGms = () => false,
+    mjLink = null,
   } = options;
   const listeners = new AbortController();
 
@@ -351,6 +354,10 @@ export function createGMPanel(container, options = {}) {
             <div class="gm-field">
               <label for="token-edit-label">Nom</label>
               <input type="text" id="token-edit-label" disabled />
+            </div>
+            <div class="gm-field" id="token-mj-link-field" hidden>
+              <label for="token-mj-link">Lier à un PJ de l’outil MJ</label>
+              <select id="token-mj-link"></select>
             </div>
             <div class="gm-field">
               <label for="token-edit-kind">Type</label>
@@ -1493,6 +1500,42 @@ export function createGMPanel(container, options = {}) {
 
   // --- Édition et suppression du pion sélectionné ---
   const tokenEditLabel = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-label'));
+  const tokenMjLinkField = /** @type {HTMLElement} */ (container.querySelector('#token-mj-link-field'));
+  const tokenMjLink = /** @type {HTMLSelectElement} */ (container.querySelector('#token-mj-link'));
+
+  /**
+   * Liaison durable d'un pion PJ (contrat §3) : la liste vient de l'outil MJ (`mj.roster`) et se
+   * relit à chaque affichage de la fiche comme à l'ouverture de la liste, car elle arrive après coup.
+   * @param {import('../../core/types.js').Token|null} pion
+   */
+  function refreshMjLink(pion) {
+    const pjRef = pion?.link?.ref?.startsWith('pj:') ? pion.link.ref : null;
+    const visible = Boolean(mjLink && pion && pion.kind === 'pc' && (!pion.link || pjRef));
+    tokenMjLinkField.hidden = !visible;
+    if (!visible || !mjLink) return;
+    const roster = mjLink.roster();
+    /** @type {[string, string][]} */
+    const choices = [['', roster.length || pjRef ? '— Non lié —' : '— Aucun PJ reçu de l’outil MJ —'], ...roster.map((c) => /** @type {[string, string]} */ ([c.ref, c.label]))];
+    if (pjRef && !roster.some((c) => c.ref === pjRef)) choices.push([pjRef, `PJ lié (${pjRef})`]);
+    tokenMjLink.replaceChildren(...choices.map(([value, label]) => {
+      const option = doc.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }));
+    tokenMjLink.value = pjRef ?? '';
+  }
+  tokenMjLink.addEventListener('focus', () => refreshMjLink(store.getSelectedToken()), { signal: listeners.signal });
+  tokenMjLink.addEventListener('change', () => {
+    const pion = store.getSelectedToken();
+    if (!pion || !mjLink) return;
+    try {
+      mjLink.bind(pion.id, tokenMjLink.value || null);
+    } catch (err) {
+      console.error(`Liaison au PJ refusée : ${err instanceof Error ? err.message : String(err)}`);
+      refreshMjLink(store.getSelectedToken());
+    }
+  }, { signal: listeners.signal });
   const tokenEditKind = /** @type {HTMLSelectElement} */ (container.querySelector('#token-edit-kind'));
   const tokenEditBorderColor = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-border-color'));
   const tokenEditBorderSwatches = mountBorderSwatches(tokenEditBorderColor);
@@ -1802,6 +1845,7 @@ export function createGMPanel(container, options = {}) {
     roster.hidden = !disabled;
     tokenSheet.hidden = disabled;
     updateSheetSummaries(selectedToken);
+    refreshMjLink(selectedToken ?? null);
     const lie = isLinkedToken(selectedToken);
     for (const control of tokenEditControls) control.disabled = disabled || (lie && mjOwnedControls.has(control));
     tokenEditBorderSwatches.refresh();

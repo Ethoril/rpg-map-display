@@ -52,6 +52,9 @@ export const ICONS = {
   frenzy: { label: 'Frénésie', source: 'lorc/crossed-axes', author: 'Lorc' },
   fear: { label: 'Peur', source: 'lorc/terror', author: 'Lorc' },
   terror: { label: 'Terreur', source: 'skoll/burning-skull', author: 'Skoll' },
+  // Contrat de liaison outil MJ §5 (Q7 rouverte) : dessins choisis par le mainteneur le 05/11/2026.
+  fatigued: { label: 'Exténué', source: 'lorc/despair', author: 'Lorc' },
+  tainted: { label: 'Souillé', source: 'delapouite/fly', author: 'Delapouite' },
 };
 
 /**

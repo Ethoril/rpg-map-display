@@ -41,7 +41,7 @@ const FAKE_TOKEN = {
 };
 
 test.describe('Tranche L-09 — Marqueurs d\'état E2E', () => {
-  test('1. Panneau MJ : les 14 cases à cocher de marqueurs modifient token.markers', async ({ context }) => {
+  test('1. Panneau MJ : une case à cocher par marqueur (16, Q7 rouverte le 04/11) modifie token.markers', async ({ context }) => {
     const sessionId = `test-markers-ui-${Date.now()}`;
     const snapshot = {
       campaign: {
@@ -66,9 +66,9 @@ test.describe('Tranche L-09 — Marqueurs d\'état E2E', () => {
     // Ouvrir l'onglet "Pions"
     await pageGM.click('.gm-tab-btn[data-tab="token-maker"]');
 
-    // Vérifier la présence des 14 cases à cocher
+    // Une case par valeur de STATUS_MARKER_IDS : 16 depuis fatigued et tainted (contrat outil MJ §5)
     const checkboxes = pageGM.locator('.token-marker-checkbox');
-    await expect(checkboxes).toHaveCount(14);
+    await expect(checkboxes).toHaveCount(16);
 
     // Cocher 'prone' (À terre) et 'ablaze' (En flammes)
     const proneCheckbox = pageGM.locator('.token-marker-checkbox[value="prone"]');

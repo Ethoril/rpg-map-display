@@ -153,3 +153,152 @@ test('store : setTokenLink lie et délie un pion posé ; un même ref ne lie qu�
   assert.equal(ev({ tokenId: 'a', ref: 'pj:c9' }), false, 'rejeu sans mutation');
   assert.equal(ev({ tokenId: 'a', ref: 7 }), false, 'payload malformé');
 });
+
+/** Faux BroadcastChannel : garde les messages émis, l'outil MJ « parle » par `deliver`. */
+class FakeChannel {
+  /** @type {any[]} */ static sent = [];
+  /** @type {FakeChannel|null} */ static last = null;
+  /** @type {((event: { data: any }) => void)|null} */ onmessage = null;
+  constructor() { FakeChannel.last = this; }
+  /** @param {any} message */ postMessage(message) { FakeChannel.sent.push(message); }
+  close() {}
+  /** @param {any} message */ deliver(message) { this.onmessage?.({ data: message }); }
+}
+
+/**
+ * @param {{ campaign: () => any }} options
+ */
+const openLink = async ({ campaign }) => {
+  const { startMjLink } = await import('../js/app/mjLink.js');
+  FakeChannel.sent = [];
+  /** @type {[string, string|null][]} */ const links = [];
+  /** @type {[string, any][]} */ const published = [];
+  let clock = 1000;
+  const link = startMjLink({
+    store: /** @type {any} */ ({ getCampaign: campaign, setTokenLink: (/** @type {string} */ id, /** @type {string|null} */ ref) => links.push([id, ref]) }),
+    publish: (/** @type {string} */ type, /** @type {any} */ payload) => published.push([type, payload]),
+    createToken,
+    activeLevelId: () => null,
+    sessionId: 's1',
+    Channel: /** @type {any} */ (FakeChannel),
+    now: () => clock,
+  });
+  assert.ok(link);
+  const channel = /** @type {FakeChannel} */ (FakeChannel.last);
+  /** @param {string} type */
+  const count = (type) => FakeChannel.sent.filter((m) => m.type === type).length;
+  return { link, channel, count, links, published, advance: (/** @type {number} */ ms) => { clock += ms; } };
+};
+
+test('mjLink : écho du battement — un onglet caché répond au ping de l’outil MJ, sans boucle', async () => {
+  const { link, channel, count, advance } = await openLink({ campaign: () => null });
+  link.tick();
+  assert.equal(count('map.ping'), 1);
+  advance(1000);
+  channel.deliver(msg('mj.ping', {}));
+  assert.equal(count('map.ping'), 1, 'battu il y a 1 s : pas d’écho');
+  advance(60_000); // minuteries ralenties : aucun tick pendant une minute
+  channel.deliver(msg('mj.ping', {}));
+  assert.equal(count('map.ping'), 2, 'écho au battement reçu');
+  channel.deliver(msg('mj.ping', {}));
+  assert.equal(count('map.ping'), 2, 'pas d’écho de l’écho');
+});
+
+test('mjLink : message reçu sans campagne → map.hello réémis dès qu’une campagne est chargée', async () => {
+  /** @type {any} */
+  let campaign = null;
+  const { link, channel, count } = await openLink({ campaign: () => campaign });
+  assert.equal(count('map.hello'), 1, 'hello d’ouverture');
+  channel.deliver(msg('mj.snapshot', { tokens: [] }));
+  link.tick();
+  assert.equal(count('map.hello'), 1, 'toujours sans campagne : rien');
+  campaign = createCampaign({ levels: [level], tokens: [] });
+  link.tick();
+  assert.equal(count('map.hello'), 2, 'campagne chargée : état redemandé');
+  link.tick();
+  assert.equal(count('map.hello'), 2, 'une seule fois');
+});
+
+test('mjLink : un simple battement sans campagne ne redemande pas l’état', async () => {
+  /** @type {any} */
+  let campaign = null;
+  const { link, channel, count } = await openLink({ campaign: () => campaign });
+  channel.deliver(msg('mj.ping', {}));
+  campaign = createCampaign({ levels: [level], tokens: [] });
+  link.tick();
+  assert.equal(count('map.hello'), 1);
+});
+
+test('rendu « mort » (contrat §7) : portrait désaturé et croix sur un pion lié mort, rien sur un vivant', async () => {
+  const { TokensLayer } = await import('../js/render/layers/tokens.js');
+  const { SquareGrid } = await import('../js/grid/SquareGrid.js');
+  /** Ctx enregistreur : fusions utilisées pour peindre, segments tracés. */
+  const recorder = () => {
+    /** @type {string[]} */ const fills = [];
+    let segments = 0;
+    const ctx = /** @type {any} */ ({
+      save() {}, restore() {}, beginPath() {}, closePath() {}, arc() {}, ellipse() {}, clip() {},
+      fill() {}, stroke() {}, strokeRect() {}, drawImage() {}, fillText() {}, measureText: () => ({ width: 10 }),
+      moveTo() {}, lineTo() { segments += 1; },
+      fillRect() { fills.push(ctx.globalCompositeOperation); },
+      fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
+      font: '', textAlign: 'center', textBaseline: 'middle',
+    });
+    return { ctx, fills, segments: () => segments };
+  };
+  const grid = new SquareGrid(createLevel({ id: 'rdc', pxPerCell: 100, widthCells: 6, heightCells: 6 }));
+  const draw = (/** @type {object} */ patch) => {
+    const rec = recorder();
+    new TokensLayer().render(rec.ctx, grid, [linked(patch)], null, { activeLevelId: 'rdc' });
+    return rec;
+  };
+  const dead = draw({ dead: true, deathCause: 'poison' });
+  assert.ok(dead.fills.includes('saturation'), 'portrait désaturé');
+  assert.equal(dead.ctx.globalCompositeOperation, 'source-over', 'fusion rendue au dessin suivant');
+  const alive = draw({ dead: false });
+  assert.ok(!alive.fills.includes('saturation'));
+  assert.equal(dead.segments() - alive.segments(), 2, 'deux branches de croix');
+});
+
+test('badge d’état : niveau affiché dès 2 pour un état cumulable, rien à 1', async () => {
+  const { drawStatusBadges } = await import('../js/render/statusBadges.js');
+  /** @param {any} token */
+  const texts = (token) => {
+    /** @type {string[]} */ const out = [];
+    const ctx = /** @type {any} */ ({
+      save() {}, restore() {}, beginPath() {}, arc() {}, fill() {}, stroke() {}, drawImage() {},
+      fillText(/** @type {string} */ text) { out.push(text); },
+      fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: 'center', textBaseline: 'middle',
+    });
+    drawStatusBadges(ctx, token, { x: 0, y: 0 }, { widthMap: 140, zoom: 1, iconCache: /** @type {any} */ ({ getRasterCanvas: () => null }) });
+    return out;
+  };
+  assert.deepEqual(texts(linked({ markers: ['stunned', 'bleeding'], markerLevels: { stunned: 3, bleeding: 1 } })), ['3']);
+  assert.deepEqual(texts(linked({ markers: ['stunned'] })), [], 'pion sans niveaux : aucun chiffre');
+});
+
+test('mjLink : liste des PJ reçue (mj.roster), liaison durable d’un pion puis état redemandé', async () => {
+  const { link, channel, count, links, published } = await openLink({ campaign: () => null });
+  assert.deepEqual(link.roster(), []);
+  channel.deliver(msg('mj.roster', { characters: [{ ref: 'pj:c9', label: 'Ulrika' }, { ref: 'p:g1', label: 'Gobelin' }, { label: 'sans ref' }] }));
+  assert.deepEqual(link.roster(), [{ ref: 'pj:c9', label: 'Ulrika' }], 'seuls les PJ bien formés');
+  const hellos = count('map.hello');
+  link.bind('t1', 'pj:c9');
+  assert.deepEqual(links, [['t1', 'pj:c9']]);
+  assert.deepEqual(published, [['token.link', { tokenId: 't1', ref: 'pj:c9' }]], 'la tablette apprend la liaison');
+  assert.equal(count('map.hello'), hellos + 1, 'état du PJ redemandé à l’outil MJ');
+  link.bind('t1', null);
+  assert.deepEqual(published.at(-1), ['token.link', { tokenId: 't1' }], 'déliaison : sans ref');
+});
+
+test('marqueurs Exténué et Souillé (contrat §5, Q7 rouverte) : acceptés par la validation, libellés et icône présents', async () => {
+  const { STATUS_MARKER_LABEL_FR, STATUS_MARKER_CATEGORY, STATUS_MARKER_IDS } = await import('../js/core/constants.js');
+  const { existsSync } = await import('node:fs');
+  assert.deepEqual(errorsOf(linked({ markers: ['fatigued', 'tainted'], markerLevels: { fatigued: 2 } })), []);
+  assert.equal(STATUS_MARKER_LABEL_FR.fatigued, 'Exténué');
+  assert.equal(STATUS_MARKER_LABEL_FR.tainted, 'Souillé');
+  for (const id of STATUS_MARKER_IDS) {
+    assert.ok(STATUS_MARKER_CATEGORY[id], `catégorie de ${id}`);
+    assert.ok(existsSync(new URL(`../assets/icons/status/${id}.svg`, import.meta.url)), `icône de ${id}`);
+  }
+});

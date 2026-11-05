@@ -749,7 +749,7 @@ boule de feu ? » — en le rendant visible de tous sur l'écran partagé.
     speedCells: 6,                      // portée des cases atteignables
     playerMovable: true, locked: false,
     elevation: 0,                       // badge affiché, sans effet géométrique
-    markers: [],                        // ['poisoned', 'prone', …] — jeu clos à 14 marqueurs
+    markers: [],                        // ['poisoned', 'prone', …] — jeu clos à 16 marqueurs
     mounted: false,                     // à cheval : budget ×2, aucun portail ni liaison (§5.3bis, C-9)
     hp: null,                           // ou { current: 14, max: 28 } (Chantier Q)
     health: 'unharmed'                  // 'unharmed'|'wounded'|'critical' (PNJ uniquement)
@@ -1518,6 +1518,9 @@ Critères :
    empoisonné, en flammes, hémorragique, inconscient, sonné, surpris, frénésie, peur, terreur.
    Les identifiants et leurs icônes sont dans `assets/icons/status/SOURCES.md`, qui fait
    autorité ; le nom de fichier est l'identifiant. Voir `TRANCHE-L09-MARQUEURS.md`.
+   **Rouverte le 04/11/2026** par le contrat de liaison avec l'outil MJ (§11.5) : + exténué
+   (`fatigued`) et souillé (`tainted`), seize états ; niveau d'un état cumulable en chiffre sur
+   le badge, dès 2 (`markerLevels`, pion lié).
    > La question demandait d'attendre « une séance réelle ». Elle a été tranchée avant, par le
    > mainteneur, sur les états qu'il voit à sa table — ce qui était l'objet de l'attente. Ce
    > que la séance dira encore : l'**ordre de troncature** quand un pion porte plus de trois

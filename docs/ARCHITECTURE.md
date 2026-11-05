@@ -254,7 +254,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 ├─ maps/                          [1a] images traitées, commitées. ⛔ Le POOL du mainteneur :
 │                                      aucun test ne le lit (FIXTURES.md §2bis)
 ├─ assets/
-│   ├─ icons/status/              [2]  les 14 icônes d'états, une par valeur de
+│   ├─ icons/status/              [2]  les 16 icônes d'états, une par valeur de
 │   │                                  `token.markers`. Le nom de fichier EST l'identifiant.
 │   │                                  Provenance, licence et normalisation : SOURCES.md du
 │   │                                  dossier. Contenu clos — cf. CdC §12 Q7

@@ -281,9 +281,11 @@ export const STATUS_MARKER_IDS = /** @type {const} */ ([
   'deafened',
   'broken',
   'frenzy',
+  'fatigued',
   'ablaze',
   'bleeding',
   'poisoned',
+  'tainted',
   'surprised',
 ]);
 
@@ -307,9 +309,11 @@ export const STATUS_MARKER_CATEGORY = {
   deafened: 'senses',
   broken: 'mind',
   frenzy: 'mind',
+  fatigued: 'control',
   ablaze: 'damage',
   bleeding: 'damage',
   poisoned: 'damage',
+  tainted: 'damage',
   surprised: 'control',
 };
 
@@ -354,9 +358,11 @@ export const STATUS_MARKER_LABEL_FR = {
   deafened: 'Assourdi',
   broken: 'Brisé',
   frenzy: 'Frénésie',
+  fatigued: 'Exténué',
   ablaze: 'En flammes',
   bleeding: 'Hémorragique',
   poisoned: 'Empoisonné',
+  tainted: 'Souillé',
   surprised: 'Surpris',
 };
 
