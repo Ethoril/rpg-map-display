@@ -226,8 +226,8 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 | Message | Payload | Effet dans l'outil MJ |
 |---|---|---|
 | `map.placed` / `map.unplaced` | `{ ref, levelId }` | Indicateur « posé » sur le participant, et liste « à poser ». |
-| `map.adjacency` | `{ pairs: [[refA, refB], …] }` (camps opposés seulement) à chaque fin de déplacement | **Suggestion** d'engagement, jamais automatique : le MJ accepte ou ignore. |
-| `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres ; diagonale = 1,5 case, voir §14) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
+| `map.adjacency` | `{ pairs: [[refA, refB], …] }` (camps opposés seulement : PJ et alliés contre ennemis, un neutre n'est engagé avec personne ; pions morts exclus) : liste **complète** du plateau, envoyée à chaque fin de déplacement | **Suggestion** d'engagement, jamais automatique : le MJ accepte ou ignore. |
+| `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres ; diagonale = 1,5 case, voir §14 ; distance entre les cases les plus proches des deux emprises ; `cells: null` si un des pions n'est pas posé ou s'ils sont sur des étages différents, l'outil MJ laisse alors la saisie au MJ) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
 | `map.ran` | `{ ref }` quand un pion lié termine un déplacement dont le trajet dépasse sa Marche (`speedCells`), donc a couru, une fois par déplacement | Le participant a utilisé son Action du Tour pour courir. Jamais envoyé pour un déplacement à la Marche ni pour un pion non lié. |
 
 L'outil MJ envoie aussi `mj.engagements { pairs }`. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
