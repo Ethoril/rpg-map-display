@@ -227,7 +227,7 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 |---|---|---|
 | `map.placed` / `map.unplaced` | `{ ref, levelId }` | Indicateur « posé » sur le participant, et liste « à poser ». |
 | `map.adjacency` | `{ pairs: [[refA, refB], …] }` (camps opposés seulement) à chaque fin de déplacement | **Suggestion** d'engagement, jamais automatique : le MJ accepte ou ignore. |
-| `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
+| `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres ; diagonale = 1,5 case, voir §14) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
 | `map.ran` | `{ ref }` quand un pion lié termine un déplacement dont le trajet dépasse sa Marche (`speedCells`), donc a couru, une fois par déplacement | Le participant a utilisé son Action du Tour pour courir. Jamais envoyé pour un déplacement à la Marche ni pour un pion non lié. |
 
 L'outil MJ envoie aussi `mj.engagements { pairs }`. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
@@ -280,6 +280,6 @@ Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la
 
 ## 14. Points laissés ouverts (à trancher au lot concerné)
 
-- **Mesure des distances** (lot 5) : la diagonale compte-t-elle pour 1 case, comme le compteur du trajet de Map Display, ou une règle de mesure différente s'applique-t-elle ? Par défaut, on reprend la géométrie de Map Display.
+- **Mesure des distances** (lot 5) : **tranché le 05/11 (D4)**. On reprend la géométrie de Map Display (`SquareGrid.distance`, coût octile) : orthogonale 1 case, diagonale 1,5 case, comme la règle de mesure et la zone de déplacement. `cells` peut donc valoir une demi-case (3 cases en diagonale = 4,5 cases = 9 m pour un tir, 4,5 m pour un sort). En hexagone, la distance hexagonale. Adjacence (`map.adjacency`, montures) : les 8 cases voisines, diagonales comprises.
 - **Machine de jeu** : Map Display se joue côté MJ sur le Mac. L'outil MJ doit être ouvert **dans le même navigateur de la même machine**.
 - **Interface d'import d'image** (lot 2) : emplacement dans l'éditeur de profil, et possibilité d'importer en masse pour le bestiaire.
