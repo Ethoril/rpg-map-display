@@ -262,8 +262,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  `token.markers`. Le nom de fichier EST l'identifiant.
 │   │                                  Provenance, licence et normalisation : SOURCES.md du
 │   │                                  dossier. Contenu clos — cf. CdC §12 Q7
-│   ├─ fx/                        [L4] dix WebP des effets (gerbe, flaque, feu, magie, poison ×
-│   │                                  deux variantes), générés avec Magnific. Provenance :
+│   ├─ fx/                        [L4] sept WebP des effets (gerbe, flaque, feu, flammes ×2, magie,
+│   │                                  poison), générés avec Magnific, variantes choisies par le MJ. Provenance :
 │   │                                  SOURCES.md du dossier. Contenu clos
 │   └─ icons/mounted.svg        [C-9] tête de cheval du pion monté — game-icons.net
 │                                      `delapouite/horse-head`, CC BY 3.0, crédit dans

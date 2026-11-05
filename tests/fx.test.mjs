@@ -90,6 +90,25 @@ test('chaque cause de mort a sa propre animation ; la magie se pose en screen', 
   assert.equal(signatures.size, FX_DEATH_CAUSES.length);
 });
 
+test('feu : brûlure au sol en multiply puis flammes en screen qui vacillent', () => {
+  const [burn, ...flames] = deathSprites('fire');
+  assert.equal(burn.blend, 'multiply');
+  assert.ok(flames.length >= 2 && flames.every((f) => f.blend === 'screen' && f.file.startsWith('flammes')));
+  const flame = flames[0];
+  const alphas = new Set();
+  for (let age = 700; age < 1100; age += 40) alphas.add(spriteFrame(flame, age)?.alpha.toFixed(3));
+  assert.ok(alphas.size > 4, 'l’opacité varie dans le temps (vacillement)');
+  // Opacité rapportée au pic : identique si les deux nappes vacillaient en phase.
+  const ratio = (/** @type {import('../js/render/layers/fx.js').FxSprite} */ f, /** @type {number} */ age) => (spriteFrame(f, age)?.alpha ?? 0) / f.peak;
+  const decale = [800, 840, 880, 920, 960].some((age) => Math.abs(ratio(flames[0], age) - ratio(flames[1], age)) > 0.05);
+  assert.ok(decale, 'les deux nappes vacillent en opposition de phase');
+  const layer = loaded();
+  layer.play({ kind: 'death', cause: 'fire' }, { tokenId: 'g1', now: 0 });
+  const { ctx, draws } = recorder();
+  layer.render(ctx, grid, level, { tokens: tokens(), now: 1000 });
+  assert.deepEqual(draws.map((d) => d.blend), ['multiply', 'screen', 'screen']);
+});
+
 test('cause inconnue ou absente : blood ; blessure malformée refusée', () => {
   assert.deepEqual(parseFx('death', { cause: 'chute' }), { kind: 'death', cause: 'blood' });
   assert.deepEqual(parseFx('death', {}), { kind: 'death', cause: 'blood' });

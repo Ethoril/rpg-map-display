@@ -29,9 +29,6 @@
  * rotation, en un fondu bref ; la tache de sang ne persiste pas.
  */
 
-/** Variante câblée par défaut (`-1`) ; le MJ choisit entre `-1` et `-2` (lot L4). */
-export const FX_VARIANT = 1;
-
 /** Dossier des images, relatif à la page (gm.html, player.html). */
 export const FX_IMAGE_DIR = 'assets/fx/';
 
@@ -55,7 +52,7 @@ export const FX_DEATH_CAUSES = /** @type {const} */ (['blood', 'fire', 'magic', 
 /**
  * Un calque d'image dans le temps d'un effet.
  * @typedef {Object} FxSprite
- * @property {string} file       nom de base de l'image (`gerbe`, `flaque`, `feu`, `magie`, `poison`)
+ * @property {string} file       nom de base de l'image (`gerbe`, `flaque`, `feu`, `flammes-1`, `flammes-2`, `magie`, `poison`)
  * @property {'multiply'|'screen'} blend
  * @property {number} size       côté en cases du pion
  * @property {number} delay      ms avant le début
@@ -65,7 +62,9 @@ export const FX_DEATH_CAUSES = /** @type {const} */ (['blood', 'fire', 'magic', 
  * @property {number} peak       opacité maximale
  * @property {number} scaleFrom  échelle au début
  * @property {number} scaleEnd   échelle à la fin de l'estompage
- * @property {number} [variantShift] décale la variante (0 ou 1) pour varier deux calques d'un même effet
+ * @property {number} [rotationShift] radians ajoutés à la rotation de l'effet, pour varier deux calques d'une même image
+ * @property {number} [flicker]  amplitude du vacillement (0 à 1) de l'opacité et de l'échelle ; en phase décalée par calque
+ * @property {number} [phase]    décalage du vacillement, en radians
  * @property {{ dx: number, dy: number }} [offset] décalage en fraction de `size`
  */
 
@@ -121,7 +120,7 @@ export function woundSprites(intensity) {
 /**
  * Calques d'une mort, une animation par cause. ⚠ `decapitation` et `dismemberment` n'ont pas
  * encore d'image à eux : ils recomposent la grosse gerbe et la flaque du sang (proposition du lot
- * L4, en attente du choix du MJ — image à générer ou conserver cette variante).
+ * L4, en attente du MJ : image dédiée à générer, ou conserver cette composition).
  *
  * @param {DeathCause} cause
  * @returns {FxSprite[]}
@@ -129,7 +128,13 @@ export function woundSprites(intensity) {
 export function deathSprites(cause) {
   switch (cause) {
     case 'fire':
-      return [sprite({ file: 'feu', size: 1.9, grow: 1400, hold: 3000, fade: 3000, scaleFrom: 0.6 })];
+      // Deux couches : la brûlure au sol (multiply, trace durable) et deux nappes de flammes vues
+      // de dessus (screen, sur fond noir) qui vacillent en opposition de phase.
+      return [
+        sprite({ file: 'feu', size: 1.9, grow: 1400, hold: 3000, fade: 3000, scaleFrom: 0.6 }),
+        sprite({ file: 'flammes-1', blend: 'screen', size: 1.7, grow: 500, hold: 2400, fade: 1800, scaleFrom: 0.5, flicker: 0.25, phase: 0 }),
+        sprite({ file: 'flammes-2', blend: 'screen', size: 1.5, delay: 150, grow: 500, hold: 2250, fade: 1800, peak: 0.8, scaleFrom: 0.5, flicker: 0.25, phase: Math.PI, rotationShift: 2.1 }),
+      ];
     case 'magic':
       return [sprite({ file: 'magie', blend: 'screen', size: 2.6, grow: 720, fade: 1080, scaleFrom: 0.3, scaleEnd: 1.3 })];
     case 'poison':
@@ -142,7 +147,7 @@ export function deathSprites(cause) {
     case 'dismemberment':
       return [
         sprite({ file: 'gerbe', size: 2.6, grow: FX_BURST_MS, hold: 500, fade: 2500, scaleFrom: 0.2 }),
-        sprite({ file: 'gerbe', size: 2.2, delay: 150, grow: FX_BURST_MS, hold: 500, fade: 2500, scaleFrom: 0.2, variantShift: 1, offset: { dx: 0.18, dy: -0.12 } }),
+        sprite({ file: 'gerbe', size: 2.2, delay: 150, grow: FX_BURST_MS, hold: 500, fade: 2500, scaleFrom: 0.2, rotationShift: 1.7, offset: { dx: 0.18, dy: -0.12 } }),
         sprite({ file: 'flaque', size: 2.6, delay: 400, grow: 2600, hold: 3000, fade: 3000, peak: 0.95, scaleFrom: 0.15 }),
       ];
     case 'blood':
@@ -184,11 +189,15 @@ export function spriteFrame(s, age) {
   if (t < s.grow) {
     const p = t / s.grow;
     const eased = 1 - (1 - p) * (1 - p) * (1 - p);
-    return { alpha: s.peak * Math.min(1, p * 2.5), scale: s.scaleFrom + (1 - s.scaleFrom) * eased };
+    const grown = s.scaleFrom + (1 - s.scaleFrom) * eased;
+    return { alpha: s.peak * Math.min(1, p * 2.5), scale: grown };
   }
-  if (t < s.grow + s.hold) return { alpha: s.peak, scale: 1 };
+  const wobble = s.flicker ? Math.sin(age / 85 + (s.phase ?? 0)) : 0;
+  const flickerAlpha = 1 - (s.flicker ?? 0) * (0.5 + 0.5 * wobble);
+  const flickerScale = 1 + (s.flicker ?? 0) * 0.16 * wobble;
+  if (t < s.grow + s.hold) return { alpha: s.peak * flickerAlpha, scale: flickerScale };
   const p = (t - s.grow - s.hold) / s.fade;
-  return { alpha: s.peak * (1 - p * p), scale: 1 + (s.scaleEnd - 1) * p };
+  return { alpha: s.peak * flickerAlpha * (1 - p * p), scale: (1 + (s.scaleEnd - 1) * p) * flickerScale };
 }
 
 /**
@@ -269,7 +278,7 @@ export class FxLayer {
     const reduced = context.reducedMotion === true;
     // Mouvement réduit : pas de tache persistante pour une blessure, un simple fondu.
     const sprites = reduced ? reduceSprites(full) : full;
-    for (const s of sprites) this.imageFor(s, 0);
+    for (const s of sprites) this.imageFor(s);
     this.active.push({
       tokenId: context.tokenId,
       sprites,
@@ -282,11 +291,9 @@ export class FxLayer {
 
   /**
    * @param {FxSprite} s
-   * @param {number} extra
    */
-  imageFor(s, extra) {
-    const variant = ((FX_VARIANT - 1 + (s.variantShift ?? 0) + extra) % 2) + 1;
-    const url = `${FX_IMAGE_DIR}${s.file}-${variant}.webp`;
+  imageFor(s) {
+    const url = `${FX_IMAGE_DIR}${s.file}.webp`;
     let image = this.images.get(url);
     if (!image) {
       image = this.loadImage(url);
@@ -342,14 +349,14 @@ export class FxLayer {
         // Un fondu lent (la tache de sang) ne justifie pas 60 images par seconde : un rafraîchissement par seconde.
         if (age - s.delay >= s.grow + s.hold && s.fade > 5000) slow = true;
         else result.animationActive = true;
-        const image = this.imageFor(s, 0);
+        const image = this.imageFor(s);
         if (!image.complete || !image.naturalWidth) continue;
         const side = s.size * anchor.unit * frame.scale;
         ctx.save();
         ctx.globalCompositeOperation = s.blend;
         ctx.globalAlpha = Math.max(0, Math.min(1, frame.alpha));
         ctx.translate(anchor.x + (s.offset?.dx ?? 0) * s.size * anchor.unit, anchor.y + (s.offset?.dy ?? 0) * s.size * anchor.unit);
-        ctx.rotate(fx.rotation + (s.variantShift ? 1.7 : 0));
+        ctx.rotate(fx.rotation + (s.rotationShift ?? 0));
         ctx.drawImage(image, -side / 2, -side / 2, side, side);
         ctx.restore();
         result.drawn = true;

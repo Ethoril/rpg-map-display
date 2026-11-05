@@ -64,12 +64,16 @@ for (const hidden of [false, true]) {
       canal.postMessage({ v: 1, type: 'fx.death', seq: 1, at: Date.now(), from: 'outil-mj', payload: { ref: 'p:gob', cause: 'fire' } });
     });
 
-    await expect.poll(async () => (await dessines(gm)).some((d) => d.file === 'feu-1.webp' && d.blend === 'multiply')).toBe(true);
+    // Feu en deux couches : brûlure au sol en multiply, flammes en screen.
+    await expect.poll(async () => {
+      const d = await dessines(gm);
+      return d.some((x) => x.file === 'feu.webp' && x.blend === 'multiply') && d.some((x) => x.file === 'flammes-1.webp' && x.blend === 'screen');
+    }).toBe(true);
     if (hidden) {
       await gm.waitForTimeout(1500);
       expect(await dessines(player)).toEqual([]);
     } else {
-      await expect.poll(async () => (await dessines(player)).some((d) => d.file === 'feu-1.webp')).toBe(true);
+      await expect.poll(async () => (await dessines(player)).some((d) => d.file === 'flammes-1.webp')).toBe(true);
     }
   });
 }
