@@ -43,6 +43,9 @@ export const SITE_MANIFEST = Object.freeze({
   directories: Object.freeze([
     Object.freeze({ source: 'css', extension: '.css' }),
     Object.freeze({ source: 'assets/icons/status', extension: '.svg' }),
+    // Effets de blessure et de mort (lot L4, contrat de liaison §9) : sans cette ligne, Pages
+    // servirait une 404 sur chaque image d'effet.
+    Object.freeze({ source: 'assets/fx', extension: '.webp' }),
   ]),
   generatedFiles: Object.freeze([
     'maps/catalog.json',
