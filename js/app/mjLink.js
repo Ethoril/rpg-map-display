@@ -15,7 +15,7 @@ import { isLinkedToken } from '../core/schema.js';
 import { movementRulesFor } from '../state/selection.js';
 import { ranStartIndex } from '../state/movePlan.js';
 import { parseFx } from '../render/layers/fx.js';
-import { footprintsAdjacent } from '../grid/index.js';
+import { footprintsAdjacent, gridFor } from '../grid/index.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
@@ -173,6 +173,96 @@ export function answerMountRequest(campaign, payload) {
   const level = campaign.levels.find((l) => l.id === mount.token.levelId);
   const adjacent = rider.token.levelId === mount.token.levelId && level !== undefined && footprintsAdjacent(level, rider.token, mount.token);
   return adjacent ? accepted : { type: 'mount.refused', payload: { riderRef, mountRef, reason: 'not-adjacent' } };
+}
+
+/**
+ * Pions liés posés, `ref` → étage (contrat §10, `map.placed`). La réserve n'est pas posée.
+ *
+ * @param {Campaign} campaign
+ * @returns {Map<string, string>}
+ */
+export function placedLinkedRefs(campaign) {
+  /** @type {Map<string, string>} */
+  const placed = new Map();
+  for (const token of campaign.tokens) {
+    if (isLinkedToken(token) && token.link) placed.set(token.link.ref, token.levelId);
+  }
+  return placed;
+}
+
+/**
+ * Côté d'un camp de l'outil MJ : PJ et alliés d'un bord, ennemis de l'autre, neutres d'aucun.
+ * @param {Token['camp']} camp @returns {'groupe'|'ennemis'|null}
+ */
+function campSide(camp) {
+  if (camp === 'pj' || camp === 'allie') return 'groupe';
+  return camp === 'ennemi' ? 'ennemis' : null;
+}
+
+/**
+ * Paires de pions liés adjacents de camps opposés (contrat §10, `map.adjacency`) : emprises
+ * comprises, 8 voisines en carré (§14, D4), même étage. Un mort ne s'engage plus. Paires et
+ * membres triés, pour un message stable.
+ *
+ * @param {Campaign} campaign
+ * @returns {[string, string][]}
+ */
+export function adjacencyPairs(campaign) {
+  const linked = campaign.tokens.filter((t) => isLinkedToken(t) && t.link && t.dead !== true && campSide(t.camp) !== null);
+  /** @type {[string, string][]} */
+  const pairs = [];
+  for (let i = 0; i < linked.length; i++) {
+    for (let j = i + 1; j < linked.length; j++) {
+      const first = linked[i];
+      const second = linked[j];
+      if (first.levelId !== second.levelId || campSide(first.camp) === campSide(second.camp)) continue;
+      const level = campaign.levels.find((l) => l.id === first.levelId);
+      if (!level || !footprintsAdjacent(level, first, second)) continue;
+      const refs = /** @type {[string, string]} */ ([/** @type {any} */ (first.link).ref, /** @type {any} */ (second.link).ref].sort());
+      pairs.push(refs);
+    }
+  }
+  /** @param {string} x @param {string} y */
+  const ordinal = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  return pairs.sort((p, q) => ordinal(p[0], q[0]) || ordinal(p[1], q[1]));
+}
+
+/**
+ * Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` (contrat §10, §14 D4) : la plus courte
+ * `grid.distance` entre une case de chaque emprise, en cases (diagonale 1,5 en carré). `cells`
+ * vaut `null` quand un pion n'est pas posé ou que les deux sont sur des étages différents : la
+ * carte ne sait pas répondre, mais elle répond, pour que l'outil MJ n'attende pas.
+ *
+ * @param {Campaign} campaign
+ * @param {any} payload
+ * @returns {{ queryId: string|number, cells: number|null }|null}
+ */
+export function answerDistanceQuery(campaign, payload) {
+  const { fromRef, toRef, queryId } = payload ?? {};
+  if (typeof fromRef !== 'string' || typeof toRef !== 'string' || (typeof queryId !== 'string' && typeof queryId !== 'number')) return null;
+  /** @param {string} ref */
+  const placed = (ref) => campaign.tokens.find((t) => isLinkedToken(t) && (t.link?.ref === ref || t.rider?.ref === ref)) ?? null;
+  const from = placed(fromRef);
+  const to = placed(toRef);
+  const level = from ? campaign.levels.find((l) => l.id === from.levelId) : undefined;
+  if (!from || !to || !level || from.levelId !== to.levelId) return { queryId, cells: null };
+  const grid = gridFor(level);
+  const fromCells = grid.cellsOccupied(from.cell, from.sizeCells || 1);
+  const toCells = grid.cellsOccupied(to.cell, to.sizeCells || 1);
+  let cells = Infinity;
+  for (const a of fromCells) for (const b of toCells) cells = Math.min(cells, grid.distance(a, b));
+  return { queryId, cells };
+}
+
+/**
+ * Paires `mj.engagements` valides : deux `ref` textuels distincts.
+ * @param {any} payload @returns {[string, string][]}
+ */
+export function parseEngagements(payload) {
+  const pairs = Array.isArray(payload?.pairs) ? payload.pairs : [];
+  return pairs
+    .filter((/** @type {any} */ p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && typeof p[1] === 'string' && p[0] !== p[1])
+    .map((/** @type {[string, string]} */ p) => /** @type {[string, string]} */ ([p[0], p[1]]));
 }
 
 /**
@@ -406,7 +496,7 @@ export const MJ_LINK_ECHO_MS = 4000;
  * (navigateur ancien, test), ne fait rien et rend `null`.
  *
  * @param {{
- *   store: Parameters<typeof executeMjOperations>[1]['store'] & { setTokenLink: (tokenId: string, ref: string|null) => void },
+ *   store: Parameters<typeof executeMjOperations>[1]['store'] & { setTokenLink: (tokenId: string, ref: string|null) => void, subscribe?: (listener: () => void) => () => void },
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
  *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
@@ -417,7 +507,7 @@ export const MJ_LINK_ECHO_MS = 4000;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean }|null}
+ * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, engagements: () => [string, string][] }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -436,6 +526,15 @@ export function startMjLink(options) {
   /** Liste des PJ de l'outil MJ (`mj.roster`, contrat §3), pour « Lier à un PJ de l'outil MJ ». */
   /** @type {{ ref: string, label: string }[]} */
   let roster = [];
+  /** Traits d'engagement (`mj.engagements`, contrat §10) : écran MJ seul, jamais republiés. */
+  /** @type {[string, string][]} */
+  let engagements = [];
+  /** Dernier état « posé » annoncé à l'outil MJ (`map.placed` / `map.unplaced`), `ref` → étage. */
+  /** @type {Map<string, string>} */
+  let announcedPlaced = new Map();
+  /** Signature des positions des pions liés : un changement est une fin de déplacement. */
+  /** @type {string|null} */
+  let positionsSignature = null;
   let counter = 0;
   const awaitingList = () => [...awaiting].map(([ref, label]) => ({ ref, label }));
   /** @type {Set<() => void>} */
@@ -457,6 +556,29 @@ export function startMjLink(options) {
     send('map.ping');
   };
   const hello = () => send('map.hello', { v: MJ_LINK_VERSION, sessionId: options.sessionId });
+  /** Annonce les pions liés posés, retirés ou changés d'étage depuis la dernière annonce. */
+  const syncPlaced = () => {
+    const campaign = options.store.getCampaign();
+    if (!campaign) return;
+    const placed = placedLinkedRefs(campaign);
+    for (const [ref, levelId] of placed) if (announcedPlaced.get(ref) !== levelId) send('map.placed', { ref, levelId });
+    for (const [ref, levelId] of announcedPlaced) if (!placed.has(ref)) send('map.unplaced', { ref, levelId });
+    announcedPlaced = placed;
+  };
+  /** Fin de déplacement d'un pion lié (sa case, sa taille ou son étage changent) : `map.adjacency`. */
+  const syncAdjacency = () => {
+    const campaign = options.store.getCampaign();
+    if (!campaign) return;
+    const signature = JSON.stringify(campaign.tokens.filter((t) => isLinkedToken(t) && t.link)
+      .map((t) => [t.link?.ref, t.levelId, t.cell.a, t.cell.b, t.sizeCells]));
+    const previous = positionsSignature;
+    positionsSignature = signature;
+    if (previous !== null && previous !== signature) send('map.adjacency', { pairs: adjacencyPairs(campaign) });
+  };
+  const onStoreChange = () => {
+    syncPlaced();
+    syncAdjacency();
+  };
   channel.onmessage = (event) => {
     const message = event?.data;
     if (!message || message.from !== 'outil-mj') return;
@@ -467,11 +589,18 @@ export function startMjLink(options) {
     lastSeen = now();
     setStatus('connected');
     if (message.type === 'mj.hello') hello();
+    // L'outil MJ (re)démarre ou renvoie son état : il ne sait plus ce qui est posé, on le lui redit.
+    if (message.type === 'mj.hello' || message.type === 'mj.snapshot') announcedPlaced = new Map();
     if (message.type === 'mj.ping' && now() - lastPing > MJ_LINK_ECHO_MS) ping();
     if (message.type === 'mj.roster') {
       const characters = Array.isArray(message.payload?.characters) ? message.payload.characters : [];
       roster = characters.filter((/** @type {any} */ c) => typeof c?.ref === 'string' && c.ref.startsWith('pj:') && typeof c.label === 'string')
         .map((/** @type {any} */ c) => ({ ref: c.ref, label: c.label }));
+      return;
+    }
+    if (message.type === 'mj.engagements') {
+      engagements = parseEngagements(message.payload);
+      notify();
       return;
     }
     const campaign = options.store.getCampaign();
@@ -482,6 +611,11 @@ export function startMjLink(options) {
     if (message.type === 'mount.request') {
       const answer = answerMountRequest(campaign, message.payload);
       if (answer) send(answer.type, answer.payload);
+      return;
+    }
+    if (message.type === 'mj.distanceQuery') {
+      const answer = answerDistanceQuery(campaign, message.payload);
+      if (answer) send('map.distance', answer);
       return;
     }
     const levelId = options.activeLevelId() ?? campaign.levels[0]?.id ?? '';
@@ -504,7 +638,15 @@ export function startMjLink(options) {
     } catch (err) {
       console.error(`Liaison outil MJ : message "${message.type}" refusé : ${err instanceof Error ? err.message : String(err)}`);
     }
+    syncPlaced();
   };
+  // État de départ retenu sans rien émettre : l'outil MJ reçoit le « posé » complet à son instantané.
+  const initial = options.store.getCampaign();
+  if (initial) {
+    announcedPlaced = placedLinkedRefs(initial);
+    syncAdjacency();
+  }
+  const unsubscribe = options.store.subscribe?.(onStoreChange) ?? (() => {});
   hello();
   return {
     tick() {
@@ -515,7 +657,10 @@ export function startMjLink(options) {
       }
       if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) setStatus('disconnected');
     },
-    close: () => channel.close(),
+    close() {
+      unsubscribe();
+      channel.close();
+    },
     status: () => ({ status, awaiting: awaitingList() }),
     /** @param {() => void} listener @returns {() => void} */
     subscribe(listener) {
@@ -523,6 +668,7 @@ export function startMjLink(options) {
       return () => listeners.delete(listener);
     },
     roster: () => roster.map((entry) => ({ ...entry })),
+    engagements: () => engagements.map(([a, b]) => /** @type {[string, string]} */ ([a, b])),
     /**
      * Fin de déplacement d'un pion : s'il est lié et que son trajet dépasse la Marche, il a couru
      * et l'outil MJ en est prévenu (`map.ran`, contrat §10) — une fois par déplacement.
