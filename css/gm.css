@@ -775,6 +775,18 @@ details.gm-disclosure > .gm-disclosure-body {
   display: none;
 }
 
+.gm-mj-link[hidden] {
+  display: none;
+}
+
+.gm-mj-link {
+  margin-bottom: 8px;
+}
+
+.gm-mj-link[data-status='connected'] #gm-mj-link-status::before { content: '● '; color: #6f9a6b; }
+.gm-mj-link[data-status='disconnected'] #gm-mj-link-status::before { content: '● '; color: #6b7178; }
+.gm-mj-link[data-status='version-mismatch'] #gm-mj-link-status::before { content: '● '; color: #c9973a; }
+
 .gm-roster-head {
   display: flex;
   align-items: baseline;

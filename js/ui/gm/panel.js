@@ -40,7 +40,7 @@ import * as store from '../../state/store.js';
  * @property {(linkId: string) => void} [onRemoveLink]
  * @property {() => import('../../state/presence.js').ClientPresence[]} [getOtherGmSessions]
  * @property {() => boolean} [onEvictOtherGms]
- * @property {{ roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void }|null} [mjLink]
+ * @property {{ roster: () => { ref: string, label: string }[], status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, bind: (tokenId: string, ref: string|null) => void }|null} [mjLink]
  *   Liaison outil MJ (docs/CONTRAT-LIAISON-OUTIL-MJ.md §3) : liste des PJ et liaison durable d'un pion PJ.
  */
 
@@ -340,6 +340,10 @@ export function createGMPanel(container, options = {}) {
           <div class="gm-roster-head">
             <h4 class="gm-h gm-h--inline">Sur la carte</h4>
             <span id="gm-roster-count" class="gm-muted"></span>
+          </div>
+          <div id="gm-mj-link" class="gm-mj-link" hidden>
+            <p id="gm-mj-link-status" class="gm-hint" role="status"></p>
+            <div id="gm-mj-link-awaiting" class="gm-roster-list"></div>
           </div>
           <div id="gm-roster-list" class="gm-roster-list"></div>
           <p id="gm-roster-empty" class="gm-hint" hidden>Aucun pion sur cet étage. Posez-en un depuis la bibliothèque ci-dessous.</p>
@@ -1765,6 +1769,38 @@ export function createGMPanel(container, options = {}) {
   );
 
   rosterBack.addEventListener('click', () => store.selectToken(null), { signal: listeners.signal });
+
+  // Indicateur de la liaison outil MJ (contrat §2.3) et PJ en attente de liaison. Un clic sur un PJ
+  // en attente sélectionne le premier pion PJ non lié de l'étage ; le sélecteur « Lier à un PJ de
+  // l'outil MJ » de sa fiche fait la liaison.
+  const mjLinkBox = /** @type {HTMLElement} */ (container.querySelector('#gm-mj-link'));
+  const mjLinkStatus = /** @type {HTMLElement} */ (container.querySelector('#gm-mj-link-status'));
+  const mjLinkAwaiting = /** @type {HTMLElement} */ (container.querySelector('#gm-mj-link-awaiting'));
+  const MJ_LINK_TEXT = { connected: 'Outil MJ connecté', disconnected: 'Outil MJ déconnecté', 'version-mismatch': 'Outil MJ : versions différentes' };
+  function renderMjLinkStatus() {
+    if (!mjLink) return;
+    const { status, awaiting } = mjLink.status();
+    mjLinkBox.hidden = false;
+    mjLinkBox.dataset.status = status;
+    mjLinkStatus.textContent = MJ_LINK_TEXT[status];
+    mjLinkAwaiting.replaceChildren(...awaiting.map(({ ref, label }) => {
+      const row = doc.createElement('button');
+      row.type = 'button';
+      row.className = 'gm-roster-row gm-mj-link-awaiting';
+      row.dataset.ref = ref;
+      row.textContent = `${label} — en attente de liaison`;
+      return row;
+    }));
+  }
+  if (mjLink) {
+    renderMjLinkStatus();
+    const unsubscribe = mjLink.subscribe(renderMjLinkStatus);
+    listeners.signal.addEventListener('abort', unsubscribe);
+    mjLinkAwaiting.addEventListener('click', () => {
+      const libre = store.getCampaign()?.tokens.find((t) => t.kind === 'pc' && !t.link && t.levelId === store.getActiveLevelId());
+      if (libre) store.selectToken(libre.id);
+    }, { signal: listeners.signal });
+  }
 
   const sumMove = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-move'));
   const sumVision = /** @type {HTMLElement} */ (container.querySelector('#gm-token-sum-vision'));

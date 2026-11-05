@@ -98,6 +98,32 @@ function tokenPosition(token, now) {
 }
 
 /**
+ * Teinte du disque d'un pion lié sans image, par camp (contrat §6). Elles viennent de
+ * `TOKEN_BORDER_PALETTE` et se lisent avec des initiales blanches (contraste WCAG ≥ 4,5) :
+ * pj Bleu nuit 8,1 ; allié Vert forêt 5,9 ; ennemi Rouge brique 6,1 ; neutre Ardoise 4,9.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+export const CAMP_FILL = Object.freeze({
+  pj: '#34507f',
+  allie: '#3f6e4a',
+  ennemi: '#a8402f',
+  neutre: '#6b7178',
+});
+
+/**
+ * Initiales d'un nom : deux lettres pour deux mots ou plus (premier et deuxième mot), une sinon.
+ *
+ * @param {string|undefined} label
+ * @returns {string}
+ */
+export function campInitials(label) {
+  const words = (label ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  return words.slice(0, 2).map((w) => Array.from(w)[0]).join('').toUpperCase();
+}
+
+/**
  * Rendu Canvas des pions, avec cache d'images borné et invalidation asynchrone.
  */
 export class TokensLayer {
@@ -328,9 +354,12 @@ export class TokensLayer {
         drawHeight
       );
     } else {
-      ctx.fillStyle = imageEntry?.status === 'error' ? '#5f2530' : '#555d68';
+      const campFill = token.camp ? CAMP_FILL[token.camp] : undefined;
+      ctx.fillStyle = imageEntry?.status === 'error' ? '#5f2530' : (campFill ?? '#555d68');
       ctx.fillRect(p0.x, p0.y, width, height);
-      const initial = (token.label || token.kind || '?').trim().charAt(0).toUpperCase() || '?';
+      // Pion lié sans image (contrat §6) : initiales du nom, deux lettres pour deux mots ; sans
+      // camp, la lettre unique d'avant.
+      const initial = campFill ? campInitials(token.label) : ((token.label || token.kind || '?').trim().charAt(0).toUpperCase() || '?');
       ctx.fillStyle = '#ffffff';
       ctx.font = `bold ${Math.max(12, Math.round(Math.min(width, height) * 0.35))}px sans-serif`;
       ctx.textAlign = 'center';

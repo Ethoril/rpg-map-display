@@ -302,3 +302,70 @@ test('marqueurs Exténué et Souillé (contrat §5, Q7 rouverte) : acceptés par
     assert.ok(existsSync(new URL(`../assets/icons/status/${id}.svg`, import.meta.url)), `icône de ${id}`);
   }
 });
+
+test('L1b : statut et PJ en attente exposés à l’indicateur, abonnés prévenus à chaque changement', async () => {
+  let campaign = createCampaign({ levels: [level], tokens: [] });
+  const { link, channel, advance } = await openLink({ campaign: () => campaign });
+  assert.deepEqual(link.status(), { status: 'disconnected', awaiting: [] });
+  let calls = 0;
+  const off = link.subscribe(() => { calls += 1; });
+  channel.deliver(msg('mj.ping', {}));
+  assert.equal(link.status().status, 'connected');
+  assert.equal(calls, 1);
+  channel.deliver(msg('token.state', { ref: 'pj:c1', label: 'Gunnar', camp: 'pj', kind: 'pc', markers: [], markerLevels: {} }));
+  assert.deepEqual(link.status().awaiting, [{ ref: 'pj:c1', label: 'Gunnar' }]);
+  assert.equal(calls, 2, 'nouvelle attente : abonné prévenu');
+  channel.deliver(msg('token.state', { ref: 'pj:c1', label: 'Gunnar', camp: 'pj', kind: 'pc', markers: [], markerLevels: {} }));
+  assert.equal(calls, 2, 'même attente : rien de plus');
+  link.bind('t1', 'pj:c1');
+  assert.deepEqual(link.status().awaiting, []);
+  assert.equal(calls, 3, 'liaison faite : abonné prévenu');
+  advance(20_000);
+  link.tick();
+  assert.equal(link.status().status, 'disconnected');
+  assert.equal(calls, 4);
+  channel.deliver({ ...msg('mj.ping', {}), v: 99 });
+  assert.equal(link.status().status, 'version-mismatch');
+  off();
+  channel.deliver(msg('mj.ping', {}));
+  assert.equal(calls, 5, 'désabonné : plus prévenu');
+});
+
+test('L2 : pion sans image — disque à la couleur du camp, initiales du nom ; sans camp, rendu d’avant', async () => {
+  const { TokensLayer, CAMP_FILL, campInitials } = await import('../js/render/layers/tokens.js');
+  const { SquareGrid } = await import('../js/grid/SquareGrid.js');
+  const { TOKEN_BORDER_PALETTE } = await import('../js/core/constants.js');
+  const grid = new SquareGrid(createLevel({ id: 'rdc', pxPerCell: 100, widthCells: 6, heightCells: 6 }));
+  const draw = (/** @type {object} */ patch) => {
+    /** @type {string[]} */ const fills = [];
+    /** @type {string[]} */ const texts = [];
+    const ctx = /** @type {any} */ ({
+      save() {}, restore() {}, beginPath() {}, closePath() {}, arc() {}, ellipse() {}, clip() {},
+      fill() {}, stroke() {}, strokeRect() {}, drawImage() {}, measureText: () => ({ width: 10 }), moveTo() {}, lineTo() {},
+      fillText(/** @type {string} */ t) { texts.push(t); },
+      fillRect() { fills.push(ctx.fillStyle); },
+      fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
+      font: '', textAlign: 'center', textBaseline: 'middle',
+    });
+    new TokensLayer().render(ctx, grid, [linked({ imageUrl: undefined, ...patch })], null, { activeLevelId: 'rdc' });
+    return { fills, texts };
+  };
+  const palette = new Set(TOKEN_BORDER_PALETTE.map((e) => e.color));
+  /** @type {Record<string, string>} */ const expected = { pj: '#34507f', allie: '#3f6e4a', ennemi: '#a8402f', neutre: '#6b7178' };
+  for (const camp of ['pj', 'allie', 'ennemi', 'neutre']) {
+    const { fills, texts } = draw({ camp, label: 'Gobelin Noir' });
+    assert.equal(fills[0], expected[camp], camp);
+    assert.ok(palette.has(CAMP_FILL[camp]), `${camp} : teinte de la palette de bordures`);
+    assert.deepEqual(texts, ['GN']);
+  }
+  assert.deepEqual(draw({ camp: 'ennemi', label: 'Gobelin' }).texts, ['G'], 'un mot : une lettre');
+  assert.deepEqual(draw({ camp: 'ennemi', label: 'Gobelin des Marais' }).texts, ['GD'], 'trois mots : deux lettres');
+  const sansCamp = draw({ camp: undefined, label: 'Gobelin Noir' });
+  assert.equal(sansCamp.fills[0], '#555d68', 'sans camp : gris d’avant');
+  assert.deepEqual(sansCamp.texts, ['G'], 'sans camp : lettre unique d’avant');
+  assert.equal(campInitials('   '), '?');
+  // Initiales blanches lisibles : contraste WCAG ≥ 4,5 sur chaque teinte.
+  const lum = (/** @type {string} */ h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  for (const [camp, color] of Object.entries(CAMP_FILL)) assert.ok(1.05 / (lum(color) + 0.05) >= 4.5, `contraste ${camp}`);
+});

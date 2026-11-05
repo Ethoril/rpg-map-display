@@ -1318,7 +1318,6 @@ export async function bootstrapGMApp(options = {}) {
     createToken,
     activeLevelId: () => store.getActiveLevelId(),
     sessionId,
-    onStatus: (status, awaiting) => console.info(`Liaison outil MJ : ${status}`, awaiting),
   });
   if (mjLink) setInterval(mjLink.tick, MJ_LINK_PING_MS);
 

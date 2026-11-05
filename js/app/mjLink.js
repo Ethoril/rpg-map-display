@@ -254,7 +254,7 @@ export const MJ_LINK_ECHO_MS = 4000;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void }|null}
+ * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -274,11 +274,18 @@ export function startMjLink(options) {
   /** @type {{ ref: string, label: string }[]} */
   let roster = [];
   let counter = 0;
-  /** @param {'connected'|'disconnected'|'version-mismatch'} next */
-  const setStatus = (next) => {
+  const awaitingList = () => [...awaiting].map(([ref, label]) => ({ ref, label }));
+  /** @type {Set<() => void>} */
+  const listeners = new Set();
+  /** Prévient l'indicateur du panneau MJ (état ou liste d'attente changés). */
+  const notify = () => {
+    options.onStatus?.(status, awaitingList());
+    for (const listener of listeners) listener();
+  };
+  const setStatus = (/** @type {'connected'|'disconnected'|'version-mismatch'} */ next) => {
     if (next === status) return;
     status = next;
-    options.onStatus?.(status, [...awaiting].map(([ref, label]) => ({ ref, label })));
+    notify();
   };
   /** @param {string} type @param {any} [payload] */
   const send = (type, payload = {}) => channel.postMessage({ v: MJ_LINK_VERSION, type, seq: ++seq, at: now(), from: 'map', payload });
@@ -318,7 +325,12 @@ export function startMjLink(options) {
         newTokenId: () => `lie-${now().toString(36)}-${++counter}`,
         trace: { levelId, cell: { a: 0, b: 0 } },
       });
-      for (const { ref, label } of refs) awaiting.set(ref, label);
+      let changed = false;
+      for (const { ref, label } of refs) {
+        if (awaiting.get(ref) !== label) changed = true;
+        awaiting.set(ref, label);
+      }
+      if (changed) notify();
     } catch (err) {
       console.error(`Liaison outil MJ : message "${message.type}" refusé : ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -334,6 +346,12 @@ export function startMjLink(options) {
       if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) setStatus('disconnected');
     },
     close: () => channel.close(),
+    status: () => ({ status, awaiting: awaitingList() }),
+    /** @param {() => void} listener @returns {() => void} */
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     roster: () => roster.map((entry) => ({ ...entry })),
     /**
      * Liaison durable d'un pion posé à un PJ (`ref`), ou déliaison (`null`) : store, tablette par
@@ -343,7 +361,7 @@ export function startMjLink(options) {
     bind(tokenId, ref) {
       options.store.setTokenLink(tokenId, ref);
       options.publish('token.link', ref === null ? { tokenId } : { tokenId, ref });
-      if (ref !== null) awaiting.delete(ref);
+      if (ref !== null && awaiting.delete(ref)) notify();
       hello();
     },
   };
