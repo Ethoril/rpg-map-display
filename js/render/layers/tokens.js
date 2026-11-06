@@ -153,6 +153,20 @@ export function mergedMarkers(token) {
   return { markers, markerLevels };
 }
 
+/**
+ * Marqueurs que seule la monture porte (absents du cavalier) : le pion les distingue de ceux du
+ * cavalier, que son panneau montre en premier. Vide sans monture fusionnée.
+ *
+ * @param {Token} token
+ * @returns {string[]}
+ */
+export function mountOnlyMarkers(token) {
+  const rider = token.rider;
+  if (!rider) return [];
+  const own = new Set(token.markers ?? []);
+  return rider.markers.filter((m) => !own.has(m));
+}
+
 /** Part du diamètre du pion qu'occupe le médaillon du cavalier sur un pion monté (contrat §8.1). */
 export const RIDER_MEDALLION_RATIO = 0.42;
 
@@ -537,6 +551,7 @@ export class TokensLayer {
       zoom,
       resolution,
       invalidate: options?.invalidate ?? this.invalidate.bind(this),
+      mountMarkers: mountOnlyMarkers(token),
     });
 
     // ── Compteur chiffré (Chantier Q §5.5 & §4 Qui voit quoi) ──────────────────────────────

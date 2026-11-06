@@ -109,3 +109,37 @@ export function getSelectedTokenId() {
 export function getReachableCells() {
   return new Map(reachableCells);
 }
+
+/**
+ * Réserve telle que le MJ la voit : sans les montures rangées par une fusion (contrat §8.1). Une
+ * monture dont le cavalier est monté — sur le plateau ou lui-même en réserve — n'est pas un pion à
+ * poser : elle revient d'elle-même à la séparation. Le store, lui, la garde.
+ *
+ * @param {Token[]} board
+ * @param {Token[]} rangees Pions hors plateau
+ * @returns {Token[]}
+ */
+export function visibleReserve(board, rangees) {
+  const mountRefs = new Set(
+    [...board, ...rangees].filter((t) => t.mounted === true && t.rider?.ref).map((t) => /** @type {string} */ (t.rider?.ref))
+  );
+  return rangees.filter((t) => !(t.link?.ref && mountRefs.has(t.link.ref)));
+}
+
+/**
+ * Combattants d'un pion : le cavalier (le pion lui-même) puis, s'il est monté, sa monture. Chacun
+ * porte son nom, ses PV, sa santé et ses marqueurs.
+ *
+ * @param {Token} token
+ * @returns {{ role: 'cavalier'|'monture', label: string, hp: {current: number, max: number}|null, health: 'unharmed'|'wounded'|'critical', markers: string[], markerLevels: Record<string, number> }[]}
+ */
+export function combatantsOf(token) {
+  /** @type {ReturnType<typeof combatantsOf>} */
+  const sections = [
+    { role: /** @type {const} */ ('cavalier'), label: token.label, hp: token.hp ?? null, health: token.health, markers: [...(token.markers ?? [])], markerLevels: { ...(token.markerLevels ?? {}) } },
+  ];
+  if (token.rider) {
+    sections.push({ role: /** @type {const} */ ('monture'), label: token.rider.label, hp: token.rider.hp, health: token.rider.health, markers: [...token.rider.markers], markerLevels: { ...token.rider.markerLevels } });
+  }
+  return sections;
+}

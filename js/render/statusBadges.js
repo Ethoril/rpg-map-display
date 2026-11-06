@@ -29,6 +29,9 @@ import {
  * @typedef {'icons'|'category-dots'|'single-dot'} BadgeTier
  */
 
+/** Cercle des badges qui appartiennent à la monture d'un pion monté (le cavalier garde le blanc). */
+export const MOUNT_MARKER_RING = '#f5a623';
+
 /** @type {Set<string>} Set des URL d'icônes ayant déjà émis une erreur de chargement pour journaliser une seule fois. */
 const loggedErrors = new Set();
 
@@ -67,17 +70,24 @@ export function getBadgeTier(tokenDiameterPx) {
  * - 1 à `slots` marqueurs : autant d'icônes, overflowCount = 0.
  * - au-delà : `slots - 1` icônes + un compte '+N' (overflowCount = total - (slots - 1)).
  *
+ * Pion monté : `mountMarkers` désigne les marqueurs qui n'appartiennent qu'à la monture ; ils passent
+ * après ceux du cavalier (c'est le cavalier que le panneau montre), donc au débordement « +N » d'abord.
+ *
  * @param {StatusMarker[]} markers
  * @param {number} [slots=BADGE_ROW_SLOTS]
+ * @param {readonly string[]} [mountMarkers]
  * @returns {{ visibleMarkers: StatusMarker[], overflowCount: number }}
  */
-export function filterAndSortMarkers(markers, slots = BADGE_ROW_SLOTS) {
+export function filterAndSortMarkers(markers, slots = BADGE_ROW_SLOTS, mountMarkers = []) {
   if (!Array.isArray(markers) || markers.length === 0) {
     return { visibleMarkers: [], overflowCount: 0 };
   }
 
   // Tri selon l'ordre canonique
   const sorted = [...markers].sort((a, b) => {
+    const mountA = mountMarkers.includes(a) ? 1 : 0;
+    const mountB = mountMarkers.includes(b) ? 1 : 0;
+    if (mountA !== mountB) return mountA - mountB;
     const rankA = MARKER_RANK_MAP.get(a) ?? 999;
     const rankB = MARKER_RANK_MAP.get(b) ?? 999;
     return rankA - rankB;
@@ -391,6 +401,8 @@ export function computeMountedBadgeRowLayout(tokenWidthMap, itemCount) {
  * @param {number} [options.resolution=1] Résolution d'affichage (devicePixelRatio cap)
  * @param {(() => void)} [options.invalidate] Rappel facultatif d'invalidation du rendu
  * @param {StatusIconCache} [options.iconCache] Cache d'icônes optionnel
+ * @param {readonly string[]} [options.mountMarkers] Marqueurs propres à la monture d'un pion monté :
+ *   rangés après ceux du cavalier et cerclés d'ambre.
  */
 export function drawStatusBadges(ctx, token, p0, options = {}) {
   if (!ctx || !token) return;
@@ -412,7 +424,8 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
   if (tier === 'icons') {
     const { visibleMarkers, overflowCount } = filterAndSortMarkers(
       markers,
-      mounted ? BADGE_ROW_SLOTS - 1 : BADGE_ROW_SLOTS
+      mounted ? BADGE_ROW_SLOTS - 1 : BADGE_ROW_SLOTS,
+      options.mountMarkers
     );
     const totalCount = visibleMarkers.length + (overflowCount > 0 ? 1 : 0);
     /** @type {{ badgeRadiusMap: number, centers: { x: number, y: number }[] }} */
@@ -442,7 +455,7 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
       ctx.fill();
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = options.mountMarkers?.includes(markerId) ? MOUNT_MARKER_RING : '#ffffff';
       ctx.lineWidth = 1.5 / safeZoom;
       ctx.stroke();
 
