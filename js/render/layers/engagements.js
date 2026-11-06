@@ -33,11 +33,11 @@ function tokenForRef(tokens, levelId, ref) {
  *
  * @param {GridAdapter} grid
  * @param {Token} token
- * @returns {MapPoint}
+ * @returns {MapPoint & { radius: number }}
  */
 function footprintCenter(grid, token) {
   const bounds = grid.cellBounds({ cellX: token.cell.a, cellY: token.cell.b }, Math.max(1, token.sizeCells || 1));
-  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, radius: Math.min(bounds.width, bounds.height) / 2 };
 }
 
 /**
@@ -57,7 +57,19 @@ export function engagementSegments(grid, level, tokens, pairs) {
     const a = tokenForRef(tokens, level.id, refA);
     const b = tokenForRef(tokens, level.id, refB);
     if (!a || !b || a === b) continue;
-    segments.push({ from: footprintCenter(grid, a), to: footprintCenter(grid, b) });
+    const ca = footprintCenter(grid, a);
+    const cb = footprintCenter(grid, b);
+    const dx = cb.x - ca.x;
+    const dy = cb.y - ca.y;
+    const dist = Math.hypot(dx, dy);
+    // Trait de bord à bord : il n'entre pas dans le disque des pions (initiales, portraits).
+    if (dist <= ca.radius + cb.radius) continue;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    segments.push({
+      from: { x: ca.x + ux * ca.radius, y: ca.y + uy * ca.radius },
+      to: { x: cb.x - ux * cb.radius, y: cb.y - uy * cb.radius },
+    });
   }
   return segments;
 }
