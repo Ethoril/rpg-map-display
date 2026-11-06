@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   CAMP_FILL,
   FRAME_GEOMETRY,
+  frameFileName,
   MEDALLION_MIN_SCREEN_PX,
   MedallionCache,
   enamelLightOf,
@@ -21,13 +22,21 @@ import { createLevel } from '../js/core/schema.js';
 
 const link = { source: 'outil-mj', ref: 'p:x' };
 
-test('cerclage par camp : PJ bronze teinté de sa couleur (sinon du camp), allié étain, ennemi fer, neutre bronze', () => {
-  assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: '#B3262E' }), { frame: 'bronze', tint: '#b3262e' });
+test('cerclage par camp : PJ à cerclage dédié (cinq teintes), repli bronze teinté, allié étain, ennemi fer, neutre bronze', () => {
+  const dedies = /** @type {Record<string, string>} */ ({ '#b3262e': 'elysia', '#2e9e6e': 'hellaya', '#e8846a': 'wren', '#2a4fa8': 'caelel', '#6fb4e6': 'bhelgi' });
+  for (const [hex, nom] of Object.entries(dedies)) {
+    assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: hex.toUpperCase() }), { frame: `pj-${nom}`, tint: null }, nom);
+    assert.deepEqual(medallionFrameOf({ link, camp: 'allie', color: hex }), { frame: `pj-${nom}`, tint: null }, `monture de ${nom}`);
+    const g = FRAME_GEOMETRY[/** @type {import('../js/render/medallion.js').MedallionFrame} */ (`pj-${nom}`)];
+    assert.deepEqual({ ...g }, { ...FRAME_GEOMETRY.bronze }, `géométrie de ${nom} = bronze`);
+    assert.equal(frameFileName(/** @type {any} */ (`pj-${nom}`)), `cerclage-pj-${nom}.webp`);
+  }
+  assert.equal(frameFileName('bronze'), 'cerclage-bronze-fin.webp');
+  assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: '#123456' }), { frame: 'bronze', tint: '#123456' }, 'couleur inconnue : repli teinté');
   assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: null }), { frame: 'bronze', tint: CAMP_FILL.pj });
   assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: 'rouge' }), { frame: 'bronze', tint: CAMP_FILL.pj });
   assert.deepEqual(medallionFrameOf({ link, camp: 'allie' }), { frame: 'etain', tint: null });
   assert.deepEqual(medallionFrameOf({ link, camp: 'ennemi', color: null }), { frame: 'fer', tint: null });
-  assert.deepEqual(medallionFrameOf({ link, camp: 'allie', color: '#B3262E' }), { frame: 'bronze', tint: '#b3262e' }, 'monture d’un PJ');
   assert.deepEqual(medallionFrameOf({ link, camp: 'neutre' }), { frame: 'bronze', tint: null });
   assert.deepEqual(medallionFrameOf({ link }), { frame: 'bronze', tint: null });
 });
@@ -149,11 +158,11 @@ test('rendu : médaillon d’un pion lié, une toile posée ; mort en gris ; dis
   const avant = layer.medallions.builds;
   const vivant = draw(pj);
   assert.deepEqual(vivant.strokes, [], 'le cerclage tient lieu de liseré');
-  assert.ok(vivant.drawn.includes(layer.medallions.canvases.get('bronze|#b3262e')), 'cerclage bronze teinté posé');
+  assert.ok(vivant.drawn.includes(layer.medallions.canvases.get('pj-elysia|')), 'cerclage bronze teinté posé');
   draw(pj); draw(pj);
   assert.equal(layer.medallions.builds, avant + 2, 'cerclage et émail calculés une seule fois');
   const mort = draw({ ...pj, dead: true });
-  assert.ok(mort.drawn.includes(layer.medallions.canvases.get('bronze|mort')), 'mort : cerclage gris');
+  assert.ok(mort.drawn.includes(layer.medallions.canvases.get('pj-elysia|mort')), 'mort : cerclage gris');
   draw({ ...pj, camp: 'ennemi', color: undefined });
   assert.ok(f.images.length > loaded, 'le fer se charge à la demande');
   for (const image of f.images) image.onload?.();

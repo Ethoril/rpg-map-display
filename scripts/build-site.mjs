@@ -46,7 +46,7 @@ export const SITE_MANIFEST = Object.freeze({
     // Effets de blessure et de mort (lot L4, contrat de liaison §9) : sans cette ligne, Pages
     // servirait une 404 sur chaque image d'effet.
     Object.freeze({ source: 'assets/fx', extension: '.webp' }),
-    // Cerclages des médaillons des pions liés (lot P2) : sans cette ligne, Pages servirait une
+    // Cerclages des médaillons des pions liés (lot P2, dont les cinq cerclages de PJ `pj-<nom>`) : sans cette ligne, Pages servirait une
     // 404 et les pions liés resteraient au disque simple.
     Object.freeze({ source: 'assets/medaillons', extension: '.webp' }),
   ]),
