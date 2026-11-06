@@ -166,14 +166,10 @@ test('calque : un trait entre les centres des pions engagés du même étage, mo
     const box = grid.cellBounds({ cellX: a, cellY: b }, size);
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   };
-  assert.equal(segments.length, 2);
-  // Bord à bord : chaque extrémité est hors du disque (rayon = demi-emprise) de son pion.
-  const radius = (/** @type {number} */ size) => { const box = grid.cellBounds({ cellX: 0, cellY: 0 }, size); return Math.min(box.width, box.height) / 2; };
-  const dist = (/** @type {{x:number,y:number}} */ p, /** @type {{x:number,y:number}} */ q) => Math.hypot(p.x - q.x, p.y - q.y);
-  for (const [seg, c0, c1] of /** @type {const} */ ([[segments[0], centre(2, 2), centre(3, 3, 2)], [segments[1], centre(7, 7), centre(3, 3, 2)]])) {
-    assert.ok(Math.abs(dist(seg.from, c0) - radius(1)) < 1e-6, 'départ sur le bord du premier pion');
-    assert.ok(Math.abs(dist(seg.to, c1) - radius(2)) < 1e-6, 'arrivée sur le bord du second pion');
-  }
+  assert.deepEqual(segments, [
+    { from: centre(2, 2), to: centre(3, 3, 2) },
+    { from: centre(7, 7), to: centre(3, 3, 2) },
+  ]);
 
   /** @type {string[]} */
   const calls = [];
@@ -182,8 +178,9 @@ test('calque : un trait entre les centres des pions engagés du même étage, mo
     moveTo(/** @type {number} */ x, /** @type {number} */ y) { calls.push(`M${x},${y}`); }, lineTo(/** @type {number} */ x, /** @type {number} */ y) { calls.push(`L${x},${y}`); },
   });
   new EngagementsLayer().render(ctx, grid, level, { tokens: /** @type {any} */ (tokens), pairs: [['pj:h', 'p:o']] });
-  const seg = engagementSegments(grid, level, /** @type {any} */ (tokens), [['pj:h', 'p:o']])[0];
-  assert.ok(calls.includes(`M${seg.from.x},${seg.from.y}`) && calls.includes(`L${seg.to.x},${seg.to.y}`));
+  const c0 = centre(2, 2);
+  const c1 = centre(3, 3, 2);
+  assert.ok(calls.includes(`M${c0.x},${c0.y}`) && calls.includes(`L${c1.x},${c1.y}`));
   assert.ok(calls.includes('stroke'));
   calls.length = 0;
   new EngagementsLayer().render(ctx, grid, level, { tokens: /** @type {any} */ (tokens), pairs: [] });
