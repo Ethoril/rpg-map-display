@@ -605,124 +605,6 @@ async function diagnosticLumieres() {
   ecrire(lignes.join('\n'));
 }
 
-// --- 11. Motifs à juger : anneaux, pastilles, marqueurs --------------------
-
-/**
- * Affiche côte à côte les motifs que le chantier Q demande de juger **à la vue « carte
- * entière »**, c'est-à-dire vers 33 px la case.
- *
- * Ces motifs ne sont pas composables à la demande dans la vue MJ : il faudrait fabriquer
- * les pions et leurs états à la main, en pleine séance. Ici ils s'affichent en un tap, y
- * compris sur le téléviseur sous cast — qui est justement l'écran où le doute porte.
- *
- * La page ne juge rien : elle montre, et enregistre le verdict humain dans le journal.
- */
-async function afficherMotifs() {
-  const { computeProportionalRing, computeStateRing } = await import('../render/statusBadges.js');
-  const champ = /** @type {HTMLInputElement} */ (document.getElementById('motif-px-case'));
-  const pxCase = Math.max(12, Number(champ.value) || 33);
-
-  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
-  canvas.width = 640;
-  canvas.height = 480;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#2b2b2b';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  /**
-   * @param {number} cx @param {number} cy @param {string} legende
-   * @param {{ hp?: {current:number,max:number}|null, health?: string }} etat
-   */
-  function pion(cx, cy, legende, etat) {
-    const d = pxCase;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, d * 0.42, 0, Math.PI * 2);
-    ctx.fillStyle = '#6b5a3e';
-    ctx.fill();
-
-    if (etat.hp) {
-      const anneau = computeProportionalRing(d, 1, etat.hp);
-      if (anneau) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, d * 0.46, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (etat.hp.current / etat.hp.max));
-        ctx.strokeStyle = '#2563eb';
-        ctx.lineWidth = Math.max(2, d * 0.08);
-        ctx.stroke();
-      }
-    }
-    if (etat.health && etat.health !== 'unharmed') {
-      const anneau = computeStateRing(d, 1, /** @type {any} */ (etat.health));
-      const couleur = etat.health === 'wounded' ? '#c2410c' : '#ef4444';
-      ctx.beginPath();
-      ctx.arc(cx, cy, d * 0.46, 0, Math.PI * 2);
-      ctx.strokeStyle = couleur;
-      ctx.lineWidth = Math.max(3, d * (anneau ? 0.16 : 0.16));
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#e8e8e8';
-    ctx.font = '12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(legende, cx, cy + d * 0.42 + 16);
-    ctx.restore();
-  }
-
-  const y1 = 90;
-  ctx.fillStyle = '#cfcfcf';
-  ctx.font = '13px system-ui, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(`Motifs à ${pxCase} px la case — le cas nommé au §5.4 du chantier Q`, 12, 24);
-  ctx.fillText('Les deux tracent un tour complet : c’est là que la confusion se joue.', 12, 44);
-
-  pion(90, y1, 'PJ 28/28 (bleu)', { hp: { current: 28, max: 28 } });
-  pion(230, y1, 'PNJ critical', { health: 'critical' });
-  pion(370, y1, 'PNJ wounded', { health: 'wounded' });
-  pion(510, y1, 'PNJ indemne', { health: 'unharmed' });
-
-  ctx.fillStyle = '#cfcfcf';
-  ctx.fillText('Orange brique contre rouge : distinguables à cette taille ?', 12, y1 + 70);
-
-  // Grappe de gros combat : huit pions serrés avec leurs pastilles chiffrées.
-  const y2 = 300;
-  ctx.fillText('Gros combat — les pastilles chiffrées restent-elles lisibles ?', 12, y2 - 50);
-  for (let i = 0; i < 8; i++) {
-    const cx = 60 + i * Math.max(pxCase * 1.15, 34);
-    pion(cx, y2, '', { hp: { current: 7 + i, max: 20 } });
-    ctx.fillStyle = '#101010';
-    ctx.beginPath();
-    ctx.arc(cx + pxCase * 0.34, y2 - pxCase * 0.34, Math.max(7, pxCase * 0.26), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `${Math.max(8, Math.round(pxCase * 0.28))}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${7 + i}`, cx + pxCase * 0.34, y2 - pxCase * 0.34 + Math.max(3, pxCase * 0.1));
-  }
-
-  ecrire(
-    [
-      `Motifs affichés à ${pxCase} px la case.`,
-      '',
-      'À juger, dans l’ordre du chantier Q :',
-      '  1. un PJ à plein se distingue-t-il d’un PNJ « mal en point » ?',
-      '  2. « blessé » orange brique se distingue-t-il de « mal en point » rouge ?',
-      '  3. les pastilles chiffrées restent-elles lisibles en gros combat ?',
-      '',
-      'Régler le curseur sur 33 px pour la vue « carte entière », puis juger sur la TV castée.',
-      'Enregistrer le verdict par les boutons : il rejoint le journal, et s’exporte avec lui.',
-    ].join('\n')
-  );
-}
-
-/** @param {string} verdict */
-function noterVerdictMotif(verdict) {
-  const ligne = enduranceJournal.recordEvent(`verdict motifs : ${verdict}`);
-  ecrire(
-    ligne
-      ? `Verdict enregistré : ${verdict}\n\n${enduranceJournal.toText()}`
-      : 'Démarrer d’abord le journal d’endurance : c’est lui qui garde les verdicts.'
-  );
-}
-
 // --- 13. Banc de visée : la capsule des portes -----------------------------
 
 /**
@@ -1913,9 +1795,6 @@ if (typeof document !== 'undefined') {
   brancher('btn-journal-lock', prendreVerrouEtPleinEcran);
   brancher('btn-journal-copier', copierJournal);
   brancher('btn-lumieres', diagnosticLumieres);
-  brancher('btn-motifs', afficherMotifs);
-  brancher('btn-motif-lisible', () => noterVerdictMotif('lisible'));
-  brancher('btn-motif-illisible', () => noterVerdictMotif('ILLISIBLE'));
   brancher('btn-visee', bancDeVisee);
   brancher('btn-horloge', diagnosticHorlogeEtCanal);
   brancher('btn-lumieres-masque', diagnosticChampLumineuxMasque);

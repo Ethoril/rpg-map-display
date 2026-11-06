@@ -344,7 +344,7 @@ test.describe('Chantier Q — Points de vie E2E & Rendu', () => {
    * ```
    * const ratioQ = token.hp.current / token.hp.max;      // `hp`, pas `health`
    * const etatDeduit = ratioQ < 0.5 ? 'critical' : …;    // ni l'un ni l'autre
-   * computeStateRing(width, zoom, etatDeduit);           // ni l'un ni l'autre
+   * dessinerAnneau(width, zoom, etatDeduit);             // ni l'un ni l'autre
    * ```
    *
    * Aucune des huit autres mutations n'a échappé aux tests du chantier ; celle-ci a traversé les

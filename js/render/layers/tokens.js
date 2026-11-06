@@ -365,8 +365,7 @@ export class TokensLayer {
     // ⛔ Plus aucune barre d'état autour du pion (01/10/2026, demande du mainteneur) : ni la
     // châsse du Chantier R (bande, arc de PV, anneau d'état, encoches), ni l'anneau fin de repli
     // du Chantier Q. Seul le cartouche chiffré reste. Le portrait reprend donc tout le rayon.
-    // `tokenSocket.js` et les anneaux de `statusBadges.js` restent en place, dormants : le
-    // mainteneur reviendra sur la représentation des PV « quand il aura une meilleure idée ».
+    // Ce code a été supprimé : la chasse est abandonnée pour de bon (lot P1, décision du MJ).
     // Le liseré se trace entièrement en dedans : centré sur le bord, il débordait à moitié dans
     // la case voisine, et dans son brouillard.
     const imageRadius = width / 2 - TOKEN_BORDER_SCREEN_PX / (2 * zoom);

@@ -16,14 +16,9 @@ import {
 import {
   HEALTH_STATE_IDS,
   HEALTH_STATE_LABEL_FR,
-  HEALTH_STATE_COLOR,
-  TOKEN_HP_PJ_RING_COLOR,
-  TOKEN_HP_RING_THICKNESS_PX,
 } from '../js/core/constants.js';
 
 import {
-  computeProportionalRing,
-  computeStateRing,
   computeHpBadgeLayout,
 } from '../js/render/statusBadges.js';
 
@@ -141,67 +136,6 @@ test('Q-b 3. updateToken dans le Store accepte hp et health et refuse un patch i
     updateToken('p1', { hp: { current: 25, max: 20 } });
   });
   assert.deepEqual(getSelectedToken()?.hp, { current: 5, max: 20 });
-});
-
-// ── 3. Étape Q-c : Géométrie des Anneaux de santé ───────────────────────────
-
-test('Q-c 1. computeProportionalRing pour PJ (longueur variable, couleur fixe #2563eb)', () => {
-  const tokenWidthMap = 140;
-  const zoom = 1.0;
-
-  // PJ à 14/28 (50% de vie)
-  const ringHalf = computeProportionalRing(tokenWidthMap, zoom, { current: 14, max: 28 });
-  assert.equal(ringHalf.visible, true);
-  assert.equal(ringHalf.color, TOKEN_HP_PJ_RING_COLOR);
-  assert.equal(ringHalf.startAngle, -Math.PI / 2, 'Départ à midi (-Math.PI/2)');
-  assert.equal(ringHalf.endAngle, +Math.PI / 2, 'Fin à 6h (+Math.PI/2) pour 50%');
-
-  // PJ à 0/28 (current === 0) -> aucun arc (visible: false)
-  const ringZero = computeProportionalRing(tokenWidthMap, zoom, { current: 0, max: 28 });
-  assert.equal(ringZero.visible, false, 'PJ à 0 PV ne trace aucun arc (Critère 3 & §5.2)');
-});
-
-test('Q-c 2. computeStateRing pour PNJ (360°, couleur et épaisseur variables)', () => {
-  const tokenWidthMap = 140;
-  const zoom = 1.0;
-
-  // unharmed -> ne trace rien
-  const ringUnharmed = computeStateRing(tokenWidthMap, zoom, 'unharmed');
-  assert.equal(ringUnharmed.visible, false, 'unharmed ne trace aucun anneau (Critère 4)');
-
-  // wounded -> couleur #c2410c, épaisseur 1x (3px sur carte à zoom 1)
-  const ringWounded = computeStateRing(tokenWidthMap, zoom, 'wounded');
-  assert.equal(ringWounded.visible, true);
-  assert.equal(ringWounded.color, HEALTH_STATE_COLOR.wounded);
-  assert.equal(ringWounded.color, '#c2410c');
-  assert.equal(ringWounded.lineWidthMap, 3 / zoom);
-  assert.equal(ringWounded.endAngle - ringWounded.startAngle, Math.PI * 2, 'Tour complet 360°');
-
-  // critical -> couleur #ef4444, épaisseur 2x (6px sur carte à zoom 1)
-  const ringCritical = computeStateRing(tokenWidthMap, zoom, 'critical');
-  assert.equal(ringCritical.visible, true);
-  assert.equal(ringCritical.color, HEALTH_STATE_COLOR.critical);
-  assert.equal(ringCritical.color, '#ef4444');
-  assert.equal(ringCritical.lineWidthMap, 6 / zoom, 'Épaisseur doublée pour critical');
-});
-
-test('Q-c 3. Invariance de l\'épaisseur des anneaux à l\'écran à 3 zooms ET 3 tailles de pions (Critère 7)', () => {
-  const zooms = [0.5, 1.0, 2.0];
-  const tokenSizesMap = [140, 280, 420]; // 1x1, 2x2, 3x3
-
-  for (const zoom of zooms) {
-    for (const tokenWidthMap of tokenSizesMap) {
-      const ringPj = computeProportionalRing(tokenWidthMap, zoom, { current: 10, max: 20 });
-      const ringPnj = computeStateRing(tokenWidthMap, zoom, 'wounded');
-
-      // L'épaisseur à l'écran = lineWidthMap * zoom = TOKEN_HP_RING_THICKNESS_PX (3px)
-      const pjThicknessScreen = ringPj.lineWidthMap * zoom;
-      const pnjThicknessScreen = ringPnj.lineWidthMap * zoom;
-
-      assert.equal(Math.round(pjThicknessScreen), TOKEN_HP_RING_THICKNESS_PX);
-      assert.equal(Math.round(pnjThicknessScreen), TOKEN_HP_RING_THICKNESS_PX);
-    }
-  }
 });
 
 // ── 4. Étape Q-d : Compteur chiffré ─────────────────────────────────────────
