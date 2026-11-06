@@ -187,7 +187,7 @@ test('pions : animation déterministe bornée et aperçu de drag sans mutation',
 
 // Médaillon des pions liés (lot P2, contrat de liaison §11) : cerclage teinté du PJ, gris du mort,
 // disque simple sous 36 px à l'écran. On mesure la teinte moyenne sur la bande du cerclage.
-test('pions liés : médaillon au cerclage teinté du PJ, gris s’il est mort, disque simple au petit zoom', async ({ page }) => {
+test('pions liés : médaillon au cerclage dédié du PJ (repli teinté), gris s’il est mort, disque simple au petit zoom', async ({ page }) => {
   await mountStage(page);
   // Pion en (2,2) : centre (250, 250), cerclage entre ~35 et 50 px du centre. Huit points à 43 px.
   const ring = Array.from({ length: 8 }, (_, i) => ({
@@ -221,6 +221,10 @@ test('pions liés : médaillon au cerclage teinté du PJ, gris s’il est mort, 
 
   const jade = mean(await render({ ...pj, color: '#2e9e6e' }));
   expect(jade.g).toBeGreaterThan(jade.r + 15);
+
+  // Couleur hors des cinq teintes : repli sur le bronze teinté de cette couleur.
+  const inconnu = mean(await render({ ...pj, color: '#1030c0' }));
+  expect(inconnu.b).toBeGreaterThan(inconnu.r + 15);
 
   const mort = mean(await render({ ...pj, dead: true }));
   expect(Math.abs(mort.r - mort.g)).toBeLessThan(12);

@@ -5,9 +5,10 @@
  * variante B, choix du MJ du 05/11/2026) : le personnage est posé sur un fond émaillé, dans un
  * cerclage ciselé **fin** (fenêtre à 69 %) qui reste **dans la case**, sans débord.
  *
- * - PJ : cerclage bronze teinté de la couleur propre au personnage (`token.color`, contrat §4),
- *   à défaut de la teinte du camp ; la monture d'un PJ reçoit la même couleur et le même
- *   cerclage (décision du MJ du 06/11) : toute `color` reçue vaut bronze teinté ;
+ * - PJ : cerclage `pj-<nom>` générés par Magnific, choisi par la couleur du personnage
+ *   (`token.color`, contrat §4) parmi {@link PJ_FRAMES}, sans teinte calculée ; une couleur
+ *   inconnue garde le repli bronze teinté de cette couleur, à défaut de la teinte du camp ; la
+ *   monture d'un PJ reçoit la même couleur, donc le même cerclage (décision du MJ du 06/11) ;
  * - allié : étain à laurier ; ennemi : fer à pointes ; neutre (ou sans camp) : bronze ;
  * - mort : le cerclage passe en gris, quel que soit le camp ;
  * - sous {@link MEDALLION_MIN_SCREEN_PX} à l'écran, repli sur le disque simple.
@@ -36,7 +37,7 @@ const ENAMEL_PX = 128;
 const MEDALLION_CACHE_LIMIT = 32;
 
 /**
- * @typedef {'bronze'|'etain'|'fer'} MedallionFrame
+ * @typedef {'bronze'|'etain'|'fer'|'pj-elysia'|'pj-hellaya'|'pj-wren'|'pj-caelel'|'pj-bhelgi'} MedallionFrame
  * @typedef {{ cx: number, cy: number, outer: number, inner: number }} FrameGeometry
  */
 
@@ -51,7 +52,36 @@ export const FRAME_GEOMETRY = Object.freeze({
   bronze: Object.freeze({ cx: 127.7, cy: 131.2, outer: 124.8, inner: 87.0 }),
   etain: Object.freeze({ cx: 127.7, cy: 131.5, outer: 124.5, inner: 78.8 }),
   fer: Object.freeze({ cx: 127.9, cy: 140.6, outer: 115.4, inner: 80.5 }),
+  'pj-elysia': Object.freeze({ cx: 127.7, cy: 131.2, outer: 124.8, inner: 87.0 }),
+  'pj-hellaya': Object.freeze({ cx: 127.7, cy: 131.2, outer: 124.8, inner: 87.0 }),
+  'pj-wren': Object.freeze({ cx: 127.7, cy: 131.2, outer: 124.8, inner: 87.0 }),
+  'pj-caelel': Object.freeze({ cx: 127.7, cy: 131.2, outer: 124.8, inner: 87.0 }),
+  'pj-bhelgi': Object.freeze({ cx: 127.7, cy: 131.2, outer: 124.8, inner: 87.0 }),
 });
+
+/**
+ * Cerclages dédiés aux cinq PJ, par teinte `#rrggbb` envoyée par l'outil MJ (correspondance
+ * validée par le MJ le 06/11). Géométrie de `cerclage-bronze-fin.webp`.
+ *
+ * @type {Readonly<Record<string, MedallionFrame>>}
+ */
+export const PJ_FRAMES = Object.freeze({
+  '#b3262e': 'pj-elysia',
+  '#2e9e6e': 'pj-hellaya',
+  '#e8846a': 'pj-wren',
+  '#2a4fa8': 'pj-caelel',
+  '#6fb4e6': 'pj-bhelgi',
+});
+
+/**
+ * Fichier image d'un cerclage, relatif au dossier des médaillons.
+ *
+ * @param {MedallionFrame} frame
+ * @returns {string}
+ */
+export function frameFileName(frame) {
+  return frame.startsWith('pj-') ? `cerclage-${frame}.webp` : `cerclage-${frame}-fin.webp`;
+}
 
 /**
  * Teinte du disque d'un pion lié sans image, par camp (contrat §6). Elles viennent de
@@ -123,12 +153,17 @@ export function linkedTint(token) {
 }
 
 /**
- * Cerclage d'un pion lié et sa teinte : seul le bronze des PJ (et de leurs montures) est teinté.
+ * Cerclage d'un pion lié et sa teinte : un des cinq cerclages `pj-<nom>` (sans teinte) pour les
+ * couleurs connues ; sinon seul le bronze des PJ inconnus (et de leurs montures) est teinté.
  *
  * @param {MedallionSubject} token
  * @returns {{ frame: MedallionFrame, tint: string|null }}
  */
 export function medallionFrameOf(token) {
+  if (isHexColor(token.color)) {
+    const own = PJ_FRAMES[token.color.toLowerCase()];
+    if (own) return { frame: own, tint: null };
+  }
   if (token.camp === 'pj' || isHexColor(token.color)) return { frame: 'bronze', tint: linkedTint(token) ?? CAMP_FILL.pj };
   if (token.camp === 'allie') return { frame: 'etain', tint: null };
   if (token.camp === 'ennemi') return { frame: 'fer', tint: null };
@@ -257,13 +292,13 @@ export class MedallionCache {
       image.onerror = () => { entry.status = 'error'; resolve(); };
     });
     this.images.set(frame, entry);
-    image.src = `${this.baseUrl}cerclage-${frame}-fin.webp`;
+    image.src = `${this.baseUrl}${frameFileName(frame)}`;
     return entry.promise;
   }
 
   /** @returns {Promise<void>} */
   preloadAll() {
-    return Promise.all(/** @type {MedallionFrame[]} */ (['bronze', 'etain', 'fer']).map((f) => this.load(f))).then(() => {});
+    return Promise.all(/** @type {MedallionFrame[]} */ (['bronze', 'etain', 'fer', ...Object.values(PJ_FRAMES)]).map((f) => this.load(f))).then(() => {});
   }
 
   /** @param {string} key @param {MedallionCanvas} canvas */

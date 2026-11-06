@@ -272,9 +272,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   ├─ fx/                        [L4] sept WebP des effets (gerbe, flaque, feu, flammes ×2, magie,
 │   │                                  poison), générés avec Magnific, variantes choisies par le MJ. Provenance :
 │   │                                  SOURCES.md du dossier. Contenu clos
-│   ├─ medaillons/                [P2] trois cerclages fins WebP 256 px (bronze, étain à laurier,
-│   │                                  fer à pointes) des pions liés, générés avec Magnific pour
-│   │                                  l'étude E1. Provenance : SOURCES.md du dossier. Contenu clos
+│   ├─ medaillons/                [P2] huit cerclages fins WebP 256 px (bronze, étain à laurier,
+│   │                                  fer à pointes, plus cinq cerclages `pj-<nom>` : elysia,
+│   │                                  hellaya, wren, caelel, bhelgi, choisis par la `color` du
+│   │                                  PJ) des pions liés, générés avec Magnific (E1, 06/11). Provenance : SOURCES.md du dossier. Contenu clos
 │   └─ icons/mounted.svg        [C-9] tête de cheval du pion monté — game-icons.net
 │                                      `delapouite/horse-head`, CC BY 3.0, crédit dans
 │                                      attributions.html. Mêmes normalisations que les icônes
