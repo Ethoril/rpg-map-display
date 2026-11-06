@@ -29,6 +29,7 @@ import { footprintsAdjacent, gridFor } from '../grid/index.js';
  * @property {'pc'|'npc'} kind
  * @property {boolean} visionSource
  * @property {string|null} imageUrl
+ * @property {string|null} [color] PJ seulement : couleur propre, `#rrggbb` (contrat §4, lot P2)
  * @property {number} sizeCells
  * @property {number|null} speedCells
  * @property {number|null} runCells
@@ -77,6 +78,8 @@ export function patchFromState(state) {
   }
   // La monture fusionnée (contrat §8.1) : `null` y a un sens, la fusion est défaite.
   if (state.rider !== undefined) patch.rider = state.rider;
+  // La couleur d'un PJ (contrat §4) : `null` aussi, le MJ l'a retirée du profil.
+  if (state.color !== undefined) patch.color = state.color;
   return patch;
 }
 
@@ -103,7 +106,7 @@ export function findLinkedToken(campaign, ref) {
  */
 function changedOnly(token, patch) {
   return Object.fromEntries(
-    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' ? null : undefined)) !== JSON.stringify(value))
+    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' ? null : undefined)) !== JSON.stringify(value))
   );
 }
 

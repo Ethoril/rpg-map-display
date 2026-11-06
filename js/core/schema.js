@@ -399,6 +399,9 @@ function linkedTokenErrors(token, tokenId) {
   if (token.camp !== undefined && !CAMP_SET.has(token.camp)) {
     errors.push(`${at} : camp invalide "${token.camp}"`);
   }
+  if (token.color !== undefined && token.color !== null && !(typeof token.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(token.color))) {
+    errors.push(`${at} : color doit être une couleur #rrggbb ou null (contrat §4)`);
+  }
   if (token.rider !== undefined && token.rider !== null && !isRiderOverlay(token.rider)) {
     errors.push(`${at} : rider doit être { ref, label, imageUrl, hp, health, markers, markerLevels } (contrat §8.1)`);
   }
