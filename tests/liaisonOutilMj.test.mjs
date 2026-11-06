@@ -486,15 +486,43 @@ test('mjLink : séparation déduite du token.state seul (sans mount.split) ; rie
   assert.equal(aPied.some((o) => o.op === 'update' && 'rider' in o.patch), false, 'rider nul sur un pion sans monture : rien à republier');
 });
 
-test('rendu : liseré du pion lié à la teinte du camp sauf choix à la main ; badges du pion monté réunis', async () => {
+test('rendu : liseré du pion lié à la teinte du camp ou du PJ, jamais le choix à la main (lot P2) ; badges du pion monté réunis', async () => {
   const { tokenRingColor, mergedMarkers, CAMP_FILL } = await import('../js/render/layers/tokens.js');
   const base = createToken({ id: 'r', levelId: 'rdc', cell: { a: 0, b: 0 } });
   assert.equal(base.borderColor, '#00ff00');
   assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi' }), CAMP_FILL.ennemi);
-  assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi', borderColor: '#123456' }), '#123456', 'choisi à la main');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi', borderColor: '#123456' }), CAMP_FILL.ennemi, 'choix à la main abandonné');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'pj', color: '#B3262E' }), '#b3262e', 'couleur du PJ');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'pj', color: null }), CAMP_FILL.pj, 'PJ sans couleur : camp');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'allie', color: '#b3262e' }), '#b3262e', 'monture d’un PJ : couleur du cavalier');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'allie', color: null }), CAMP_FILL.allie, 'sans couleur : camp');
+  assert.equal(tokenRingColor({ ...base, borderColor: '#123456' }), '#123456', 'pion ordinaire : choix à la main');
   assert.equal(tokenRingColor(base), '#00ff00', 'pion ordinaire inchangé');
   assert.equal(tokenRingColor({ ...base, link }), '#00ff00', 'lié sans camp');
   const fusion = { ...base, markers: /** @type {any[]} */ (['stunned', 'bleeding']), markerLevels: { bleeding: 3 }, rider: { ...montureEtat, markers: /** @type {any[]} */ (['bleeding', 'prone']), markerLevels: { bleeding: 2, prone: 2 } } };
   assert.deepEqual(mergedMarkers(fusion), { markers: ['stunned', 'bleeding', 'prone'], markerLevels: { bleeding: 3, prone: 2 } });
   assert.deepEqual(mergedMarkers(base).markers, []);
+});
+
+// ── Couleur propre d'un PJ (contrat §4, lot P2) ───────────────────────────────────────────────
+test('P2 : color d’un PJ validée, posée par token.state, retirée par null, jamais republiée pour rien', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const { loadCampaign, updateToken, getCampaign } = await import('../js/state/store.js');
+  assert.deepEqual(errorsOf(linked({ camp: 'pj', color: '#b3262e' })), []);
+  assert.deepEqual(errorsOf(linked({ camp: 'pj', color: null })), []);
+  for (const color of ['rouge', '#b3262', '#b3262e00', 12]) assert.equal(errorsOf(linked({ color })).length, 1, String(color));
+  const pj = { ...createToken({ id: 'ely', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc', label: 'Elysia' }), link: { ...link, ref: 'pj:c1' }, camp: /** @type {const} */ ('pj') };
+  const campaign = createCampaign({ levels: [level], tokens: [pj] });
+  const etat = /** @type {any} */ ({ ref: 'pj:c1', label: 'Elysia', camp: 'pj', kind: 'pc', color: '#b3262e' });
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', etat)), [{ op: 'update', tokenId: 'ely', patch: { color: '#b3262e' } }]);
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...etat, color: null })), [], 'null sur un pion sans couleur : rien');
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', { ref: 'pj:c1', label: 'Elysia' })), [], 'absent : rien');
+  loadCampaign(campaign);
+  updateToken('ely', { color: '#b3262e' });
+  assert.equal(getCampaign()?.tokens[0].color, '#b3262e');
+  assert.deepEqual(planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', { ...etat, color: null })), [{ op: 'update', tokenId: 'ely', patch: { color: null } }]);
+  assert.throws(() => updateToken('ely', { color: 'rouge' }));
+  const ordinaire = createToken({ id: 'o', levelId: 'rdc', cell: { a: 5, b: 5 } });
+  loadCampaign(createCampaign({ levels: [level], tokens: [ordinaire] }));
+  assert.throws(() => updateToken('o', { color: '#b3262e' }), /champ non autorisé/, 'pion ordinaire : pas de couleur de liaison');
 });

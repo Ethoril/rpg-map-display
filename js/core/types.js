@@ -206,6 +206,8 @@
  * @property {boolean} [dead] Mort, le pion reste sur sa case (contrat §7).
  * @property {'blood'|'fire'|'magic'|'poison'|'decapitation'|'dismemberment'} [deathCause]
  * @property {'pj'|'allie'|'ennemi'|'neutre'} [camp] Camp de l'outil MJ (disque sans image, contrat §6).
+ * @property {string|null} [color] Couleur propre d'un PJ lié, `#rrggbb` (contrat §4) : teinte de son
+ *   cerclage (lot P2). Absent ou `null` = teinte du camp.
  * @property {RiderOverlay|null} [rider] Pion lié **monté** (contrat §8.1) : la monture fusionnée
  *   dans le pion du cavalier, qui garde son `ref`. Absent ou `null` = pas de fusion.
  */

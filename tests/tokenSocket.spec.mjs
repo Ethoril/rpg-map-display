@@ -46,8 +46,7 @@ test.describe('Chantier R — Sondes Canvas indépendantes de validation', () =>
 
   // ⛔ Le test « Critères 1, 2, 3, 5, 8 & repli palier none » est retiré le 01/10/2026 (C-14) :
   // il sondait la châsse elle-même, que le rendu ne dessine plus — et il passait aussi bien
-  // avec elle que sans, ce qui disait déjà ce qu'il prouvait. `tokenSocket.js` reste dormant,
-  // couvert par ses unitaires. Ce qui reste ici vaut pour tout pion : liseré et anneau de
+  // avec elle que sans, ce qui disait déjà ce qu'il prouvait. Le module est supprimé. Ce qui reste ici vaut pour tout pion : liseré et anneau de
   // sélection d'épaisseur constante à l'écran.
 
   test('Critère 7 : Épaisseurs constantes à l\'écran (liseré, sélection) sous zoom 0.2x et 2.0x', async ({ context }) => {

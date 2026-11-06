@@ -269,6 +269,9 @@ const probe = {
     const width = level.grid.offsetX + level.widthCells * level.pxPerCell;
     const height = level.grid.offsetY + level.heightCells * level.pxPerCell;
     await Promise.all(tokensList.map((/** @type {any} */ token) => tokensLayer.preload(token.imageUrl)));
+    // Cerclages des médaillons (lot P2) : chargés seulement à la demande du test, pour ne pas
+    // compter leurs invalidations dans celles des images de pions.
+    if (options.medallions === true) await tokensLayer.medallions.preloadAll();
     resetCanvas(width, height);
     const grid = new SquareGrid(level);
     const result = tokensLayer.render(context, grid, tokensList, selectionData, {
@@ -277,6 +280,7 @@ const probe = {
       activeLevelId: options.activeLevelId ?? level.id,
       now: options.now,
       dragPreview: options.dragPreview,
+      zoom: options.zoom,
     });
     const pixels = context.getImageData(0, 0, width, height).data;
     /** @type {Record<string, number>} */
@@ -291,11 +295,16 @@ const probe = {
         cellColorMap[`${a},${b}`] = pixel;
       }
     }
+    // Points de carte à échantillonner en plus du centre des cases (bande du cerclage, etc.).
+    const samples = (options.samplePoints ?? []).map(
+      (/** @type {{x: number, y: number}} */ p) => pixelAt(width, height, pixels, p.x, p.y)
+    );
     return {
       renderedTokenIds: result.renderedTokenIds,
       animationActive: result.animationActive,
       cellAlphaMap,
       cellColorMap,
+      samples,
       invalidations: tokenInvalidations,
     };
   },

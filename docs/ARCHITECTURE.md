@@ -128,6 +128,11 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   ├─ stage.js               [1a] contexte Canvas 2D + ordre des couches
 │   │   ├─ camera.js              [1a] SEUL fichier convertissant carte ⇄ écran
 │   │   ├─ frame.js               [1a] boucle à la demande (coalescence rAF)
+│   │   ├─ medallion.js           [P2] médaillon des pions liés (contrat de liaison §11,
+│   │   │                              étude E1 variante B) : choix du cerclage par camp,
+│   │   │                              teinte du PJ, géométrie dans la case, repli sous 36 px,
+│   │   │                              et cache des toiles hors écran (teintes et gris
+│   │   │                              calculés une fois, jamais à chaque image)
 │   │   ├─ probe.js               [N]  sonde passive : mesure la première image après inactivité
 │   │   ├─ statusBadges.js        [2]  paliers d'affichage des marqueurs, mise en page de la
 │   │   │                              rangée, cache de rastérisation des 14 icônes. Séparé de
@@ -267,6 +272,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   ├─ fx/                        [L4] sept WebP des effets (gerbe, flaque, feu, flammes ×2, magie,
 │   │                                  poison), générés avec Magnific, variantes choisies par le MJ. Provenance :
 │   │                                  SOURCES.md du dossier. Contenu clos
+│   ├─ medaillons/                [P2] trois cerclages fins WebP 256 px (bronze, étain à laurier,
+│   │                                  fer à pointes) des pions liés, générés avec Magnific pour
+│   │                                  l'étude E1. Provenance : SOURCES.md du dossier. Contenu clos
 │   └─ icons/mounted.svg        [C-9] tête de cheval du pion monté — game-icons.net
 │                                      `delapouite/horse-head`, CC BY 3.0, crédit dans
 │                                      attributions.html. Mêmes normalisations que les icônes

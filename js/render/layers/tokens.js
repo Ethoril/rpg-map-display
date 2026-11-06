@@ -12,7 +12,18 @@ import {
   computeHpBadgeLayout,
   computeCopyBadgeLayout,
 } from '../statusBadges.js';
-import { DEFAULT_TOKEN_BORDER_COLOR } from '../../core/schema.js';
+import {
+  CAMP_FILL,
+  DEAD_RING_COLOR,
+  MedallionCache,
+  enamelLightOf,
+  linkedTint,
+  medallionFrameOf,
+  medallionLayout,
+  wantsMedallion,
+} from '../medallion.js';
+
+export { CAMP_FILL } from '../medallion.js';
 
 const TOKEN_IMAGE_CACHE_LIMIT = 64;
 export const TOKEN_MOVE_STEP_MS = 160;
@@ -99,20 +110,6 @@ function tokenPosition(token, now) {
 }
 
 /**
- * Teinte du disque d'un pion lié sans image, par camp (contrat §6). Elles viennent de
- * `TOKEN_BORDER_PALETTE` et se lisent avec des initiales blanches (contraste WCAG ≥ 4,5) :
- * pj Bleu nuit 8,1 ; allié Vert forêt 5,9 ; ennemi Rouge brique 6,1 ; neutre Ardoise 4,9.
- *
- * @type {Readonly<Record<string, string>>}
- */
-export const CAMP_FILL = Object.freeze({
-  pj: '#34507f',
-  allie: '#3f6e4a',
-  ennemi: '#a8402f',
-  neutre: '#6b7178',
-});
-
-/**
  * Initiales d'un nom : deux lettres pour deux mots ou plus (premier et deuxième mot), une sinon.
  *
  * @param {string|undefined} label
@@ -125,18 +122,17 @@ export function campInitials(label) {
 }
 
 /**
- * Couleur du liseré d'un pion. Un pion lié dont le liseré n'a pas été choisi à la main (resté à la
- * couleur par défaut de `createToken`) prend la teinte de son camp : le vert vif par défaut
- * masquait le disque de camp et rendait tous les pions liés pareils (recette du 05/11). La même
- * couleur sert aux pastilles du panneau MJ.
+ * Couleur du liseré d'un pion. Un pion lié prend la couleur propre du PJ (`color`, contrat §4) ou
+ * la teinte de son camp : le liseré choisi à la main (`borderColor`) ne compte plus sur un pion
+ * lié (décision du MJ, étude E1, lot P2). Sans camp, ou pion ordinaire : le liseré choisi. La
+ * même couleur sert aux pastilles du panneau MJ.
  *
- * @param {Pick<Token, 'borderColor'|'link'|'camp'>} token
+ * @param {Pick<Token, 'borderColor'|'link'|'camp'|'color'>} token
  * @returns {string}
  */
 export function tokenRingColor(token) {
-  const color = token.borderColor || '#ffffff';
-  const campColor = token.link && token.camp ? CAMP_FILL[token.camp] : undefined;
-  return campColor && color.toLowerCase() === DEFAULT_TOKEN_BORDER_COLOR ? campColor : color;
+  const tint = token.link ? linkedTint(token) : undefined;
+  return tint ?? (token.borderColor || '#ffffff');
 }
 
 /**
@@ -167,7 +163,9 @@ export class TokensLayer {
    * @param {{
    *   invalidate?: () => void,
    *   imageFactory?: () => HTMLImageElement,
-   *   maxCacheEntries?: number
+   *   maxCacheEntries?: number,
+   *   medallionImageFactory?: (() => import('../medallion.js').MedallionImage)|null,
+   *   canvasFactory?: ((width: number, height: number) => import('../medallion.js').MedallionCanvas)|null
    * }} [options]
    */
   constructor(options = {}) {
@@ -176,6 +174,12 @@ export class TokensLayer {
     this.maxCacheEntries = Math.max(1, options.maxCacheEntries ?? TOKEN_IMAGE_CACHE_LIMIT);
     /** @type {Map<string, TokenImageEntry>} */
     this.imageCache = new Map();
+    /** Cerclages des pions liés et leurs teintes, calculés une fois (lot P2). */
+    this.medallions = new MedallionCache({
+      invalidate: () => this.invalidate(),
+      ...(options.medallionImageFactory !== undefined ? { imageFactory: options.medallionImageFactory } : {}),
+      ...(options.canvasFactory !== undefined ? { canvasFactory: options.canvasFactory } : {}),
+    });
   }
 
   /** @param {string} url @param {TokenImageEntry} entry */
@@ -350,7 +354,8 @@ export class TokensLayer {
     const height = bounds.height;
     const centerX = p0.x + width / 2;
     const centerY = p0.y + height / 2;
-    const borderColor = tokenRingColor(token);
+    // Pion lié mort : liseré gris, comme son cerclage (lot P2).
+    const borderColor = token.link && token.dead === true ? DEAD_RING_COLOR : tokenRingColor(token);
     // Pion monté (contrat §8.1) : le fond est la monture, le cavalier passe en médaillon.
     const mount = token.rider ?? null;
     const imageUrl = (mount ? mount.imageUrl : token.imageUrl)?.trim() ?? '';
@@ -365,11 +370,14 @@ export class TokensLayer {
     // ⛔ Plus aucune barre d'état autour du pion (01/10/2026, demande du mainteneur) : ni la
     // châsse du Chantier R (bande, arc de PV, anneau d'état, encoches), ni l'anneau fin de repli
     // du Chantier Q. Seul le cartouche chiffré reste. Le portrait reprend donc tout le rayon.
-    // `tokenSocket.js` et les anneaux de `statusBadges.js` restent en place, dormants : le
-    // mainteneur reviendra sur la représentation des PV « quand il aura une meilleure idée ».
+    // Ce code a été supprimé : la chasse est abandonnée pour de bon (lot P1, décision du MJ).
     // Le liseré se trace entièrement en dedans : centré sur le bord, il débordait à moitié dans
     // la case voisine, et dans son brouillard.
-    const imageRadius = width / 2 - TOKEN_BORDER_SCREEN_PX / (2 * zoom);
+    // Médaillon d'un pion lié (lot P2, contrat §11) : le portrait se découpe dans la fenêtre du
+    // cerclage ; sinon, ou tant que le cerclage n'est pas chargé, le disque simple.
+    const medallion = this._medallionFor(token, width, zoom);
+    const layout = medallion ? medallionLayout(medallion.frame, centerX, centerY, width) : null;
+    const imageRadius = layout ? layout.windowRadius : width / 2 - TOKEN_BORDER_SCREEN_PX / (2 * zoom);
 
     // 1. Découpe & Dessin de l'illustration (réduite à imageRadius)
     ctx.save();
@@ -378,11 +386,22 @@ export class TokensLayer {
     ctx.ellipse(centerX, centerY, imageRadius, imageRadius, 0, 0, Math.PI * 2);
     ctx.clip();
 
+    // Fond émaillé du médaillon (variante B) : il se voit autour d'un personnage détouré.
+    if (medallion?.enamel) {
+      ctx.drawImage(
+        /** @type {CanvasImageSource} */ (/** @type {unknown} */ (medallion.enamel)),
+        centerX - imageRadius, centerY - imageRadius, imageRadius * 2, imageRadius * 2
+      );
+    }
+
     if (imageEntry?.status === 'ready' && imageEntry.image) {
       const image = imageEntry.image;
       const sourceWidth = image.naturalWidth || image.width;
       const sourceHeight = image.naturalHeight || image.height;
-      const scale = Math.max(width / sourceWidth, height / sourceHeight);
+      // Médaillon : l'image couvre la fenêtre, pas la case.
+      const boxWidth = medallion ? imageRadius * 2 : width;
+      const boxHeight = medallion ? imageRadius * 2 : height;
+      const scale = Math.max(boxWidth / sourceWidth, boxHeight / sourceHeight);
       const drawWidth = sourceWidth * scale;
       const drawHeight = sourceHeight * scale;
       ctx.drawImage(
@@ -394,13 +413,16 @@ export class TokensLayer {
       );
     } else {
       const campFill = token.camp ? CAMP_FILL[token.camp] : undefined;
-      ctx.fillStyle = imageEntry?.status === 'error' ? '#5f2530' : (campFill ?? '#555d68');
-      ctx.fillRect(p0.x, p0.y, width, height);
+      // Sur le médaillon, les initiales se posent sur l'émail ; une image en erreur reste signalée.
+      if (!medallion?.enamel || imageEntry?.status === 'error') {
+        ctx.fillStyle = imageEntry?.status === 'error' ? '#5f2530' : (campFill ?? '#555d68');
+        ctx.fillRect(p0.x, p0.y, width, height);
+      }
       // Pion lié sans image (contrat §6) : initiales du nom, deux lettres pour deux mots ; sans
       // camp, la lettre unique d'avant.
       const initial = campFill ? campInitials(discLabel) : ((discLabel || token.kind || '?').trim().charAt(0).toUpperCase() || '?');
       ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.max(12, Math.round(Math.min(width, height) * 0.35))}px sans-serif`;
+      ctx.font = `bold ${Math.max(12, Math.round(medallion ? imageRadius * 0.7 : Math.min(width, height) * 0.35))}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(initial, centerX, centerY);
@@ -418,29 +440,41 @@ export class TokensLayer {
     }
     ctx.restore();
 
-    // 3.5. Liseré d'identité du pion (tracé à imageRadius, épaisseur écran TOKEN_BORDER_SCREEN_PX)
+    // 3.5. Liseré d'identité du pion (tracé à imageRadius, épaisseur écran TOKEN_BORDER_SCREEN_PX),
+    // ou cerclage du médaillon, qui en tient lieu.
+    const ringWidth = TOKEN_BORDER_SCREEN_PX / zoom;
     ctx.save();
     if (token.hidden) ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.ellipse(centerX, centerY, imageRadius, imageRadius, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = TOKEN_BORDER_SCREEN_PX / zoom;
-    ctx.stroke();
-    // Pion monté (contrat §8.1) : deux anneaux, l'extérieur pour la monture (le liseré ci-dessus),
-    // l'intérieur, clair, pour le cavalier, séparés d'un filet sombre. Deux anneaux de la même
-    // teinte de camp ne se distinguaient pas (contrôle à l'écran du 05/11).
-    if (mount) {
-      const ringWidth = TOKEN_BORDER_SCREEN_PX / zoom;
+    if (!medallion) {
       ctx.beginPath();
-      ctx.ellipse(centerX, centerY, imageRadius - ringWidth * 1.5, imageRadius - ringWidth * 1.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(centerX, centerY, imageRadius, imageRadius, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = ringWidth;
+      ctx.stroke();
+    }
+    // Pion monté (contrat §8.1) : deux anneaux, l'extérieur pour la monture (le liseré ci-dessus,
+    // ou le cerclage du médaillon), l'intérieur, clair, pour le cavalier, séparés d'un filet
+    // sombre. Deux anneaux de la même teinte de camp ne se distinguaient pas (contrôle à l'écran
+    // du 05/11). Sur le médaillon, le filet sombre longe le bord de la fenêtre.
+    if (mount) {
+      const darkRadius = medallion ? imageRadius - ringWidth * 0.5 : imageRadius - ringWidth * 1.5;
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, darkRadius, darkRadius, 0, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.lineWidth = ringWidth;
       ctx.stroke();
       ctx.beginPath();
-      ctx.ellipse(centerX, centerY, imageRadius - ringWidth * 2.5, imageRadius - ringWidth * 2.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(centerX, centerY, darkRadius - ringWidth, darkRadius - ringWidth, 0, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.lineWidth = ringWidth;
       ctx.stroke();
+    }
+    // Cerclage du médaillon : une toile déjà teinte (ou grise), posée d'un seul drawImage.
+    if (medallion && layout) {
+      ctx.drawImage(
+        /** @type {CanvasImageSource} */ (/** @type {unknown} */ (medallion.canvas)),
+        layout.frameX, layout.frameY, layout.frameSize, layout.frameSize
+      );
     }
     ctx.restore();
 
@@ -567,6 +601,23 @@ export class TokensLayer {
       ctx.fillText(String(token.copyNumber), cx, cy + 0.5 / zoom);
       ctx.restore();
     }
+  }
+
+  /**
+   * Cerclage et fond émaillé d'un pion lié (lot P2), ou `null` : pion ordinaire, trop petit à
+   * l'écran, ou cerclage pas encore chargé (son chargement relance une image).
+   *
+   * @param {Token} token
+   * @param {number} width
+   * @param {number} zoom
+   * @returns {{ frame: import('../medallion.js').MedallionFrame, canvas: import('../medallion.js').MedallionCanvas, enamel: import('../medallion.js').MedallionCanvas|null }|null}
+   */
+  _medallionFor(token, width, zoom) {
+    if (!wantsMedallion(token, width, zoom)) return null;
+    const { frame, tint } = medallionFrameOf(token);
+    const canvas = this.medallions.frameCanvas(frame, tint, token.dead === true);
+    if (!canvas) return null;
+    return { frame, canvas, enamel: this.medallions.enamelCanvas(enamelLightOf(token)) };
   }
 
   /**

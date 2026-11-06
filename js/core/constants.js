@@ -384,29 +384,6 @@ export const HEALTH_STATE_LABEL_FR = {
 };
 
 /**
- * Couleurs des états de santé d'un PNJ (Chantier Q §3.2, §5.3, §15.3).
- *
- * ⚠ `wounded` prend `#c2410c` (orange brique profond), strictement séparé de l'orange des murs
- * (`walls.js:38` : `#f97316`) et du jaune `control` (`constants.js:194` : `#facc15`).
- * `critical` réutilise `#ef4444` (rouge dégâts de la catégorie damage).
- * @type {Record<'unharmed'|'wounded'|'critical', string>}
- */
-export const HEALTH_STATE_COLOR = {
-  unharmed: '',
-  wounded: '#c2410c',
-  critical: '#ef4444',
-};
-
-/**
- * Couleur unique et fixe de l'anneau proportionnel des PJ (Chantier Q §5.2, §5.4).
- * `#2563eb` (bleu royal), hors des familles orange/rouge et distinct du bleu ciel des murs temporaires.
- */
-export const TOKEN_HP_PJ_RING_COLOR = '#2563eb';
-
-/** Épaisseur de base de l'anneau de santé en pixels ÉCRAN (Chantier Q §5.1). */
-export const TOKEN_HP_RING_THICKNESS_PX = 3;
-
-/**
  * Taille et géométrie du compteur chiffré au coin haut-gauche (Chantier Q §5.5).
  * **Toutes les grandeurs sont en pixels ÉCRAN** (divisées par le zoom au dessin).
  *
@@ -730,53 +707,6 @@ export const LIGHT_HIT_SCREEN_FLOOR_PX = 24;
 export const LIGHT_HIT_MAX_CELL_RATIO = 0.75;
 
 /**
- * Constantes du Chantier R — La châsse des pions.
- * Toutes les grandeurs d'affichage sont exprimées en pixels ÉCRAN (divisées par le zoom au dessin).
- */
-export const CHASSE_BAND_SCREEN_PX = 6;
-export const CHASSE_BG_COLOR = '#1e293b';
-export const CHASSE_SEPARATOR_COLOR = '#090d16';
-export const CHASSE_SEPARATOR_SCREEN_PX = 1.5;
-export const CHASSE_BEVEL_LIGHT_COLOR = 'rgba(255, 255, 255, 0.15)';
-export const CHASSE_BEVEL_DARK_COLOR = 'rgba(0, 0, 0, 0.35)';
-export const CHASSE_NOTCH_COLOR = '#090d16';
-export const CHASSE_NOTCH_SCREEN_PX = 2;
-
-export const CHASSE_TIER_FULL_SCREEN_PX = 44;
-export const CHASSE_TIER_REDUCED_SCREEN_PX = 24;
-
-/**
- * Part maximale du **rayon** du pion que la châsse peut occuper.
- *
- * Sans cette borne, `CHASSE_BAND_SCREEN_PX` est une valeur absolue : elle mange donc une part
- * d'autant plus grande que le pion est petit. Mesuré sur les bornes du palier `reduced` — un pion
- * de 24 px d'écran a un rayon de 12 px, et une bande de 6 px lui laisse un portrait de 6 px de
- * rayon, soit **un quart de la surface**. Le pion n'est plus une illustration châssée, c'est un
- * cadre avec un point au milieu. Défaut signalé par Gemini le 06/08/2026 sans être tranché, borné
- * ici sur décision du mainteneur.
- *
- * ⭐ **La valeur n'est pas choisie, elle est dérivée — et c'est tout l'intérêt.** Au seuil du
- * palier `full`, un pion de `CHASSE_TIER_FULL_SCREEN_PX` de diamètre a un rayon de la moitié, et
- * la bande nominale y occupe déjà `2 × CHASSE_BAND_SCREEN_PX / CHASSE_TIER_FULL_SCREEN_PX` de ce
- * rayon. Prendre exactement cette proportion comme plafond donne deux propriétés qu'aucun nombre
- * écrit à la main n'aurait garanties :
- *
- *  1. **Le palier `full` n'est jamais affecté** : au-dessus du seuil, le plafond est plus large que
- *     la bande nominale, donc inopérant. Les mesures des critères 2 et 7, prises au palier `full`,
- *     restent inchangées — le bornage ne peut pas les invalider.
- *  2. **Aucune discontinuité au passage de palier** : le plafond vaut exactement la bande nominale
- *     au seuil, puis se resserre continûment sous lui. La châsse s'amincit progressivement au
- *     dézoom au lieu de sauter.
- *
- * ⚠ Elle reste donc cohérente si le mainteneur règle `CHASSE_BAND_SCREEN_PX` ou le seuil : la
- * règle exprimée est « la châsse ne prend jamais, sur un petit pion, une part de rayon plus grande
- * que celle qu'elle a au seuil du palier `full` ». Ne pas la remplacer par une constante en dur,
- * qui contredirait silencieusement les deux autres au premier réglage.
- */
-export const CHASSE_BAND_MAX_RADIUS_RATIO =
-  (2 * CHASSE_BAND_SCREEN_PX) / CHASSE_TIER_FULL_SCREEN_PX;
-
-/**
  * Plafonds de l'image partagée avec les joueurs — chantier C-13, « Partage d'image ».
  *
  * `SHARED_IMAGE_MAX_PX = 1920` — le plus grand côté, après réduction côté MJ. **Dérivé, pas
@@ -796,7 +726,6 @@ export const SHARED_IMAGE_MAX_BYTES = 1_500_000;
 export const TOKEN_BORDER_SCREEN_PX = 3;
 export const TOKEN_SELECTION_RING_SCREEN_PX = 3;
 export const TOKEN_SELECTION_OFFSET_SCREEN_PX = 4;
-export const CHASSE_BEVEL_LINE_SCREEN_PX = 1;
 
 
 

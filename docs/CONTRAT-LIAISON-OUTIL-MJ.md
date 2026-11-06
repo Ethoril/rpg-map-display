@@ -85,6 +85,7 @@ Payload :
   ref, label, camp: 'pj'|'allie'|'ennemi'|'neutre',
   kind: 'pc'|'npc', visionSource: boolean,
   imageUrl: string|null,            // data: ≤ 24 Kio ou null (§6)
+  color: string|null,               // PJ et monture d'un PJ : '#rrggbb' ; null sinon (06/11, lot P2)
   sizeCells, speedCells, runCells,
   visionDim,
   hp: { current, max }, health: 'unharmed'|'wounded'|'critical',
@@ -109,6 +110,7 @@ Les champs se calculent ainsi côté outil MJ :
 | `health` | `unharmed` si PV = max ; `critical` si PV ≤ ¼ du max ou PV = 0 ; `wounded` sinon. |
 | `markers` | Table du §5. `markerLevels` porte le niveau de chaque marqueur, dès 2. |
 | `dead` | `extensions.v5.dead`. |
+| `color` | `tokenColor` du profil, `#rrggbb` en minuscules, **pour un PJ ou la monture d'un PJ** ; une monture sans couleur propre prend celle de son cavalier (décision du MJ du 06/11). `null` dans tous les autres cas, et quand le profil n'en a pas : la carte efface alors la teinte (monture démontée). Toute `color` reçue teinte un cerclage bronze ; `null` rend le cerclage et la teinte du camp. |
 
 Affichage côté Map Display, sans changement sauf ce qui est indiqué :
 - les chiffres de PV sont visibles des joueurs pour `kind: 'pc'`, donc aussi pour les montures des PJ ;
@@ -247,6 +249,7 @@ Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la
 5. **Q7 rouverte** : ajout de `fatigued` (Exténué) et `tainted` (Souillé) aux marqueurs, avec leurs libellés, catégories et icônes ; chiffre de niveau sur le badge.
 6. **Rendu** :
    - deux anneaux et médaillon pour le pion monté ;
+   - médaillon des pions liés (lot P2, 06/11, étude E1 variante B) : personnage sur fond émaillé dans un cerclage, fenêtre à 69 % et dans la case ; PJ et monture d'un PJ en bronze teinté de `color` (à défaut, teinte du camp), allié étain à laurier, ennemi fer à pointes, neutre bronze ; mort en cerclage gris ; sous 36 px à l'écran, repli sur le disque simple. Le liseré choisi à la main (`borderColor`) ne compte plus sur un pion lié. Images `assets/medaillons/*.webp`, module `js/render/medallion.js` ;
    - disque de camp avec initiales pour un pion sans image ;
    - rendu « mort » ;
    - second palier (Course) dans la zone de trajet préparé : la Marche en aplat, la Course en anneau extérieur hachuré à bordure pointillée ; au-delà de la Marche le trajet change de style et l'étiquette « Course : Action utilisée » s'affiche à l'arrivée, sur les deux écrans ; le budget d'un pion lié va jusqu'à `runCells` ;

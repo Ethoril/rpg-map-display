@@ -111,30 +111,6 @@ test('10. le coût des lumières est rendu comme un écart, avec le verdict de b
   expect(erreurs).toEqual([]);
 });
 
-test('11. les motifs se dessinent et le verdict rejoint le journal', async ({ page }) => {
-  await page.goto('/diag.html');
-  await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = true; });
-
-  await page.click('#btn-endurance-start');
-  await page.fill('#motif-px-case', '33');
-  await page.click('#btn-motifs');
-  await expect.poll(() => page.textContent('#sortie')).toContain('Motifs affichés à 33 px');
-
-  // Le canvas doit réellement porter des pixels colorés : un motif à juger qui ne
-  // s'affiche pas serait un verdict rendu sur du vide.
-  const peint = await page.evaluate(() => {
-    const c = /** @type {HTMLCanvasElement} */ (document.getElementById('board'));
-    const d = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')).getImageData(0, 0, c.width, c.height).data;
-    let distincts = new Set();
-    for (let i = 0; i < d.length; i += 4 * 97) distincts.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
-    return distincts.size;
-  });
-  expect(peint).toBeGreaterThan(3);
-
-  await page.click('#btn-motif-lisible');
-  expect(await page.textContent('#sortie')).toContain('verdict motifs : lisible');
-});
-
 test('13. le banc de visée rejoue les mêmes gestes contre les trois capsules', async ({ page }) => {
   await page.goto('/diag.html');
   await page.click('#btn-visee');

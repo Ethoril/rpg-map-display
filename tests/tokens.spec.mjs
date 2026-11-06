@@ -184,3 +184,57 @@ test('pions : animation déterministe bornée et aperçu de drag sans mutation',
   expect(preview.cellAlphaMap['7,1']).toBeGreaterThan(0);
   expect(preview.cellAlphaMap['4,2']).toBe(0);
 });
+
+// Médaillon des pions liés (lot P2, contrat de liaison §11) : cerclage teinté du PJ, gris du mort,
+// disque simple sous 36 px à l'écran. On mesure la teinte moyenne sur la bande du cerclage.
+test('pions liés : médaillon au cerclage teinté du PJ, gris s’il est mort, disque simple au petit zoom', async ({ page }) => {
+  await mountStage(page);
+  // Pion en (2,2) : centre (250, 250), cerclage entre ~35 et 50 px du centre. Huit points à 43 px.
+  const ring = Array.from({ length: 8 }, (_, i) => ({
+    x: 250 + 43 * Math.cos((i * Math.PI) / 4 + Math.PI / 8),
+    y: 250 + 43 * Math.sin((i * Math.PI) / 4 + Math.PI / 8),
+  }));
+  const pj = {
+    id: 'ely', levelId: 'rdc', cell: { a: 2, b: 2 }, sizeCells: 1, kind: 'pc', imageUrl: '', label: 'Elysia',
+    borderColor: '#00ff00', hidden: false, elevation: 0, markers: [],
+    link: { source: 'outil-mj', ref: 'pj:c1' }, camp: 'pj', color: '#b3262e',
+  };
+  const render = (/** @type {any} */ token, zoom = 1) => page.evaluate(
+    ({ levelData, tokenData, points, zoomValue }) => /** @type {any} */ (window).__stageProbe.testTokensRender({
+      levelOverrides: levelData,
+      tokensList: [tokenData],
+      options: { role: 'gm', activeLevelId: 'rdc', medallions: true, samplePoints: points, zoom: zoomValue },
+    }),
+    { levelData: level, tokenData: token, points: ring, zoomValue: zoom }
+  );
+  /** @param {{ samples: {r:number,g:number,b:number,a:number}[] }} result */
+  const mean = (result) => {
+    const opaque = result.samples.filter((p) => p.a > 200);
+    const sum = opaque.reduce((s, p) => ({ r: s.r + p.r, g: s.g + p.g, b: s.b + p.b }), { r: 0, g: 0, b: 0 });
+    return { n: opaque.length, r: sum.r / opaque.length, g: sum.g / opaque.length, b: sum.b / opaque.length };
+  };
+
+  const vivant = mean(await render(pj));
+  expect(vivant.n).toBeGreaterThanOrEqual(6);
+  expect(vivant.r).toBeGreaterThan(vivant.g + 25);
+  expect(vivant.r).toBeGreaterThan(vivant.b + 25);
+
+  const jade = mean(await render({ ...pj, color: '#2e9e6e' }));
+  expect(jade.g).toBeGreaterThan(jade.r + 15);
+
+  const mort = mean(await render({ ...pj, dead: true }));
+  expect(Math.abs(mort.r - mort.g)).toBeLessThan(12);
+  expect(Math.abs(mort.g - mort.b)).toBeLessThan(12);
+
+  // 30 px à l'écran : disque simple, la bande échantillonnée tombe sur son liseré plein, à la
+  // couleur exacte du PJ (un bronze teinté n'est jamais uni).
+  const petit = mean(await render(pj, 0.3));
+  expect(Math.abs(petit.r - 0xb3)).toBeLessThan(6);
+  expect(Math.abs(petit.g - 0x26)).toBeLessThan(6);
+  expect(Math.abs(vivant.r - 0xb3) + Math.abs(vivant.g - 0x26)).toBeGreaterThan(12);
+
+  // Pion ordinaire : jamais de médaillon, son disque gris d'avant.
+  const { link, camp, color, ...ordinaire } = pj;
+  const simple = mean(await render(ordinaire));
+  expect(Math.abs(simple.r - 0x55)).toBeLessThan(6);
+});

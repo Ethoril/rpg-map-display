@@ -1786,6 +1786,8 @@ const LINKED_TOKEN_PATCH_KEYS = new Set([
   'dead',
   'deathCause',
   'camp',
+  // Couleur propre d'un PJ lié (contrat §4, lot P2) : teinte de son cerclage.
+  'color',
   // Monture fusionnée (contrat §8.1) : écrite par la liaison, avec la bascule `token.mounted`.
   'rider',
 ]);
