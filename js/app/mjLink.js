@@ -478,8 +478,53 @@ function splitMount(op, deps) {
   if (!store.reserveToken?.(rider.id)) return;
   publish('token.reserve', { tokenId: rider.id });
   placeLinkedFromReserve(deps, mount.id, levelId, cell);
-  store.updateReserveToken(rider.id, { mounted: false, rider: null });
-  deps.onRiderToPlace?.(rider.id, { levelId, cell, sizeCells: mount.sizeCells || 1 });
+  // Le cavalier reprend sa taille de pied (le `token.state` suivant la confirme) : posé avec celle de
+  // la monture fusionnée, il prendrait des cases qu'il rend aussitôt.
+  store.updateReserveToken(rider.id, { mounted: false, rider: null, sizeCells: 1 });
+  const around = { levelId, cell, sizeCells: mount.sizeCells || 1 };
+  // Décision du MJ (recette 06/11) : le cavalier reste sur le plateau, sur la case libre adjacente la
+  // plus proche de sa monture. Aucune case libre : il attend en réserve, pose armée comme avant.
+  if (!placeOnFreeAdjacentCell(deps, rider.id, around)) deps.onRiderToPlace?.(rider.id, around);
+}
+
+/**
+ * Pose un pion de la réserve sur la case libre adjacente à une monture posée, la plus proche d'abord
+ * (distance entre cases, puis `a`, puis `b` : ordre déterministe), selon la grille de l'étage
+ * (carrée ou hexagonale) et la taille du pion. « Libre » = le store accepte la pose (case dans la
+ * carte, non occupée) ; il rejette les autres sans rien changer.
+ *
+ * @param {Parameters<typeof executeMjOperations>[1]} deps
+ * @param {string} tokenId
+ * @param {{ levelId: string, cell: { a: number, b: number }, sizeCells: number }} around
+ * @returns {boolean} true si le pion est maintenant sur le plateau
+ */
+function placeOnFreeAdjacentCell(deps, tokenId, around) {
+  const { store } = deps;
+  const campaign = store.getCampaign();
+  const level = campaign?.levels.find((l) => l.id === around.levelId);
+  const rider = (campaign?.reserve ?? []).find((t) => t.id === tokenId);
+  if (!level || !rider) return false;
+  const reach = around.sizeCells + (rider.sizeCells || 1) + 1;
+  /** @type {{ a: number, b: number, d: number }[]} */
+  const candidates = [];
+  for (let da = -reach; da <= reach; da++) {
+    for (let db = -reach; db <= reach; db++) {
+      const cell = { a: around.cell.a + da, b: around.cell.b + db };
+      if (footprintsAdjacent(level, { cell, sizeCells: rider.sizeCells || 1 }, around)) {
+        candidates.push({ ...cell, d: Math.hypot(da, db) });
+      }
+    }
+  }
+  candidates.sort((p, q) => p.d - q.d || p.a - q.a || p.b - q.b);
+  for (const { a, b } of candidates) {
+    try {
+      placeLinkedFromReserve(deps, tokenId, around.levelId, { a, b });
+    } catch {
+      continue; // case refusée : suivante
+    }
+    if (store.getCampaign()?.tokens.some((t) => t.id === tokenId)) return true;
+  }
+  return false;
 }
 
 export const MJ_LINK_CHANNEL = 'wfrp-map-link';

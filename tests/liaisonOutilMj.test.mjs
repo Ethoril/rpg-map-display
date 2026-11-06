@@ -454,19 +454,17 @@ test('mjLink : fusion puis séparation — un seul pion monté sur la case de la
   // Démontage : mount.split puis token.state du cavalier à pied.
   run('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' });
   assert.deepEqual(pion('mon')?.cell, { a: 3, b: 2 }, 'la monture reste sur la case');
-  assert.equal(pion('cav'), undefined, 'le cavalier attend sa pose');
-  assert.equal(enReserve('cav')?.mounted, false);
-  assert.equal(enReserve('cav')?.rider, null);
-  assert.deepEqual(poses, [['cav', { levelId: 'rdc', cell: { a: 3, b: 2 }, sizeCells: 2 }]], 'pose armée, rien ne bouge seul');
+  // Décision du MJ (06/11) : le cavalier reste sur le plateau, sur la case libre adjacente la plus proche.
+  assert.deepEqual(pion('cav')?.cell, { a: 2, b: 2 }, 'posé contre sa monture, à la plus proche case libre (ordre a puis b)');
+  assert.equal(pion('cav')?.mounted, false);
+  assert.equal(pion('cav')?.rider, null);
+  assert.equal(pion('cav')?.sizeCells, 1);
+  assert.equal(enReserve('cav'), undefined, 'plus en réserve');
+  assert.deepEqual(poses, [], 'aucune pose armée : rien à faire pour le MJ');
   run('token.state', cavalierEtat());
-  assert.equal(enReserve('cav')?.sizeCells, 1, 'reprend sa taille en réserve');
-  run('token.state', cavalierEtat());
+  assert.equal(pion('cav')?.sizeCells, 1);
   run('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' });
-  assert.equal(poses.length, 1, 'séparation rejouée sans effet');
-
-  // Le MJ pose le cavalier en (2,2) : ce que publie le panneau, le pion entier dans token.add.
-  store.placeTokenFromReserve('cav', 'rdc', { a: 2, b: 2 });
-  published.push(['token.add', { token: pion('cav') }]);
+  assert.equal(poses.length, 0, 'séparation rejouée sans effet');
   const finalMj = store.getCampaign();
 
   // Tablette : la campagne de départ, puis tout ce qui a été publié, dans l'ordre.
@@ -475,6 +473,25 @@ test('mjLink : fusion puis séparation — un seul pion monté sur la case de la
   const resume = (/** @type {any} */ c) => c.tokens.map((/** @type {any} */ t) => JSON.stringify([t.id, t.cell, t.sizeCells, t.mounted === true, t.rider ?? null, t.hp, t.markers])).sort();
   assert.deepEqual(resume(store.getCampaign()), resume(finalMj));
   assert.deepEqual(resume(finalMj).length, 2);
+});
+
+test('mjLink : séparation sans aucune case libre adjacente — le cavalier retourne en réserve, pose armée comme avant', async () => {
+  const { planMjMessage, executeMjOperations } = await import('../js/app/mjLink.js');
+  const store = await import('../js/state/store.js');
+  const petit = createLevel({ id: 'rdc', widthCells: 2, heightCells: 2 });
+  const camp = createCampaign({ levels: [petit], tokens: [
+    { ...createToken({ id: 'cav', levelId: 'rdc', cell: { a: 0, b: 0 }, kind: 'pc', sizeCells: 2, label: 'Ulrika Brandt' }), link: { ...link, ref: 'pj:c9' }, camp: /** @type {const} */ ('pj'), mounted: true, rider: /** @type {any} */ (montureEtat) },
+  ] });
+  camp.reserve = [{ ...createToken({ id: 'mon', levelId: 'rdc', cell: { a: 0, b: 0 }, kind: 'pc', sizeCells: 2, label: 'Destrier noir' }), link: { ...link, ref: 'p:m1' }, camp: /** @type {const} */ ('pj') }];
+  store.loadCampaign(camp);
+  /** @type {any[]} */
+  const poses = [];
+  const deps = { store, publish: () => {}, createToken, newTokenId: () => 'x', trace: { levelId: 'rdc', cell: { a: 0, b: 0 } }, onRiderToPlace: (/** @type {string} */ id, /** @type {any} */ around) => poses.push([id, around]) };
+  executeMjOperations(planMjMessage(/** @type {any} */ (store.getCampaign()), msg('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' })), deps);
+  assert.equal(store.getCampaign()?.tokens.some((t) => t.id === 'cav'), false);
+  assert.equal(store.getCampaign()?.reserve?.some((t) => t.id === 'cav'), true, 'en réserve');
+  assert.equal(store.getCampaign()?.tokens.find((t) => t.id === 'mon')?.cell.a, 0, 'la monture est revenue sur le plateau');
+  assert.equal(poses.length, 1, 'pose armée');
 });
 
 test('mjLink : séparation déduite du token.state seul (sans mount.split) ; rien si la paire n est pas fusionnée', async () => {
