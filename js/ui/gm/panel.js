@@ -20,6 +20,7 @@ import {
 import { isStatusMarker, isLinkedToken } from '../../core/schema.js';
 import { cellDimensionsForGridType, hexShiftXForGridType, footprintsAdjacent } from '../../grid/index.js';
 import { tokenRingColor } from '../../render/layers/tokens.js';
+import { visibleReserve, combatantsOf } from '../../state/selection.js';
 import { mountGMVersionBadge } from '../versionBadge.js';
 import * as store from '../../state/store.js';
 
@@ -318,6 +319,7 @@ export function createGMPanel(container, options = {}) {
       </div>
       <button id="gm-vitals-mounted" type="button" class="gm-btn--sm" aria-pressed="false">À cheval</button>
       <span id="gm-vitals-hint" class="gm-hint"></span>
+      <div id="gm-vitals-combatants" class="gm-stack" hidden></div>
     </div>
 
     <!-- Onglets de l'inspecteur : le mode n'en gouverne plus que la liste (C-10). -->
@@ -1591,7 +1593,7 @@ export function createGMPanel(container, options = {}) {
 
   function updateReserveDrawer() {
     if (!reserveDrawer || !reserveList) return;
-    const enReserve = store.getReserve();
+    const enReserve = visibleReserve(store.getCampaign()?.tokens ?? [], store.getReserve());
     // ⛔ Même garde que la liste des gabarits (audit du 22/09, B8) : reconstruire la réserve
     // à chaque notification perdait un clic sur « Poser » tombé entre deux reconstructions.
     const signature = JSON.stringify([enReserve, store.getStackingNormalizationReport()]);
@@ -2118,6 +2120,7 @@ export function createGMPanel(container, options = {}) {
   const vitalsHealthBtns = /** @type {HTMLButtonElement[]} */ (
     Array.from(container.querySelectorAll('#gm-vitals-health button[data-health]'))
   );
+  const vitalsCombatants = /** @type {HTMLElement|null} */ (container.querySelector('#gm-vitals-combatants'));
   const vitalsMountedBtn = /** @type {HTMLButtonElement|null} */ (container.querySelector('#gm-vitals-mounted'));
 
   /**
@@ -2168,6 +2171,28 @@ export function createGMPanel(container, options = {}) {
         const actif = btn.dataset.health === courant;
         btn.setAttribute('aria-pressed', String(actif));
       }
+    }
+
+    // Pion monté : deux combattants, le cavalier puis sa monture, chacun nommé avec ses PV et états.
+    if (vitalsCombatants) {
+      const sections = pion.rider ? combatantsOf(pion) : [];
+      vitalsCombatants.hidden = sections.length === 0;
+      vitalsCombatants.replaceChildren(
+        ...sections.map((c) => {
+          const bloc = document.createElement('div');
+          bloc.className = 'gm-combatant';
+          bloc.dataset.role = c.role;
+          // ⛔ Jamais de PV chiffrés pour un PNJ ; la monture, dont le type n'est pas connu, n'en montre pas.
+          const chiffres = c.role === 'cavalier' && pion.kind === 'pc' && c.hp;
+          const vie = chiffres && c.hp ? `${c.hp.current}/${c.hp.max} PV` : c.hp ? SANTE_LABEL_FR[c.health] ?? c.health : '';
+          const etats = c.markers.map((m) => {
+            const niveau = c.markerLevels[m];
+            return (STATUS_MARKER_LABEL_FR[/** @type {keyof typeof STATUS_MARKER_LABEL_FR} */ (m)] ?? m) + (niveau > 1 ? ` ${niveau}` : '');
+          });
+          bloc.textContent = `${c.role === 'cavalier' ? 'Cavalier' : 'Monture'} — ${c.label}${vie ? ` · ${vie}` : ''}${etats.length ? ` · ${etats.join(', ')}` : ''}`;
+          return bloc;
+        })
+      );
     }
 
     if (vitalsMountedBtn) {

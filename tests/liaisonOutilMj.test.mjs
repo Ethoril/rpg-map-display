@@ -529,3 +529,36 @@ test('P2 : color d’un PJ validée, posée par token.state, retirée par null, 
   loadCampaign(createCampaign({ levels: [level], tokens: [ordinaire] }));
   assert.throws(() => updateToken('o', { color: '#b3262e' }), /champ non autorisé/, 'pion ordinaire : pas de couleur de liaison');
 });
+
+// ── Pion monté : cohérence pion/panneau, réserve (recette 06/11) ──────────────────────────────
+test('pion monté : les marqueurs du cavalier passent avant ceux de la monture, qui sont désignés', async () => {
+  const { mountOnlyMarkers } = await import('../js/render/layers/tokens.js');
+  const { filterAndSortMarkers } = await import('../js/render/statusBadges.js');
+  const base = createToken({ id: 'r', levelId: 'rdc', cell: { a: 0, b: 0 } });
+  const fusion = { ...base, markers: /** @type {any[]} */ (['stunned']), rider: { ...montureEtat, markers: /** @type {any[]} */ (['prone', 'stunned']), markerLevels: {} } };
+  assert.deepEqual(mountOnlyMarkers(fusion), ['prone'], 'seul prone est propre à la monture');
+  assert.deepEqual(mountOnlyMarkers(base), []);
+  // Canoniquement `prone` précèderait `stunned` ; la propriété de la monture le repousse après.
+  const canonique = filterAndSortMarkers(['stunned', 'prone'], 2).visibleMarkers;
+  const ordre = filterAndSortMarkers(['stunned', 'prone'], 2, ['prone']).visibleMarkers;
+  assert.deepEqual(ordre, ['stunned', 'prone']);
+  const un = filterAndSortMarkers(['stunned', 'prone'], 2, ['stunned']);
+  assert.equal(un.visibleMarkers[0], 'prone', 'si c’est stunned qui est à la monture, il passe en dernier');
+  assert.ok(canonique.length === 2);
+  // Débordement : le cavalier garde la place, la monture part dans « +N ».
+  const deborde = filterAndSortMarkers(['bleeding', 'stunned', 'prone'], 2, ['prone', 'bleeding']);
+  assert.deepEqual(deborde, { visibleMarkers: ['stunned'], overflowCount: 2 });
+});
+
+test('pion monté : la réserve ne montre plus la monture rangée par la fusion, ni le panneau ne perd un combattant', async () => {
+  const { visibleReserve, combatantsOf } = await import('../js/state/selection.js');
+  const cav = { ...createToken({ id: 'cav', levelId: 'rdc', cell: { a: 0, b: 0 }, label: 'Elysia' }), link: /** @type {const} */ ({ source: 'outil-mj', ref: 'pj:c9' }), mounted: true, markers: /** @type {any[]} */ (['stunned']), rider: { ...montureEtat, label: 'Gobelin Coureur', markers: /** @type {any[]} */ (['prone']), markerLevels: {} } };
+  const mon = { ...createToken({ id: 'mon', levelId: 'rdc', cell: { a: 0, b: 0 }, label: 'Gobelin Coureur' }), link: /** @type {const} */ ({ source: 'outil-mj', ref: montureEtat.ref }) };
+  const autre = { ...createToken({ id: 'x', levelId: 'rdc', cell: { a: 0, b: 0 }, label: 'Autre' }), link: /** @type {const} */ ({ source: 'outil-mj', ref: 'p:zzz' }) };
+  assert.deepEqual(visibleReserve([cav], [mon, autre]).map((t) => t.id), ['x']);
+  assert.deepEqual(visibleReserve([{ ...cav, mounted: false }], [mon, autre]).map((t) => t.id), ['mon', 'x'], 'descendu : la monture est à poser');
+  assert.deepEqual(visibleReserve([], [cav, mon]).map((t) => t.id), ['cav'], 'cavalier monté lui-même en réserve');
+  const sections = combatantsOf(cav);
+  assert.deepEqual(sections.map((c) => [c.role, c.label, c.markers]), [['cavalier', 'Elysia', ['stunned']], ['monture', 'Gobelin Coureur', ['prone']]]);
+  assert.equal(combatantsOf({ ...cav, rider: null }).length, 1);
+});
