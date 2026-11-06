@@ -26,7 +26,8 @@ test('cerclage par camp : PJ bronze teinté de sa couleur (sinon du camp), alli�
   assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: null }), { frame: 'bronze', tint: CAMP_FILL.pj });
   assert.deepEqual(medallionFrameOf({ link, camp: 'pj', color: 'rouge' }), { frame: 'bronze', tint: CAMP_FILL.pj });
   assert.deepEqual(medallionFrameOf({ link, camp: 'allie' }), { frame: 'etain', tint: null });
-  assert.deepEqual(medallionFrameOf({ link, camp: 'ennemi', color: '#b3262e' }), { frame: 'fer', tint: null });
+  assert.deepEqual(medallionFrameOf({ link, camp: 'ennemi', color: null }), { frame: 'fer', tint: null });
+  assert.deepEqual(medallionFrameOf({ link, camp: 'allie', color: '#B3262E' }), { frame: 'bronze', tint: '#b3262e' }, 'monture d’un PJ');
   assert.deepEqual(medallionFrameOf({ link, camp: 'neutre' }), { frame: 'bronze', tint: null });
   assert.deepEqual(medallionFrameOf({ link }), { frame: 'bronze', tint: null });
 });

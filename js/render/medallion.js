@@ -6,7 +6,8 @@
  * cerclage ciselé **fin** (fenêtre à 69 %) qui reste **dans la case**, sans débord.
  *
  * - PJ : cerclage bronze teinté de la couleur propre au personnage (`token.color`, contrat §4),
- *   à défaut de la teinte du camp ;
+ *   à défaut de la teinte du camp ; la monture d'un PJ reçoit la même couleur et le même
+ *   cerclage (décision du MJ du 06/11) : toute `color` reçue vaut bronze teinté ;
  * - allié : étain à laurier ; ennemi : fer à pointes ; neutre (ou sans camp) : bronze ;
  * - mort : le cerclage passe en gris, quel que soit le camp ;
  * - sous {@link MEDALLION_MIN_SCREEN_PX} à l'écran, repli sur le disque simple.
@@ -110,25 +111,25 @@ export function mixHex(a, b, t) {
  */
 
 /**
- * Teinte propre d'un pion lié : celle du PJ si l'outil MJ l'envoie (contrat §4), sinon celle du
- * camp ; `undefined` sans camp.
+ * Teinte propre d'un pion lié : `color` si l'outil MJ l'envoie (un PJ ou la monture d'un PJ,
+ * contrat §4), sinon celle du camp ; `undefined` sans l'une ni l'autre.
  *
  * @param {MedallionSubject} token
  * @returns {string|undefined}
  */
 export function linkedTint(token) {
-  if (token.camp === 'pj' && isHexColor(token.color)) return token.color.toLowerCase();
+  if (isHexColor(token.color)) return token.color.toLowerCase();
   return token.camp ? CAMP_FILL[token.camp] : undefined;
 }
 
 /**
- * Cerclage d'un pion lié et sa teinte : seul le bronze des PJ est teinté.
+ * Cerclage d'un pion lié et sa teinte : seul le bronze des PJ (et de leurs montures) est teinté.
  *
  * @param {MedallionSubject} token
  * @returns {{ frame: MedallionFrame, tint: string|null }}
  */
 export function medallionFrameOf(token) {
-  if (token.camp === 'pj') return { frame: 'bronze', tint: linkedTint(token) ?? CAMP_FILL.pj };
+  if (token.camp === 'pj' || isHexColor(token.color)) return { frame: 'bronze', tint: linkedTint(token) ?? CAMP_FILL.pj };
   if (token.camp === 'allie') return { frame: 'etain', tint: null };
   if (token.camp === 'ennemi') return { frame: 'fer', tint: null };
   return { frame: 'bronze', tint: null };
@@ -141,7 +142,7 @@ export function medallionFrameOf(token) {
  * @returns {string}
  */
 export function enamelLightOf(token) {
-  if (token.camp === 'pj' && isHexColor(token.color)) return mixHex(token.color.toLowerCase(), '#ffffff', 0.35);
+  if (isHexColor(token.color)) return mixHex(token.color.toLowerCase(), '#ffffff', 0.35);
   return (token.camp && /** @type {Record<string, string>} */ (ENAMEL_LIGHT)[token.camp]) || ENAMEL_LIGHT.neutre;
 }
 

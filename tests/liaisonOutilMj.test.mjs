@@ -494,7 +494,8 @@ test('rendu : liseré du pion lié à la teinte du camp ou du PJ, jamais le choi
   assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi', borderColor: '#123456' }), CAMP_FILL.ennemi, 'choix à la main abandonné');
   assert.equal(tokenRingColor({ ...base, link, camp: 'pj', color: '#B3262E' }), '#b3262e', 'couleur du PJ');
   assert.equal(tokenRingColor({ ...base, link, camp: 'pj', color: null }), CAMP_FILL.pj, 'PJ sans couleur : camp');
-  assert.equal(tokenRingColor({ ...base, link, camp: 'ennemi', color: '#b3262e' }), CAMP_FILL.ennemi, 'couleur réservée aux PJ');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'allie', color: '#b3262e' }), '#b3262e', 'monture d’un PJ : couleur du cavalier');
+  assert.equal(tokenRingColor({ ...base, link, camp: 'allie', color: null }), CAMP_FILL.allie, 'sans couleur : camp');
   assert.equal(tokenRingColor({ ...base, borderColor: '#123456' }), '#123456', 'pion ordinaire : choix à la main');
   assert.equal(tokenRingColor(base), '#00ff00', 'pion ordinaire inchangé');
   assert.equal(tokenRingColor({ ...base, link }), '#00ff00', 'lié sans camp');
