@@ -1758,7 +1758,8 @@ export function createGMPanel(container, options = {}) {
    * @param {string} label
    */
   function initiales(label) {
-    const mots = label.trim().split(/\s+/).filter(Boolean);
+    // Même règle que `campInitials` (calque des pions) : seuls lettres et chiffres comptent, « Elysia (test) » → « ET ».
+    const mots = label.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
     if (mots.length === 0) return '?';
     return mots
       .slice(0, 2)
