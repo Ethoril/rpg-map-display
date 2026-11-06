@@ -19,6 +19,9 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   'moveZone',
   'movePlan',
   'templates',
+  // Traits d'engagement de l'outil MJ (contrat de liaison §10) — ⛔ vue MJ SEULE, SOUS les pions :
+  // tracé de centre à centre, il se voit entre les médaillons sans barrer portraits ni initiales.
+  'engagements',
   'tokens',
   // Effets de blessure et de mort (contrat §9) : sur les pions, SOUS le fog — un effet dans une
   // case non vue ne doit pas la trahir à la tablette.
@@ -29,9 +32,6 @@ export const CANVAS_LAYER_ORDER = Object.freeze([
   // fermée n'a pas besoin de se dessiner, le décor la montre déjà ; une lampe éteinte, si —
   // rien dans le décor ne la signale. Décision du mainteneur du 10/09/2026.
   'lightMarkers',
-  // Traits d'engagement de l'outil MJ (contrat de liaison §10) — ⛔ vue MJ SEULE, au-dessus du
-  // fog : le MJ voit tout, et un trait sous le voile serait illisible.
-  'engagements',
   'measure',
   // ⭐ Le ping est **au-dessus du fog**, délibérément. Un marqueur « regarde ici » masqué par le
   // brouillard serait invisible sans que le MJ sache pourquoi, et il pointerait dans le vide. Ce

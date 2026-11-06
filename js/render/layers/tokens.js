@@ -116,7 +116,8 @@ function tokenPosition(token, now) {
  * @returns {string}
  */
 export function campInitials(label) {
-  const words = (label ?? '').trim().split(/\s+/).filter(Boolean);
+  // Seuls lettres et chiffres comptent : « Elysia (test) » → « ET ».
+  const words = (label ?? '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   if (words.length === 0) return '?';
   return words.slice(0, 2).map((w) => Array.from(w)[0]).join('').toUpperCase();
 }

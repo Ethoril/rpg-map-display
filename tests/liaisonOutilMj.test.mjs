@@ -364,6 +364,9 @@ test('L2 : pion sans image — disque à la couleur du camp, initiales du nom ; 
   assert.equal(sansCamp.fills[0], '#555d68', 'sans camp : gris d’avant');
   assert.deepEqual(sansCamp.texts, ['G'], 'sans camp : lettre unique d’avant');
   assert.equal(campInitials('   '), '?');
+  assert.equal(campInitials('Elysia (test)'), 'ET');
+  assert.equal(campInitials('Gobelin Coureur'), 'GC');
+  assert.equal(campInitials('(?)'), '?');
   // Initiales blanches lisibles : contraste WCAG ≥ 4,5 sur chaque teinte.
   const lum = (/** @type {string} */ h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
     .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
