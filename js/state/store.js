@@ -1848,6 +1848,9 @@ export function updateToken(tokenId, patch) {
     ...candidate.tokens[index],
     ...patch,
   };
+  // Liaison (MAP-06) : `deathCause: null` retire la cause d'un pion relevé. Le `null` voyage tel
+  // quel jusqu'à la tablette (un champ `undefined` disparaîtrait du JSON), et s'efface ici.
+  if (/** @type {any} */ (patch).deathCause === null) delete candidate.tokens[index].deathCause;
 
   assertValidCampaign(candidate, `Mise à jour du pion "${tokenId}"`);
   replaceCampaign(candidate);

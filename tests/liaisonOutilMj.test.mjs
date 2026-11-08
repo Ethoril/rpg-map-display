@@ -579,3 +579,46 @@ test('pion monté : la réserve ne montre plus la monture rangée par la fusion,
   assert.deepEqual(sections.map((c) => [c.role, c.label, c.markers]), [['cavalier', 'Elysia', ['stunned']], ['monture', 'Gobelin Coureur', ['prone']]]);
   assert.equal(combatantsOf({ ...cav, rider: null }).length, 1);
 });
+
+// ── Rapport d'analyse de l'outil MJ du 08/11 : MAP-02, MAP-06 ─────────────────────────────────
+
+test('MAP-02 : blessure puis mort de la monture fusionnée jouent l’effet sur le pion du cavalier', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const campaign = createCampaign({
+    levels: [level],
+    tokens: [{ ...createToken({ id: 'cav', levelId: 'rdc', cell: { a: 3, b: 2 }, kind: 'pc', sizeCells: 2, label: 'Ulrika Brandt' }), link: { ...link, ref: 'pj:c9' }, camp: /** @type {const} */ ('pj'), mounted: true, rider: /** @type {any} */ (montureEtat) }],
+  });
+  const [blessure] = planMjMessage(campaign, msg('fx.wound', { ref: 'p:m1', hpLost: 3, maxHp: 12, target: 'self' }));
+  assert.equal(blessure?.op, 'fx', 'la blessure de la monture se joue');
+  assert.equal(/** @type {any} */ (blessure).tokenId, 'cav', 'sur le pion du cavalier');
+  const [mort] = planMjMessage(campaign, msg('fx.death', { ref: 'p:m1', cause: 'blood' }));
+  assert.equal(mort?.op, 'fx', 'la mort de la monture se joue');
+  assert.equal(/** @type {any} */ (mort).tokenId, 'cav');
+  assert.deepEqual(planMjMessage(campaign, msg('fx.wound', { ref: 'p:inconnu', hpLost: 3, maxHp: 12 })), [], 'ref inconnu : rien');
+});
+
+test('MAP-06 : deathCause null efface la cause d’un pion relevé, jusqu’à la tablette ; jamais republié pour rien', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const { loadCampaign, updateToken, getCampaign } = await import('../js/state/store.js');
+  const pnj = linked({ label: 'Gobelin', camp: 'ennemi', dead: true, deathCause: 'fire' });
+  loadCampaign(createCampaign({ levels: [level], tokens: [pnj] }));
+  const etat = /** @type {any} */ ({ ref: 'p:g1', label: 'Gobelin', dead: false, deathCause: null });
+  const ops = planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat));
+  assert.deepEqual(ops, [{ op: 'update', tokenId: 'g1', patch: { dead: false, deathCause: null } }]);
+  // Le patch passe par le JSON du réseau avant d'atteindre la tablette.
+  updateToken('g1', JSON.parse(JSON.stringify(/** @type {any} */ (ops[0]).patch)));
+  assert.equal(getCampaign()?.tokens[0].dead, false);
+  assert.equal('deathCause' in /** @type {any} */ (getCampaign()?.tokens[0]), false, 'la cause est retirée');
+  assert.deepEqual(planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat)), [], 'déjà sans cause : rien à republier');
+});
+
+test('MAP-06 : un pion neuf annoncé avec deathCause null entre en réserve, sans cause', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const { loadCampaign, getCampaign, addTokenToReserve } = await import('../js/state/store.js');
+  loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+  const [add] = planMjMessage(/** @type {any} */ (getCampaign()), msg('token.add', { ref: 'p:g7', label: 'Garde', camp: 'ennemi', kind: 'npc', dead: false, deathCause: null }));
+  assert.equal(add?.op, 'reserveAdd');
+  assert.equal('deathCause' in /** @type {any} */ (add).token, false, 'aucune cause nulle dans le pion créé');
+  addTokenToReserve({ ...createToken({ id: 'g7', levelId: 'rdc', cell: { a: 0, b: 0 } }), .../** @type {any} */ (add).token });
+  assert.equal(getCampaign()?.reserve?.length, 1, 'la réserve l’accepte');
+});

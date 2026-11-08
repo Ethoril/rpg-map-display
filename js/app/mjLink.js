@@ -80,6 +80,9 @@ export function patchFromState(state) {
   if (state.rider !== undefined) patch.rider = state.rider;
   // La couleur d'un PJ (contrat §4) : `null` aussi, le MJ l'a retirée du profil.
   if (state.color !== undefined) patch.color = state.color;
+  // MAP-06 (08/11) : `deathCause: null` aussi — un pion relevé ne garde pas l'ancienne cause.
+  // Le store retire le champ (`updateToken`), le schéma ne connaissant pas de cause nulle.
+  if (state.deathCause === null) patch.deathCause = null;
   return patch;
 }
 
@@ -106,7 +109,7 @@ export function findLinkedToken(campaign, ref) {
  */
 function changedOnly(token, patch) {
   return Object.fromEntries(
-    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' ? null : undefined)) !== JSON.stringify(value))
+    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' || key === 'deathCause' ? null : undefined)) !== JSON.stringify(value))
   );
 }
 
@@ -121,7 +124,9 @@ export function planTokenState(campaign, state) {
   const found = findLinkedToken(campaign, state.ref);
   if (!found) {
     if (state.ref.startsWith('pj:')) return [{ op: 'awaitBinding', ref: state.ref, label: state.label }];
-    const { rider, ...fields } = patchFromState(state);
+    // `deathCause: null` n'a de sens que sur un pion existant (MAP-06) : un pion neuf n'a pas de cause.
+    const { rider, deathCause, ...fields } = patchFromState(state);
+    if (deathCause) fields.deathCause = deathCause;
     return [{ op: 'reserveAdd', ref: state.ref, token: { ...fields, ...(rider ? { rider } : {}), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true } }];
   }
   /** @type {MjLinkOperation[]} */
@@ -294,7 +299,11 @@ export function planMjMessage(campaign, message, version = 1) {
     case 'fx.death': {
       // Effet éphémère (contrat §9) : joué sur le pion posé, jamais rejoué ni persisté.
       const fx = parseFx(message.type === 'fx.wound' ? 'wound' : 'death', payload);
-      const token = typeof payload.ref === 'string' ? campaign.tokens.find((t) => isLinkedToken(t) && t.link?.ref === payload.ref) : null;
+      // MAP-02 (08/11) : une monture fusionnée n'a plus de pion à elle, elle est le `rider` du pion
+      // du cavalier — l'effet se joue sur lui, comme la distance (`answerDistanceQuery`).
+      const token = typeof payload.ref === 'string'
+        ? campaign.tokens.find((t) => isLinkedToken(t) && (t.link?.ref === payload.ref || t.rider?.ref === payload.ref))
+        : null;
       return fx && token ? [{ op: 'fx', tokenId: token.id, hidden: token.hidden === true, fx }] : [];
     }
     case 'mount.split': {
