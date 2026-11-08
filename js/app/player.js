@@ -34,6 +34,7 @@ import {
   normalizeSessionId,
   withDeadline,
   attendreConnexion,
+  createSnapshotSaver,
   CONNEXION_DEADLINE_MS,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
@@ -816,14 +817,12 @@ export async function bootstrapPlayerApp(options = {}) {
 
   const transportExtended = /** @type {any} */ (transport);
   let applyingRemote = false;
-  /** @type {ReturnType<typeof setTimeout>|null} */
-  let snapshotTimer = null;
-
-  function scheduleSnapshot() {
-    if (!transportExtended?.saveSnapshot || applyingRemote) return;
-    if (snapshotTimer !== null) clearTimeout(snapshotTimer);
-    snapshotTimer = setTimeout(() => {
-      snapshotTimer = null;
+  // Mutations de campagne hors instantané relu : une reprise qui voit ce compteur bouger pendant
+  // son attente n'applique pas son instantané, plus vieux que l'écran (audit du 08/11, A8).
+  let generationCampagne = 0;
+  // Une écriture en vol à la fois, comme au MJ (A15) : sans MJ, c'est la table qui persiste.
+  const snapshotSaver = createSnapshotSaver({
+    capture: () => {
       // ⛔ D-5 (tranché le 23/09/2026) : la tablette n'écrit l'instantané QUE si aucun MJ n'est
       // présent. Tant qu'un MJ l'est, il reçoit chaque coup de la table et persiste seul : une
       // tablette réveillée ne peut plus écraser son état avec des données périmées. Sans MJ — son
@@ -832,14 +831,20 @@ export async function bootstrapPlayerApp(options = {}) {
       // ⚠ Fenêtre résiduelle : un coup joué dans la seconde où le MJ recharge, avant que le serveur
       // n'ait retiré sa présence, n'est écrit par personne. La présence se lit au DÉPART de
       // l'écriture, pas à sa programmation, pour la réduire au minimum.
-      if (listOtherGmClients().length > 0) return;
+      if (listOtherGmClients().length > 0) return null;
+      if (!store.getCampaign()) return null;
       const snapshot = createSnapshotPayload();
       const diagnostic = transportExtended.getSnapshotSizeDiagnostic?.(snapshot);
       if (diagnostic?.severity === 'warning') networkStatus.update('warning', diagnostic.message);
-      Promise.resolve(transportExtended.saveSnapshot(snapshot)).catch((error) =>
-        networkStatus.update('error', error)
-      );
-    }, 250);
+      return snapshot;
+    },
+    save: (snapshot) => transportExtended.saveSnapshot(snapshot),
+    onError: (error) => networkStatus.update('error', error),
+  });
+
+  function scheduleSnapshot() {
+    if (!transportExtended?.saveSnapshot || applyingRemote) return;
+    snapshotSaver.schedule();
   }
 
 // ── UX-12 : « connu des joueurs » se DÉRIVE, il ne s'invente pas ──────────────────────────
@@ -954,7 +959,10 @@ export async function bootstrapPlayerApp(options = {}) {
     invalidatePendingMoveTap();
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
-    if (!change?.session) scheduleSnapshot();
+    if (!change?.session) {
+      if (!applyingRemote) generationCampagne += 1;
+      scheduleSnapshot();
+    }
     // L'étage affiché est mémorisé à chaque changement, et pas seulement quand la table en
     // choisit un : c'est ce qui fait qu'un F5 retrouve l'étage où la séance en était, y
     // compris avant qu'un sélecteur existe pour en changer (UX-12).
@@ -1090,6 +1098,9 @@ export async function bootstrapPlayerApp(options = {}) {
   /** @type {ReturnType<typeof setTimeout>|null} */
   let repriseDiffereeTimer = null;
   let delaiReprise = 2000;
+  // Vrai quand la reprise précédente a écarté son instantané parce que la table jouait pendant
+  // l'attente (A8) : le bail est alors rafraîchi, mais l'état manqué reste à relire.
+  let relectureDue = false;
   const planifierNouvelleReprise = () => {
     if (repriseDiffereeTimer !== null) return;
     repriseDiffereeTimer = setTimeout(() => {
@@ -1105,7 +1116,9 @@ export async function bootstrapPlayerApp(options = {}) {
     // réécrit 250 ms après chaque mutation : il peut donc être en retard sur un événement déjà
     // appliqué ici. Le relire à chaque réveil ferait RÉGRESSER l'état — une porte rouverte, un
     // pion revenu en arrière — et définitivement, puisque cet événement ne sera pas redélivré.
-    if (transportExtended?.mayHaveMissedEvents?.()) {
+    if (relectureDue || transportExtended?.mayHaveMissedEvents?.()) {
+      relectureDue = false;
+      const repere = generationCampagne;
       // ⛔ Attente BORNÉE. Le transport rouvre son canal par des opérations réseau qui ne
       // rejettent pas hors connexion : sans échéance, ce `await` pourrait ne jamais rendre la
       // main et `requestVisionResend()` ne partirait plus JAMAIS. Au dépassement on journalise
@@ -1113,6 +1126,13 @@ export async function bootstrapPlayerApp(options = {}) {
       const reprise = (async () => {
         await transportExtended.resync();
         const snapshot = /** @type {any} */ (await transportExtended.snapshot());
+        // ⛔ Audit du 08/11, A8 : la table a joué pendant l'attente. L'instantané, lu avant ce
+        // coup, le défairait sous ses yeux (règle 4). On l'écarte et on relit plus tard : le coup
+        // est parti au MJ, qui l'écrit (A4), et la relecture suivante le contiendra.
+        if (generationCampagne !== repere) {
+          relectureDue = true;
+          return;
+        }
         applyingRemote = true;
         try {
           if (snapshot && (snapshot.campaign || snapshot.levels)) {
@@ -1128,7 +1148,9 @@ export async function bootstrapPlayerApp(options = {}) {
         }
       })();
       reprise.then(
-        () => { delaiReprise = 2000; },
+        // Relecture écartée (A8) : on retente seul, sans attendre un nouveau réveil — la tablette
+        // castée ne se masque jamais.
+        () => { if (relectureDue) planifierNouvelleReprise(); else delaiReprise = 2000; },
         () => planifierNouvelleReprise()
       );
       try {
@@ -1243,7 +1265,7 @@ export async function bootstrapPlayerApp(options = {}) {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibilityRestored);
     }
-    if (snapshotTimer !== null) clearTimeout(snapshotTimer);
+    snapshotSaver.stop();
     window.removeEventListener('resize', onResize);
     frameLoop.stop();
     // Sans ceci, le flux vidéo survit à la destruction de la vue : Chromium continue de

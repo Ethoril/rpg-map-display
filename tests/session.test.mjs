@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createSessionCode, normalizeSessionId } from '../js/app/session.js';
+import { createSessionCode, createSnapshotSaver, normalizeSessionId } from '../js/app/session.js';
 
 /** Caractères bannis parce que confondus à la lecture ou à la dictée. */
 const AMBIGUS = ['0', '1', 'I', 'L', 'O', 'U'];
@@ -55,4 +55,65 @@ test('normalizeSessionId : absence d’identifiant donne une chaîne vide', () =
   assert.equal(normalizeSessionId(null), '');
   assert.equal(normalizeSessionId(undefined), '');
   assert.equal(normalizeSessionId(''), '');
+});
+
+// ── Audit du 08/11, A15 : une sauvegarde en vol à la fois ─────────────────────────────────────
+
+/** @returns {Promise<void>} */
+const tick = (ms = 0) => new Promise((ok) => setTimeout(ok, ms));
+
+test('createSnapshotSaver (A15) : une capture ancienne ne finit jamais APRÈS une récente', async () => {
+  let etat = 'A';
+  /** @type {string[]} */
+  const ecrits = [];
+  /** @type {(() => void)|null} */
+  let relacherPremiere = null;
+  const saver = createSnapshotSaver({
+    delayMs: 1,
+    capture: () => ({ etat }),
+    save: (/** @type {any} */ s) => {
+      if (ecrits.length === 0 && relacherPremiere === null) {
+        // La première écriture traîne sur le réseau.
+        return new Promise((ok) => { relacherPremiere = () => { ecrits.push(s.etat); ok(); }; });
+      }
+      ecrits.push(s.etat);
+    },
+    onError: (e) => { throw e; },
+  });
+  saver.schedule();
+  await tick(10);
+  assert.ok(relacherPremiere, 'la première écriture est partie');
+  etat = 'B';
+  saver.schedule();
+  await tick(10);
+  assert.deepEqual(ecrits, [], 'la seconde attend la fin de la première au lieu de partir à côté');
+  etat = 'C';
+  /** @type {any} */ (relacherPremiere)();
+  await tick(10);
+  assert.deepEqual(ecrits, ['A', 'C'], 'la dernière écriture porte l’état capturé à SON départ');
+});
+
+test('createSnapshotSaver : capture nulle = aucune écriture ; stop coupe aussi l’écriture en attente', async () => {
+  let present = true;
+  let ecritures = 0;
+  /** @type {(() => void)|null} */
+  let relacher = null;
+  const saver = createSnapshotSaver({
+    delayMs: 1,
+    capture: () => (present ? null : {}),
+    save: () => { ecritures += 1; return new Promise((ok) => { relacher = ok; }); },
+    onError: () => {},
+  });
+  saver.schedule();
+  await tick(10);
+  assert.equal(ecritures, 0, 'D-5 : capture nulle, rien ne part');
+  present = false;
+  saver.schedule();
+  await tick(10);
+  saver.schedule();
+  await tick(10);
+  saver.stop();
+  /** @type {any} */ (relacher)();
+  await tick(10);
+  assert.equal(ecritures, 1, 'après stop, l’écriture qui attendait ne part pas');
 });

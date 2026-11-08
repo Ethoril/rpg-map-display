@@ -312,6 +312,85 @@ export function withDeadline(travail, libelle, deadlineMs = RESYNC_DEADLINE_MS) 
 }
 
 /**
+ * Sauvegarde différée de l'instantané, **une seule écriture en vol à la fois** (audit du
+ * 08/11, A15).
+ *
+ * Chaque mutation reprogramme l'écriture (délai glissant). Quand le délai échoit alors qu'une
+ * écriture est encore en vol, on ne lance pas la suivante à côté : on note qu'il en faut une,
+ * et elle part à la fin de la précédente, avec l'état **capturé à ce moment-là**.
+ *
+ * ⛔ Lancer les écritures sans attendre la précédente laissait une capture ancienne arriver
+ * après une récente : la révision Firestore ordonne les transactions validées, pas les
+ * mutations qui ont produit les captures. L'écran restait sur le dernier coup, le document
+ * revenait au précédent.
+ *
+ * `capture` rend `null` pour renoncer à cette écriture (D-5 : la tablette se tait en présence
+ * d'un MJ). La présence se lit donc au départ de l'écriture, pas à sa programmation.
+ *
+ * @param {{
+ *   capture: () => object|null,
+ *   save: (snapshot: object) => Promise<void>|void,
+ *   onError: (error: unknown) => void,
+ *   delayMs?: number,
+ * }} options
+ * @returns {{ schedule: () => void, stop: () => void }}
+ */
+export function createSnapshotSaver({ capture, save, onError, delayMs = 250 }) {
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let minuterie = null;
+  /** @type {Promise<void>|null} */
+  let enVol = null;
+  let aRefaire = false;
+  let arrete = false;
+
+  const ecrire = () => {
+    if (arrete) return;
+    if (enVol) {
+      aRefaire = true;
+      return;
+    }
+    let instantane;
+    try {
+      instantane = capture();
+    } catch (error) {
+      onError(error);
+      return;
+    }
+    if (instantane === null) return;
+    const courant = Promise.resolve()
+      .then(() => save(instantane))
+      .catch(onError)
+      .finally(() => {
+        enVol = null;
+        if (aRefaire) {
+          aRefaire = false;
+          ecrire();
+        }
+      });
+    enVol = courant;
+  };
+
+  return {
+    schedule() {
+      if (arrete) return;
+      if (minuterie !== null) clearTimeout(minuterie);
+      minuterie = setTimeout(() => {
+        minuterie = null;
+        ecrire();
+      }, delayMs);
+    },
+    // Un poste congédié ou une page fermée n'a plus autorité : plus rien ne part, pas même
+    // l'écriture qui attendait la fin de celle en vol.
+    stop() {
+      arrete = true;
+      aRefaire = false;
+      if (minuterie !== null) clearTimeout(minuterie);
+      minuterie = null;
+    },
+  };
+}
+
+/**
  * Construit et connecte le transport d'une page. Un transport injecté sert aux tests et au
  * mode LAN ; Firebase est utilisé sinon lorsque sa configuration publique est disponible.
  *

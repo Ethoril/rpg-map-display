@@ -49,6 +49,7 @@ import {
   showEvictionOverlay,
   withDeadline,
   attendreConnexion,
+  createSnapshotSaver,
   CONNEXION_DEADLINE_MS,
   CLE_REPRISE_HORS_LIGNE,
 } from './session.js';
@@ -1029,24 +1030,33 @@ export async function bootstrapGMApp(options = {}) {
   transport?.onError?.((error) => networkStatus.update('error', error));
 
   const transportExtended = /** @type {any} */ (transport);
+  // Vrai pendant qu'un INSTANTANÉ lu sur le réseau remplace la campagne : le réécrire aussitôt
+  // ne servirait à rien. ⛔ Plus jamais posé autour d'un événement reçu (audit du 08/11, A4) :
+  // la tablette se tait en présence du MJ (D-5), c'est donc au MJ d'écrire les coups qu'elle
+  // joue — sans quoi ils ne vivaient qu'en mémoire, jusqu'à la prochaine mutation du MJ.
   let applyingRemote = false;
+  // Compteur des mutations de campagne qui ne viennent pas d'un instantané relu. Une reprise
+  // le relève à son départ : s'il a bougé à l'arrivée, l'instantané est plus vieux que l'écran
+  // (A8).
+  let generationCampagne = 0;
   /** Pose `map.ran` quand un pion lié finit un déplacement au-delà de sa Marche (L6) ; câblé avec la liaison. */
   let reportMove = (/** @type {string} */ _tokenId, /** @type {import('../core/types.js').Cell[]} */ _path) => {};
-  /** @type {ReturnType<typeof setTimeout>|null} */
-  let snapshotTimer = null;
-
-  function scheduleSnapshot() {
-    if (!transportExtended?.saveSnapshot || applyingRemote) return;
-    if (snapshotTimer !== null) clearTimeout(snapshotTimer);
-    snapshotTimer = setTimeout(() => {
-      snapshotTimer = null;
+  const snapshotSaver = createSnapshotSaver({
+    capture: () => {
+      // Une campagne pas encore chargée ne s'écrit jamais : elle écraserait la vraie.
+      if (!store.getCampaign()) return null;
       const snapshot = createSnapshotPayload();
       const diagnostic = transportExtended.getSnapshotSizeDiagnostic?.(snapshot);
       if (diagnostic?.severity === 'warning') networkStatus.update('warning', diagnostic.message);
-      Promise.resolve(transportExtended.saveSnapshot(snapshot)).catch((error) =>
-        networkStatus.update('error', error)
-      );
-    }, 250);
+      return snapshot;
+    },
+    save: (snapshot) => transportExtended.saveSnapshot(snapshot),
+    onError: (error) => networkStatus.update('error', error),
+  });
+
+  function scheduleSnapshot() {
+    if (!transportExtended?.saveSnapshot || applyingRemote) return;
+    snapshotSaver.schedule();
   }
 
   // Toute mutation du store est une occasion, pour l'autorité de vision, de constater
@@ -1084,7 +1094,10 @@ export async function bootstrapGMApp(options = {}) {
     syncVision();
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
-    if (!change?.session) scheduleSnapshot();
+    if (!change?.session) {
+      if (!applyingRemote) generationCampagne += 1;
+      scheduleSnapshot();
+    }
   });
 
   /** @type {(() => void)|null} */
@@ -1110,10 +1123,7 @@ export async function bootstrapGMApp(options = {}) {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibilityRestored);
     }
-    if (snapshotTimer !== null) {
-      clearTimeout(snapshotTimer);
-      snapshotTimer = null;
-    }
+    snapshotSaver.stop();
     try {
       transport?.disconnect();
     } catch (err) {
@@ -1240,13 +1250,8 @@ export async function bootstrapGMApp(options = {}) {
         }
       }
 
-      applyingRemote = true;
-      let mute = false;
-      try {
-        mute = applyNetworkEvent(event);
-      } finally {
-        applyingRemote = false;
-      }
+      // ⛔ Pas d'`applyingRemote` ici (A4) : la mutation reçue doit être écrite par le MJ.
+      const mute = applyNetworkEvent(event);
       if (event.type === 'token.move' && event.by === 'players' && payload.tokenId && !payload.refus && Array.isArray(payload.path)) {
         reportMove(payload.tokenId, payload.path);
       }
@@ -1389,9 +1394,18 @@ export async function bootstrapGMApp(options = {}) {
     // opérations réseau qui ne rejettent pas hors connexion, et ce code s'exécute justement
     // quand le réseau se rétablit à peine. Sans échéance, ce `await` pourrait ne jamais rendre
     // la main.
+    const repere = generationCampagne;
     const reprise = (async () => {
       await transportExtended.resync();
       const snapshot = /** @type {any} */ (await transportExtended.snapshot());
+      // ⛔ Audit du 08/11, A8 : la reprise peut rendre la main bien après l'échéance, l'interface
+      // restant utilisable pendant l'attente. Si la campagne a bougé depuis son départ,
+      // l'instantané est plus vieux que l'écran : l'appliquer ramènerait un pion en arrière, dans
+      // le dos du MJ (règle 4). Le MJ fait autorité et ses coups sont déjà écrits ; on garde son
+      // état. ⚠ Limite assumée : un coup de la table joué pendant l'absence du MJ ET purgé du
+      // canal n'est alors pas rattrapé — triple coïncidence, contre une perte certaine du coup
+      // que le MJ vient de jouer.
+      if (generationCampagne !== repere) return;
       applyingRemote = true;
       try {
         if (snapshot && (snapshot.campaign || snapshot.levels)) {
@@ -2294,7 +2308,7 @@ export async function bootstrapGMApp(options = {}) {
     unsubscribeStore();
     unsubscribeEvents?.();
     movePlanning.dispose();
-    if (snapshotTimer !== null) clearTimeout(snapshotTimer);
+    snapshotSaver.stop();
     window.removeEventListener('resize', onResize);
     frameLoop.stop();
     persistCamera();

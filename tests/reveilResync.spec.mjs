@@ -473,3 +473,95 @@ test('C4 (tablette) : démarrage hors ligne, puis retour du réseau — la table
   await expect.poll(() => caseDuPion(player), { timeout: 5000 }).toBe('5,5');
   await context.close();
 });
+
+// ── Audit du 08/11/2026 : A4 et A8 ────────────────────────────────────────────────────────────
+
+// A4 — la tablette se tait en présence du MJ (D-5) ; le MJ appliquait son coup sans l'écrire.
+test('A4 : en présence du MJ, c’est lui qui écrit le coup joué à la table', async ({ browser }) => {
+  const { context, gm, player, erreurs } = await ouvrirLaTable(browser, 'a4-ecriture');
+  const gmId = await gm.evaluate(() => /** @type {any} */ (window).__RPG_APP__.transport.getClientId());
+  await player.evaluate(async (id) => {
+    const presence = await import('../js/state/presence.js');
+    presence.updatePresence(id, { role: 'gm', at: Date.now(), build: 1, label: 'MJ' });
+  }, gmId);
+  await gm.waitForTimeout(500);
+  for (const page of [gm, player]) {
+    await page.evaluate(() => { /** @type {any} */ (window).__RPG_TEST_WIRE__.savedSnapshot = null; });
+  }
+  // Préparer puis valider, comme au doigt.
+  await tap(player, 250, 250);
+  await tap(player, 350, 250);
+  await tap(player, 350, 250);
+  await expect.poll(() => caseDuPion(gm), { timeout: 5000 }).toBe('3,2');
+  await gm.waitForTimeout(600);
+  const ecritTablette = await player.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.savedSnapshot);
+  expect(ecritTablette, 'D-5 : la tablette se tait').toBeNull();
+  const ecritMj = await gm.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.savedSnapshot);
+  expect(ecritMj && JSON.parse(ecritMj).campaign.tokens[0].cell, 'le MJ écrit le coup reçu').toEqual({ a: 3, b: 2 });
+  expect(erreurs).toEqual([]);
+  await context.close();
+});
+
+// A8 — une reprise qui rend la main APRÈS un coup joué pendant son attente ne doit pas le défaire.
+for (const role of /** @type {const} */ (['gm', 'player'])) {
+  test(`A8 (${role === 'gm' ? 'MJ' : 'tablette'}) : une reprise tardive ne défait pas le coup joué pendant son attente`, async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await installBrowserTransport(page, `a8-${role}`, S0);
+    await page.goto(`/${role === 'gm' ? 'gm' : 'player'}.html?session=a8-${role}`);
+    await waitForApp(page);
+    // La relecture est retenue sur le réseau ; l'instantané qu'elle rendra est l'ancien (2,2).
+    await page.evaluate(() => {
+      const w = /** @type {any} */ (window);
+      const resyncOrigine = w.__RPG_APP__.transport.resync.bind(w.__RPG_APP__.transport);
+      w.__RPG_APP__.transport.resync = async () => {
+        await new Promise((ok) => { w.__relacherReprise = ok; });
+        return resyncOrigine();
+      };
+    });
+    await endormirPuisReveiller(page, true);
+    await expect.poll(() => page.evaluate(() => typeof /** @type {any} */ (window).__relacherReprise)).toBe('function');
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      store.moveTokenToCell('pc-1', { a: 3, b: 2 });
+    });
+    await page.evaluate(() => /** @type {any} */ (window).__relacherReprise());
+    await page.waitForTimeout(400);
+    expect(await caseDuPion(page), 'le coup joué pendant l’attente reste').toBe('3,2');
+    await context.close();
+  });
+}
+
+// A8, suite côté tablette : l'instantané écarté n'est pas abandonné, il est relu seul ensuite.
+test('A8 (tablette) : la relecture écartée est retentée seule et rattrape l’état', async ({ browser }) => {
+  const context = await browser.newContext();
+  const player = await context.newPage();
+  await installBrowserTransport(player, 'a8-relecture', S0);
+  await player.goto('/player.html?session=a8-relecture');
+  await waitForApp(player);
+  await player.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    let premiere = true;
+    const resyncOrigine = w.__RPG_APP__.transport.resync.bind(w.__RPG_APP__.transport);
+    w.__RPG_APP__.transport.resync = async () => {
+      if (premiere) {
+        premiere = false;
+        await new Promise((ok) => { w.__relacherReprise = ok; });
+      }
+      return resyncOrigine();
+    };
+  });
+  await endormirPuisReveiller(player, true);
+  await expect.poll(() => player.evaluate(() => typeof /** @type {any} */ (window).__relacherReprise)).toBe('function');
+  await player.evaluate(async (suivant) => {
+    const store = await import('../js/state/store.js');
+    store.moveTokenToCell('pc-1', { a: 3, b: 2 });
+    const wire = /** @type {any} */ (window).__RPG_TEST_WIRE__;
+    // Entre-temps, le MJ a écrit un état plus récent, et le trou de rétention est refermé.
+    wire.snapshot = suivant;
+    wire.gap = false;
+  }, S2);
+  await player.evaluate(() => /** @type {any} */ (window).__relacherReprise());
+  await expect.poll(() => caseDuPion(player), { timeout: 8000 }).toBe('8,3');
+  await context.close();
+});
