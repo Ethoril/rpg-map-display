@@ -2,6 +2,8 @@
 import { test, expect } from '@playwright/test';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { edgeKey } from '../js/core/cellKey.js';
+import { movementRulesFor } from '../js/state/selection.js';
 
 /** @typedef {import('@playwright/test').Browser} Browser */
 /** @typedef {import('@playwright/test').Page} Page */
@@ -612,5 +614,98 @@ test('en hexagone, une marge de hit sur un autre pion ne détourne pas le trajet
     } finally {
       await context.close();
     }
+  }
+});
+
+// Audit du 08/11/2026, A14 — à la coupure, le transport retire l'aperçu partagé. La préparation
+// locale ne doit pas lui survivre : sinon un seul toucher, au retour du réseau, validait un trajet
+// que l'autre écran n'avait jamais vu.
+test('A14 : une coupure du temps réel abandonne la préparation ; le toucher suivant ne valide rien', async ({ browser }) => {
+  const { context, gm, sessionId } = await openPair(browser);
+  try {
+    await tapCell(gm, START);
+    await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getState().selectedTokenId)).toBe(TOKEN_ID);
+    await tapCell(gm, { a: 3, b: 2 });
+    await expect.poll(async () => Object.keys(await readSharedPreviews(gm, sessionId)).length, { message: 'trajet préparé' }).toBe(1);
+    await gm.evaluate(() => {
+      const wire = /** @type {any} */ (window).__RPG_TEST_WIRE__;
+      wire.setConnected(false);
+      wire.setConnected(true);
+    });
+    await tapCell(gm, { a: 3, b: 2 });
+    await gm.waitForTimeout(300);
+    const cell = await gm.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens.find((t) => t.id === 'hero-preview')?.cell);
+    expect(cell, 'l’ancien trajet n’a pas été validé').toEqual(START);
+  } finally {
+    await context.close();
+  }
+});
+
+// ── Audit du 08/11/2026, A12 : la portée d’un grand pion suit toute son emprise, vraie vue joueurs ──
+test('A12 : la portée ne propose pas une arrivée hors carte pour un pion 2×2', async ({ browser }) => {
+  const sid = `audit-large-border-${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 4, heightCells: 4 });
+  const token = createToken({ id: 'hero', levelId: 'a', kind: 'pc', sizeCells: 2, cell: { a: 1, b: 1 }, speedCells: 4 });
+  const snapshot = { campaign: createCampaign({ campaignId: sid, levels: [level], tokens: [token] }), activeLevelId: 'a' };
+  const context = await browser.newContext();
+  try {
+    const player = await context.newPage();
+    await installBrowserTransport(player, sid, snapshot);
+    await player.goto(`/player.html?session=${sid}`);
+    await waitForApp(player);
+    await player.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const point = { x: 150, y: 150 };
+      app.pointerInput.onIntention({ type: 'tap', mapPos: point, screenPos: app.camera.mapToScreen(point) });
+    });
+    await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getState().selectedTokenId)).toBe('hero');
+    await player.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const point = { x: 350, y: 150 };
+      app.pointerInput.onIntention({ type: 'tap', mapPos: point, screenPos: app.camera.mapToScreen(point) });
+    });
+    await player.waitForTimeout(300);
+    const previews = await player.evaluate(sessionId => /** @type {any} */ (window).__rpgTestMovePreviews('get', sessionId, 'audit-reader', null), sid);
+    const destinations = Object.values(/** @type {Record<string, any>} */ (previews)).map(preview => preview.destination);
+    await player.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const point = { x: 350, y: 150 };
+      app.pointerInput.onIntention({ type: 'tap', mapPos: point, screenPos: app.camera.mapToScreen(point) });
+    });
+    expect(await player.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens[0]?.cell)).toEqual({ a: 1, b: 1 });
+    expect(destinations).not.toContainEqual({ a: 3, b: 1 });
+  } finally {
+    await context.close();
+  }
+});
+
+test('A12 : un pion 2×2 ne traverse pas un mur avec son emprise', async ({ browser }) => {
+  const sid = `audit-large-wall-${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 5, heightCells: 5, walls: [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 5 }]] });
+  const token = createToken({ id: 'hero', levelId: 'a', kind: 'pc', sizeCells: 2, cell: { a: 0, b: 1 }, speedCells: 2 });
+  expect(movementRulesFor(token, level).blockedEdges.has(edgeKey({ a: 1, b: 1 }, { a: 2, b: 1 }))).toBe(true);
+  const snapshot = { campaign: createCampaign({ campaignId: sid, levels: [level], tokens: [token] }), activeLevelId: 'a' };
+  const context = await browser.newContext();
+  try {
+    const player = await context.newPage();
+    await installBrowserTransport(player, sid, snapshot);
+    await player.goto(`/player.html?session=${sid}`);
+    await waitForApp(player);
+    await player.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const point = { x: 50, y: 150 };
+      app.pointerInput.onIntention({ type: 'tap', mapPos: point, screenPos: app.camera.mapToScreen(point) });
+    });
+    await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getState().selectedTokenId)).toBe('hero');
+    await player.evaluate(() => {
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const point = { x: 150, y: 150 };
+      app.pointerInput.onIntention({ type: 'tap', mapPos: point, screenPos: app.camera.mapToScreen(point) });
+      app.pointerInput.onIntention({ type: 'tap', mapPos: point, screenPos: app.camera.mapToScreen(point) });
+    });
+    const position = await player.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens[0]?.cell);
+    expect(position).toEqual({ a: 0, b: 1 });
+  } finally {
+    await context.close();
   }
 });

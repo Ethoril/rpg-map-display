@@ -805,6 +805,9 @@ export async function bootstrapPlayerApp(options = {}) {
   const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
   transport = connexion.transport;
   movePlanning.setTransport(transport);
+  // Audit du 08/11, A9 : la coupure du temps réel n'est signalée par aucune erreur. Le badge de la
+  // tablette, masqué quand tout va bien, réapparaît « hors ligne » et se retire au retour.
+  transport?.onConnectivity?.((connected) => networkStatus.update(connected ? 'connected' : 'offline'));
   if (connexion.delaiDepasse) {
     networkStatus.update('offline');
     tentative.then(

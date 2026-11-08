@@ -15,7 +15,8 @@ import { cellKey } from '../core/cellKey.js';
  * publishMovePreview?:(preview:MovePreview)=>Promise<{ok:boolean,error?:unknown}>,
  * clearMovePreview?:(planId:string)=>Promise<{ok:boolean,error?:unknown}>,
  * subscribeMovePreviews?:(callback:(previews:Record<string,MovePreview>)=>void)=>()=>void,
- * getClientId?:()=>string|null
+ * getClientId?:()=>string|null,
+ * onConnectivity?:(handler:(connected:boolean)=>void)=>()=>void
  * }} MovePlanningTransport
  */
 
@@ -46,6 +47,8 @@ export class MovePlanningController {
     /** @type {ReturnType<typeof setTimeout>|null} */
     this.presenceTimer = null;
     this.unsubscribePreviews = null;
+    /** @type {(() => void)|null} */
+    this.unsubscribeConnectivity = null;
     this.unsubscribePresence = subscribePresence(() => this.refreshRemote());
     if (options.transport) this.setTransport(options.transport);
   }
@@ -54,6 +57,14 @@ export class MovePlanningController {
   setTransport(transport) {
     const previous = this.transport;
     this.unsubscribePreviews?.();
+    this.unsubscribeConnectivity?.();
+    // ⛔ Audit du 08/11, A14 : à la coupure, le transport retire l'aperçu partagé de ce trajet.
+    // La préparation locale ne lui survit pas — sinon un seul toucher la validait après la
+    // reprise, sans que l'autre écran l'ait jamais vue. Abandonnée à la coupure ET au retour :
+    // un trajet préparé hors ligne n'a pas d'aperçu non plus.
+    this.unsubscribeConnectivity = transport?.onConnectivity?.((connected) => {
+      this.invalidate(connected ? 'reconnexion : trajet abandonné, à refaire' : 'connexion perdue : trajet abandonné');
+    }) ?? null;
     if (previous && previous !== transport) {
       this.remote = {};
       this.receivedRemote = {};
@@ -195,7 +206,7 @@ export class MovePlanningController {
         this.publish();
       }
     }
-    const result = computeReachable(rules.grid, plan.path.at(-1) || plan.start, plan.remaining, rules.blockedEdges, rules.terrainCost);
+    const result = computeReachable(rules.grid, plan.path.at(-1) || plan.start, plan.remaining, rules.blockedEdges, rules.terrainCost, rules.footprint);
     result.distances.delete(cellKey(plan.path.at(-1) || plan.start));
     plan.reachable = result.distances;
     plan.predecessors = result.predecessors;
@@ -228,6 +239,7 @@ export class MovePlanningController {
   dispose() {
     this.cancel();
     this.unsubscribePreviews?.();
+    this.unsubscribeConnectivity?.();
     this.unsubscribePresence?.();
     if (this.presenceTimer) clearTimeout(this.presenceTimer);
     this.presenceTimer = null;

@@ -28,6 +28,10 @@
  * @property {(snapshot: object) => Promise<void>} [saveSnapshot]
  * @property {(event: NetEvent & {eventId?: string, clientId?: string}) => boolean} [isOwnEvent]
  * @property {(handler: (error: unknown) => void) => (() => void)|void} [onError]
+ * @property {(handler: (connected: boolean) => void) => () => void} [onConnectivity] bascules
+ *   de la connexion temps réel APRÈS une première connexion : `false` quand elle tombe, `true` quand
+ *   elle revient. Rien au démarrage. Audit du 08/11, A9 : une coupure ne lève aucune erreur — les
+ *   écritures attendent en silence —, c'est donc le seul signal qu'en a l'interface.
  * @property {() => boolean} [mayHaveMissedEvents] le canal a-t-il pu purger des événements non lus.
  *   Calcul à la demande, sans drapeau ni écouteur : un état posé par un écouteur du transport
  *   serait lu par l'application avant d'être écrit dès le deuxième réveil (ordre d'insertion DOM).

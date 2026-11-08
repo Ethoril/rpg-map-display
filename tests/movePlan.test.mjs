@@ -189,3 +189,48 @@ test('la flèche de trajet reste visible avant le disque d’arrivée', () => {
   assert.ok(arrowTip && arrivalDot);
   assert.ok(Math.hypot(arrowTip.x - arrivalDot.x, arrowTip.y - arrivalDot.y) > arrivalDot.radius);
 });
+
+// ── Audit du 08/11/2026, A12 : la portée d'un grand pion suit toute son emprise ──────────────
+
+test('A12 : un pion 2×2 ne se voit pas proposer d’ancrage hors carte (carré : toute l’emprise compte)', () => {
+  const petit = createLevel({ id: 'p', pxPerCell: 100, widthCells: 4, heightCells: 4 });
+  const grand = createToken({ id: 'g', levelId: 'p', kind: 'pc', sizeCells: 2, cell: { a: 1, b: 1 }, speedCells: 4 });
+  const plan = createMovePlan(grand, petit, movementRulesFor(grand, petit));
+  assert.equal(plan.reachable.has('3,1'), false, 'ancrage (3,1) : l’emprise déborderait en colonne 4');
+  assert.equal(plan.reachable.has('2,2'), true, 'ancrage (2,2) : l’emprise tient tout juste');
+});
+
+test('A12 : un pion 2×2 ne franchit pas un mur avec la moitié de son corps, ni une porte d’une case', () => {
+  // Mur vertical en x = 2 sur toute la hauteur ; pion à gauche, ancré en (0,1).
+  const mur = createLevel({ id: 'm', pxPerCell: 100, widthCells: 6, heightCells: 6, walls: [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 6 }]] });
+  const grand = createToken({ id: 'g', levelId: 'm', kind: 'pc', sizeCells: 2, cell: { a: 0, b: 1 }, speedCells: 6 });
+  const plan = createMovePlan(grand, mur, movementRulesFor(grand, mur));
+  assert.equal(plan.reachable.has('1,1'), false, 'emprise qui couvrirait la colonne 2, derrière le mur');
+  assert.equal(plan.reachable.has('0,3'), true, 'longer le mur reste possible');
+  // Une porte d'une case de large : trop étroite pour un 2×2, assez large pour un pion d'une case.
+  const porte = createLevel({ id: 'd', pxPerCell: 100, widthCells: 6, heightCells: 6,
+    walls: [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 2 }], [{ cellX: 2, cellY: 3 }, { cellX: 2, cellY: 6 }]] });
+  const viaPorte = createMovePlan(grand, porte, movementRulesFor(grand, porte));
+  assert.equal([...viaPorte.reachable.keys()].some((k) => Number(k.split(',')[0]) >= 1), false, 'le 2×2 ne passe pas');
+  const petit = createToken({ id: 'p', levelId: 'd', kind: 'pc', cell: { a: 1, b: 2 }, speedCells: 6 });
+  assert.equal(createMovePlan(petit, porte, movementRulesFor(petit, porte)).reachable.has('3,2'), true, 'le pion d’une case passe');
+});
+
+test('A12 : revalidation — un chemin préparé qui ferait traverser l’emprise est refusé', () => {
+  const mur = createLevel({ id: 'm', pxPerCell: 100, widthCells: 6, heightCells: 6, walls: [[{ cellX: 2, cellY: 0 }, { cellX: 2, cellY: 6 }]] });
+  const grand = createToken({ id: 'g', levelId: 'm', kind: 'pc', sizeCells: 2, cell: { a: 0, b: 1 }, speedCells: 6 });
+  const rules = movementRulesFor(grand, mur);
+  const plan = /** @type {any} */ ({ ...createMovePlan(grand, mur, rules), steps: [{ a: 1, b: 1 }], path: [{ a: 0, b: 1 }, { a: 1, b: 1 }], cost: 1 });
+  assert.equal(validateMovePlan(plan, grand, mur, rules).valid, false);
+});
+
+test('A12 : en hexagone, seul l’ancrage borne (D-8) ; sans obstacle, la zone est celle d’une case', () => {
+  const hex = createLevel({ id: 'h', pxPerCell: 100, widthCells: 8, heightCells: 8, grid: /** @type {any} */ ({ type: 'hex' }) });
+  const grand = createToken({ id: 'g', levelId: 'h', kind: 'pc', sizeCells: 2, cell: { a: 1, b: 2 }, speedCells: 3 });
+  const plan = createMovePlan(grand, hex, movementRulesFor(grand, hex));
+  assert.equal(plan.reachable.has('0,2'), true, 'en lisière : la rosette se rogne, l’ancrage suffit');
+  // Sans mur, la règle d'emprise n'enlève rien à la zone d'un pion d'une case au même endroit.
+  const petit = { ...grand, sizeCells: 1 };
+  const zonePetit = [...createMovePlan(petit, hex, movementRulesFor(petit, hex)).reachable.keys()].sort();
+  assert.deepEqual([...plan.reachable.keys()].sort(), zonePetit, 'sans obstacle, même zone');
+});

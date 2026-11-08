@@ -146,6 +146,9 @@ export async function bootstrapGMApp(options = {}) {
   const lastFogPublishTime = new Map();
   /** @type {Map<string, any>} */
   const fogPublishTrailing = new Map();
+  /** Dernière capture lancée par étage : un encodage plus vieux ne publie plus rien (A11). */
+  /** @type {Map<string, number>} */
+  const fogPublishGeneration = new Map();
 
   /**
    * Obtient ou crée l'instance `ExploredFog` pour un étage donné (Level ou levelId string).
@@ -220,8 +223,21 @@ export async function bootstrapGMApp(options = {}) {
       return;
     }
 
+    // ⛔ Audit du 08/11, A2 : un masque dont le chargement est en vol ne s'exporte pas — on
+    // publierait le masque vierge du démarrage à la place de l'exploré enregistré. Rien n'est
+    // perdu : à l'arrivée du chargement, `getExploredFog` efface la garde de l'étage et relance
+    // `syncVision`, qui republie — et tout masque en mémoire est celui d'un étage qu'elle visite.
+    if (exploredFog.importEnCours) return;
     lastFogPublishTime.set(levelId, now);
+    // ⛔ Audit du 08/11, A11 : chaque publication lance son propre encodage asynchrone. Sans
+    // numéro, un encodage lent (« Tout révéler ») pouvait finir APRÈS le suivant (« Tout
+    // masquer ») et réinstaller le masque ancien, localement comme chez les joueurs. Le pixel
+    // capturé est lu avant le premier `await` ; seule la plus récente capture a le droit de
+    // sortir.
+    const generation = (fogPublishGeneration.get(levelId) ?? 0) + 1;
+    fogPublishGeneration.set(levelId, generation);
     void exploredFog.exportPng().then((png) => {
+      if (fogPublishGeneration.get(levelId) !== generation) return;
       if (!png) return;
       store.setSessionFog(levelId, png);
       transport?.publish({
@@ -985,6 +1001,18 @@ export async function bootstrapGMApp(options = {}) {
   // serait bien plus risqué. Caméra et étage sont mémorisés localement : rien ne bouge.
   // ⛔ Si le MJ a modifié la partie entre-temps, il fait autorité : au redémarrage, il POUSSE son
   // état local au lieu de relire l'état partagé (voir `reprise` plus bas).
+  /** Campagne chargée hors ligne, pour savoir au retour du réseau si le MJ l'a modifiée. */
+  let campagneHorsLigne = /** @type {string|null} */ (null);
+  /** Le réseau revient après un démarrage local : on redémarre en ligne, consigne posée. */
+  const repartirEnLigne = () => {
+    const modifiee = campagneHorsLigne !== null && JSON.stringify(store.getCampaign()) !== campagneHorsLigne;
+    try {
+      sessionStorage.setItem(CLE_REPRISE_HORS_LIGNE, modifiee ? 'pousser' : 'relire');
+    } catch {
+      // Sans sessionStorage, le redémarrage relit l'état partagé : le cas prudent.
+    }
+    location.reload();
+  };
   const tentative = connectSession({
     injectedTransport: options.transport || null,
     firebaseConfig: options.firebaseConfig || null,
@@ -992,24 +1020,17 @@ export async function bootstrapGMApp(options = {}) {
     role: 'gm',
     loginHost: panelContainer,
     onStatus: networkStatus.update,
+    // A13 : SDK injoignable au démarrage puis CDN revenu — même reprise qu'une connexion tardive.
+    onSdkRetabli: repartirEnLigne,
   });
   const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
   transport = connexion.transport;
   movePlanning.setTransport(transport);
-  /** Campagne chargée hors ligne, pour savoir au retour du réseau si le MJ l'a modifiée. */
-  let campagneHorsLigne = /** @type {string|null} */ (null);
   if (connexion.delaiDepasse) {
     networkStatus.update('offline');
     tentative.then(
       (tardif) => {
-        if (!tardif) return;
-        const modifiee = campagneHorsLigne !== null && JSON.stringify(store.getCampaign()) !== campagneHorsLigne;
-        try {
-          sessionStorage.setItem(CLE_REPRISE_HORS_LIGNE, modifiee ? 'pousser' : 'relire');
-        } catch {
-          // Sans sessionStorage, le redémarrage relit l'état partagé : le cas prudent.
-        }
-        location.reload();
+        if (tardif) repartirEnLigne();
       },
       () => {}
     );
@@ -1028,6 +1049,9 @@ export async function bootstrapGMApp(options = {}) {
   // branche `onError` que sur le transport Firebase qu'il fabrique lui-même ; un transport injecté
   // n'était relié à rien. (E-9)
   transport?.onError?.((error) => networkStatus.update('error', error));
+  // Audit du 08/11, A9 : une coupure du temps réel ne lève rien. Sans ce signal, le badge
+  // restait sur « Firebase connecté » pendant que plus rien ne partait.
+  transport?.onConnectivity?.((connected) => networkStatus.update(connected ? 'connected' : 'offline'));
 
   const transportExtended = /** @type {any} */ (transport);
   // Vrai pendant qu'un INSTANTANÉ lu sur le réseau remplace la campagne : le réécrire aussitôt
@@ -1167,6 +1191,16 @@ export async function bootstrapGMApp(options = {}) {
         // séparément (1 Hz, un minuteur par `levelId`).
         for (const [levelId, fog] of exploredFogMap) {
           scheduleFogPublish(levelId, fog);
+        }
+        // ⛔ Audit du 08/11, A2 : après un F5 du MJ, `exploredFogMap` ne contient que les étages
+        // rechargés depuis — ceux d'un PJ, ou affichés. Un étage exploré puis quitté n'y est
+        // pas, alors que son masque est dans le stockage du poste MJ. On le republie TEL QUEL,
+        // sans le décoder : c'est exactement l'exploré enregistré.
+        for (const level of store.getRenderSnapshot().campaign?.levels ?? []) {
+          if (exploredFogMap.has(level.id)) continue;
+          const png = store.getSessionFog(level.id);
+          if (!png) continue;
+          transport?.publish({ type: 'fog.update', payload: { levelId: level.id, png }, at: Date.now(), by: 'gm' });
         }
         return;
       }

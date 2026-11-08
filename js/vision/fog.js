@@ -639,7 +639,35 @@ export class ExploredFog {
     this.ctx = this.canvas?.getContext?.('2d') ?? this.canvas?._ctx ?? null;
     /** @type {number} Révision du contenu, voir `_touch()`. */
     this.revision = 0;
+    /** @type {number} Numéro du dernier import lancé, voir `importPng`. */
+    this._importGen = 0;
+    /** @type {(() => void)[]|null} Gestes faits pendant un import en vol, rejoués à son arrivée. */
+    this._journal = null;
     this.clear();
+  }
+
+  /**
+   * Vrai tant qu'un `importPng` n'a pas posé son masque. L'exporter maintenant publierait un
+   * masque vierge, ou partiel, à la place du masque enregistré (audit du 08/11, A2).
+   * @returns {boolean}
+   */
+  get importEnCours() {
+    return this._journal !== null;
+  }
+
+  /**
+   * Applique un geste sur le masque, et le note s'il survient pendant un import en vol
+   * (audit du 08/11, A10). `importPng` efface puis redessine : sans ce journal, un « Tout
+   * révéler » ou un coup de pinceau fait pendant le décodage disparaissait à son arrivée, et le
+   * masque ainsi régressé partait aux tablettes. Une union ne suffirait pas — « masquer » doit
+   * aussi survivre — d'où le REJEU, dans l'ordre.
+   *
+   * @param {() => void} geste
+   */
+  _appliquer(geste) {
+    geste();
+    if (this._journal) this._journal.push(geste);
+    this._touch();
   }
 
   /**
@@ -662,10 +690,9 @@ export class ExploredFog {
    * Réinitialise le masque exploré (toute la carte redevient non explorée).
    */
   clear() {
-    if (this.ctx) {
-      this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
-    }
-    this._touch();
+    this._appliquer(() => {
+      if (this.ctx) this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
+    });
   }
 
   /**
@@ -723,7 +750,17 @@ export class ExploredFog {
 
     const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
     const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
+    this._appliquer(() => this._fillPolygons(polygons, mapOrigin, scaleX, scaleY));
+  }
 
+  /**
+   * @param {MapPoint[][]} polygons
+   * @param {MapPoint} mapOrigin
+   * @param {number} scaleX
+   * @param {number} scaleY
+   */
+  _fillPolygons(polygons, mapOrigin, scaleX, scaleY) {
+    if (!this.ctx) return;
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
     this.ctx.beginPath();
@@ -746,7 +783,6 @@ export class ExploredFog {
 
     this.ctx.fill();
     this.ctx.restore();
-    this._touch();
   }
 
   /**
@@ -760,12 +796,34 @@ export class ExploredFog {
    */
   revealMask(maskCanvas) {
     if (!this.ctx || !maskCanvas || typeof this.ctx.drawImage !== 'function') return;
-    this.ctx.save();
-    this.ctx.globalCompositeOperation = 'source-over';
-    // Meme invariant : les deux masques sont a la meme resolution.
-    this.ctx.drawImage(maskCanvas, 0, 0);
-    this.ctx.restore();
-    this._touch();
+    // Le masque source est réécrit à chaque passe de vision : pendant un import en vol, on
+    // rejoue une COPIE figée, pas ce qu'il sera devenu à l'arrivée de l'import.
+    const source = this._journal ? this._copie(maskCanvas) : maskCanvas;
+    this._appliquer(() => {
+      if (!this.ctx) return;
+      this.ctx.save();
+      this.ctx.globalCompositeOperation = 'source-over';
+      // Meme invariant : les deux masques sont a la meme resolution.
+      this.ctx.drawImage(source, 0, 0);
+      this.ctx.restore();
+    });
+  }
+
+  /**
+   * @param {any} canvas
+   * @returns {any}
+   */
+  _copie(canvas) {
+    const copie = typeof this.createCanvas === 'function'
+      ? this.createCanvas(this.maskWidth, this.maskHeight)
+      : typeof document !== 'undefined' ? document.createElement('canvas') : null;
+    if (!copie) return canvas;
+    copie.width = this.maskWidth;
+    copie.height = this.maskHeight;
+    const ctx = copie.getContext?.('2d') ?? copie._ctx ?? null;
+    if (!ctx || typeof ctx.drawImage !== 'function') return canvas;
+    ctx.drawImage(canvas, 0, 0);
+    return copie;
   }
 
   /**
@@ -799,10 +857,20 @@ export class ExploredFog {
    */
   async importPng(b64Png) {
     if (!b64Png || !this.ctx) return;
+    // ⛔ Audit du 08/11, A10. Deux règles pendant le décodage :
+    //  - un import plus récent (un « Annuler » pendant le chargement initial) l'emporte, et
+    //    l'ancien, arrivé après lui, ne réécrit rien ;
+    //  - tout geste fait pendant l'attente est rejoué PAR-DESSUS le masque importé, dans l'ordre.
+    const gen = ++this._importGen;
+    this._journal = [];
     const decoded = await decodeFogPng(b64Png, this.widthCells, this.heightCells, this.createCanvas);
+    if (gen !== this._importGen) return;
+    const journal = this._journal ?? [];
+    this._journal = null;
     if (decoded && this.ctx && typeof this.ctx.drawImage === 'function') {
       this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
       this.ctx.drawImage(decoded, 0, 0);
+      for (const geste of journal) geste();
     }
     this._touch();
   }
@@ -811,13 +879,13 @@ export class ExploredFog {
    * Révèle l'ensemble du masque exploré (toute la carte devient explorée).
    */
   revealAll() {
-    if (this.ctx) {
+    this._appliquer(() => {
+      if (!this.ctx) return;
       this.ctx.save();
       this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
       this.ctx.fillRect(0, 0, this.maskWidth, this.maskHeight);
       this.ctx.restore();
-    }
-    this._touch();
+    });
   }
 
   /**
@@ -842,8 +910,7 @@ export class ExploredFog {
    */
   paintDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY) {
     if (!this.ctx || !center || !mapOrigin) return;
-    this._strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, 'source-over');
-    this._touch();
+    this._appliquer(() => this._strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, 'source-over'));
   }
 
   /**
@@ -859,8 +926,7 @@ export class ExploredFog {
    */
   eraseDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY) {
     if (!this.ctx || !center || !mapOrigin) return;
-    this._strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, 'destination-out');
-    this._touch();
+    this._appliquer(() => this._strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, 'destination-out'));
   }
 
   /**
@@ -876,6 +942,7 @@ export class ExploredFog {
    * @param {string} compositeOperation
    */
   _strokeDisc(center, radiusPx, mapOrigin, gridScaleX, gridScaleY, compositeOperation) {
+    if (!this.ctx) return;
     const scaleX = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleX);
     const scaleY = FOG_MASK_PX_PER_CELL / Math.max(1, gridScaleY);
     const poly = discPolygon(center, radiusPx);

@@ -8,7 +8,7 @@ import { reconstructPath } from '../movement/path.js';
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Level} Level */
 /** @typedef {import('../grid/GridAdapter.js').GridAdapter} GridAdapter */
-/** @typedef {{grid:GridAdapter,budget:number,walkBudget?:number,blockedEdges:Set<string>,terrainCost:Map<string,number>}} MovementRules */
+/** @typedef {{grid:GridAdapter,budget:number,walkBudget?:number,blockedEdges:Set<string>,terrainCost:Map<string,number>,footprint?:import('../movement/reachable.js').Footprint}} MovementRules */
 
 /** @typedef {Object} MovePlan
  * @property {string} planId
@@ -39,7 +39,7 @@ export const MOVE_COST_EPSILON = 1e-9;
  */
 export function createMovePlan(token, level, rules) {
   const start = { a: token.cell.a, b: token.cell.b };
-  const result = computeReachable(rules.grid, start, rules.budget, rules.blockedEdges, rules.terrainCost);
+  const result = computeReachable(rules.grid, start, rules.budget, rules.blockedEdges, rules.terrainCost, rules.footprint);
   result.distances.delete(cellKey(start));
   return {
     planId: makePlanId(), revision: 0, tokenId: token.id, levelId: level.id,
@@ -80,7 +80,7 @@ export function extendMovePlan(plan, destination, rules) {
     remaining: Math.max(0, plan.budget - totalCost),
     status: /** @type {'ready'} */ ('ready'),
   };
-  const reachable = computeReachable(rules.grid, destination, next.remaining, rules.blockedEdges, rules.terrainCost);
+  const reachable = computeReachable(rules.grid, destination, next.remaining, rules.blockedEdges, rules.terrainCost, rules.footprint);
   reachable.distances.delete(destinationKey);
   next.reachable = reachable.distances;
   next.predecessors = reachable.predecessors;
@@ -103,7 +103,7 @@ export function validateMovePlan(plan, token, level, rules) {
   for (let i = 1; i < plan.path.length; i++) {
     const from = plan.path[i - 1];
     const to = plan.path[i];
-    if (!canTraverseStep(rules.grid, from, to, rules.blockedEdges)) {
+    if (!canTraverseStep(rules.grid, from, to, rules.blockedEdges, rules.footprint)) {
       return { valid: false, reason: 'un obstacle bloque le chemin', cost };
     }
     cost += movementStepCost(rules.grid, from, to, rules.terrainCost);

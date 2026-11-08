@@ -1041,6 +1041,8 @@ export class FirebaseTransport {
     this._subscribers = new Set();
     /** @type {Set<(err: unknown) => void>} */
     this._errorHandlers = new Set();
+    /** @type {Set<(connected: boolean) => void>} Abonnés aux bascules de connexion (A9). */
+    this._connectivityHandlers = new Set();
 
     /** @type {NetEvent[]} Événements reçus avant que `snapshot()` ne soit remis */
     this._eventBuffer = [];
@@ -1192,6 +1194,29 @@ export class FirebaseTransport {
   }
 
   // --- Signalement d'erreur -------------------------------------------------
+
+  /**
+   * Bascules de la connexion RTDB après une première connexion (audit du 08/11, A9).
+   * @param {(connected: boolean) => void} handler
+   * @returns {() => void}
+   */
+  onConnectivity(handler) {
+    this._connectivityHandlers.add(handler);
+    return () => {
+      this._connectivityHandlers.delete(handler);
+    };
+  }
+
+  /** @private @param {boolean} connected */
+  _emitConnectivity(connected) {
+    for (const handler of this._connectivityHandlers) {
+      try {
+        handler(connected);
+      } catch (err) {
+        console.error('Abonné de connectivité en échec :', err);
+      }
+    }
+  }
 
   /**
    * S'abonne aux échecs asynchrones du transport (écriture refusée, réseau perdu).
@@ -2238,10 +2263,12 @@ export class FirebaseTransport {
               this._rememberClosedMovePlan(this._movePreviewActivePlanId);
               this._movePreviewActivePlanId = null;
             }
+            this._emitConnectivity(false);
           }
           return;
         }
         if (wasConnected !== false) return;
+        this._emitConnectivity(true);
         const sessionId = this._sessionId;
         const clientId = this._clientId;
         const db = this._db;

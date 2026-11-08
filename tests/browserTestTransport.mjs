@@ -92,7 +92,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
       });
 
       let documentHidden = false;
-      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void, savedSnapshot: string|null}} */
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void, savedSnapshot: string|null, connectivite: Set<(connected: boolean) => void>, setConnected: (connected: boolean) => void}} */
       const wire = {
         published: [],
         received: [],
@@ -119,6 +119,12 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         retenus: [],
         relacher: () => {},
         debloquer: () => {},
+        // Coupure du temps réel (audit du 08/11, A9 et A14) : le test bascule la connexion, comme
+        // `.info/connected` chez Firebase. Aucune erreur n'est levée, exactement comme en vrai.
+        connectivite: new Set(),
+        setConnected: (/** @type {boolean} */ connected) => {
+          for (const handler of wire.connectivite) handler(connected);
+        },
       };
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => documentHidden });
       Object.defineProperty(document, 'visibilityState', {
@@ -316,6 +322,11 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
             });
           }
           return () => this.imageListeners.delete(callback);
+        }
+
+        onConnectivity(/** @type {(connected: boolean) => void} */ handler) {
+          wire.connectivite.add(handler);
+          return () => wire.connectivite.delete(handler);
         }
 
         mayHaveMissedEvents() {

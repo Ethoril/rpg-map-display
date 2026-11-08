@@ -280,7 +280,9 @@ export function attendreConnexion(tentative, deadlineMs = CONNEXION_DEADLINE_MS)
   });
   const issue = tentative.then(
     (transport) => ({ transport, delaiDepasse: false }),
-    () => ({ transport: null, delaiDepasse: false })
+    // Un SDK injoignable (A13) n'est pas un échec définitif : la page démarre hors ligne, comme
+    // à l'échéance, et `connectSession` la rechargera au retour du CDN.
+    (error) => ({ transport: null, delaiDepasse: /** @type {any} */ (error)?.connexionEnAttente === true })
   );
   return /** @type {Promise<{transport: Transport|null, delaiDepasse: boolean}>} */ (
     Promise.race([issue, echeance]).finally(() => clearTimeout(minuterie))
@@ -391,6 +393,48 @@ export function createSnapshotSaver({ capture, save, onError, delayMs = 250 }) {
 }
 
 /**
+ * Attend que le SDK Firebase redevienne joignable (A13) : une requête de sonde, sans cache, sur
+ * l'adresse que l'import map donne à `firebase/app` — aucune URL écrite ici (test d'architecture
+ * n°7). Retentée de 2 s à 30 s, et aussitôt au retour du réseau (`online`).
+ *
+ * @returns {Promise<void>}
+ */
+async function attendreSdkJoignable() {
+  /** @type {string|null} */
+  let adresse = null;
+  try {
+    adresse = /** @type {any} */ (import.meta).resolve?.('firebase/app') ?? null;
+  } catch {
+    adresse = null;
+  }
+  if (!adresse) {
+    // Sans résolution par l'import map, le seul indice est le retour du réseau. ⛔ Jamais sur
+    // minuterie : recharger une page dont le CDN reste muet la ferait boucler.
+    await new Promise((ok) => globalThis.addEventListener?.('online', () => ok(undefined), { once: true }));
+    return;
+  }
+  let delai = 2000;
+  for (;;) {
+    await new Promise((ok) => {
+      const fin = () => {
+        clearTimeout(minuterie);
+        globalThis.removeEventListener?.('online', fin);
+        ok(undefined);
+      };
+      const minuterie = setTimeout(fin, delai);
+      globalThis.addEventListener?.('online', fin);
+    });
+    delai = Math.min(30_000, delai * 2);
+    try {
+      await fetch(adresse, { mode: 'no-cors', cache: 'no-store' });
+      return;
+    } catch {
+      // Toujours injoignable : on attend le tour suivant.
+    }
+  }
+}
+
+/**
  * Construit et connecte le transport d'une page. Un transport injecté sert aux tests et au
  * mode LAN ; Firebase est utilisé sinon lorsque sa configuration publique est disponible.
  *
@@ -400,7 +444,8 @@ export function createSnapshotSaver({ capture, save, onError, delayMs = 250 }) {
  *   sessionId: string,
  *   role: 'gm'|'players',
  *   loginHost?: HTMLElement|null,
- *   onStatus?: (status: 'local'|'auth'|'connecting'|'connected'|'error', detail?: unknown) => void
+ *   onStatus?: (status: 'local'|'auth'|'connecting'|'connected'|'error', detail?: unknown) => void,
+ *   onSdkRetabli?: () => void
  * }} options
  * @returns {Promise<Transport|null>}
  */
@@ -412,6 +457,7 @@ export async function connectSession(options) {
     role,
     loginHost = null,
     onStatus = () => {},
+    onSdkRetabli = () => location.reload(),
   } = options;
 
   if (injectedTransport) {
@@ -427,7 +473,24 @@ export async function connectSession(options) {
     return null;
   }
 
-  const transport = await createFirebaseTransport(config);
+  /** @type {FirebaseTransport} */
+  let transport;
+  try {
+    transport = await createFirebaseTransport(config);
+  } catch (error) {
+    // ⛔ Audit du 08/11, A13 : le SDK n'a pas pu être chargé (CDN injoignable). Ce n'est pas un
+    // refus d'authentification, c'est une connexion EN ATTENTE : on le dit (« hors ligne »), et
+    // la tentative ne se conclut pas — passé l'échéance, la page démarre en local comme pour
+    // toute connexion lente (C4), mais sans attendre l'échéance : `attendreConnexion` lit
+    // `connexionEnAttente`, et la page affiche « hors ligne » comme à l'échéance. ⚠ Chromium garde
+    // l'échec d'un `import()` en cache : le retenter ne réussit jamais. On sonde donc le CDN, et
+    // quand il répond, `onSdkRetabli` recharge la page, exactement comme une connexion tardive.
+    void attendreSdkJoignable().then(onSdkRetabli);
+    throw Object.assign(new Error('SDK Firebase injoignable : démarrage local, reprise au retour du réseau'), {
+      connexionEnAttente: true,
+      cause: error,
+    });
+  }
   transport.onError((error) => onStatus('error', error));
 
   try {

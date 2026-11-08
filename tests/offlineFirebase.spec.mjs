@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
-import { waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
 /**
  * R0-03 — le repli local ne doit pas seulement afficher son badge : il doit pouvoir démarrer
@@ -118,4 +118,91 @@ test('R0-03 : une session locale joue avec le CDN Firebase bloqué', async ({ pa
   expect(persistedCell).toEqual({ a: 4, b: 4 });
   expect(gstaticRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
+});
+
+// ── Audit du 08/11/2026 : A13 et A9 — une coupure se voit au badge ──────────────────────────
+
+// A13 — navigateur ordinaire (configuration Firebase active), CDN bloqué : avant, la campagne
+// s'ouvrait avec un badge vide et rien ne reprenait jamais.
+test('A13 : un SDK injoignable au démarrage se dit « hors ligne » et la partie locale s’ouvre', async ({ browser }) => {
+  const sid = `audit-cdn-${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 5, heightCells: 5 });
+  const token = createToken({ id: 'hero', levelId: 'a', kind: 'pc', cell: { a: 1, b: 1 } });
+  const campaign = createCampaign({ campaignId: sid, levels: [level], tokens: [token] });
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    /** @type {string[]} */
+    const blocked = [];
+    await page.route('https://www.gstatic.com/firebasejs/**', async route => {
+      blocked.push(route.request().url());
+      await route.abort();
+    });
+    await page.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => false }));
+    await page.goto('/');
+    await page.evaluate(({ sessionId, data }) => {
+      localStorage.setItem(`rpg_campaign_${sessionId}`, JSON.stringify(data));
+    }, { sessionId: sid, data: campaign });
+    await page.goto(`/gm.html?session=${sid}`);
+    await waitForApp(page);
+    expect(blocked.length).toBeGreaterThan(0);
+    expect(await page.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens[0]?.id)).toBe('hero');
+    await expect(page.locator('#network-status-gm')).toHaveAttribute('data-status', /^(offline|error)$/, { timeout: 2000 });
+  } finally {
+    await context.close();
+  }
+});
+
+// A13, suite — Chromium garde l'échec d'un import() en cache : seule la page rechargée peut
+// charger le SDK. Le CDN revenu (la sonde répond), la page se recharge d'elle-même.
+test('A13 : le CDN revenu, la page se recharge pour repartir en ligne', async ({ browser }) => {
+  const sid = `a13-retour-${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 5, heightCells: 5 });
+  const campaign = createCampaign({ campaignId: sid, levels: [level], tokens: [createToken({ id: 'hero', levelId: 'a', kind: 'pc', cell: { a: 1, b: 1 } })] });
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    let cdnRevenu = false;
+    // Les modules restent bloqués (la page rechargée retombera hors ligne : peu importe ici) ;
+    // seule la sonde, une requête `fetch`, voit le CDN revenir.
+    await page.route('https://www.gstatic.com/firebasejs/**', (route) =>
+      cdnRevenu && route.request().resourceType() === 'fetch' ? route.fulfill({ status: 200, body: '' }) : route.abort());
+    await page.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => false }));
+    await page.goto('/');
+    await page.evaluate(({ sessionId, data }) => localStorage.setItem(`rpg_campaign_${sessionId}`, JSON.stringify(data)), { sessionId: sid, data: campaign });
+    await page.goto(`/gm.html?session=${sid}`);
+    await waitForApp(page);
+    await expect(page.locator('#network-status-gm')).toHaveAttribute('data-status', 'offline');
+    await page.evaluate(() => { /** @type {any} */ (window).__avantRechargement = true; });
+    cdnRevenu = true;
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avantRechargement === true), { timeout: 10000, message: 'la page a été rechargée' }).toBe(false);
+  } finally {
+    await context.close();
+  }
+});
+
+// A9 — une coupure du temps réel ne lève aucune erreur : le badge le disait « connecté ».
+test('A9 : la coupure puis le retour du temps réel se lisent au badge, MJ comme tablette', async ({ browser }) => {
+  const sid = `a9-${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 5, heightCells: 5 });
+  const snapshot = { campaign: createCampaign({ campaignId: sid, levels: [level] }), activeLevelId: 'a' };
+  const context = await browser.newContext();
+  try {
+    for (const role of /** @type {const} */ (['gm', 'players'])) {
+      const page = await context.newPage();
+      await installBrowserTransport(page, sid, snapshot);
+      await page.goto(`/${role === 'gm' ? 'gm' : 'player'}.html?session=${sid}`);
+      await waitForApp(page);
+      const badge = page.locator(`#network-status-${role}`);
+      await expect(badge).toHaveAttribute('data-status', 'connected');
+      await page.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.setConnected(false));
+      await expect(badge).toHaveAttribute('data-status', 'offline');
+      await expect(badge, 'visible, même sur la tablette').toBeVisible();
+      await page.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.setConnected(true));
+      await expect(badge).toHaveAttribute('data-status', 'connected');
+      if (role === 'players') await expect(badge).toBeHidden();
+    }
+  } finally {
+    await context.close();
+  }
 });

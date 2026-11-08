@@ -4,6 +4,7 @@ import { gridFor } from '../grid/index.js';
 import { terrainCostRecordToMap, isLinkedToken } from '../core/schema.js';
 import { computeBlockedEdges } from '../import/blockedEdges.js';
 import { MOUNTED_SPEED_MULTIPLIER } from '../core/constants.js';
+import { computeReachable } from '../movement/reachable.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Level} Level */
@@ -25,7 +26,7 @@ let reachableCells = new Map();
  *
  * @param {Token} token
  * @param {Level} level
- * @returns {{ grid: GridAdapter, budget: number, walkBudget: number, blockedEdges: Set<string>, terrainCost: Map<string, number> }}
+ * @returns {{ grid: GridAdapter, budget: number, walkBudget: number, blockedEdges: Set<string>, terrainCost: Map<string, number>, footprint?: import('../movement/reachable.js').Footprint }}
  */
 export function movementRulesFor(token, level) {
   const grid = gridFor(level);
@@ -47,7 +48,23 @@ export function movementRulesFor(token, level) {
     // Monté, tout portail bloque, quel que soit son état : un cheval ne passe pas les portes.
     blockedEdges: computeBlockedEdges(level, grid, { portals: mounted ? 'all' : 'closed' }),
     terrainCost: terrainCostRecordToMap(level.terrainCost),
+    footprint: footprintFor(token, grid),
   };
+}
+
+/**
+ * Emprise d'un grand pion pour la portée (audit du 08/11, A12) ; `undefined` pour une case.
+ * Les bornes suivent la règle de `validateCampaign` sans être réécrites ici : en carré, une case
+ * d'emprise hors carte n'est jamais voisine de rien ; en hexagone, la rosette est rognée et seul
+ * l'ancrage compte (D-8).
+ *
+ * @param {Token} token @param {GridAdapter} grid
+ * @returns {import('../movement/reachable.js').Footprint|undefined}
+ */
+function footprintFor(token, grid) {
+  const size = Math.max(1, Math.floor(token.sizeCells || 1));
+  if (size === 1) return undefined;
+  return { cellsOf: (anchor) => grid.cellsOccupied(anchor, size) };
 }
 
 /**
@@ -74,15 +91,14 @@ export function setSelectionState(token, level) {
     );
   }
 
-  const { grid, budget, blockedEdges, terrainCost } = movementRulesFor(token, level);
+  const { grid, budget, blockedEdges, terrainCost, footprint } = movementRulesFor(token, level);
 
   selectedTokenId = token.id;
-  reachableCells = grid.cellsInRange(
-    token.cell,
-    budget,
-    blockedEdges,
-    terrainCost
-  );
+  // Grand pion : la zone suit toute l'emprise (A12) — d'où Dijkstra direct, `cellsInRange` ne
+  // connaissant que la case d'ancrage.
+  reachableCells = footprint
+    ? computeReachable(grid, token.cell, budget, blockedEdges, terrainCost, footprint).distances
+    : grid.cellsInRange(token.cell, budget, blockedEdges, terrainCost);
 }
 
 /**

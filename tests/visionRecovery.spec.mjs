@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 
 /**
  * La vision directe doit survivre à la perte du contexte de la tablette.
@@ -414,4 +415,54 @@ test('C-8 : une tablette neuve connaît les TROIS étages explorés après sa de
 
   expect(erreurs).toEqual([]);
   await context.close();
+});
+
+// ── Audit du 08/11/2026, A2 ──────────────────────────────────────────────────────────────────
+// C-8 couvrait la rediffusion AVANT redémarrage, masques encore en mémoire. Après un F5, le MJ
+// ne recharge que les étages d'un PJ ou affichés : celui qu'on a quitté reste dans son stockage,
+// et doit partir quand même.
+test('A2 : après un F5 du MJ, un étage exploré puis quitté est rediffusé à une tablette neuve', async ({ browser }) => {
+  const sid = `audit-fog-${Date.now()}`;
+  const a = createLevel({ id: 'a', pxPerCell: 100, widthCells: 10, heightCells: 8 });
+  const b = createLevel({ id: 'b', pxPerCell: 100, widthCells: 10, heightCells: 8 });
+  const token = createToken({ id: 'hero', levelId: 'a', kind: 'pc', cell: { a: 2, b: 2 } });
+  const campaign = createCampaign({ campaignId: 'audit', levels: [a, b], tokens: [token] });
+  const snap = { campaign, activeLevelId: 'a' };
+  const ctx = await browser.newContext();
+  try {
+    let gm = await ctx.newPage();
+    await installBrowserTransport(gm, sid, snap);
+    await gm.goto(`/gm.html?session=${sid}`);
+    await waitForApp(gm);
+    await expect.poll(() => gm.evaluate(async () => Boolean((await import('../js/state/store.js')).getSessionFog('a')))).toBe(true);
+    await gm.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      store.reserveToken('hero');
+      store.placeTokenFromReserve('hero', 'b', { a: 2, b: 2 });
+      store.selectLevel('b');
+    });
+    await gm.waitForTimeout(1500);
+    const snapshot = await gm.evaluate(async () => ({ campaign: (await import('../js/state/store.js')).getCampaign(), activeLevelId: 'b' }));
+    await gm.close();
+    gm = await ctx.newPage();
+    await installBrowserTransport(gm, sid, snapshot);
+    await gm.goto(`/gm.html?session=${sid}`);
+    await waitForApp(gm);
+    expect(await gm.evaluate(id => Boolean(localStorage.getItem(`rpg_fog_${id}_a`)), sid)).toBe(true);
+    const player = await ctx.newPage();
+    // Isole la lecture du stockage de la tablette, sans supprimer la copie du poste MJ.
+    await player.addInitScript(id => {
+      const original = Storage.prototype.getItem;
+      /** @param {string} key */
+      Storage.prototype.getItem = function (key) {
+        return key === `rpg_fog_${id}_a` ? null : original.call(this, key);
+      };
+    }, sid);
+    await installBrowserTransport(player, sid, snapshot);
+    await player.goto(`/player.html?session=${sid}`);
+    await waitForApp(player);
+    await expect.poll(() => player.evaluate(async () => Boolean((await import('../js/state/store.js')).getSessionFog('a'))), { timeout: 4000 }).toBe(true);
+  } finally {
+    await ctx.close();
+  }
 });
