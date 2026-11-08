@@ -307,6 +307,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
     │                              du CdC à faire
     ├─ PLAN-CORRECTIFS-AUDIT-2209.md plan de reprise hiérarchisé des correctifs issus de
     │                              l'audit du 22/09/2026, coché au fil des commits
+    ├─ AUDIT-FONCTIONNEL-2026-11-08.md audit fonctionnel du 08/11/2026 : 15 constats (A1 à
+    │                              A15) reproduits par des tests, et l'ordre de traitement
     ├─ FEUILLE-DE-ROUTE-COMPLEMENTAIRE.md
     │                              travaux transverses issus de l'audit du 07/08/2026 :
     │                              fiabilité, exploitation, performance et préparation 1.0

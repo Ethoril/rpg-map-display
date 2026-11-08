@@ -1554,3 +1554,151 @@ Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
   **fidèle** : les 206 e2e étaient verts, y compris un cas écrit exprès avec la vraie carte du
   village. **Un vert e2e ne dit rien du chemin `FirebaseTransport`**, que rien n’exerce ; le seul
   garde-fou possible est un test unitaire qui **modélise** la perte — `tests/transport.test.mjs`.
+
+---
+
+## G. Idées venues de la veille — test de Project Nat20 du 03/11/2026
+
+> **Provenance.** Séance d'observation de Project Nat20 (`https://project-nat20.com/`), VTT 3D
+> commercial dans le navigateur, menée depuis le poste Windows à la demande du mainteneur ; compte
+> rendu reçu le 03/11/2026 (`TEST-NAT20-2026-11-03.md`, **hors dépôt** — le manifeste est fermé,
+> donc son contenu utile est recopié ici). Cadre qu'il avait fixé : **s'inspirer, jamais copier**,
+> l'outil reste strictement privé ; observation **par l'usage** (gestes, rendu, requêtes), aucun
+> décorticage de bundle ; compte gratuit créé par lui, cartes importées par lui.
+>
+> ⛔ **Rien dans cette section n'est tranché, et aucune ligne n'autorise un chantier.**
+>
+> **Ce que le test n'a PAS pu établir** : la vue joueur (il faudrait un second compte invité), la
+> fluidité (navigateur en arrière-plan, `rAF` bridé à ~1 image/s : le chiffre ne vaut rien), et
+> surtout **les lumières** — les deux `.uvtt` disponibles sur ce poste en portent **zéro**.
+>
+> ⛔ **Écarté d'emblée**, parce que le CdC l'exclut ou que c'est hors besoin : dés 3D, fiches, tchat,
+> musique, calendrier, droits délégués par joueur, carte du monde et voyages animés, filtrage du
+> brouillard côté serveur (sans objet : personne n'inspecte la tablette castée).
+>
+> ⛔ **Contre-exemple relevé, à ne pas imiter** : chez eux, activer les ombres envoie un `PATCH`
+> **puis recharge toute la scène** — `lobby`, scène, permissions, trois catégories d'assets, et la
+> liste des cartes redemandée **quatre fois** pendant un import. Notre modèle d'événements par delta
+> est plus économe. Et leur rendu est **Babylon.js / WebGL2** à cartes d'ombres GPU : rien n'y
+> ressemble à un polygone de visibilité, et rien ne se transpose à un canvas 2D sans build
+> (`STACK.md`).
+>
+> ⚠ **État laissé chez eux** : page de test avec le fond `manoir-rdc`, ombres allumées, obscurité
+> « nuit noire » ; les deux cartes restent dans la bibliothèque du compte.
+
+### G-1 ⭐ Le plafond d'intensité des lumières UVTT — la seule qui touche le rendu à la table
+
+**Ce qu'on fait aujourd'hui, vérifié dans le code** : `js/import/uvtt.js:382-411` relève l'intensité
+la plus forte de la carte et divise toutes les autres par elle — la plus forte **vaut donc 1**.
+C'est le point 8 du CdC (~l.1008) : « l'intensité garde ses écarts », choix fait contre le rognage
+à 1 parce que Dungeon Alchemist écrit `intensity: 6.0`, sur une échelle indéterminée.
+
+**Ce qu'ils ont constaté** : leur journal du 1er novembre ramène la plus forte à **30 %**, les
+autres en proportion, parce que les cartes Dungeon Alchemist « paraissaient délavées ».
+
+**Pourquoi c'est ouvert chez nous** : c'est exactement le même geste, avec un plafond différent, et
+nous n'avons jamais regardé une carte DA éclairée sur le vidéoprojecteur. La recette matérielle
+*contraste du vidéoprojecteur sur fonds clairs et sombres* est encore ouverte dans `ETAT.md`.
+
+**Ce qui la ferme** : un export Dungeon Alchemist **qui a des lumières**, comparé à plafond 1 et à
+plafond 0,3, **sur le vrai vidéoprojecteur**. ⛔ Aucun critère de rendu ne se coche sans le matériel.
+⚠ Le changement est petit en code (un facteur) mais **normatif** : il réécrit le point 8 du CdC, et
+l'opacité du halo suit l'intensité, donc il déplace aussi le rendu des lampes et des torches.
+
+### G-2 La vignette d'abord à l'arrivée de la tablette
+
+**L'idée** : l'écran casté affiche la vignette tout de suite, la carte complète ensuite, au lieu de
+rester noir pendant le décodage. Chez eux, la table s'ouvre « en vignette d'abord ».
+
+⭐ **Le compte rendu se trompe sur le coût** : il annonce « sortie supplémentaire de `maps:prepare`
+→ manifeste fermé ». **Les vignettes existent déjà** — `prepareThumb` écrit
+`maps/generated/<levelId>.thumb.webp` à 320 px (`scripts/prepare-maps.mjs:1035`, `:1717`), le
+catalogue les publie (`thumbUrl`), l'outil de préparation et la bibliothèque MJ les affichent.
+**Aucun fichier nouveau, aucun amendement du manifeste.**
+
+**Ce qui reste réellement ouvert** : la vue joueurs **ne lit jamais** `thumbUrl` — aucune occurrence
+dans `js/app/player.js`. La question se réduit donc à peindre cette vignette pendant le décodage du
+fond, ce que le chantier N chiffre à ~490 ms sur Mac et **1 118 ms sur tablette**. ⚠ Deux points à
+trancher avec : le cas du **fond animé**, et le fait qu'une vignette étirée est un rendu faux
+pendant une seconde — ce qui est peut-être préférable à du noir, mais c'est un choix d'affichage,
+pas une évidence.
+
+### G-3 Le bilan géométrique « N murs, N portes, N lumières »
+
+**Pourquoi** : repérer d'emblée une carte importée sans géométrie. `ETAT.md` (~l.148) garde la trace
+d'une mesure de lumière faussée précisément parce que le balayage « rabat sur une liste de murs
+**vide** » — 2,65 ms sans murs contre 45,5 ms avec 1 338 murs, un facteur 17 pris pour un résultat.
+
+⭐ **Déjà là pour l'essentiel, vérifié** : la fiche de carte de la bibliothèque MJ affiche
+« N murs · N portes · N lumières » (`js/ui/gm/sceneLibrary.js:304-306`), et le catalogue porte
+`features.{walls,portals,lights}`. Ce qui manque est donc étroit : le compte est **par carte**, pas
+**par étage** (la préparation agrège), et la ligne de confirmation au chargement ne dit que les murs
+et les portes (`sceneLibrary.js:172`). Petit, affichage MJ seul, aucun événement.
+
+### G-4 Masquer les repères de portes et de lumières côté MJ, sans changer leur effet
+
+**Pourquoi** : sur `manoir-rdc`, **40 pastilles de porte** chargent la vue au point qu'eux-mêmes ont
+ajouté l'option. Chez eux, décocher « Montrer les portes et les lumières » masque les pastilles et
+les icônes ; l'effet reste entier.
+
+**Vérifié** : rien de tel n'existe chez nous. Réglage **local** au poste MJ, aucun événement réseau,
+aucune incidence joueurs. Petit.
+
+### G-5 ⛔ Garder la géométrie par fond, et savoir la reprendre du fichier — touche le §7
+
+**Aujourd'hui** : l'amendement UX-13 (CdC ~l.1014) dit que `level.replace` remplace le contenu d'un
+étage **« géométrie vidée »**, met les pions en réserve et réinitialise le brouillard.
+
+**Chez eux** : chaque fond garde ses murs, portes, lumières et réglages — changer de fond les range,
+y revenir les rend — et un bouton « Reprendre murs, portes et lumières de la carte » rejoue le
+fichier en préservant les retouches faites à la main.
+
+⛔ **Arrêt et question au mainteneur** : cela amende le contrat d'un événement du §7. ⚠ À noter pour
+l'arbitrage : l'esprit de la règle 4 (« rien ne se déplace dans le dos de personne ») **plaide pour**
+leur comportement — remplacer un fond ne devrait pas détruire une heure de retouche de murs — mais
+la règle ne tranche pas la forme, et la mise en réserve des pions, elle, est délibérée. Grande.
+
+### G-6 L'ordre des étages déduit du nom des fichiers
+
+**Chez eux** : chaque niveau est une page, et l'ordre d'empilement se déduit du nom des fichiers
+(cave, rdc, first, 2e… ou des numéros).
+
+**Chez nous, vérifié** : l'ordre vient de la recette — `lvlSpec.order`, à défaut l'**index de
+déclaration** (`scripts/prepare-maps.mjs:1186`, tri l.1703). Mais le vocabulaire existe déjà à
+moitié : la préparation sait humaniser `manoir-rdc` en `Manoir — RDC` et connaît `rdc`, `r1`, `sud`
+(~l.353). ⚠ Si l'heuristique est retenue, elle **se dit** dans les avertissements : le fichier porte
+déjà la règle « une suggestion silencieuse est un ordre déguisé » (~l.524). Petit, outil de
+préparation seulement.
+
+### G-7 ⛔ Zones attachées à un pion — nouvel événement §7
+
+Cercle ou carré qui suit le pion, et qui peut cacher les pions à l'intérieur. Utile en combat.
+Nouvel objet réseau, donc nouvel événement au §7 : ⛔ ne rien démarrer, et le nom de l'événement est
+précisément le genre de décision qui s'arrête. Grande, à discuter.
+
+### G-8 ⛔ Dessin à main levée du MJ, caché par le brouillard — nouvel événement §7
+
+Visible en direct côté joueurs, masqué par le brouillard comme le reste du décor. Cohérent avec une
+vue joueurs passive (rien à manipuler du côté tablette). Nouvel événement §7 : même arrêt que G-7.
+Moyenne.
+
+### G-9 ⚠ Ce que le compte rendu n'a pas retenu, et qui touche un chantier déjà ouvert
+
+Leur sélecteur d'import accepte **`png`, `jpg`, `webp`** autant que `.dd2vtt`, `.df2vtt`, `.uvtt`,
+et leur mode « Tracer et modifier les murs » (sommet par sommet, Ctrl+glisser, Ctrl+Z) permet
+d'armer à la main une image nue. **Inférence, pas observation** : le test n'a pas exercé ce chemin.
+
+Pourquoi c'est noté : chez nous, l'outil de préparation **n'avale que de l'UVTT**, et les 152 packs
+du mainteneur sont des **images**. Un éditeur de murs existe déjà (`js/ui/gm/wallEditor.js`). Le
+chantier « exploiter les cartes images » est ouvert et rien n'y est décidé ; cette observation dit
+seulement qu'un outil commercial tient ce chemin pour praticable. ⛔ Elle ne vaut ni cadrage, ni
+autorisation, et la licence des cartes reste le domaine du mainteneur.
+
+### Ce que ces neuf lignes attendent
+
+1. **G-1 d'abord**, parce que c'est la seule qui change ce qu'on voit à la table — et elle demande
+   un export DA avec lumières **et** le vidéoprojecteur.
+2. **G-3, G-4, G-6** sont petites, sans événement réseau ni fichier nouveau : un oui suffit, chacune
+   est un chantier court vérifiable par mutation.
+3. **G-2** est plus petite qu'annoncée (aucun manifeste touché) mais demande deux choix d'affichage.
+4. **G-5, G-7, G-8** touchent le §7 du CdC : ⛔ arrêt, rien ne se démarre sans arbitrage.
