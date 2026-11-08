@@ -1,6 +1,7 @@
 # Contrat de liaison Outil MJ Warhammer ↔ RPG Map Display
 
-Version du contrat : **1** (04/11/2026). Statut : décisions du MJ arrêtées, rien d'implémenté.
+Version du contrat : **1** (04/11/2026). Statut : implémenté et publié des deux côtés (06/11/2026).
+Révision du 08/11/2026 : précisions au §10 (remise à zéro des pions posés à chaque instantané, liste d'engagements vide). Elle décrit un comportement existant, sans rien changer aux messages : la version du protocole (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = 1) ne bouge pas.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -232,7 +233,9 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 | `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres ; diagonale = 1,5 case, voir §14 ; distance entre les cases les plus proches des deux emprises ; `cells: null` si un des pions n'est pas posé ou s'ils sont sur des étages différents, l'outil MJ laisse alors la saisie au MJ) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
 | `map.ran` | `{ ref }` quand un pion lié termine un déplacement dont le trajet dépasse sa Marche (`speedCells`), donc a couru, une fois par déplacement | Le participant a utilisé son Action du Tour pour courir. Jamais envoyé pour un déplacement à la Marche ni pour un pion non lié. |
 
-L'outil MJ envoie aussi `mj.engagements { pairs }`. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
+À chaque `mj.snapshot` reçu, Map Display remet à zéro ce qu'elle a annoncé, puis renvoie un `map.placed` pour chaque pion réellement posé. L'outil MJ vide donc sa liste des pions posés quand il envoie un instantané (réponse à `map.hello`) et quand la liaison passe à « déconnectée » : la liste se remplit aussitôt avec les placements exacts, sans indicateur « posé » périmé.
+
+L'outil MJ envoie aussi `mj.engagements { pairs }`, à chaque changement et à chaque instantané, même avec `pairs: []` quand il n'y a aucun engagement, pour que la carte efface les traits périmés. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
 
 Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la carte.
 
