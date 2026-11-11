@@ -2,6 +2,7 @@
 
 Version du contrat : **1** (04/11/2026). Statut : implémenté et publié des deux côtés (06/11/2026).
 Révision du 08/11/2026 : précisions au §10 (remise à zéro des pions posés à chaque instantané, liste d'engagements vide). Elle décrit un comportement existant, sans rien changer aux messages : la version du protocole (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = 1) ne bouge pas.
+Révision du 11/11/2026 : `campaignName` retiré de `map.hello` (§2.3). Aucun côté ne l'a jamais envoyé ni lu : le texte rejoint le comportement existant, la version du protocole ne bouge pas.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -55,7 +56,7 @@ La tablette n'écoute jamais le canal. Elle reçoit tout par le transport Fireba
 
 Le MJ est le seul utilisateur. **L'onglet gm.html ouvert fait foi.**
 
-1. À l'ouverture et à chaque rechargement, la carte émet `map.hello { v, sessionId, campaignName }`.
+1. À l'ouverture et à chaque rechargement, la carte émet `map.hello { v, sessionId }`.
 2. L'outil MJ répond `mj.snapshot`, l'état complet de tous les pions liés (§4). Il émet aussi `mj.hello` à son propre démarrage, et la carte répond par un `map.hello`.
 3. Les deux côtés affichent un indicateur « carte connectée » ou « outil MJ connecté ». Un battement toutes les 5 s (`*.ping`) détecte la fermeture de l'autre onglet. Après 15 s sans battement, l'indicateur passe à « déconnecté ». Un onglet caché voit ses minuteries ralenties par le navigateur (une par minute après 5 min) : chaque côté **répond au battement reçu par le sien** s'il n'a pas battu depuis 4 s. L'onglet visible entretient ainsi la liaison, sans boucle (amendement du 05/11, constaté en recette).
    - Si la carte reçoit un message alors qu'aucune campagne n'est chargée, elle réémet `map.hello` dès qu'une campagne l'est, pour recevoir l'instantané (amendement du 05/11).
