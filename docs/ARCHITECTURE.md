@@ -59,6 +59,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   ├─ types.js               [1a] tous les @typedef partagés — AUCUN code exécutable
 │   │   ├─ constants.js           [1a] FOG_MASK_PX_PER_CELL, seuils, limites
 │   │   ├─ cellKey.js             [1a] cellKey, parseCellKey, edgeKey
+│   │   ├─ donnees-communes.js    [L]  ⚙ COPIE de la source unique du dépôt de l'outil MJ
+│   │   │                                 (js/data/donnees-communes.js) : espèces et constantes
+│   │   │                                 de liaison. Ne pas modifier ici : recopier par
+│   │   │                                 tools/recopier-donnees-communes.mjs de l'outil MJ
 │   │   ├─ version.js             [1a] ⚙ GÉNÉRÉ par scripts/stamp-version.mjs
 │   │   └─ schema.js              [1a] fabriques + validation du document de campagne
 │   │

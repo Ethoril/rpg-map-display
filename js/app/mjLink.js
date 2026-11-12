@@ -16,6 +16,7 @@ import { movementRulesFor } from '../state/selection.js';
 import { ranStartIndex } from '../state/movePlan.js';
 import { parseFx } from '../render/layers/fx.js';
 import { footprintsAdjacent, gridFor } from '../grid/index.js';
+import { LIAISON_CARTE } from '../core/donnees-communes.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
@@ -536,16 +537,17 @@ function placeOnFreeAdjacentCell(deps, tokenId, around) {
   return false;
 }
 
-export const MJ_LINK_CHANNEL = 'wfrp-map-link';
-export const MJ_LINK_VERSION = 1;
-export const MJ_LINK_PING_MS = 5000;
-export const MJ_LINK_TIMEOUT_MS = 15000;
+// Constantes du contrat lues dans la copie des données communes (source : dépôt de l'outil MJ, ne pas modifier ici).
+export const MJ_LINK_CHANNEL = LIAISON_CARTE.canal;
+export const MJ_LINK_VERSION = LIAISON_CARTE.version;
+export const MJ_LINK_PING_MS = LIAISON_CARTE.battementMs;
+export const MJ_LINK_TIMEOUT_MS = LIAISON_CARTE.delaiDeconnexionMs;
 /**
  * Écho du battement (contrat §2.3) : un onglet caché voit ses minuteries ralenties à une par minute,
  * mais reçoit toujours les messages ; il répond au battement de l'outil MJ s'il n'a pas battu depuis
  * ce délai. Pas de boucle : l'écho reçu en retour tombe dans le délai.
  */
-export const MJ_LINK_ECHO_MS = 4000;
+export const MJ_LINK_ECHO_MS = LIAISON_CARTE.echoMs;
 
 /**
  * Ouvre le canal avec l'outil MJ (contrat §2) : `map.hello` à l'ouverture et sur `mj.hello`,
