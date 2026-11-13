@@ -3,6 +3,7 @@
 Version du contrat : **1** (04/11/2026). Statut : implémenté et publié des deux côtés (06/11/2026).
 Révision du 08/11/2026 : précisions au §10 (remise à zéro des pions posés à chaque instantané, liste d'engagements vide). Elle décrit un comportement existant, sans rien changer aux messages : la version du protocole (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = 1) ne bouge pas.
 Révision du 11/11/2026 : `campaignName` retiré de `map.hello` (§2.3). Aucun côté ne l'a jamais envoyé ni lu : le texte rejoint le comportement existant, la version du protocole ne bouge pas.
+Révision du 13/11/2026 : `imageUrl` (et `rider.imageUrl`) admet aussi un chemin relatif sous `maps/tokens/` (bibliothèque d'images de Map Display) ; nouveau champ `formImageUrl` de `token.state` (§4, §6). Ajouts compatibles, comme `color` et `deathCause` : la version du protocole ne bouge pas.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -23,7 +24,7 @@ Sans outil MJ, Map Display fonctionne exactement comme aujourd'hui : pions du fa
 
 | Champ du pion | Propriétaire pour un pion lié | Remarque |
 |---|---|---|
-| `imageUrl`, `label`, `kind`, `sizeCells`, `speedCells`, `runCells`*, `visionDim`, `visionSource`*, `hp`, `health`, `markers`, `markerLevels`*, `mounted`, `rider`*, `dead`*, `camp`* | **Outil MJ** | Contrôles grisés dans Map Display, panneau MJ et tablette, avec la mention « géré par l'outil MJ ». |
+| `imageUrl`, `formImageUrl`*, `label`, `kind`, `sizeCells`, `speedCells`, `runCells`*, `visionDim`, `visionSource`*, `hp`, `health`, `markers`, `markerLevels`*, `mounted`, `rider`*, `dead`*, `camp`* | **Outil MJ** | Contrôles grisés dans Map Display, panneau MJ et tablette, avec la mention « géré par l'outil MJ ». |
 | `cell`, `move`, `levelId`, `elevation`, `hidden`, `emitsLight`, `locked`, `playerMovable`, `borderColor` | **Map Display** | L'outil MJ ne les écrit jamais. |
 | `link`* | Map Display, à la liaison | Voir §3. |
 
@@ -86,7 +87,8 @@ Payload :
 {
   ref, label, camp: 'pj'|'allie'|'ennemi'|'neutre',
   kind: 'pc'|'npc', visionSource: boolean,
-  imageUrl: string|null,            // data: ≤ 24 Kio ou null (§6)
+  imageUrl: string|null,            // data: ≤ 24 Kio, ou chemin relatif sous maps/tokens/, ou null (§6)
+  formImageUrl: string|null,        // chemin relatif sous maps/tokens/ ; null efface (§6) ; toujours envoyé (13/11/2026)
   color: string|null,               // PJ et monture d'un PJ : '#rrggbb' ; null sinon (06/11, lot P2)
   sizeCells, speedCells, runCells,
   visionDim,
@@ -147,8 +149,10 @@ Les états de talents, de sorts ou d'origine maison, ainsi que « Blessé », **
 
 ## 6. Images
 
+- **Chemin d'image de bibliothèque** : `imageUrl`, `rider.imageUrl` et `formImageUrl` peuvent désigner une image de la bibliothèque de Map Display par un **chemin relatif**. Un chemin valide commence par `maps/tokens/`, ne contient pas `..`, finit par une extension d'image (`.webp`, `.png`, `.jpg`, `.jpeg`, `.gif`) et compte 200 caractères au plus. Il ne pèse ni dans le plafond de 24 Kio ni dans le cumul de 512 Kio, seule la référence étant stockée. Une image introuvable n'empêche pas l'affichage du pion, qui apparaît sans image (disque de camp).
 - **PNJ et créatures** : nouveau champ image sur le **profil** de l'outil MJ. À l'import, l'image est recadrée en rond et réduite à **24 Kio au plus**, au format `data:` (WebP ou JPEG), ce qui respecte les plafonds de Map Display (24 Kio par image, 512 Kio au total). Toutes les copies d'un profil partagent cette image.
-- **PJ** : l'outil MJ **n'envoie pas d'image**. Le pion PJ garde l'image choisie dans Map Display (`imageUrl: null` dans `token.state` signifie « ne pas toucher »).
+- **PJ** : l'outil MJ **n'envoie pas d'image** (`imageUrl`). Le pion PJ garde l'image choisie dans Map Display (`imageUrl: null` dans `token.state` signifie « ne pas toucher »). Seule exception : `formImageUrl` (ci-dessous).
+- **`formImageUrl`** (Forme bestiale) : image affichée **à la place** de `imageUrl` tant qu'elle est posée, sans jamais l'écraser. L'outil MJ l'envoie **toujours** dans `token.state` : une chaîne valide la pose, `null` l'efface (le pion retrouve son `imageUrl`, y compris l'image qu'un PJ tient de la carte). Une clé absente (outil plus ancien) ne change rien. Seul cas où l'outil MJ change l'image d'un PJ. Il ne concerne que le pion lui-même : sur un pion monté (§8.1), l'image de la monture (`rider.imageUrl`) reste celle de la monture. Une valeur invalide est ignorée par la carte, sans rejeter la campagne.
 - **Sans image** : Map Display dessine un disque à la couleur du `camp`, avec les initiales du `label`.
 - `imageUrl` devient modifiable sur un pion lié (amendement de `ALLOWED_TOKEN_PATCH_KEYS`), sans recréer le pion.
 
@@ -174,7 +178,7 @@ Sur la carte, la paire cavalier-monture s'affiche **en un seul pion** quand le c
 - Il garde l'identité (`ref`) du cavalier, prend la case de la monture et la taille (`sizeCells`) de la monture.
 - Le pion de la monture sort du plateau tant que la paire est fusionnée. Il est conservé hors plateau, sans être supprimé.
 - Image : celle de la **monture**, avec un **médaillon** du portrait du cavalier.
-- `rider` (RiderOverlay) : `{ ref: <ref de la monture>, label, imageUrl, hp, health, markers, markerLevels }`.
+- `rider` (RiderOverlay) : `{ ref: <ref de la monture>, label, imageUrl, hp, health, markers, markerLevels }` (`imageUrl` : `data:` ≤ 24 Kio, chemin de bibliothèque ou `null`, §6).
   - Le pion porte **deux anneaux** : l'extérieur pour la monture, l'intérieur pour le cavalier.
   - Les badges d'états réunissent ceux des deux.
   - Une blessure de l'un ou de l'autre déclenche la gerbe de sang sur ce pion.
@@ -247,7 +251,7 @@ Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la
    - rendu des effets : `js/render/layers/fx.js` (calque `fx`, entre `tokens` et `fog`) et les images `assets/fx/*.webp` (lot L4, 05/11) ;
    - icônes `fatigued` et `tainted` ;
    - copie de ce contrat dans `docs/`.
-2. **Type `Token`** : `link`, `runCells`, `visionSource`, `markerLevels`, `rider`, `dead`, `deathCause`, `camp`, avec leur validation dans `schema.js` et leur normalisation.
+2. **Type `Token`** : `link`, `runCells`, `visionSource`, `markerLevels`, `rider`, `dead`, `deathCause`, `camp`, `formImageUrl` (13/11/2026), avec leur validation dans `schema.js` et leur normalisation.
 3. **`ALLOWED_TOKEN_PATCH_KEYS`** : `imageUrl` devient modifiable pour un pion lié ; `mounted` reste à écrivain unique (`setTokenMounted`), désormais appelé par la liaison.
 4. **Vision** : la source de vision devient `visionSource`. Pour un pion non lié, elle vaut par défaut `kind === 'pc'`, donc sans changement de comportement.
 5. **Q7 rouverte** : ajout de `fatigued` (Exténué) et `tainted` (Souillé) aux marqueurs, avec leurs libellés, catégories et icônes ; chiffre de niveau sur le badge.
