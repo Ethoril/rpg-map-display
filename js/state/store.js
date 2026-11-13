@@ -1923,7 +1923,8 @@ export function setTokenLink(tokenId, ref) {
   if (ref !== null && autre) {
     throw new Error(`« ${ref} » est déjà lié au pion "${autre.id}"`);
   }
-  if (ref === null) delete token.link;
+  // Délier rend le pion à la carte : l'image de forme, détenue par l'outil MJ, part avec la liaison.
+  if (ref === null) { delete token.link; delete token.formImageUrl; }
   else token.link = { source: 'outil-mj', ref };
   assertValidCampaign(candidate, `Liaison du pion "${tokenId}"`);
   replaceCampaign(candidate);

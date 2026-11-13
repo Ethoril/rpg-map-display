@@ -888,8 +888,10 @@ export const TOKEN_LIBRARY_PATH_MAX_LENGTH = 200;
  */
 export function isTokenLibraryPath(value) {
   if (typeof value !== 'string' || value.length > TOKEN_LIBRARY_PATH_MAX_LENGTH) return false;
-  if (value.includes('..')) return false;
-  return /^maps\/tokens\/.+\.(webp|png|jpe?g|gif)$/i.test(value) && isPersistableAssetUrl(value);
+  // Jeu de caractères strict : ni `%` (un `%2e%2e` se résoudrait en `..`), ni `\`, ni espace ni accent.
+  if (!/^maps\/tokens\/[A-Za-z0-9._/-]+$/.test(value) || !/\.(?:webp|png|jpe?g|gif)$/i.test(value)) return false;
+  // Aucun segment vide, `.`, `..` ou caché (`.webp` seul n'a pas de nom), aucune suite `..` (même règle que l'outil MJ).
+  return !value.includes('..') && value.split('/').every((segment) => segment !== '' && !segment.startsWith('.'));
 }
 
 /**
@@ -897,11 +899,13 @@ export function isTokenLibraryPath(value) {
  * de bibliothèque valide, sinon `imageUrl`. Une valeur invalide est lue comme absente. Ne vaut que
  * pour le pion lui-même : l'image de la monture fusionnée (`rider.imageUrl`) ne passe pas par ici.
  *
- * @param {{ imageUrl?: string|null, formImageUrl?: unknown }} token
+ * @param {{ imageUrl?: string|null, formImageUrl?: unknown, link?: unknown }} token
  * @returns {string}
  */
 export function displayImageUrl(token) {
-  return isTokenLibraryPath(token.formImageUrl) ? token.formImageUrl : (token.imageUrl ?? '');
+  // `formImageUrl` appartient à l'outil MJ : sur un pion non lié (délié depuis), il est lu comme absent.
+  const lie = /** @type {any} */ (token).link?.source === 'outil-mj';
+  return lie && isTokenLibraryPath(token.formImageUrl) ? token.formImageUrl : (token.imageUrl ?? '');
 }
 
 /**

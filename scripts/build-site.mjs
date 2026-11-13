@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TOKEN_IMAGES } from '../js/core/token-images.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -151,7 +152,10 @@ export function publishedTokenEntries() {
 }
 
 /**
- * Images de pions référencées par le catalogue.
+ * Images de pions à publier : celles du catalogue **et** celles de la table de la bibliothèque (copie de la
+ * table de l'outil MJ, `js/core/token-images.js`). L'outil MJ en envoie le chemin dans `imageUrl` ou
+ * `formImageUrl`, et Pages ne sert que la liste blanche : une image absente d'ici est une 404, donc un pion
+ * sans image en production. La bibliothèque grossit : aucun nombre figé, tout vient de la table.
  *
  * ⚠ Publier le catalogue sans les images donnerait une bibliothèque pleine de cadres
  * vides — pire qu'une bibliothèque vide, parce que l'échec serait silencieux.
@@ -165,6 +169,7 @@ export function publishedTokenAssets() {
     if (/^(?:https?:)?\/\//i.test(t.imageUrl) || t.imageUrl.startsWith('data:')) continue;
     assets.add(t.imageUrl);
   }
+  for (const entree of TOKEN_IMAGES) assets.add(entree.path);
   return [...assets].sort();
 }
 

@@ -686,14 +686,14 @@ test('images des pions : une image de bibliothèque introuvable laisse le pion a
 
 test('images des pions : displayImageUrl — formImageUrl valide sinon imageUrl, valeur invalide lue comme absente', async () => {
   const { displayImageUrl, isTokenLibraryPath } = await import('../js/core/schema.js');
-  assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: CHEMIN_LOUP }), CHEMIN_LOUP);
+  assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: CHEMIN_LOUP, link }), CHEMIN_LOUP);
   assert.equal(displayImageUrl({ imageUrl: 'a.webp' }), 'a.webp');
-  assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: null }), 'a.webp');
+  assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: null, link }), 'a.webp');
   assert.equal(displayImageUrl({ imageUrl: '' }), '');
   for (const faux of ['data:image/webp;base64,AAAA', 'https://x.test/maps/tokens/a.webp', '/maps/tokens/a.webp', 'maps/tokens/../a.webp',
     'maps/autre/a.webp', 'maps/tokens/a.txt', 'maps/tokens/a.svg', 'maps/tokens/', '', 42, `maps/tokens/${'x'.repeat(200)}.webp`]) {
     assert.equal(isTokenLibraryPath(faux), false, String(faux));
-    assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: /** @type {any} */ (faux) }), 'a.webp', `invalide : ${String(faux).slice(0, 40)}`);
+    assert.equal(displayImageUrl({ imageUrl: 'a.webp', link, formImageUrl: /** @type {any} */ (faux) }), 'a.webp', `invalide : ${String(faux).slice(0, 40)}`);
   }
   for (const bon of [CHEMIN_LOUP, 'maps/tokens/a.PNG', 'maps/tokens/ennemis/orques/orque-noir.jpg', 'maps/tokens/a.jpeg', 'maps/tokens/a.gif', `maps/tokens/${'x'.repeat(200 - 'maps/tokens/.webp'.length)}.webp`]) {
     assert.equal(isTokenLibraryPath(bon), true, bon);
@@ -778,4 +778,35 @@ test('images des pions : le pion dessine formImageUrl ?? imageUrl, la monture ga
   const monte = { rider: { ref: 'p:m1', label: 'Destrier', imageUrl: CHEMIN_DESTRIER, hp: null, health: /** @type {const} */ ('unharmed'), markers: [], markerLevels: {} }, mounted: true };
   assert.deepEqual(demandees(monte).sort(), [CHEMIN_DESTRIER, 'maps/tokens/pj/elysia.webp'].sort(), 'monté : monture en fond, cavalier en médaillon');
   assert.deepEqual(demandees({ ...monte, formImageUrl: CHEMIN_LOUP }).sort(), [CHEMIN_DESTRIER, CHEMIN_LOUP].sort(), 'monté sous forme : le médaillon change, la monture non');
+});
+
+test('images des pions : délier un pion sous Forme bestiale efface formImageUrl ; un pion non lié le lit comme absent', async () => {
+  const { loadCampaign, getCampaign, updateToken, setTokenLink } = await import('../js/state/store.js');
+  const { displayImageUrl } = await import('../js/core/schema.js');
+  const pj = { ...createToken({ id: 'ely', levelId: 'rdc', cell: { a: 2, b: 2 }, imageUrl: 'maps/tokens/pj/elysia.webp' }), link: { ...link, ref: 'pj:c1' } };
+  loadCampaign(createCampaign({ levels: [level], tokens: [pj] }));
+  updateToken('ely', { formImageUrl: CHEMIN_LOUP });
+  assert.equal(displayImageUrl(/** @type {any} */ (getCampaign()).tokens[0]), CHEMIN_LOUP);
+  setTokenLink('ely', null);
+  const delie = /** @type {any} */ (getCampaign()).tokens[0];
+  assert.equal('formImageUrl' in delie, false, 'le champ est retiré');
+  assert.equal(displayImageUrl(delie), 'maps/tokens/pj/elysia.webp');
+  // Une campagne chargée avec ce champ sur un pion non lié : lu comme absent, sans rejet ni réécriture.
+  const ordinaire = { ...createToken({ id: 'o', levelId: 'rdc', cell: { a: 5, b: 5 }, imageUrl: 'a.webp' }), formImageUrl: CHEMIN_LOUP };
+  assert.deepEqual(errorsOf(ordinaire), []);
+  assert.equal(displayImageUrl(ordinaire), 'a.webp');
+  assert.equal(displayImageUrl({ ...ordinaire, link }), CHEMIN_LOUP, 'lié : la forme s’affiche');
+});
+
+test('images des pions : règle du chemin de bibliothèque — jeu de caractères strict, pas d’échappement, pas de segment vide', async () => {
+  const { isTokenLibraryPath } = await import('../js/core/schema.js');
+  for (const faux of [
+    'maps/tokens/%2e%2e/%2e%2e/x.webp', 'maps/tokens/a%20b.webp', 'maps/tokens/a\\b.webp', 'maps/tokens//x.webp', 'maps/tokens/a//x.webp',
+    'maps/tokens/./x.webp', 'maps/tokens/a/../x.webp', 'maps/tokens/a..b.webp', 'maps/tokens/x.avif', 'maps/tokens/x.svg',
+    'maps/tokens/a b.webp', 'maps/tokens/é.webp', 'maps/tokens/a?v=1.webp', 'maps/tokens/a#b.webp', 'maps/tokens/.webp', 'maps/tokens/a/',
+    'Maps/tokens/x.webp', '/maps/tokens/x.webp', 'maps/tokens/x.webp ', 'maps/tokens/x\n.webp',
+  ]) assert.equal(isTokenLibraryPath(faux), false, JSON.stringify(faux));
+  for (const bon of ['maps/tokens/x.webp', 'maps/tokens/ennemis/orques/orque_noir-2.v1.PNG', 'maps/tokens/bestiaire/forme-bestiale/loup-bete.webp', 'maps/tokens/a.jpeg']) {
+    assert.equal(isTokenLibraryPath(bon), true, bon);
+  }
 });

@@ -34,3 +34,15 @@ test('CA23 : chaque imageUrl de maps/tokens/catalog.json existe dans le dépôt 
   const absentes = chemins.filter((c) => !existe(c));
   assert.deepEqual(absentes, [], `${absentes.length} image(s) du catalogue absente(s) du dépôt (à versionner par le MJ avant publication)`);
 });
+
+test('publication : ce que build-site publie couvre chaque image de la table et du catalogue (Pages sert une liste blanche)', async () => {
+  const { publishedTokenAssets } = await import('../scripts/build-site.mjs');
+  const publiees = new Set(publishedTokenAssets());
+  const catalogue = JSON.parse(readFileSync(`${racine}maps/tokens/catalog.json`, 'utf8'));
+  const attendues = [
+    ...TOKEN_IMAGES.map((e) => e.path),
+    ...(/** @type {{ imageUrl: string }[]} */ (catalogue.tokens)).map((t) => t.imageUrl),
+  ];
+  const manquantes = attendues.filter((c) => !publiees.has(c));
+  assert.deepEqual(manquantes, [], `${manquantes.length} image(s) ne seraient pas publiées : le pion sortirait sans image en production`);
+});
