@@ -876,6 +876,34 @@ export function isTokenImageUrl(value) {
   return isPersistableAssetUrl(value) || isBoundedImageDataUrl(value);
 }
 
+/** Plafond de longueur d'un chemin d'image de bibliothèque (contrat §6). */
+export const TOKEN_LIBRARY_PATH_MAX_LENGTH = 200;
+
+/**
+ * Chemin relatif d'une image de la bibliothèque de Map Display (contrat §6) : sous `maps/tokens/`,
+ * sans `..`, extension d'image, 200 caractères au plus. Jamais `data:`, jamais absolu.
+ *
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+export function isTokenLibraryPath(value) {
+  if (typeof value !== 'string' || value.length > TOKEN_LIBRARY_PATH_MAX_LENGTH) return false;
+  if (value.includes('..')) return false;
+  return /^maps\/tokens\/.+\.(webp|png|jpe?g|gif)$/i.test(value) && isPersistableAssetUrl(value);
+}
+
+/**
+ * Image à dessiner pour un pion : `formImageUrl` (Forme bestiale, contrat §4) quand c'est un chemin
+ * de bibliothèque valide, sinon `imageUrl`. Une valeur invalide est lue comme absente. Ne vaut que
+ * pour le pion lui-même : l'image de la monture fusionnée (`rider.imageUrl`) ne passe pas par ici.
+ *
+ * @param {{ imageUrl?: string|null, formImageUrl?: unknown }} token
+ * @returns {string}
+ */
+export function displayImageUrl(token) {
+  return isTokenLibraryPath(token.formImageUrl) ? token.formImageUrl : (token.imageUrl ?? '');
+}
+
 /**
  * Refuse explicitement une URL d'asset non persistable.
  *

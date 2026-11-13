@@ -11,7 +11,7 @@
  * crée un pion **en réserve** (contrat §7 : le MJ le pose) ; un `ref` PJ inconnu ne crée rien, il
  * attend la liaison durable faite par le MJ (contrat §3).
  */
-import { isLinkedToken } from '../core/schema.js';
+import { isLinkedToken, isTokenLibraryPath } from '../core/schema.js';
 import { movementRulesFor } from '../state/selection.js';
 import { ranStartIndex } from '../state/movePlan.js';
 import { parseFx } from '../render/layers/fx.js';
@@ -29,7 +29,8 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
  * @property {'pj'|'allie'|'ennemi'|'neutre'} camp
  * @property {'pc'|'npc'} kind
  * @property {boolean} visionSource
- * @property {string|null} imageUrl
+ * @property {string|null} imageUrl `data:` ≤ 24 Kio, chemin relatif sous `maps/tokens/`, ou `null` (ne pas toucher)
+ * @property {string|null} [formImageUrl] Image de Forme bestiale : chemin sous `maps/tokens/`, `null` l'efface, clé absente = inchangé (contrat §4, §6)
  * @property {string|null} [color] PJ seulement : couleur propre, `#rrggbb` (contrat §4, lot P2)
  * @property {number} sizeCells
  * @property {number|null} speedCells
@@ -81,6 +82,9 @@ export function patchFromState(state) {
   if (state.rider !== undefined) patch.rider = state.rider;
   // La couleur d'un PJ (contrat §4) : `null` aussi, le MJ l'a retirée du profil.
   if (state.color !== undefined) patch.color = state.color;
+  // Image de forme (contrat §4, §6) : `null` y a un sens (la forme est quittée), une clé absente non (outil
+  // plus ancien). Une valeur invalide est ignorée, le pion ne change pas. `imageUrl` n'est jamais touché.
+  if (state.formImageUrl === null || isTokenLibraryPath(state.formImageUrl)) patch.formImageUrl = state.formImageUrl;
   // MAP-06 (08/11) : `deathCause: null` aussi — un pion relevé ne garde pas l'ancienne cause.
   // Le store retire le champ (`updateToken`), le schéma ne connaissant pas de cause nulle.
   if (state.deathCause === null) patch.deathCause = null;
@@ -110,7 +114,7 @@ export function findLinkedToken(campaign, ref) {
  */
 function changedOnly(token, patch) {
   return Object.fromEntries(
-    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' || key === 'deathCause' ? null : undefined)) !== JSON.stringify(value))
+    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' || key === 'deathCause' || key === 'formImageUrl' ? null : undefined)) !== JSON.stringify(value))
   );
 }
 
@@ -126,8 +130,9 @@ export function planTokenState(campaign, state) {
   if (!found) {
     if (state.ref.startsWith('pj:')) return [{ op: 'awaitBinding', ref: state.ref, label: state.label }];
     // `deathCause: null` n'a de sens que sur un pion existant (MAP-06) : un pion neuf n'a pas de cause.
-    const { rider, deathCause, ...fields } = patchFromState(state);
+    const { rider, deathCause, formImageUrl, ...fields } = patchFromState(state);
     if (deathCause) fields.deathCause = deathCause;
+    if (formImageUrl) fields.formImageUrl = formImageUrl;
     return [{ op: 'reserveAdd', ref: state.ref, token: { ...fields, ...(rider ? { rider } : {}), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true } }];
   }
   /** @type {MjLinkOperation[]} */

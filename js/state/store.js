@@ -6,6 +6,7 @@ import {
   normalizeCampaign,
   normalizeLevel,
   isLinkedToken,
+  isTokenLibraryPath,
 } from '../core/schema.js';
 import {
   setSelectionState,
@@ -1786,6 +1787,8 @@ const LINKED_TOKEN_PATCH_KEYS = new Set([
   'dead',
   'deathCause',
   'camp',
+  // Image de Forme bestiale (contrat §4, §6) : chemin de bibliothèque, `null` l'efface.
+  'formImageUrl',
   // Couleur propre d'un PJ lié (contrat §4, lot P2) : teinte de son cerclage.
   'color',
   // Monture fusionnée (contrat §8.1) : écrite par la liaison, avec la bascule `token.mounted`.
@@ -1851,6 +1854,8 @@ export function updateToken(tokenId, patch) {
   // Liaison (MAP-06) : `deathCause: null` retire la cause d'un pion relevé. Le `null` voyage tel
   // quel jusqu'à la tablette (un champ `undefined` disparaîtrait du JSON), et s'efface ici.
   if (/** @type {any} */ (patch).deathCause === null) delete candidate.tokens[index].deathCause;
+  // Image de forme : `null` ou valeur invalide = retirée (lue comme absente), la campagne n'est pas rejetée.
+  if ('formImageUrl' in patch && !isTokenLibraryPath(patch.formImageUrl)) delete candidate.tokens[index].formImageUrl;
 
   assertValidCampaign(candidate, `Mise à jour du pion "${tokenId}"`);
   replaceCampaign(candidate);

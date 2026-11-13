@@ -208,6 +208,9 @@
  * @property {'pj'|'allie'|'ennemi'|'neutre'} [camp] Camp de l'outil MJ (disque sans image, contrat §6).
  * @property {string|null} [color] Couleur propre d'un PJ lié, `#rrggbb` (contrat §4) : teinte de son
  *   cerclage (lot P2). Absent ou `null` = teinte du camp.
+ * @property {string|null} [formImageUrl] Image de Forme bestiale (contrat §4, §6) : chemin relatif sous
+ *   `maps/tokens/`, **jamais** `data:`. Détenu par l'outil MJ, affiché à la place de `imageUrl` sans
+ *   l'écraser ; `null` l'efface. Une valeur invalide est lue comme absente. Lire par `displayImageUrl`.
  * @property {RiderOverlay|null} [rider] Pion lié **monté** (contrat §8.1) : la monture fusionnée
  *   dans le pion du cavalier, qui garde son `ref`. Absent ou `null` = pas de fusion.
  */

@@ -17,7 +17,7 @@ import {
   TOKEN_TORCH_DEFAULT,
   VISION_MAX_RANGE_CELLS,
 } from '../../core/constants.js';
-import { isStatusMarker, isLinkedToken } from '../../core/schema.js';
+import { isStatusMarker, isLinkedToken, displayImageUrl } from '../../core/schema.js';
 import { cellDimensionsForGridType, hexShiftXForGridType, footprintsAdjacent } from '../../grid/index.js';
 import { tokenRingColor } from '../../render/layers/tokens.js';
 import { visibleReserve, combatantsOf } from '../../state/selection.js';
@@ -1711,9 +1711,10 @@ export function createGMPanel(container, options = {}) {
         pastille.className = pion.hidden ? 'gm-roster-avatar gm-roster-avatar--hidden' : 'gm-roster-avatar';
         // La couleur du pion est une donnée, pas un choix de thème : elle seule reste en ligne.
         pastille.style.borderColor = tokenRingColor(pion);
-        if (pion.imageUrl) {
+        const imagePion = displayImageUrl(pion);
+        if (imagePion) {
           const image = document.createElement('img');
-          image.src = pion.imageUrl;
+          image.src = imagePion;
           image.alt = '';
           pastille.append(image);
         } else {

@@ -622,3 +622,160 @@ test('MAP-06 : un pion neuf annoncé avec deathCause null entre en réserve, san
   addTokenToReserve({ ...createToken({ id: 'g7', levelId: 'rdc', cell: { a: 0, b: 0 } }), .../** @type {any} */ (add).token });
   assert.equal(getCampaign()?.reserve?.length, 1, 'la réserve l’accepte');
 });
+
+// ── Images de la bibliothèque (maps/tokens/) : chemin relatif et formImageUrl (chantier images des pions) ──
+const CHEMIN_LOUP = 'maps/tokens/bestiaire/loup.webp';
+const CHEMIN_DESTRIER = 'maps/tokens/destriers/destrier.webp';
+
+test('images des pions : un chemin relatif sous maps/tokens/ donne un pion valide et ne pèse pas dans le cumul embarqué (CA5)', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const { addTokenToReserve, loadCampaign, getCampaign } = await import('../js/state/store.js');
+  const { TOKEN_IMAGE_TOTAL_MAX_BYTES, TOKEN_IMAGE_MAX_BYTES } = await import('../js/core/schema.js');
+  assert.deepEqual(errorsOf(linked({ imageUrl: CHEMIN_LOUP })), []);
+  assert.deepEqual(errorsOf(linked({ imageUrl: CHEMIN_LOUP, rider: { ref: 'p:m1', label: 'Destrier', imageUrl: CHEMIN_DESTRIER, hp: null, health: 'unharmed', markers: [], markerLevels: {} } })), []);
+  // Un token.add dont imageUrl (et rider.imageUrl) est un chemin : le pion de la réserve est valide.
+  const etat = { ref: 'p:g9', label: 'Loup', camp: 'ennemi', kind: 'npc', imageUrl: CHEMIN_LOUP, mounted: true,
+    rider: { ref: 'p:m9', label: 'Destrier', imageUrl: CHEMIN_DESTRIER, hp: null, health: 'unharmed', markers: [], markerLevels: {} } };
+  loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+  const [add] = planMjMessage(/** @type {any} */ (getCampaign()), msg('token.add', etat));
+  assert.equal(add?.op, 'reserveAdd');
+  assert.equal(/** @type {any} */ (add).token.imageUrl, CHEMIN_LOUP);
+  assert.equal(/** @type {any} */ (add).token.rider.imageUrl, CHEMIN_DESTRIER);
+  addTokenToReserve({ ...createToken({ id: 'g9', levelId: 'rdc', cell: { a: 0, b: 0 } }), .../** @type {any} */ (add).token });
+  assert.equal(getCampaign()?.reserve?.[0].imageUrl, CHEMIN_LOUP);
+  // Cumul : 22 images de 24 Kio dépassent les 512 Kio ; les mêmes pions avec un chemin n'y comptent pour rien.
+  const data = `data:image/webp;base64,${'A'.repeat(TOKEN_IMAGE_MAX_BYTES - 'data:image/webp;base64,'.length)}`;
+  const pions = (/** @type {(i: number) => string} */ image) => Array.from({ length: 22 }, (_, i) => createToken({ id: `p${i}`, levelId: 'rdc', cell: { a: i % 12, b: Math.floor(i / 12) }, imageUrl: image(i) }));
+  assert.ok(22 * TOKEN_IMAGE_MAX_BYTES > TOKEN_IMAGE_TOTAL_MAX_BYTES);
+  assert.equal(validateCampaign(createCampaign({ levels: [level], tokens: pions(() => data) })).length, 1, 'embarquées : cumul dépassé');
+  assert.deepEqual(validateCampaign(createCampaign({ levels: [level], tokens: pions((i) => `maps/tokens/bestiaire/creature-${i}.webp`) })), [], 'par chemin : cumul inchangé');
+  const mixte = [...pions((i) => `maps/tokens/bestiaire/creature-${i}.webp`).slice(0, 10), ...pions(() => data).slice(10, 21)];
+  assert.deepEqual(validateCampaign(createCampaign({ levels: [level], tokens: mixte })), [], '11 embarquées + 10 chemins : seules les embarquées comptent');
+});
+
+test('images des pions : une image de bibliothèque introuvable laisse le pion affiché, sans image (CA24)', async () => {
+  const { TokensLayer } = await import('../js/render/layers/tokens.js');
+  const { SquareGrid } = await import('../js/grid/SquareGrid.js');
+  const grid = new SquareGrid(createLevel({ id: 'rdc', pxPerCell: 100, widthCells: 6, heightCells: 6 }));
+  /** @type {string[]} */ const demandees = [];
+  const imageFactory = () => {
+    const image = /** @type {any} */ ({ onload: null, onerror: null, _src: '' });
+    Object.defineProperty(image, 'src', { set(v) { image._src = v; demandees.push(v); queueMicrotask(() => image.onerror?.(new Event('error'))); }, get() { return image._src; } });
+    return image;
+  };
+  const layer = new TokensLayer({ imageFactory });
+  /** @type {string[]} */ const textes = [];
+  /** @type {string[]} */ const fonds = [];
+  const ctx = /** @type {any} */ ({
+    save() {}, restore() {}, beginPath() {}, closePath() {}, arc() {}, ellipse() {}, clip() {},
+    fill() {}, stroke() {}, strokeRect() {}, drawImage() {}, measureText: () => ({ width: 10 }), moveTo() {}, lineTo() {},
+    fillText(/** @type {string} */ t) { textes.push(t); }, fillRect() { fonds.push(ctx.fillStyle); },
+    fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
+    font: '', textAlign: 'center', textBaseline: 'middle',
+  });
+  const pion = linked({ imageUrl: CHEMIN_LOUP, camp: 'ennemi', label: 'Loup gris' });
+  assert.doesNotThrow(() => layer.render(ctx, grid, [pion], null, { activeLevelId: 'rdc' }));
+  await layer.imageCache.get(CHEMIN_LOUP)?.promise;
+  assert.deepEqual(demandees, [CHEMIN_LOUP], 'le chemin relatif est demandé tel quel');
+  assert.equal(layer.imageStatus(CHEMIN_LOUP), 'error');
+  textes.length = 0;
+  assert.doesNotThrow(() => layer.render(ctx, grid, [pion], null, { activeLevelId: 'rdc' }));
+  assert.deepEqual(textes, ['LG'], 'le pion reste dessiné, avec ses initiales');
+  assert.ok(fonds.includes('#5f2530'), 'fond d’image en erreur');
+});
+
+test('images des pions : displayImageUrl — formImageUrl valide sinon imageUrl, valeur invalide lue comme absente', async () => {
+  const { displayImageUrl, isTokenLibraryPath } = await import('../js/core/schema.js');
+  assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: CHEMIN_LOUP }), CHEMIN_LOUP);
+  assert.equal(displayImageUrl({ imageUrl: 'a.webp' }), 'a.webp');
+  assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: null }), 'a.webp');
+  assert.equal(displayImageUrl({ imageUrl: '' }), '');
+  for (const faux of ['data:image/webp;base64,AAAA', 'https://x.test/maps/tokens/a.webp', '/maps/tokens/a.webp', 'maps/tokens/../a.webp',
+    'maps/autre/a.webp', 'maps/tokens/a.txt', 'maps/tokens/a.svg', 'maps/tokens/', '', 42, `maps/tokens/${'x'.repeat(200)}.webp`]) {
+    assert.equal(isTokenLibraryPath(faux), false, String(faux));
+    assert.equal(displayImageUrl({ imageUrl: 'a.webp', formImageUrl: /** @type {any} */ (faux) }), 'a.webp', `invalide : ${String(faux).slice(0, 40)}`);
+  }
+  for (const bon of [CHEMIN_LOUP, 'maps/tokens/a.PNG', 'maps/tokens/ennemis/orques/orque-noir.jpg', 'maps/tokens/a.jpeg', 'maps/tokens/a.gif', `maps/tokens/${'x'.repeat(200 - 'maps/tokens/.webp'.length)}.webp`]) {
+    assert.equal(isTokenLibraryPath(bon), true, bon);
+  }
+});
+
+test('images des pions : formImageUrl au schéma — chemin valide accepté, absent accepté, invalide écarté sans rejeter la campagne', () => {
+  assert.deepEqual(errorsOf(linked({ formImageUrl: CHEMIN_LOUP })), []);
+  assert.deepEqual(errorsOf(linked({ formImageUrl: null })), []);
+  assert.deepEqual(errorsOf(linked()), [], 'campagne d’avant : aucun champ, aucune migration');
+  assert.deepEqual(errorsOf(createToken({ id: 'o', levelId: 'rdc', cell: { a: 1, b: 1 } })), []);
+  for (const faux of ['data:image/webp;base64,AAAA', 'https://x.test/a.webp', 'maps/tokens/../a.webp', 12, '']) {
+    assert.deepEqual(errorsOf(linked({ formImageUrl: faux })), [], `invalide écarté : ${String(faux)}`);
+  }
+});
+
+test('images des pions : mjLink — formImageUrl posé, effacé par null, inchangé si la clé est absente ; imageUrl jamais écrasé', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const { loadCampaign, updateToken, getCampaign } = await import('../js/state/store.js');
+  const pj = { ...createToken({ id: 'ely', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc', label: 'Elysia', imageUrl: 'maps/tokens/pj/elysia.webp' }), link: { ...link, ref: 'pj:c1' }, camp: /** @type {const} */ ('pj') };
+  const etat = (/** @type {object} */ patch = {}) => /** @type {any} */ ({ ref: 'pj:c1', label: 'Elysia', camp: 'pj', kind: 'pc', imageUrl: null, ...patch });
+  const campagne = createCampaign({ levels: [level], tokens: [pj] });
+  assert.deepEqual(planMjMessage(campagne, msg('token.state', etat({ formImageUrl: CHEMIN_LOUP }))), [{ op: 'update', tokenId: 'ely', patch: { formImageUrl: CHEMIN_LOUP } }]);
+  assert.deepEqual(planMjMessage(campagne, msg('token.state', etat({ formImageUrl: null }))), [], 'null sur un pion sans forme : rien');
+  assert.deepEqual(planMjMessage(campagne, msg('token.state', etat())), [], 'clé absente : rien');
+  // imageUrl de l'outil n'écrase pas formImageUrl, et formImageUrl n'écrase pas imageUrl.
+  const [op] = planMjMessage(campagne, msg('token.state', etat({ formImageUrl: CHEMIN_LOUP, imageUrl: CHEMIN_DESTRIER })));
+  assert.deepEqual(/** @type {any} */ (op).patch, { imageUrl: CHEMIN_DESTRIER, formImageUrl: CHEMIN_LOUP });
+  // Valeur invalide : ignorée, le pion ne change pas.
+  for (const faux of ['data:image/webp;base64,AAAA', 'https://x.test/a.webp', 'maps/tokens/../a.webp', 7]) {
+    assert.deepEqual(planMjMessage(campagne, msg('token.state', etat({ formImageUrl: faux }))), [], `invalide : ${String(faux)}`);
+  }
+  // Le patch voyage par le JSON du réseau puis par le store : posé, puis effacé par null.
+  loadCampaign(campagne);
+  updateToken('ely', JSON.parse(JSON.stringify({ formImageUrl: CHEMIN_LOUP })));
+  const apres = /** @type {any} */ (getCampaign()).tokens[0];
+  assert.equal(apres.formImageUrl, CHEMIN_LOUP);
+  assert.equal(apres.imageUrl, 'maps/tokens/pj/elysia.webp', 'l’image du PJ est intacte');
+  assert.deepEqual(planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat({ formImageUrl: CHEMIN_LOUP }))), [], 'déjà posé : rien à republier');
+  const [efface] = planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat({ formImageUrl: null })));
+  assert.deepEqual(/** @type {any} */ (efface), { op: 'update', tokenId: 'ely', patch: { formImageUrl: null } });
+  updateToken('ely', JSON.parse(JSON.stringify(/** @type {any} */ (efface).patch)));
+  assert.equal('formImageUrl' in /** @type {any} */ (getCampaign()).tokens[0], false, 'le champ est retiré');
+  assert.equal(/** @type {any} */ (getCampaign()).tokens[0].imageUrl, 'maps/tokens/pj/elysia.webp');
+  // Une valeur invalide poussée jusqu'au store est écartée, la campagne n'est pas rejetée.
+  updateToken('ely', { formImageUrl: /** @type {any} */ ('data:image/webp;base64,AAAA') });
+  assert.equal('formImageUrl' in /** @type {any} */ (getCampaign()).tokens[0], false);
+  // Un pion ordinaire ne reçoit pas ce champ.
+  const ordinaire = createToken({ id: 'o', levelId: 'rdc', cell: { a: 5, b: 5 } });
+  loadCampaign(createCampaign({ levels: [level], tokens: [ordinaire] }));
+  assert.throws(() => updateToken('o', { formImageUrl: CHEMIN_LOUP }), /champ non autorisé/);
+  // Un pion neuf annoncé avec formImageUrl l'a ; avec null, il ne porte aucun champ.
+  loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+  const nouveau = (/** @type {any} */ formImageUrl) => /** @type {any} */ (planMjMessage(/** @type {any} */ (getCampaign()), msg('token.add', { ref: 'p:g8', label: 'Garde', camp: 'ennemi', kind: 'npc', formImageUrl })).at(0)).token;
+  assert.equal(nouveau(CHEMIN_LOUP).formImageUrl, CHEMIN_LOUP);
+  assert.equal('formImageUrl' in nouveau(null), false);
+});
+
+test('images des pions : le pion dessine formImageUrl ?? imageUrl, la monture garde rider.imageUrl (CA17, CA18)', async () => {
+  const { TokensLayer } = await import('../js/render/layers/tokens.js');
+  const { SquareGrid } = await import('../js/grid/SquareGrid.js');
+  const grid = new SquareGrid(createLevel({ id: 'rdc', pxPerCell: 100, widthCells: 6, heightCells: 6 }));
+  const demandees = (/** @type {object} */ patch) => {
+    /** @type {string[]} */ const urls = [];
+    const imageFactory = () => {
+      const image = /** @type {any} */ ({ onload: null, onerror: null, _src: '' });
+      Object.defineProperty(image, 'src', { set(v) { image._src = v; urls.push(v); }, get() { return image._src; } });
+      return image;
+    };
+    const ctx = /** @type {any} */ ({
+      save() {}, restore() {}, beginPath() {}, closePath() {}, arc() {}, ellipse() {}, clip() {},
+      fill() {}, stroke() {}, strokeRect() {}, drawImage() {}, measureText: () => ({ width: 10 }), moveTo() {}, lineTo() {}, fillText() {}, fillRect() {},
+      fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over', font: '', textAlign: 'center', textBaseline: 'middle',
+    });
+    new TokensLayer({ imageFactory }).render(ctx, grid, [linked({ imageUrl: 'maps/tokens/pj/elysia.webp', ...patch })], null, { activeLevelId: 'rdc' });
+    return urls;
+  };
+  assert.deepEqual(demandees({}), ['maps/tokens/pj/elysia.webp'], 'sans forme : l’image du pion');
+  assert.deepEqual(demandees({ formImageUrl: CHEMIN_LOUP }), [CHEMIN_LOUP], 'sous forme : l’image de la forme');
+  assert.deepEqual(demandees({ formImageUrl: null }), ['maps/tokens/pj/elysia.webp'], 'forme effacée : l’image d’avant');
+  assert.deepEqual(demandees({ formImageUrl: 'https://x.test/a.webp' }), ['maps/tokens/pj/elysia.webp'], 'forme invalide : lue comme absente');
+  const monte = { rider: { ref: 'p:m1', label: 'Destrier', imageUrl: CHEMIN_DESTRIER, hp: null, health: /** @type {const} */ ('unharmed'), markers: [], markerLevels: {} }, mounted: true };
+  assert.deepEqual(demandees(monte).sort(), [CHEMIN_DESTRIER, 'maps/tokens/pj/elysia.webp'].sort(), 'monté : monture en fond, cavalier en médaillon');
+  assert.deepEqual(demandees({ ...monte, formImageUrl: CHEMIN_LOUP }).sort(), [CHEMIN_DESTRIER, CHEMIN_LOUP].sort(), 'monté sous forme : le médaillon change, la monture non');
+});

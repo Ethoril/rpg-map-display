@@ -1,5 +1,6 @@
 // @ts-check
 
+import { displayImageUrl } from '../../core/schema.js';
 import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
 import {
   TOKEN_BORDER_SCREEN_PX,
@@ -373,7 +374,9 @@ export class TokensLayer {
     const borderColor = token.link && token.dead === true ? DEAD_RING_COLOR : tokenRingColor(token);
     // Pion monté (contrat §8.1) : le fond est la monture, le cavalier passe en médaillon.
     const mount = token.rider ?? null;
-    const imageUrl = (mount ? mount.imageUrl : token.imageUrl)?.trim() ?? '';
+    // Image de Forme bestiale (contrat §4) : `formImageUrl ?? imageUrl` pour le pion lui-même ; la monture
+    // fusionnée garde la sienne.
+    const imageUrl = (mount ? mount.imageUrl : displayImageUrl(token))?.trim() ?? '';
     const discLabel = mount ? mount.label : token.label;
     const imageEntry = imageUrl ? this.imageCache.get(imageUrl) : undefined;
     if (imageUrl && !imageEntry) void this.preload(imageUrl);
@@ -653,7 +656,7 @@ export class TokensLayer {
     const radius = (width * RIDER_MEDALLION_RATIO) / 2;
     const cx = p0.x + width - radius;
     const cy = p0.y + radius;
-    const url = token.imageUrl?.trim() ?? '';
+    const url = displayImageUrl(token).trim();
     const entry = url ? this.imageCache.get(url) : undefined;
     if (url && !entry) void this.preload(url);
     ctx.save();
