@@ -63,6 +63,10 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   │                                 (js/data/donnees-communes.js) : espèces et constantes
 │   │   │                                 de liaison. Ne pas modifier ici : recopier par
 │   │   │                                 tools/recopier-donnees-communes.mjs de l'outil MJ
+│   │   ├─ token-images.js        [L]  ⚙ COPIE de la table des images de la bibliothèque
+│   │   │                                 (js/data/token-images.js de l'outil MJ) : chemins sous
+│   │   │                                 maps/tokens/ et profils associés. Ne pas modifier ici :
+│   │   │                                 tools/recopier-donnees-communes.mjs de l'outil MJ
 │   │   ├─ version.js             [1a] ⚙ GÉNÉRÉ par scripts/stamp-version.mjs
 │   │   └─ schema.js              [1a] fabriques + validation du document de campagne
 │   │
