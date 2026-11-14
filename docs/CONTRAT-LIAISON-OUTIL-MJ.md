@@ -211,6 +211,7 @@ Les effets sont des événements **éphémères**, joués sur l'écran MJ et sur
 `fx.wound { ref, hpLost, maxHp, target: 'self'|'mount' }`.
 
 - Elle est émise à **chaque baisse de PV**, quelle qu'en soit la source : coup, critique, état ou sort.
+- Exception : prendre ou quitter une forme (Forme bestiale, Transformation de Kadon) n'est pas une blessure. Les PV passent aux Blessures de la forme, ou reviennent à celles d'origine moins les dégâts déjà subis sous la forme (déjà saignés) : pas de `fx.wound`. Une blessure reçue sous la forme en émet une comme toute autre.
 - L'intensité de la gerbe dépend de `hpLost / maxHp` : petite gerbe sous ¼ du max, grosse gerbe au-delà.
 - Après l'effet, une **tache de sang au sol** reste sur la case et s'estompe en 1 à 2 minutes. Elle n'est pas persistée : un rechargement l'efface.
 
