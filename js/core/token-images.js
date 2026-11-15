@@ -2,7 +2,8 @@
 // Régénérer : node tools/build-token-images.mjs
 // Images de la bibliothèque de Map Display (maps/tokens/) et profils du bestiaire qui les reçoivent d’office.
 // group : premier dossier sous maps/tokens/ (« racine » pour un fichier à la racine) ; form : bête de Forme bestiale
-// (clé de REIKLAND_BEASTS) et vent (beasts = Vent des Bêtes, jade = Vent de Jade), sinon null.
+// (clé de REIKLAND_BEASTS) et vent (beasts = Vent des Bêtes, jade = Vent de Jade), ou monstre de Transformation de Kadon
+// (monster : clé de KADON_MONSTERS), sinon null.
 export const TOKEN_IMAGES = Object.freeze([
   Object.freeze({ path: "maps/tokens/bestiaire/ane-ou-mule.webp", label: "Âne ou mule", group: "bestiaire", profiles: Object.freeze(["E0-P-759"]), form: null }),
   Object.freeze({ path: "maps/tokens/bestiaire/anguilles-du-reik.webp", label: "Anguilles du Reik", group: "bestiaire", profiles: Object.freeze(["E0-P-959"]), form: null }),
@@ -63,6 +64,7 @@ export const TOKEN_IMAGES = Object.freeze([
   Object.freeze({ path: "maps/tokens/bestiaire/grand-loup.webp", label: "Grand loup", group: "bestiaire", profiles: Object.freeze(["E0-P-007"]), form: null }),
   Object.freeze({ path: "maps/tokens/bestiaire/grand-taurus.webp", label: "Grand Taurus", group: "bestiaire", profiles: Object.freeze(["E0-P-046"]), form: null }),
   Object.freeze({ path: "maps/tokens/bestiaire/grands-felins.webp", label: "Grands félins", group: "bestiaire", profiles: Object.freeze(["E0-P-792"]), form: null }),
+  Object.freeze({ path: "maps/tokens/bestiaire/gris-montagne-faucon.webp", label: "Gris montagne faucon", group: "bestiaire", profiles: Object.freeze(["E0-P-039"]), form: null }),
   Object.freeze({ path: "maps/tokens/bestiaire/guepe-de-sang.webp", label: "Guêpe de sang", group: "bestiaire", profiles: Object.freeze(["E0-P-279"]), form: null }),
   Object.freeze({ path: "maps/tokens/bestiaire/gymmcrabs.webp", label: "Gymmcrabs", group: "bestiaire", profiles: Object.freeze(["E0-P-906"]), form: null }),
   Object.freeze({ path: "maps/tokens/bestiaire/hermine.webp", label: "Hermine", group: "bestiaire", profiles: Object.freeze(["E0-P-144"]), form: null }),
@@ -280,6 +282,8 @@ export const TOKEN_IMAGES = Object.freeze([
   Object.freeze({ path: "maps/tokens/ennemis/vampires-pirates/zombie-flibustier.webp", label: "Zombie flibustier", group: "ennemis", profiles: Object.freeze(["E0-P-1060"]), form: null }),
   Object.freeze({ path: "maps/tokens/ennemis/vampires/comte-vampire-von-carstein.webp", label: "Comte vampire von Carstein", group: "ennemis", profiles: Object.freeze([]), form: null }),
   Object.freeze({ path: "maps/tokens/ennemis/vampires/vampire-lahmiane.webp", label: "Vampire lahmiane", group: "ennemis", profiles: Object.freeze(["E0-P-1141"]), form: null }),
+  Object.freeze({ path: "maps/tokens/ennemis/vampires/vampire-noble.webp", label: "Vampire noble", group: "ennemis", profiles: Object.freeze(["E0-P-926"]), form: null }),
+  Object.freeze({ path: "maps/tokens/ennemis/vampires/vampire.webp", label: "Vampire", group: "ennemis", profiles: Object.freeze(["E0-P-099"]), form: null }),
   Object.freeze({ path: "maps/tokens/ennemis/vampires/varghulf.webp", label: "Varghulf", group: "ennemis", profiles: Object.freeze(["E0-P-100"]), form: null }),
   Object.freeze({ path: "maps/tokens/erich-echarpe-violette.webp", label: "Erich, écharpe violette", group: "racine", profiles: Object.freeze(["E0-P-1061"]), form: null }),
   Object.freeze({ path: "maps/tokens/franz-bourse-mauve.webp", label: "Franz, bourse mauve", group: "racine", profiles: Object.freeze(["E0-P-1062"]), form: null }),
@@ -355,6 +359,15 @@ export const TOKEN_IMAGES = Object.freeze([
   Object.freeze({ path: "maps/tokens/monstres/squigs-des-tombes.webp", label: "Squigs des tombes", group: "monstres", profiles: Object.freeze(["E0-P-1140"]), form: null }),
   Object.freeze({ path: "maps/tokens/monstres/syreen.webp", label: "Syreen", group: "monstres", profiles: Object.freeze(["E0-P-912", "E0-P-056", "E0-P-251"]), form: null }),
   Object.freeze({ path: "maps/tokens/monstres/things-from-dead-wood.webp", label: "Things From Dead Wood", group: "monstres", profiles: Object.freeze(["E0-P-022"]), form: null }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/bete-des-fanges.webp", label: "Bête des fanges (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "fenbeast" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/demi-griffon.webp", label: "Demi-griffon (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "demigryph" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/dragon.webp", label: "Dragon (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "dragon" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/geant.webp", label: "Géant (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "giant" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/griffon.webp", label: "Griffon (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "griffon" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/manticore.webp", label: "Manticore (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "manticore" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/pegase.webp", label: "Pégase (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "pegasus" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/pieuvre-des-marais.webp", label: "Pieuvre des marais (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "bog-octopus" }) }),
+  Object.freeze({ path: "maps/tokens/monstres/transformation-kadon/troll.webp", label: "Troll (Transformation de Kadon)", group: "monstres", profiles: Object.freeze([]), form: Object.freeze({ monster: "troll" }) }),
   Object.freeze({ path: "maps/tokens/monstres/triton.webp", label: "Triton", group: "monstres", profiles: Object.freeze(["E0-P-918"]), form: null }),
   Object.freeze({ path: "maps/tokens/monstres/troll-des-rivieres-megere.webp", label: "Troll des rivières mégère", group: "monstres", profiles: Object.freeze(["E0-P-031"]), form: null }),
   Object.freeze({ path: "maps/tokens/monstres/troll-des-rivieres.webp", label: "Troll des rivières", group: "monstres", profiles: Object.freeze(["E0-P-030", "E0-P-963"]), form: null }),
