@@ -2001,8 +2001,8 @@ d'acceptation du §11.
 >
 > Provisoire, sur demande du mainteneur : ni châsse ni anneau de PV ; seuls les cartouches chiffrés,
 > rapprochés sur le bord du portrait (PJ vus des joueurs, PNJ du MJ seul). `tokenSocket.js` reste
-> dormant. ⚠ L'état Indemne/Blessé/Mal en point des PNJ ne se voit plus sur la carte. À rouvrir
-> quand le mainteneur aura une meilleure idée (C-14 de `QUESTIONS-EN-ATTENTE.md`).
+> dormant. ⚠ L'état Indemne/Blessé/Mal en point des PNJ ne se voit plus sur la carte. Classé le
+> 15/11/2026 par le mainteneur : le sujet ne sera pas rouvert (C-14 de `QUESTIONS-EN-ATTENTE.md`).
 
 > ### ✅ Chantier C-15 — exemplaires numérotés, livré le 02/10/2026 (hors §11)
 >

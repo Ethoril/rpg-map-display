@@ -1087,7 +1087,7 @@ numéro […] visible par les joueurs, eux aussi en auront besoin. »
 > - Les cartouches sont **rapprochés** : leur coin bas-droit se pose sur le bord du portrait
 >   (`TOKEN_HP_BADGE_INSET_RATIO`), au lieu de flotter hors de la case.
 >
-> ⏳ **À rouvrir** : « on reviendra sur ces questions un jour, quand j'aurai eu une meilleure idée ».
+> ✅ **Classé le 15/11/2026** par le mainteneur : le sujet ne sera pas rouvert, les cartouches chiffrés suffisent. (Le 01/10 : « on reviendra sur ces questions un jour, quand j'aurai eu une meilleure idée ».)
 > `js/render/tokenSocket.js` et les anneaux de `statusBadges.js` restent en place, dormants, avec
 > leurs tests. ⚠ L'état « Indemne / Blessé / Mal en point » des PNJ se règle toujours dans la fiche
 > mais ne se voit plus nulle part sur la carte.
