@@ -810,3 +810,22 @@ test('images des pions : règle du chemin de bibliothèque — jeu de caractère
     assert.equal(isTokenLibraryPath(bon), true, bon);
   }
 });
+
+test('image d’un PJ (décision du 16/11/2026) : imageUrl non nul appliqué au pion pc lié, null ne touche à rien, retrait de l’image : la dernière image reste', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const { loadCampaign, updateToken, getCampaign } = await import('../js/state/store.js');
+  const pj = { ...createToken({ id: 'ely', levelId: 'rdc', cell: { a: 2, b: 2 }, kind: 'pc', label: 'Elysia', imageUrl: CHEMIN_LOUP }), link: { ...link, ref: 'pj:c1' }, camp: /** @type {const} */ ('pj') };
+  const etat = (/** @type {any} */ imageUrl) => /** @type {any} */ ({ ref: 'pj:c1', label: 'Elysia', camp: 'pj', kind: 'pc', imageUrl });
+  loadCampaign(createCampaign({ levels: [level], tokens: [pj] }));
+  const jeton = () => /** @type {any} */ (getCampaign()).tokens[0];
+  // CA-A2 : l'image choisie dans l'outil est appliquée, par le chemin réel (message, JSON du réseau, store).
+  const [pose] = planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat(CHEMIN_DESTRIER)));
+  assert.deepEqual(/** @type {any} */ (pose), { op: 'update', tokenId: 'ely', patch: { imageUrl: CHEMIN_DESTRIER } });
+  updateToken('ely', JSON.parse(JSON.stringify(/** @type {any} */ (pose).patch)));
+  assert.equal(jeton().imageUrl, CHEMIN_DESTRIER);
+  // Déjà posée : rien à republier.
+  assert.deepEqual(planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat(CHEMIN_DESTRIER))), []);
+  // CA-A3 et CA-A7 : null ne touche à rien, la carte garde la dernière image affichée.
+  assert.deepEqual(planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat(null))), []);
+  assert.equal(jeton().imageUrl, CHEMIN_DESTRIER);
+});
