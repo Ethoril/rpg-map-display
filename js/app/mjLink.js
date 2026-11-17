@@ -80,8 +80,9 @@ export function patchFromState(state) {
     if (value !== null && value !== undefined) patch[key] = value;
   }
   // La monture fusionnée (contrat §8.1) : `null` y a un sens, la fusion est défaite.
-  // Bond (contrat §4) : champ facultatif, entier >= 0 ; absent ou invalide, ignoré comme s'il était absent.
-  if (Number.isInteger(state.bondCells) && /** @type {number} */ (state.bondCells) >= 0) patch.bondCells = state.bondCells;
+  // Bond (contrat §4) : champ facultatif, entier >= 0 ; absent ou invalide = pas de Bond (cavalier descendu) :
+  // `null` retire le champ du pion (le store l'efface), comme `deathCause: null`.
+  patch.bondCells = Number.isInteger(state.bondCells) && /** @type {number} */ (state.bondCells) >= 0 ? state.bondCells : null;
   if (state.rider !== undefined) patch.rider = state.rider;
   // La couleur d'un PJ (contrat §4) : `null` aussi, le MJ l'a retirée du profil.
   if (state.color !== undefined) patch.color = state.color;
@@ -117,7 +118,7 @@ export function findLinkedToken(campaign, ref) {
  */
 function changedOnly(token, patch) {
   return Object.fromEntries(
-    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' || key === 'deathCause' || key === 'formImageUrl' ? null : undefined)) !== JSON.stringify(value))
+    Object.entries(patch).filter(([key, value]) => JSON.stringify(/** @type {any} */ (token)[key] ?? (key === 'rider' || key === 'color' || key === 'deathCause' || key === 'formImageUrl' || key === 'bondCells' ? null : undefined)) !== JSON.stringify(value))
   );
 }
 
@@ -133,7 +134,8 @@ export function planTokenState(campaign, state) {
   if (!found) {
     if (state.ref.startsWith('pj:')) return [{ op: 'awaitBinding', ref: state.ref, label: state.label }];
     // `deathCause: null` n'a de sens que sur un pion existant (MAP-06) : un pion neuf n'a pas de cause.
-    const { rider, deathCause, formImageUrl, ...fields } = patchFromState(state);
+    const { rider, deathCause, formImageUrl, bondCells, ...fields } = patchFromState(state);
+    if (bondCells !== null) fields.bondCells = bondCells;
     if (deathCause) fields.deathCause = deathCause;
     if (formImageUrl) fields.formImageUrl = formImageUrl;
     return [{ op: 'reserveAdd', ref: state.ref, token: { ...fields, ...(rider ? { rider } : {}), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true } }];

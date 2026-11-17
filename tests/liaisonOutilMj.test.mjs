@@ -98,7 +98,17 @@ test('mjLink : bondCells (Bond) conservé, absent = état d’avant, invalide ig
   assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: 16 })), [{ op: 'update', tokenId: 'g1', patch: { bondCells: 16 } }]);
   assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: 0 })), [{ op: 'update', tokenId: 'g1', patch: { bondCells: 0 } }]);
   assert.deepEqual(planMjMessage(campaign, msg('token.state', base)), [], 'sans le champ : rien ne change');
-  for (const bad of [-1, 2.5, '16', NaN]) assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: bad })), [], `invalide ignoré : ${bad}`);
+  for (const bad of [-1, 2.5, '16', NaN]) assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: bad })), [], `invalide sur un pion sans Bond : rien ne change : ${bad}`);
+  // Cavalier descendu : le pion avait un Bond, l'état suivant n'en porte pas -> il le perd (contrat §4).
+  const avecBond = createCampaign({ levels: [level], tokens: [linked({ speedCells: 4, runCells: 8, bondCells: 16 })] });
+  const retire = [{ op: 'update', tokenId: 'g1', patch: { bondCells: null } }];
+  assert.deepEqual(planMjMessage(avecBond, msg('token.state', base)), retire, 'absent = plus de Bond');
+  for (const bad of [-1, 2.5, '16', NaN]) assert.deepEqual(planMjMessage(avecBond, msg('token.state', { ...base, bondCells: bad })), retire, `invalide = plus de Bond : ${bad}`);
+  assert.deepEqual(planMjMessage(avecBond, msg('token.state', { ...base, bondCells: 16 })), [], 'inchangé');
+  const store = await import('../js/state/store.js');
+  store.loadCampaign(avecBond);
+  store.updateToken('g1', /** @type {any} */ ({ bondCells: null }));
+  assert.equal(store.getCampaign()?.tokens[0].bondCells, undefined, 'le store efface le champ');
   const [add] = planMjMessage(createCampaign({ levels: [level], tokens: [] }), msg('token.add', { ...base, ref: 'p:g8', camp: 'ennemi', kind: 'npc', bondCells: 16 }));
   assert.equal(/** @type {any} */ (add).token.bondCells, 16);
 });

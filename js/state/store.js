@@ -1855,6 +1855,8 @@ export function updateToken(tokenId, patch) {
   // Liaison (MAP-06) : `deathCause: null` retire la cause d'un pion relevé. Le `null` voyage tel
   // quel jusqu'à la tablette (un champ `undefined` disparaîtrait du JSON), et s'efface ici.
   if (/** @type {any} */ (patch).deathCause === null) delete candidate.tokens[index].deathCause;
+  // Bond : `null` = plus de Bond (cavalier descendu), le champ s'efface.
+  if (/** @type {any} */ (patch).bondCells === null) delete candidate.tokens[index].bondCells;
   // Image de forme : `null` ou valeur invalide = retirée (lue comme absente), la campagne n'est pas rejetée.
   if ('formImageUrl' in patch && !isTokenLibraryPath(patch.formImageUrl)) delete candidate.tokens[index].formImageUrl;
 
