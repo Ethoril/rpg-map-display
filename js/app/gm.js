@@ -54,7 +54,7 @@ import {
   CLE_REPRISE_HORS_LIGNE,
 } from './session.js';
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
-import { MovePlanningController, walkLimitFor, ranStartResolver } from './movePlanning.js';
+import { MovePlanningController, walkLimitFor, bondZoneForDisplay, ranStartResolver } from './movePlanning.js';
 import { movePlanPreview } from '../state/movePlan.js';
 import { cellKey } from '../core/cellKey.js';
 import { isVisionSource, createToken } from '../core/schema.js';
@@ -812,6 +812,7 @@ export async function bootstrapGMApp(options = {}) {
           selectedToken: state.selectedToken,
           reachableCells: plan ? plan.reachable : state.reachableCells,
           walkLimit: walkLimitFor(plan, state.selectedToken, activeLevel),
+          bondCells: bondZoneForDisplay(plan, state.selectedToken, activeLevel),
         }, camera.zoom);
         // Retour « case occupée » d'un pion lâché sur un voisin (B1), le même que la tablette.
         animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {

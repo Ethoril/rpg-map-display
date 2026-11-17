@@ -1,6 +1,6 @@
 // @ts-check
 
-import { movementRulesFor } from '../state/selection.js';
+import { movementRulesFor, bondZoneFor } from '../state/selection.js';
 import { createMovePlan, extendMovePlan, movePlanPreview, validateMovePlan, ranStartIndex } from '../state/movePlan.js';
 import { getPresenceList, PRESENCE_STALE_AFTER_MS, subscribePresence } from '../state/presence.js';
 import { computeReachable } from '../movement/reachable.js';
@@ -324,4 +324,23 @@ function signatureFor(token, level, rules) {
     token.playerMovable !== false, level.id, level.widthCells, level.heightCells, rules.grid.type,
     rules.budget, Array.from(rules.blockedEdges).sort(), Array.from(rules.terrainCost.entries()).sort(),
   ]);
+}
+
+/** @type {{signature: string, zone: Map<string, number>|null}|null} */
+let bondCache = null;
+
+/**
+ * Palier Bond à dessiner (décision D16), commun aux deux vues : depuis la case du pion, donc
+ * seulement sans trajet préparé. Mémorisé tant que le pion et l'étage ne changent pas, pour ne pas
+ * recalculer la portée à chaque image.
+ * @param {import('../state/movePlan.js').MovePlan|null} plan
+ * @param {Token|null} token
+ * @param {Level} level
+ * @returns {Map<string, number>|undefined}
+ */
+export function bondZoneForDisplay(plan, token, level) {
+  if (plan || !token || !Number.isFinite(token.bondCells)) return undefined;
+  const signature = signatureFor(token, level, movementRulesFor(token, level)) + `|${token.bondCells}`;
+  if (bondCache?.signature !== signature) bondCache = { signature, zone: bondZoneFor(token, level) };
+  return bondCache.zone ?? undefined;
 }

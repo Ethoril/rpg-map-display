@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
-import { movementRulesFor } from '../js/state/selection.js';
+import { movementRulesFor, bondZoneFor } from '../js/state/selection.js';
 import { createMovePlan, extendMovePlan, ranStartIndex } from '../js/state/movePlan.js';
 import { MoveZoneLayer } from '../js/render/layers/moveZone.js';
 import { MovePlanLayer } from '../js/render/layers/movePlan.js';
@@ -122,4 +122,33 @@ test('map.ran : une seule fois, seulement au-delà de la Marche, jamais pour un 
   assert.equal(ran().length, 1);
   assert.deepEqual(ran()[0].payload, { ref: 'pj:g1' });
   assert.equal(ran()[0].from, 'map');
+});
+
+test('Bond : bondZoneFor donne les cases au-delà de la Course jusqu’à bondCells, sans toucher au budget', () => {
+  const avec = pion({ runCells: 8, bondCells: 16 });
+  assert.equal(movementRulesFor(avec, level).budget, 8, 'le budget de déplacement ne change pas');
+  const zone = bondZoneFor(avec, level);
+  assert.ok(zone && zone.size > 0);
+  assert.ok([...zone.values()].every((c) => c > 8 && c <= 16), 'coûts dans ]Course, Bond]');
+  assert.ok(zone.has('17,2') && !zone.has('18,2'), 'portée 16 depuis la case 1 : jusqu’à la case 17');
+  for (const patch of [{ bondCells: undefined }, { bondCells: 0 }, { bondCells: 8 }, { bondCells: 5 }]) {
+    assert.equal(bondZoneFor(pion(patch), level), null, `sans palier : ${JSON.stringify(patch)}`);
+  }
+  assert.equal(bondZoneFor({ ...avec, link: undefined }, level), null, 'pion non lié');
+});
+
+test('zone : le palier Bond se dessine à part ; sans lui, rendu identique à aujourd’hui', () => {
+  const cells = new Map([['0,0', 1], ['1,0', 4], ['2,0', 5], ['3,0', 8]]);
+  /** @param {Map<string, number>|undefined} bond */
+  const rendre = (bond) => {
+    const r = recorder();
+    const n = new MoveZoneLayer().render(r.ctx, fakeGrid, { selectedToken: pion(), reachableCells: cells, walkLimit: 4, bondCells: bond });
+    return { n, calls: r.calls };
+  };
+  const sans = rendre(undefined);
+  const avec = rendre(new Map([['4,0', 12], ['5,0', 16]]));
+  assert.equal(sans.n, 4);
+  assert.equal(avec.n, 6, 'deux cases de Bond dessinées en plus');
+  assert.deepEqual(rendre(new Map()).calls, sans.calls, 'palier vide : rien de changé');
+  assert.ok(avec.calls.length > sans.calls.length);
 });

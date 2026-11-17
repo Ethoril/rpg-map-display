@@ -53,6 +53,29 @@ export function movementRulesFor(token, level) {
 }
 
 /**
+ * Cases du palier Bond (Trait Bond, décision D16) : au-delà de la Course, jusqu'à `bondCells`, depuis
+ * la case du pion. ⛔ Affichage seul : `movementRulesFor` ne le lit pas, le budget et la poursuite
+ * restent ceux de la Course. `null` sans palier (pion non lié, `bondCells` absent, 0 ou ≤ Course).
+ *
+ * @param {Token} token
+ * @param {Level} level
+ * @returns {Map<string, number>|null} cellKey -> coût, coûts dans ]budget, bondCells]
+ */
+export function bondZoneFor(token, level) {
+  if (!isLinkedToken(token) || !Number.isFinite(token.bondCells)) return null;
+  const rules = movementRulesFor(token, level);
+  const bond = token.bondCells ?? 0;
+  if (bond <= rules.budget) return null;
+  const { grid, blockedEdges, terrainCost, footprint } = rules;
+  const all = footprint
+    ? computeReachable(grid, token.cell, bond, blockedEdges, terrainCost, footprint).distances
+    : grid.cellsInRange(token.cell, bond, blockedEdges, terrainCost);
+  /** @type {Map<string, number>} */
+  const beyond = new Map();
+  for (const [key, cost] of all) if (cost > rules.budget + 1e-9) beyond.set(key, cost);
+  return beyond;
+}
+/**
  * Emprise d'un grand pion pour la portée (audit du 08/11, A12) ; `undefined` pour une case.
  * Les bornes suivent la règle de `validateCampaign` sans être réécrites ici : en carré, une case
  * d'emprise hors carte n'est jamais voisine de rien ; en hexagone, la rosette est rognée et seul

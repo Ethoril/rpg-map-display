@@ -40,7 +40,7 @@ import {
 import { applyNetworkEvent, createSnapshotPayload } from './networkEvents.js';
 import * as store from '../state/store.js';
 import { listOtherGmClients } from '../state/presence.js';
-import { MovePlanningController, walkLimitFor, ranStartResolver } from './movePlanning.js';
+import { MovePlanningController, walkLimitFor, bondZoneForDisplay, ranStartResolver } from './movePlanning.js';
 import { movePlanPreview } from '../state/movePlan.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
@@ -656,6 +656,7 @@ export async function bootstrapPlayerApp(options = {}) {
           selectedToken: state.selectedToken,
           reachableCells: plan ? plan.reachable : state.reachableCells,
           walkLimit: walkLimitFor(plan, state.selectedToken, activeLevel),
+          bondCells: bondZoneForDisplay(plan, state.selectedToken, activeLevel),
         }, camera.zoom);
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },

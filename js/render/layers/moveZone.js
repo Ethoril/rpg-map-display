@@ -8,15 +8,21 @@ import { MOVE_ZONE_FILL_ALPHA, MOVE_ZONE_OUTLINE_PX } from '../../core/constants
  * @typedef {{
  *   selectedToken: Token|null,
  *   reachableCells: Map<string, number>|null,
- *   walkLimit?: number
+ *   walkLimit?: number,
+ *   bondCells?: Map<string, number>
  * }} MoveZoneState
  * `walkLimit` : coût au-delà duquel une case est en Course (second palier, contrat §11.6). Absent
  * ou ≥ au plus grand coût, la zone n'a qu'un palier — pion non lié, ou sans `runCells`.
+ * `bondCells` : cases du troisième palier, Bond (décision D16), au-delà de la zone atteignable ;
+ * affichage seul, absent ou vide = rien de plus.
  */
 
 /** @typedef {'refused'|'occupied'} DestinationFeedbackKind */
 
 const DESTINATION_FEEDBACK_MS = 650;
+
+/** Couleur propre au palier Bond : ni celle du pion (Marche, Course) ni les retours de destination. */
+const BOND_COLOR = '#a855f7';
 
 /**
  * Couche visuelle sans surface interactive propre.
@@ -160,6 +166,45 @@ export class MoveZoneLayer {
       ctx.restore();
     }
 
+    // Bond : anneau au-delà de la Course, violet, quadrillé en croix (lisible sans la couleur) et
+    // bordé de petits points.
+    const bondKeys = state.bondCells instanceof Map ? [...state.bondCells.keys()] : [];
+    if (bondKeys.length > 0) {
+      ctx.beginPath();
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const key of bondKeys) {
+        const cell = parseCellKey(key);
+        grid.cellPath(ctx, cell);
+        renderedCells++;
+        const box = grid.cellBounds({ cellX: cell.a, cellY: cell.b }, 1);
+        minX = Math.min(minX, box.x);
+        minY = Math.min(minY, box.y);
+        maxX = Math.max(maxX, box.x + box.width);
+        maxY = Math.max(maxY, box.y + box.height);
+      }
+      ctx.fillStyle = BOND_COLOR;
+      ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA * 0.3;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA;
+      ctx.strokeStyle = BOND_COLOR;
+      ctx.lineWidth = 1.5 / Math.max(0.01, zoom);
+      const step = 12 / Math.max(0.01, zoom);
+      ctx.beginPath();
+      for (let x = minX - (maxY - minY); x < maxX; x += step) {
+        ctx.moveTo(x, maxY);
+        ctx.lineTo(x + (maxY - minY), minY);
+        ctx.moveTo(x, minY);
+        ctx.lineTo(x + (maxY - minY), maxY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Le remplissage groupé ne crée pas de coutures. Les contours sont ensuite tracés par
     // case, en pixels écran constants, pour que la frontière reste lisible au zoom courant.
     ctx.globalAlpha = 1;
@@ -174,6 +219,16 @@ export class MoveZoneLayer {
     if (runKeys.length > 0) {
       ctx.setLineDash([6 / Math.max(0.01, zoom), 5 / Math.max(0.01, zoom)]);
       for (const key of runKeys) {
+        ctx.beginPath();
+        grid.cellPath(ctx, parseCellKey(key));
+        ctx.stroke();
+      }
+    }
+
+    if (bondKeys.length > 0) {
+      ctx.strokeStyle = BOND_COLOR;
+      ctx.setLineDash([2 / Math.max(0.01, zoom), 4 / Math.max(0.01, zoom)]);
+      for (const key of bondKeys) {
         ctx.beginPath();
         grid.cellPath(ctx, parseCellKey(key));
         ctx.stroke();
