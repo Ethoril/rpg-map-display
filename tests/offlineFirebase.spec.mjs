@@ -175,7 +175,14 @@ test('A13 : le CDN revenu, la page se recharge pour repartir en ligne', async ({
     await expect(page.locator('#network-status-gm')).toHaveAttribute('data-status', 'offline');
     await page.evaluate(() => { /** @type {any} */ (window).__avantRechargement = true; });
     cdnRevenu = true;
-    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avantRechargement === true), { timeout: 10000, message: 'la page a été rechargée' }).toBe(false);
+    // ⚠ Le rechargement est spontané : un sondage qui tombe pendant la navigation reçoit « Execution
+    // context was destroyed ». C'est justement le signe que la page se recharge : « pas encore
+    // fini » (true) ; le sondage suivant lira le nouveau contexte, où le drapeau a disparu.
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avantRechargement === true)
+      .catch((/** @type {Error} */ erreur) => {
+        if (/Execution context was destroyed|navigat/i.test(erreur.message)) return true;
+        throw erreur;
+      }), { timeout: 10000, message: 'la page a été rechargée' }).toBe(false);
   } finally {
     await context.close();
   }
