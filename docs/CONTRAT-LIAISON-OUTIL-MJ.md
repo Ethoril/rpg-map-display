@@ -92,6 +92,7 @@ Payload :
   formImageUrl: string|null,        // chemin relatif sous maps/tokens/ ; null efface (§6) ; toujours envoyé (13/11/2026)
   color: string|null,               // PJ et monture d'un PJ : '#rrggbb' ; null sinon (06/11, lot P2)
   sizeCells, speedCells, runCells,
+  bondCells?: number,               // optionnel (traits-calculs, D16) : porteur de Bond seulement ; absent = pas de Bond
   visionDim,
   hp: { current, max }, health: 'unharmed'|'wounded'|'critical',
   markers: StatusMarker[], markerLevels: { [marker]: number },
@@ -110,6 +111,7 @@ Les champs se calculent ainsi côté outil MJ :
 | `sizeCells` | Taille (`creatureSizeOf`) : Petite 1, Moyenne 1, Grande 2, Énorme 3, Monstrueuse 4. Un cavalier monté prend la taille de sa monture. |
 | Échelle | Une seule grille, deux conversions faites par l'outil MJ (les yards valent des mètres). **Déplacements et armes à distance : 1 case = 2 m**, y compris les sorts et talents qui modifient un Mouvement. **Sorts, prières et effets de talents (portées, zones) : 1 m = 1 case**, donc « Bonus de FM mètres » = BFM cases. Seule exception : la vision (`visionDim`, ci-dessous), comptée à 2 m par case. |
 | `speedCells` / `runCells` | Marche et Course **effectives**, en cases : Marche = M×2 m, donc M cases ; Course = M×4 m, donc 2M cases. Elles tiennent compte des Traits de déplacement, des états (Enchevêtré = 0…) et du reste, via `creature-movement.js`. Un cavalier monté reçoit les portées de sa monture. Map Display n'applique **pas** son ×2 monté à un pion lié. |
+| `bondCells` | **Optionnel**, entier ≥ 0, présent seulement pour un porteur du Trait Bond : le double de la Course effective (`runCells`), en cases, portée de Charge, de Saut et de Sprint (V5 p.357). **Absent = pas de Bond.** `speedCells` et `runCells` ne changent pas (la poursuite les lit). Un cavalier monté reçoit le `bondCells` de sa monture, jamais le sien. Une carte qui ne connaît pas ce champ l'ignore. |
 | `visionDim` | 1 case par défaut ; **10 cases** avec Vision nocturne (20 m) ; **20 cases** avec Vision dans le noir ou Infravision. Les sens sont détectés par `creature-senses.js`. |
 | `hp` | `hp` et `maxHp` du participant. Si `maxHp` vaut `null` (PJ persistant), il est recalculé depuis la fiche avant l'envoi. Jamais `null` sur un pion lié. |
 | `health` | `unharmed` si PV = max ; `critical` si PV ≤ ¼ du max ou PV = 0 ; `wounded` sinon. |

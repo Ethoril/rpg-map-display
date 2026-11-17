@@ -1782,6 +1782,7 @@ const ALLOWED_TOKEN_PATCH_KEYS = new Set([
 const LINKED_TOKEN_PATCH_KEYS = new Set([
   'imageUrl',
   'runCells',
+  'bondCells',
   'visionSource',
   'markerLevels',
   'dead',

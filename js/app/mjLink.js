@@ -35,6 +35,7 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
  * @property {number} sizeCells
  * @property {number|null} speedCells
  * @property {number|null} runCells
+ * @property {number} [bondCells] Portée de Bond en cases (2 × runCells) ; absent ou invalide = pas de Bond
  * @property {number} visionDim
  * @property {{ current: number, max: number }} hp
  * @property {'unharmed'|'wounded'|'critical'} health
@@ -79,6 +80,8 @@ export function patchFromState(state) {
     if (value !== null && value !== undefined) patch[key] = value;
   }
   // La monture fusionnée (contrat §8.1) : `null` y a un sens, la fusion est défaite.
+  // Bond (contrat §4) : champ facultatif, entier >= 0 ; absent ou invalide, ignoré comme s'il était absent.
+  if (Number.isInteger(state.bondCells) && /** @type {number} */ (state.bondCells) >= 0) patch.bondCells = state.bondCells;
   if (state.rider !== undefined) patch.rider = state.rider;
   // La couleur d'un PJ (contrat §4) : `null` aussi, le MJ l'a retirée du profil.
   if (state.color !== undefined) patch.color = state.color;

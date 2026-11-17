@@ -200,6 +200,8 @@
  * @property {{ source: 'outil-mj', ref: string }} [link] Pion piloté par l'outil MJ Warhammer
  *   (docs/CONTRAT-LIAISON-OUTIL-MJ.md §3). Absent = pion ordinaire, comportement inchangé.
  * @property {number} [runCells] Course en cases (contrat §4), second palier après `speedCells`.
+ * @property {number} [bondCells] Portée de Charge, Saut et Sprint en cases (Trait Bond, contrat §4), 2 × `runCells`.
+ *   Absent = pas de Bond. Stocké seulement : aucun palier de déplacement n'en découle.
  * @property {boolean} [visionSource] Révèle le brouillard. Absent = `kind === 'pc'` (contrat §4 :
  *   la monture d'un PJ est `pc` sans être source de vision). Lire par `isVisionSource`.
  * @property {Record<string, number>} [markerLevels] Niveau d'un marqueur, à partir de 2 (contrat §4).

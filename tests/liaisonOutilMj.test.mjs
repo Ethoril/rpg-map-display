@@ -19,7 +19,7 @@ const errorsOf = (token) => validateCampaign(createCampaign({ levels: [level], t
 const linked = (patch = {}) => ({ ...createToken({ id: 'g1', levelId: 'rdc', cell: { a: 2, b: 2 } }), link, ...patch });
 
 test('un pion lié complet se valide ; un pion ordinaire aussi, sans aucun champ de liaison', () => {
-  assert.deepEqual(errorsOf(linked({ runCells: 8, visionSource: false, markerLevels: { stunned: 3 }, dead: true, deathCause: 'fire', camp: 'ennemi' })), []);
+  assert.deepEqual(errorsOf(linked({ runCells: 8, bondCells: 16, visionSource: false, markerLevels: { stunned: 3 }, dead: true, deathCause: 'fire', camp: 'ennemi' })), []);
   const ordinaire = createToken({ id: 'o', levelId: 'rdc', cell: { a: 1, b: 1 } });
   assert.deepEqual(errorsOf(ordinaire), []);
   assert.equal(isLinkedToken(ordinaire), false);
@@ -28,7 +28,7 @@ test('un pion lié complet se valide ; un pion ordinaire aussi, sans aucun champ
 
 test('les champs de liaison mal formés sont refusés', () => {
   for (const patch of [
-    { link: { source: 'autre', ref: 'x' } }, { link: { source: 'outil-mj', ref: '' } }, { runCells: -1 }, { runCells: 2.5 },
+    { link: { source: 'autre', ref: 'x' } }, { link: { source: 'outil-mj', ref: '' } }, { runCells: -1 }, { runCells: 2.5 }, { bondCells: -1 }, { bondCells: 2.5 }, { bondCells: '16' },
     { visionSource: 'oui' }, { markerLevels: { stunned: 1 } }, { markerLevels: { inconnu: 2 } }, { dead: 1 },
     { deathCause: 'chute' }, { camp: 'pirate' }
   ]) assert.equal(errorsOf(linked(patch)).length, 1, JSON.stringify(patch));
@@ -91,6 +91,18 @@ test('mjLink : pion lié trouvé → patch des seuls champs changés, bascule mo
   assert.deepEqual(snap, [{ op: 'update', tokenId: 'u', patch: { label: 'Ulrika' } }, { op: 'remove', tokenId: 'g1', where: 'board' }]);
 });
 
+test('mjLink : bondCells (Bond) conservé, absent = état d’avant, invalide ignoré', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const campaign = createCampaign({ levels: [level], tokens: [linked({ speedCells: 4, runCells: 8 })] });
+  const base = { ref: 'p:g1', label: linked().label, speedCells: 4, runCells: 8 };
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: 16 })), [{ op: 'update', tokenId: 'g1', patch: { bondCells: 16 } }]);
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: 0 })), [{ op: 'update', tokenId: 'g1', patch: { bondCells: 0 } }]);
+  assert.deepEqual(planMjMessage(campaign, msg('token.state', base)), [], 'sans le champ : rien ne change');
+  for (const bad of [-1, 2.5, '16', NaN]) assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...base, bondCells: bad })), [], `invalide ignoré : ${bad}`);
+  const [add] = planMjMessage(createCampaign({ levels: [level], tokens: [] }), msg('token.add', { ...base, ref: 'p:g8', camp: 'ennemi', kind: 'npc', bondCells: 16 }));
+  assert.equal(/** @type {any} */ (add).token.bondCells, 16);
+});
+
 test('store : addTokenToReserve range un pion lié hors plateau, refuse un doublon', async () => {
   const { loadCampaign, addTokenToReserve, getCampaign } = await import('../js/state/store.js');
   loadCampaign(createCampaign({ levels: [level], tokens: [] }));
@@ -99,6 +111,7 @@ test('store : addTokenToReserve range un pion lié hors plateau, refuse un doubl
   assert.equal(getCampaign()?.tokens.length, 0);
   assert.throws(() => addTokenToReserve(linked({ id: 'r1' })), /déjà présent/);
   assert.throws(() => addTokenToReserve(linked({ id: 'r2', runCells: -1 })), /runCells/);
+  assert.throws(() => addTokenToReserve(linked({ id: 'r3', bondCells: -1 })), /bondCells/);
   assert.deepEqual(getCampaign()?.reserve?.map((t) => t.id), ['r1'], 'refus sans mutation');
 });
 

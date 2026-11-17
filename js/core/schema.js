@@ -380,6 +380,9 @@ function linkedTokenErrors(token, tokenId) {
   if (token.runCells !== undefined && (!Number.isInteger(token.runCells) || token.runCells < 0)) {
     errors.push(`${at} : runCells doit être un entier >= 0`);
   }
+  if (token.bondCells !== undefined && (!Number.isInteger(token.bondCells) || token.bondCells < 0)) {
+    errors.push(`${at} : bondCells doit être un entier >= 0`);
+  }
   if (token.visionSource !== undefined && typeof token.visionSource !== 'boolean') {
     errors.push(`${at} : visionSource doit être un booléen`);
   }
