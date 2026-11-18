@@ -2061,6 +2061,8 @@ export function updateReserveToken(tokenId, patch) {
   const candidate = structuredClone(campaign);
   const reserve = /** @type {import('../core/types.js').Token[]} */ (candidate.reserve);
   reserve[index] = { ...reserve[index], ...structuredClone(patch) };
+  // Bond : `null` = plus de Bond, le champ s'efface (comme sur le plateau, `updateToken`).
+  if (patch.bondCells === null) delete reserve[index].bondCells;
   assertValidCampaign(candidate, `Mise à jour en réserve du pion "${tokenId}"`);
   replaceCampaign(candidate);
   notifySubscribers();

@@ -605,3 +605,19 @@ test('Lot 3, critère 3 : deux étages gardent des masques distincts, en mémoir
 
   store.setSessionFog('cave', null);
 });
+
+test('ExploredFog : le contexte du masque est ouvert avec willReadFrequently (lecture getImageData à chaque publication)', () => {
+  /** @type {any[]} */
+  const appels = [];
+  const fog = new ExploredFog(4, 4, (w, h) => {
+    const { canvas } = createMockCanvas(w, h);
+    const ouvrir = canvas.getContext;
+    /** @type {any} */ (canvas).getContext = (/** @type {string} */ type, /** @type {any} */ options) => {
+      appels.push(options);
+      return ouvrir.call(canvas, type);
+    };
+    return canvas;
+  });
+  assert.ok(fog.ctx);
+  assert.deepEqual(appels[0], { willReadFrequently: true });
+});

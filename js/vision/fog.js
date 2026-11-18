@@ -636,7 +636,7 @@ export class ExploredFog {
       this.canvas = null;
     }
 
-    this.ctx = this.canvas?.getContext?.('2d') ?? this.canvas?._ctx ?? null;
+    this.ctx = this.canvas?.getContext?.('2d', { willReadFrequently: true }) ?? this.canvas?._ctx ?? null;
     /** @type {number} Révision du contenu, voir `_touch()`. */
     this.revision = 0;
     /** @type {number} Numéro du dernier import lancé, voir `importPng`. */

@@ -362,6 +362,7 @@ export function createGMPanel(container, options = {}) {
               <label for="token-edit-label">Nom</label>
               <input type="text" id="token-edit-label" disabled />
             </div>
+            <p id="token-mj-owned-hint" class="gm-hint" role="status" hidden>Géré par l’outil MJ : nom, type, taille, vitesse, vision, PV max et marqueurs.</p>
             <div class="gm-field" id="token-mj-link-field" hidden>
               <label for="token-mj-link">Lier à un PJ de l’outil MJ</label>
               <select id="token-mj-link"></select>
@@ -1519,6 +1520,7 @@ export function createGMPanel(container, options = {}) {
   const tokenEditLabel = /** @type {HTMLInputElement} */ (container.querySelector('#token-edit-label'));
   const tokenMjLinkField = /** @type {HTMLElement} */ (container.querySelector('#token-mj-link-field'));
   const tokenMjLink = /** @type {HTMLSelectElement} */ (container.querySelector('#token-mj-link'));
+  const mjOwnedHint = /** @type {HTMLElement} */ (container.querySelector('#token-mj-owned-hint'));
 
   /**
    * Liaison durable d'un pion PJ (contrat §3) : la liste vient de l'outil MJ (`mj.roster`) et se
@@ -1898,6 +1900,7 @@ export function createGMPanel(container, options = {}) {
     updateSheetSummaries(selectedToken);
     refreshMjLink(selectedToken ?? null);
     const lie = isLinkedToken(selectedToken);
+    mjOwnedHint.hidden = !lie;
     for (const control of tokenEditControls) control.disabled = disabled || (lie && mjOwnedControls.has(control));
     tokenEditBorderSwatches.refresh();
     btnDeleteToken.disabled = disabled;

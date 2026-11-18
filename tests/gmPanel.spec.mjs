@@ -1217,3 +1217,35 @@ test('D-11 — l’avis du changement de pavage nomme le pion rangé, et s’eff
   await page.selectOption('#gm-level-select', 'autre');
   await expect(avis).toBeHidden();
 });
+
+test('liaison — un pion lié à l’outil MJ grise les champs de l’outil et porte la mention « Géré par l’outil MJ »', async ({ page }) => {
+  const sessionId = `lie-grise-${Date.now()}`;
+  const level = createLevel({ id: 'a', name: 'A', order: 0, widthCells: 8, heightCells: 8 });
+  await installBrowserTransport(page, sessionId, {
+    campaign: createCampaign({
+      campaignId: 'c-lie',
+      levels: [level],
+      tokens: [
+        { ...createToken({ id: 'pj', levelId: 'a', label: 'Wren', kind: 'pc', cell: { a: 2, b: 2 } }), link: { source: 'outil-mj', ref: 'pj:pc-1' } },
+        createToken({ id: 'libre', levelId: 'a', label: 'Libre', kind: 'pc', cell: { a: 4, b: 4 } }),
+      ],
+    }),
+    activeLevelId: 'a',
+    selectedTokenId: 'pj',
+  });
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  const mention = page.locator('#token-mj-owned-hint');
+  await expect(mention).toBeVisible();
+  await expect(mention).toContainText('Géré par l’outil MJ');
+  for (const id of ['#token-edit-label', '#token-edit-kind', '#token-edit-size-cells', '#token-edit-speed-cells']) {
+    await expect(page.locator(id)).toBeDisabled();
+  }
+  // Les champs que la carte garde restent libres.
+  await expect(page.locator('#token-edit-locked')).toBeEnabled();
+
+  await page.evaluate(async () => (await import('../js/state/store.js')).setSelection('libre'));
+  await expect(mention).toBeHidden();
+  await expect(page.locator('#token-edit-kind')).toBeEnabled();
+});

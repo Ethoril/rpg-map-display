@@ -852,3 +852,11 @@ test('image d’un PJ (décision du 16/11/2026) : imageUrl non nul appliqué au 
   assert.deepEqual(planMjMessage(/** @type {any} */ (getCampaign()), msg('token.state', etat(null))), []);
   assert.equal(jeton().imageUrl, CHEMIN_DESTRIER);
 });
+
+test('store : bondCells null efface aussi le champ d’un pion lié resté en réserve (Bond retiré hors plateau)', async () => {
+  const store = await import('../js/state/store.js');
+  store.loadCampaign(createCampaign({ levels: [level], tokens: [] }));
+  store.addTokenToReserve(linked({ id: 'r9', runCells: 8, bondCells: 16 }));
+  assert.equal(store.updateReserveToken('r9', { bondCells: null }), true);
+  assert.equal(store.getCampaign()?.reserve?.[0].bondCells, undefined, 'le champ est effacé, pas mis à null');
+});
