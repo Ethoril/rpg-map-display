@@ -13,6 +13,8 @@ import {
   getCategoryDots,
   computeBadgeRowLayout,
   computeElevationBadgeLayout,
+  computeHpBadgeLayout,
+  computeCopyBadgeLayout,
 } from '../js/render/statusBadges.js';
 
 import {
@@ -235,4 +237,36 @@ test('7. Les quatorze fichiers d\'icônes existent et ne peignent que du blanc',
       ),
     /peindrait en noir/
   );
+});
+
+test("Cartouche d'un grand pion hexagonal : ne déborde que de peu du disque, à chaque taille", () => {
+  // Le pion hexagonal de taille N est un disque de diamètre N·px (règle du 18/11/2026). Pour chaque
+  // taille on mesure, depuis le CENTRE du disque, l'extrémité la plus lointaine de chaque élément
+  // du cartouche (rangée de marqueurs, élévation, pastille de PV, numéro d'exemplaire), au zoom 1.
+  // Le critère n'est pas un nombre magique : le débord d'un grand pion ne doit pas dépasser celui
+  // d'un Moyen en valeur absolue (px écran), sinon le cartouche « grossit » avec la taille.
+  const px = 140;
+  const debordMax = (/** @type {number} */ taille) => {
+    const W = taille * px;
+    const c = W / 2; // centre du disque, dans le repère du coin haut-gauche du carré W×W
+    const R = W / 2;
+    const dist = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ r) => Math.hypot(x - c, y - c) + r - R;
+    const ligne = computeBadgeRowLayout(W, 3, 0.26, px);
+    const elev = computeElevationBadgeLayout(W, 1, px);
+    const pv = computeHpBadgeLayout(W, 1, 12, 12);
+    const copie = computeCopyBadgeLayout(W, 1);
+    const pastilleLargeur = 40; // « 12/12 » en 11 px gras
+    return Math.max(
+      ...ligne.centers.map((p) => dist(p.x, p.y, ligne.badgeRadiusMap)),
+      dist(elev.badgeX, elev.badgeY, elev.badgeRadiusMap),
+      // coin haut-gauche de la pastille de PV, qui croît vers le haut et la gauche
+      Math.hypot(pv.badgeX - pastilleLargeur - c, pv.badgeY - pv.heightMap - c) - R,
+      dist(copie.centerX, copie.centerY, copie.radiusMap),
+    );
+  };
+  const moyen = debordMax(1);
+  for (const taille of [2, 3, 4]) {
+    const d = debordMax(taille);
+    assert.ok(d <= moyen + 1, `taille ${taille} : le cartouche déborde de ${d.toFixed(1)} px, un Moyen de ${moyen.toFixed(1)} px`);
+  }
 });

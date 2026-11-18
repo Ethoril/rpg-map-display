@@ -213,7 +213,7 @@ export class HexGrid {
    * Boîte englobante d'un pion en pixels carte. L'ancre `cp` est la position (fractionnaire
    * pour l'animation de déplacement) de son CENTRE — même formule que le centre rendu par
    * `mapFromCellPoint` — et la boîte est centrée dessus, à la taille d'un hexagone pointe en
-   * haut mis à l'échelle de `sizeCells`. Jamais reconstruite par différence de deux centres :
+   * haut mis à l'échelle de `sizeCells` (diamètre `sizeCells` hexagones). Jamais reconstruite par différence de deux centres :
    * c'est cette différence, dépendante de la parité de rangée, qui rendait les pions faux
    * (C-5). À 140 px/case et taille 1 : largeur 140 px, hauteur 161,66 px.
    *
@@ -226,22 +226,18 @@ export class HexGrid {
     const rowInt = Math.floor(cp.cellY);
     const centerX = this.latticeX + this.pxPerCell * (cp.cellX + 0.5 * (rowInt & 1) + 0.5);
     const centerY = this.offsetY + this.pxPerCell * (cp.cellY * SQRT3_OVER_2 + 0.5);
-    // ⛔ **La boîte doit couvrir exactement les cases de `cellsOccupied`, ni plus ni moins.**
-    // Un pion qui déborde semble bloquer un passage qu'il laisse libre ; un pion trop petit
-    // laisse croire l'inverse. Ce n'est pas une préférence de dessin, c'est la cohérence entre
-    // ce que la table voit et ce que la règle applique.
+    // Diamètre DESSINÉ = `sizeCells` hexagones : 1 (Moyen), 2 (Grand), 3 (Énorme), 4 (Monstrueux).
+    // Règle du MJ (18/11/2026) : au-delà de Moyen, chaque taille n'ajoute qu'un DEMI-rang
+    // d'hexagones de chaque côté. La boîte est l'hexagone pointe en haut mis à l'échelle de `size`.
     //
-    // `cellsOccupied` occupe le **disque hexagonal** de rayon `sizeCells - 1` : 1 case en
-    // taille 1, 7 en taille 2, 19 en taille 3. Une mise à l'échelle linéaire de la boîte —
-    // `size * pxPerCell` — rendait donc un pion de taille 2 **d'un tiers trop petit** (280 px
-    // au lieu de 420 à 140 px/case), et ne couvrait pas la couronne de voisins qu'il occupe.
-    //
-    // Étendue réelle d'une rosette de rayon R, en pointe-en-haut : les colonnes s'espacent de
-    // `pxPerCell`, d'où `(2R+1)` de large ; les rangées s'espacent de `pxPerCell·√3/2`, d'où
-    // `R·pxPerCell·√3` plus la hauteur d'un hexagone entier.
-    const radius = Math.max(0, size - 1);
-    const width = (2 * radius + 1) * this.pxPerCell;
-    const height = radius * this.pxPerCell * SQRT3 + this.pxPerCell * (2 / SQRT3);
+    // ⚠ Ce n'est PLUS l'emprise logique. `cellsOccupied` reste la rosette de rayon `sizeCells - 1`
+    // (1, 7, 19 cases, décision du 12/08, CdC §12 q.6) : collisions, brouillard, distances et
+    // sélection la lisent, pas cette boîte. C'est le « visuel seul », repli écrit du CdC ; ici
+    // `sizeCells` dit donc deux choses selon le pavage. Les consommateurs de `cellBounds` (désignation,
+    // centre des balayages de vision et de lumière, engagements, effets) veulent tous la boîte
+    // VUE : ils suivent le dessin.
+    const width = size * this.pxPerCell;
+    const height = width * (2 / SQRT3);
     return {
       x: centerX - width / 2,
       y: centerY - height / 2,

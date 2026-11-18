@@ -58,7 +58,7 @@ test('TokensLayer._drawToken (hexagonal) : boîte correcte en rangée paire et i
   assert.ok(Math.abs(recOdd.rects[0].h - expectedHeight) < 1e-6, `hauteur rangée impaire = ${recOdd.rects[0].h}`);
 });
 
-test('TokensLayer._drawToken (hexagonal) : pion multi-cases (2×2) mis à l’échelle', () => {
+test('TokensLayer._drawToken (hexagonal) : pion Grand (taille 2) dessiné sur 2 hexagones de diamètre', () => {
   const level = createLevel({ pxPerCell: 140, widthCells: 10, heightCells: 10, grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
   const grid = new HexGrid(level);
   const layer = new TokensLayer();
@@ -68,14 +68,12 @@ test('TokensLayer._drawToken (hexagonal) : pion multi-cases (2×2) mis à l’é
   layer.render(rec.ctx, grid, [token], null, { activeLevelId: 'rdc' });
 
   assert.equal(rec.rects.length, 1);
-  // ⛔ Un pion de taille 2 occupe la ROSETTE — le centre plus ses six voisins, sept hexagones —
-  // et non un bloc 2×2 qui n'existe pas en hexagonal. Il fait donc trois colonnes de large.
-  // Ce test verrouillait 280 px, l'échelle linéaire ; corrigé le 19/08/2026 pour suivre
-  // `cellsOccupied`, qui fait foi. Voir gridCellBounds.test.mjs pour la preuve d'accord entre
-  // la boîte dessinée et les cases réellement occupées.
-  assert.equal(rec.rects[0].w, 420, 'trois colonnes de large, pas deux');
+  // Règle du MJ (18/11/2026) : un pion de taille 2 (Grand) est DESSINÉ sur 2 hexagones de diamètre
+  // (280 px à 140 px/case), pas sur la rosette de 3 (420 px). L'emprise logique reste la rosette :
+  // voir gridCellBounds.test.mjs.
+  assert.equal(rec.rects[0].w, 280, 'deux hexagones de diamètre');
   assert.ok(
-    Math.abs(rec.rects[0].h - (140 * SQRT3 + 140 * (2 / SQRT3))) < 1e-6,
-    `hauteur de la rosette, obtenu ${rec.rects[0].h}`
+    Math.abs(rec.rects[0].h - 280 * (2 / SQRT3)) < 1e-6,
+    `hauteur de l'hexagone mis à l'échelle, obtenu ${rec.rects[0].h}`
   );
 });

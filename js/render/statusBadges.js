@@ -140,14 +140,16 @@ export function getCategoryDots(markers) {
  * @param {number} tokenWidthMap Largeur du pion sur la carte
  * @param {number} count Nombre de badges à afficher dans la rangée
  * @param {number} [diameterRatio=BADGE_DIAMETER_RATIO] Ratio du diamètre d'un badge par rapport au pion
+ * @param {number} [baseWidthMap=tokenWidthMap] Largeur de référence du diamètre des badges : celle d'un
+ *   pion Moyen sur une grille hexagonale, pour que les badges d'un grand pion ne grossissent pas avec lui
  * @returns {{ badgeRadiusMap: number, centers: { x: number, y: number }[] }}
  */
-export function computeBadgeRowLayout(tokenWidthMap, count, diameterRatio = BADGE_DIAMETER_RATIO) {
+export function computeBadgeRowLayout(tokenWidthMap, count, diameterRatio = BADGE_DIAMETER_RATIO, baseWidthMap = tokenWidthMap) {
   if (count <= 0) {
     return { badgeRadiusMap: 0, centers: [] };
   }
 
-  const badgeDiameterMap = tokenWidthMap * diameterRatio;
+  const badgeDiameterMap = baseWidthMap * diameterRatio;
   const badgeRadiusMap = badgeDiameterMap / 2;
   const spacingMap = badgeDiameterMap * 1.1;
   const totalRowWidthMap = badgeDiameterMap + (count - 1) * spacingMap;
@@ -172,16 +174,20 @@ export function computeBadgeRowLayout(tokenWidthMap, count, diameterRatio = BADG
  *
  * @param {number} tokenWidthMap Largeur du pion sur la carte
  * @param {number} zoom Zoom de la caméra
+ * @param {number} [baseWidthMap=tokenWidthMap] Largeur de référence (pion Moyen) au-delà de laquelle le badge se pose sur le disque
  * @returns {{ badgeX: number, badgeY: number, badgeRadiusMap: number, badgeRadiusScreen: number, visible: boolean }}
  */
-export function computeElevationBadgeLayout(tokenWidthMap, zoom) {
+export function computeElevationBadgeLayout(tokenWidthMap, zoom, baseWidthMap = tokenWidthMap) {
   const safeZoom = zoom > 0 ? zoom : 1;
   const tokenDiameterScreen = tokenWidthMap * safeZoom;
   const badgeRadiusScreen = Math.max(8, Math.min(14, tokenDiameterScreen * 0.12));
   const badgeRadiusMap = badgeRadiusScreen / safeZoom;
 
-  const badgeX = tokenWidthMap - badgeRadiusMap;
-  const badgeY = badgeRadiusMap;
+  // Pion plus grand que la référence : le coin du carré est loin du disque ; le badge se pose sur le
+  // bord du portrait rond, là où la diagonale le croise (comme le numéro d'exemplaire).
+  const inset = tokenWidthMap > baseWidthMap ? tokenWidthMap * ((1 - Math.SQRT1_2) / 2) : badgeRadiusMap;
+  const badgeX = tokenWidthMap - inset;
+  const badgeY = inset;
   const visible = tokenDiameterScreen >= 40;
 
   return { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible };
@@ -368,15 +374,16 @@ export function getSharedStatusIconCache() {
  *
  * @param {number} tokenWidthMap Largeur du pion sur la carte
  * @param {number} itemCount Nombre d'éléments de marqueurs (icônes + compteur éventuel)
+ * @param {number} [baseWidthMap=tokenWidthMap] Largeur de référence du diamètre des badges
  * @returns {{ badgeRadiusMap: number, horse: { x: number, y: number }, items: { x: number, y: number }[] }}
  */
-export function computeMountedBadgeRowLayout(tokenWidthMap, itemCount) {
+export function computeMountedBadgeRowLayout(tokenWidthMap, itemCount, baseWidthMap = tokenWidthMap) {
   if (!Number.isInteger(itemCount) || itemCount < 0 || itemCount > BADGE_ROW_SLOTS - 1) {
     throw new Error(
       `Rangée montée : ${itemCount} élément(s) de marqueurs, au plus ${BADGE_ROW_SLOTS - 1} attendus`
     );
   }
-  const layout = computeBadgeRowLayout(tokenWidthMap, BADGE_ROW_SLOTS, BADGE_DIAMETER_RATIO);
+  const layout = computeBadgeRowLayout(tokenWidthMap, BADGE_ROW_SLOTS, BADGE_DIAMETER_RATIO, baseWidthMap);
   const horseSlot = BADGE_ROW_SLOTS - 1;
   return {
     badgeRadiusMap: layout.badgeRadiusMap,
@@ -397,6 +404,8 @@ export function computeMountedBadgeRowLayout(tokenWidthMap, itemCount) {
  * @param {MapPoint} p0 Coin supérieur gauche du pion en espace carte
  * @param {Object} options Options de rendu nommées
  * @param {number} [options.widthMap=140] Largeur du pion en espace carte
+ * @param {number} [options.badgeBaseMap=widthMap] Largeur de référence du diamètre des badges (pion Moyen
+ *   en hexagonal) : les badges d'un grand pion gardent la taille de ceux d'un Moyen
  * @param {number} [options.zoom=1] Zoom de la caméra
  * @param {number} [options.resolution=1] Résolution d'affichage (devicePixelRatio cap)
  * @param {(() => void)} [options.invalidate] Rappel facultatif d'invalidation du rendu
@@ -411,8 +420,9 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
   if (markers.length === 0 && !mounted) return;
 
   const { widthMap = 140, zoom = 1, resolution = 1, invalidate } = options;
+  const badgeBaseMap = options.badgeBaseMap ?? widthMap;
   const safeZoom = zoom > 0 ? zoom : 1;
-  const tokenDiameterPx = widthMap * safeZoom;
+  const tokenDiameterPx = badgeBaseMap * safeZoom;
   const tier = getBadgeTier(tokenDiameterPx);
   const iconCache = options.iconCache ?? getSharedStatusIconCache();
 
@@ -433,11 +443,11 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
     /** @type {{ x: number, y: number }|null} */
     let horseCenter = null;
     if (mounted) {
-      const mountedLayout = computeMountedBadgeRowLayout(widthMap, totalCount);
+      const mountedLayout = computeMountedBadgeRowLayout(widthMap, totalCount, badgeBaseMap);
       layout = { badgeRadiusMap: mountedLayout.badgeRadiusMap, centers: mountedLayout.items };
       horseCenter = mountedLayout.horse;
     } else {
-      layout = computeBadgeRowLayout(widthMap, totalCount, BADGE_DIAMETER_RATIO);
+      layout = computeBadgeRowLayout(widthMap, totalCount, BADGE_DIAMETER_RATIO, badgeBaseMap);
     }
     const badgeDiameterScreen = tokenDiameterPx * BADGE_DIAMETER_RATIO;
     const rawRasterPx = badgeDiameterScreen * resolution;
@@ -538,7 +548,7 @@ export function drawStatusBadges(ctx, token, p0, options = {}) {
     }
   } else if (tier === 'category-dots') {
     const categories = getCategoryDots(markers);
-    const layout = computeBadgeRowLayout(widthMap, categories.length, BADGE_DOT_DIAMETER_RATIO);
+    const layout = computeBadgeRowLayout(widthMap, categories.length, BADGE_DOT_DIAMETER_RATIO, badgeBaseMap);
 
     for (let i = 0; i < categories.length; i++) {
       const cat = categories[i];

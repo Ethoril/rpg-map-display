@@ -368,8 +368,15 @@ export class TokensLayer {
     const p0 = { x: bounds.x, y: bounds.y };
     const width = bounds.width;
     const height = bounds.height;
+    // Hexagonal : le cartouche (badges de marqueurs, élévation) garde la taille de celui d'un Moyen, quel
+    // que soit le diamètre du pion — sinon il grossit avec lui. Grille carrée : inchangée.
+    const badgeBaseMap = grid.type === 'hex' ? grid.cellBounds(position, 1).width : width;
     const centerX = p0.x + width / 2;
     const centerY = p0.y + height / 2;
+    // Origine des ancrages du cartouche : un carré `width` × `width` centré sur le disque. Pour un pion plus
+    // grand que la référence, la boîte hexagonale est plus haute que large et son coin haut-gauche n'est
+    // plus celui du disque — ancrer dessus décalait le cartouche vers le haut. Un Moyen garde `p0`.
+    const pBadge = width > badgeBaseMap ? { x: centerX - width / 2, y: centerY - width / 2 } : p0;
     // Pion lié mort : liseré gris, comme son cerclage (lot P2).
     const borderColor = token.link && token.dead === true ? DEAD_RING_COLOR : tokenRingColor(token);
     // Pion monté (contrat §8.1) : le fond est la monture, le cavalier passe en médaillon.
@@ -496,7 +503,7 @@ export class TokensLayer {
     }
     ctx.restore();
 
-    if (mount) this._drawRiderMedallion(ctx, token, p0, width, zoom, borderColor);
+    if (mount) this._drawRiderMedallion(ctx, token, pBadge, width, badgeBaseMap, zoom, borderColor);
 
     // 3.6. Croix discrète du pion mort (contrat §7), épaisseur constante à l'écran.
     if (token.dead === true) {
@@ -528,10 +535,10 @@ export class TokensLayer {
 
     // 5. Badges (élévation, marqueurs, compteur chiffré)
     if (typeof token.elevation === 'number' && token.elevation !== 0) {
-      const { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible } = computeElevationBadgeLayout(width, zoom);
+      const { badgeX, badgeY, badgeRadiusMap, badgeRadiusScreen, visible } = computeElevationBadgeLayout(width, zoom, badgeBaseMap);
       if (visible) {
-        const cx = p0.x + badgeX;
-        const cy = p0.y + badgeY;
+        const cx = pBadge.x + badgeX;
+        const cy = pBadge.y + badgeY;
         ctx.save();
         ctx.beginPath();
         ctx.arc(cx, cy, badgeRadiusMap, 0, Math.PI * 2);
@@ -549,8 +556,9 @@ export class TokensLayer {
       }
     }
 
-    drawStatusBadges(ctx, mount ? { ...token, ...mergedMarkers(token) } : token, p0, {
+    drawStatusBadges(ctx, mount ? { ...token, ...mergedMarkers(token) } : token, pBadge, {
       widthMap: width,
+      badgeBaseMap,
       zoom,
       resolution,
       invalidate: options?.invalidate ?? this.invalidate.bind(this),
@@ -572,8 +580,8 @@ export class TokensLayer {
         const bgHeightMap = hpBadge.heightMap;
 
         // Ancrer le coin bas-droit de la pastille à (p0.x + hpBadge.badgeX, p0.y + hpBadge.badgeY)
-        const badgeLeft = p0.x + hpBadge.badgeX - bgWidthMap;
-        const badgeTop = p0.y + hpBadge.badgeY - bgHeightMap;
+        const badgeLeft = pBadge.x + hpBadge.badgeX - bgWidthMap;
+        const badgeTop = pBadge.y + hpBadge.badgeY - bgHeightMap;
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
         ctx.beginPath();
@@ -602,8 +610,8 @@ export class TokensLayer {
     // ── Numéro d'exemplaire (C-15) : vu de tous, joueurs compris — ils suivent « le 2 » eux aussi.
     if (typeof token.copyNumber === 'number') {
       const copie = computeCopyBadgeLayout(width, zoom);
-      const cx = p0.x + copie.centerX;
-      const cy = p0.y + copie.centerY;
+      const cx = pBadge.x + copie.centerX;
+      const cy = pBadge.y + copie.centerY;
       ctx.save();
       if (token.hidden) ctx.globalAlpha = 0.45;
       ctx.beginPath();
@@ -649,13 +657,16 @@ export class TokensLayer {
    * @param {Token} token
    * @param {{ x: number, y: number }} p0
    * @param {number} width
+   * @param {number} baseWidth Largeur de référence (pion Moyen) qui dimensionne le médaillon
    * @param {number} zoom
    * @param {string} borderColor
    */
-  _drawRiderMedallion(ctx, token, p0, width, zoom, borderColor) {
-    const radius = (width * RIDER_MEDALLION_RATIO) / 2;
-    const cx = p0.x + width - radius;
-    const cy = p0.y + radius;
+  _drawRiderMedallion(ctx, token, p0, width, baseWidth, zoom, borderColor) {
+    const radius = (baseWidth * RIDER_MEDALLION_RATIO) / 2;
+    // Pion plus grand que la référence : le médaillon se pose sur le bord du disque (diagonale à 45°).
+    const inset = width > baseWidth ? width * ((1 - Math.SQRT1_2) / 2) : radius;
+    const cx = p0.x + width - inset;
+    const cy = p0.y + inset;
     const url = displayImageUrl(token).trim();
     const entry = url ? this.imageCache.get(url) : undefined;
     if (url && !entry) void this.preload(url);

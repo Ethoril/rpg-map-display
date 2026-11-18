@@ -89,65 +89,32 @@ test('HexGrid.cellBounds : preuve par mutation n°2 — la boîte est bien centr
   assert.ok(Math.abs((oddCenter.x - evenCenter.x) - 70) < 1e-9, 'décalage odd-r d’une demi-case en x');
 });
 
-test('HexGrid.cellBounds : pion multi-cases, la boîte suit la ROSETTE et non une échelle linéaire', () => {
-  const level = createLevel({ pxPerCell: 140, widthCells: 10, heightCells: 10, grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
+test('HexGrid.cellBounds : diamètre dessiné = sizeCells hexagones (1, 2, 3, 4), pas la rosette', () => {
+  const level = createLevel({ pxPerCell: 140, widthCells: 40, heightCells: 40, grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
   const grid = new HexGrid(level);
 
-  const b1 = grid.cellBounds({ cellX: 4, cellY: 4 }, 1);
-  const b2 = grid.cellBounds({ cellX: 4, cellY: 4 }, 2);
-
-  // ⛔ **Pas une mise à l'échelle linéaire.** `cellsOccupied` occupe le disque hexagonal de rayon
-  // `sizeCells - 1` : en taille 2, le pion couvre le centre PLUS ses six voisins, donc trois
-  // colonnes de large et non deux. L'échelle linéaire rendait la boîte d'un tiers trop petite —
-  // 280 px au lieu de 420 à 140 px/case — et le pion semblait laisser libres des hexagones qu'il
-  // occupe. Ce test verrouillait cette erreur ; il a été corrigé le 19/08/2026, pas assoupli.
-  assert.equal(b2.width, 3 * b1.width, 'taille 2 : trois colonnes de large, pas deux');
-  const SQRT3 = Math.sqrt(3);
-  assert.ok(
-    Math.abs(b2.height - (140 * SQRT3 + 140 * (2 / SQRT3))) < 1e-9,
-    `taille 2 : une rangée de voisins au-dessus et au-dessous, obtenu ${b2.height}`
-  );
-  // Toujours centrée sur le même point d'ancrage
-  const center1 = { x: b1.x + b1.width / 2, y: b1.y + b1.height / 2 };
-  const center2 = { x: b2.x + b2.width / 2, y: b2.y + b2.height / 2 };
-  assert.ok(Math.abs(center1.x - center2.x) < 1e-9);
-  assert.ok(Math.abs(center1.y - center2.y) < 1e-9);
+  // Règle du MJ (18/11/2026) : Moyen 1 hexagone, puis chaque taille n'ajoute qu'un DEMI-rang de
+  // chaque côté — diamètre 1, 2, 3, 4 hexagones (Moyenne, Grande, Énorme, Monstrueuse). Avant :
+  // 1, 3, 5, 7 (la rosette 1/7/19 cases) : un cheval Grand couvrait près de trois hexagones.
+  const centre = grid.pointFromCell({ a: 10, b: 10 });
+  for (const [size, diametreAttendu] of [[1, 140], [2, 280], [3, 420], [4, 560]]) {
+    const boite = grid.cellBounds({ cellX: 10, cellY: 10 }, size);
+    assert.ok(Math.abs(boite.width - diametreAttendu) < 1e-9, `taille ${size} : largeur ${boite.width}, attendu ${diametreAttendu}`);
+    // La hauteur suit le même hexagone pointe en haut mis à l'échelle (taille 1 inchangée : 161,66).
+    assert.ok(Math.abs(boite.height - diametreAttendu * (2 / SQRT3)) < 1e-9, `taille ${size} : hauteur ${boite.height}`);
+    assert.ok(Math.abs(boite.x + boite.width / 2 - centre.x) < 1e-9, `taille ${size} : centrée en x`);
+    assert.ok(Math.abs(boite.y + boite.height / 2 - centre.y) < 1e-9, `taille ${size} : centrée en y`);
+  }
 });
 
-test('HexGrid.cellBounds : la boîte couvre exactement la rosette de cellsOccupied', () => {
-  const level = createLevel({
-    pxPerCell: 140,
-    widthCells: 40,
-    heightCells: 40,
-    grid: { type: 'hex', offsetX: 0, offsetY: 0 },
-  });
+test('HexGrid : l’emprise LOGIQUE reste la rosette (1, 7, 19 cases) — seul le dessin rétrécit', () => {
+  const level = createLevel({ pxPerCell: 140, widthCells: 40, heightCells: 40, grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
   const grid = new HexGrid(level);
-  const SQRT3 = Math.sqrt(3);
-
-  // ⭐ Le critère n'est pas un nombre choisi : c'est l'accord entre le dessin et l'occupation.
-  // Pour chaque taille, la boîte doit contenir le CENTRE de chaque case occupée, et sa largeur
-  // doit valoir l'étendue de la rosette — sinon un pion couvre des hexagones qu'il n'occupe pas.
-  for (const size of [1, 2, 3]) {
-    const cell = { a: 10, b: 10 };
-    const boite = grid.cellBounds({ cellX: cell.a, cellY: cell.b }, size);
-    const rayon = size - 1;
-
-    assert.equal(boite.width, (2 * rayon + 1) * 140, `largeur, taille ${size}`);
-    assert.ok(
-      Math.abs(boite.height - (rayon * 140 * SQRT3 + 140 * (2 / SQRT3))) < 1e-9,
-      `hauteur, taille ${size} : ${boite.height}`
-    );
-
-    // ⛔ La preuve qui compte : aucune case occupée ne tombe hors de la boîte.
-    for (const occupee of grid.cellsOccupied(cell, size)) {
-      const c = grid.pointFromCell(occupee);
-      assert.ok(
-        c.x >= boite.x - 1e-9 && c.x <= boite.x + boite.width + 1e-9 &&
-        c.y >= boite.y - 1e-9 && c.y <= boite.y + boite.height + 1e-9,
-        `taille ${size} : la case ${occupee.a},${occupee.b} tombe hors de la boîte`
-      );
-    }
-  }
+  // Décision du 12/08 (CdC §12 q.6) conservée : collisions, brouillard, distances et sélection
+  // lisent `cellsOccupied`. Le MJ a demandé le « visuel seul » (repli écrit du CdC).
+  assert.equal(grid.cellsOccupied({ a: 10, b: 10 }, 1).length, 1);
+  assert.equal(grid.cellsOccupied({ a: 10, b: 10 }, 2).length, 7);
+  assert.equal(grid.cellsOccupied({ a: 10, b: 10 }, 3).length, 19);
 });
 
 // ── Convention partagée de mapFromCellPoint (C-5) ──────────────────────────────────────
