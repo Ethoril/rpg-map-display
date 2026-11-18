@@ -398,6 +398,34 @@ test('C-9 rendu : pion à pied — rendu strictement inchangé, aucun cheval', (
   assert.deepEqual(dessiner({ markers: [] }), [], 'à pied sans marqueur : rien');
 });
 
+/** Pion fusionné : le cavalier en médaillon sur la monture (contrat §8.1), `rider` présent. */
+const CAVALIER = { ref: 'p:m1', label: 'Destrier', imageUrl: null, hp: null, health: /** @type {const} */ ('unharmed'), markers: [], markerLevels: {} };
+
+test('rendu : un pion FUSIONNÉ (monture en médaillon) ne dessine plus le cheval — le pion symbolise déjà la monte', () => {
+  // Demande du MJ (18/11/2026). L'état `mounted` est toujours reçu et conservé ; seule l'icône disparaît.
+  assert.deepEqual(dessiner({ markers: [], mounted: true, rider: CAVALIER }), [], 'fusionné sans marqueur : rien');
+  const centre = computeBadgeRowLayout(140, 1).centers[0];
+  assert.deepEqual(
+    dessiner({ markers: ['prone'], mounted: true, rider: CAVALIER }).filter((e) => e.op === 'image'),
+    [{ op: 'image', icon: 'status:prone', x: centre.x, y: centre.y }],
+    'un marqueur seul : centré, sans la place réservée au cheval'
+  );
+  const c3 = computeBadgeRowLayout(140, 3).centers;
+  const trois = dessiner({ markers: ['bleeding', 'prone', 'unconscious'], mounted: true, rider: CAVALIER });
+  assert.deepEqual(trois.filter((e) => e.op === 'image').map((e) => [e.icon, e.x]), [
+    ['status:unconscious', c3[0].x], ['status:prone', c3[1].x], ['status:bleeding', c3[2].x],
+  ], 'trois marqueurs : les trois places, comme à pied');
+  assert.equal(trois.some((e) => e.op === 'image' && e.icon === MOUNTED_ICON_URL), false);
+});
+
+test('rendu : un cavalier SEUL marqué monté (monture hors de la carte) garde son cheval', () => {
+  const coin = computeBadgeRowLayout(140, BADGE_ROW_SLOTS).centers[BADGE_ROW_SLOTS - 1];
+  assert.deepEqual(
+    dessiner({ markers: [], mounted: true, rider: null }).filter((e) => e.op === 'image'),
+    [{ op: 'image', icon: MOUNTED_ICON_URL, x: coin.x, y: coin.y }]
+  );
+});
+
 test('C-9 rendu : aux paliers des points, pas de cheval', () => {
   // 140 × 0,24 = 33,6 px : palier 'category-dots' ; 140 × 0,1 = 14 px : 'single-dot'.
   for (const zoom of [0.24, 0.1]) {

@@ -416,7 +416,11 @@ export function computeMountedBadgeRowLayout(tokenWidthMap, itemCount, baseWidth
 export function drawStatusBadges(ctx, token, p0, options = {}) {
   if (!ctx || !token) return;
   const markers = token.markers ?? [];
-  const mounted = token.mounted === true;
+  // Pion fusionné (`rider` présent : le cavalier en médaillon sur sa monture, contrat §8.1) : le pion
+  // symbolise déjà la monte, pas de cheval en plus (demande du MJ, 18/11/2026). L'état `mounted` reste
+  // reçu et conservé, seul le dessin change. Un cavalier SEUL marqué monté (monture hors de la carte)
+  // garde son cheval : c'est alors la seule trace de la monte.
+  const mounted = token.mounted === true && !token.rider;
   if (markers.length === 0 && !mounted) return;
 
   const { widthMap = 140, zoom = 1, resolution = 1, invalidate } = options;
