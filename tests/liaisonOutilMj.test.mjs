@@ -860,3 +860,38 @@ test('store : bondCells null efface aussi le champ d’un pion lié resté en r�
   assert.equal(store.updateReserveToken('r9', { bondCells: null }), true);
   assert.equal(store.getCampaign()?.reserve?.[0].bondCells, undefined, 'le champ est effacé, pas mis à null');
 });
+
+test('mjLink : après fusion puis séparation, le cavalier est DESSINÉ sur sa case, pas sur celle de la monture (trace du MJ, 18/11)', async () => {
+  const { planMjMessage, executeMjOperations } = await import('../js/app/mjLink.js');
+  const store = await import('../js/state/store.js');
+  const { HexGrid } = await import('../js/grid/HexGrid.js');
+  const { TokensLayer } = await import('../js/render/layers/tokens.js');
+  const hexLevel = createLevel({ id: 'rdc', widthCells: 12, heightCells: 8, grid: { type: 'hex', offsetX: 0, offsetY: 0 } });
+  const camp = createCampaign({ levels: [hexLevel], tokens: [
+    { ...createToken({ id: 'cav', levelId: 'rdc', cell: { a: 4, b: 4 }, kind: 'pc', label: 'Ulrika Brandt' }), link: { ...link, ref: 'pj:c9' }, camp: /** @type {const} */ ('pj') },
+    { ...createToken({ id: 'mon', levelId: 'rdc', cell: { a: 5, b: 4 }, kind: 'pc', label: 'Poney' }), link: { ...link, ref: 'p:m1' }, camp: /** @type {const} */ ('pj') },
+  ] });
+  store.loadCampaign(camp);
+  const deps = { store, publish: () => {}, createToken, newTokenId: () => 'x', trace: { levelId: 'rdc', cell: { a: 0, b: 0 } } };
+  const run = (/** @type {string} */ type, /** @type {any} */ payload) => executeMjOperations(planMjMessage(/** @type {any} */ (store.getCampaign()), msg(type, payload)), deps);
+  run('token.state', cavalierEtat({ mounted: true, rider: montureEtat }));
+  run('mount.split', { riderRef: 'pj:c9', mountRef: 'p:m1' });
+
+  const grid = new HexGrid(hexLevel);
+  const cavalier = store.getCampaign()?.tokens.find((t) => t.id === 'cav');
+  assert.ok(cavalier);
+  assert.notDeepEqual(cavalier?.cell, { a: 5, b: 4 }, 'le cavalier n’est pas sur la case de la monture');
+  /** @type {Array<{x: number, y: number, w: number, h: number}>} */
+  const rects = [];
+  const ctx = /** @type {any} */ (new Proxy({ fillRect: (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ w, /** @type {number} */ h) => rects.push({ x, y, w, h }), measureText: () => ({ width: 10 }) }, {
+    get: (cible, cle) => (cle in cible ? /** @type {any} */ (cible)[cle] : () => {}),
+    set: () => true,
+  }));
+  // L'animation du `token.move` de la fusion est finie depuis longtemps : le rendu lit alors `move.to`.
+  new TokensLayer().render(ctx, grid, [/** @type {any} */ (cavalier)], null, { activeLevelId: 'rdc', now: Date.now() + 60_000 });
+  const attendu = grid.pointFromCell(/** @type {any} */ (cavalier).cell);
+  assert.ok(rects.length >= 1);
+  const centre = { x: rects[0].x + rects[0].w / 2, y: rects[0].y + rects[0].h / 2 };
+  assert.ok(Math.hypot(centre.x - attendu.x, centre.y - attendu.y) < 1e-6,
+    `dessiné en (${centre.x.toFixed(0)}, ${centre.y.toFixed(0)}), sa case est en (${attendu.x.toFixed(0)}, ${attendu.y.toFixed(0)})`);
+});

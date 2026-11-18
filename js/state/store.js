@@ -1997,6 +1997,10 @@ export function reserveToken(tokenId) {
   const candidate = structuredClone(campaign);
   if (!Array.isArray(candidate.reserve)) candidate.reserve = [];
   const [pion] = candidate.tokens.splice(index, 1);
+  // ⛔ Le dernier `move` reste sur un pion après son animation, et le rendu le lit (`move.to`) : un pion rangé
+  // puis reposé ailleurs (séparation d'une monture, contrat §8.2) serait redessiné sur l'ancienne case, par-dessus
+  // sa monture, et ne se désignerait plus là où on le voit (trace du MJ, 18/11/2026).
+  delete pion.move;
   candidate.reserve.push(pion);
 
   assertValidCampaign(candidate, `Mise en réserve du pion "${tokenId}"`);
@@ -2147,7 +2151,11 @@ export function placeTokenFromReserve(tokenId, levelId, cell, latest = null) {
   const candidate = structuredClone(campaign);
   const [enReserve] = (candidate.reserve ?? []).splice(index, 1);
   const pion = latest ? structuredClone(latest) : enReserve;
-  candidate.tokens.push({ ...pion, levelId, cell: { a: cell.a, b: cell.b } });
+  const pose = { ...pion, levelId, cell: { a: cell.a, b: cell.b } };
+  // Même raison que `reserveToken` : un `move` d'avant le rangement (pion venu d'une autre version, ou réserve
+  // restaurée) ne doit jamais redessiner le pion ailleurs que sur la case où on le pose.
+  delete pose.move;
+  candidate.tokens.push(pose);
 
   // ⚠ La validation est celle du plateau, bornes comprises : c'est ici que se refuse une case
   // hors carte, et le pion **reste en réserve** si elle échoue, puisque la campagne candidate
