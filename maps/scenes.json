@@ -11,6 +11,24 @@
           "order": 0
         }
       ]
+    },
+    {
+      "id": "armes-du-templier",
+      "name": "Les Armes du Templier",
+      "levels": [
+        {
+          "id": "armes-du-templier-rdc",
+          "name": "Rez-de-chaussée",
+          "source": "armes-du-templier-rdc.uvtt",
+          "order": 0
+        },
+        {
+          "id": "armes-du-templier-etage-1",
+          "name": "1er étage",
+          "source": "armes-du-templier-etage-1.uvtt",
+          "order": 1
+        }
+      ]
     }
   ]
 }

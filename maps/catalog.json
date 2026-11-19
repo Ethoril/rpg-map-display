@@ -29,6 +29,47 @@
       }
     },
     {
+      "id": "armes-du-templier",
+      "name": "Les Armes du Templier",
+      "sourceUrl": [
+        "maps/armes-du-templier-rdc.uvtt",
+        "maps/armes-du-templier-etage-1.uvtt"
+      ],
+      "sceneUrl": "maps/generated/armes-du-templier.scene.json",
+      "imageUrl": "maps/generated/armes-du-templier-rdc.webp",
+      "thumbUrl": "maps/generated/armes-du-templier-rdc.thumb.webp",
+      "levels": [
+        {
+          "levelId": "armes-du-templier-rdc",
+          "name": "Rez-de-chaussée",
+          "thumbUrl": "maps/generated/armes-du-templier-rdc.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1795115501732
+        },
+        {
+          "levelId": "armes-du-templier-etage-1",
+          "name": "1er étage",
+          "thumbUrl": "maps/generated/armes-du-templier-etage-1.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1795115501753
+        }
+      ],
+      "sourceHash": [
+        "sha256-247cd1a09c9daff19c144609998683d15f74b8e11d4397f95a364e1b6acd3d28",
+        "sha256-e240b2df47c19a7de81fec7614c569e054c75a54e997ff85393f47b9e90b96e1"
+      ],
+      "levelCount": 2,
+      "features": {
+        "walls": 183,
+        "portals": 45,
+        "lights": 0,
+        "bakedLighting": false,
+        "animated": false
+      }
+    },
+    {
       "id": "barrage_ulric",
       "name": "Barrage — Ulric",
       "sourceUrl": "maps/barrage_ulric.dd2vtt",

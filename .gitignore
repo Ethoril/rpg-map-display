@@ -19,6 +19,7 @@ fixtures/real/*
 # - sur un clone sans les sources, `pnpm maps:prepare` republierait un catalogue
 #   amputé des cartes absentes. La préparation se fait sur le poste qui détient
 #   les sources — comme fixtures/real/, et pour la même raison.
+maps/*.uvtt
 maps/*.dd2vtt
 maps/*.df2vtt
 
