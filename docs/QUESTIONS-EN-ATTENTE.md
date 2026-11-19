@@ -1465,6 +1465,40 @@ de jour. ⛔ **Le décor seulement** : un pion n'apparaît côté joueurs que da
 (`tokens.js`) — un ennemi dans une zone explorée hors de vue reste caché. Le halo des lampes reste
 lui aussi réduit au visible. Implémenté dans `light.js` (`_construireMasqueVu` : visible ∪ exploré).
 
+### D-13 Czepeku Architect : une image déjà éclairée qui s'annonce noire — 19/11/2026
+
+**Constat.** « Les Armes du Templier » (RDC et 1er étage), importée le 19/11/2026, vient de
+`architect.czepeku.com`. Les deux exports portent `lights: []`, `baked_lighting: false` et
+`ambient_light: "00000000"` — alors que les foyers, les chandelles et leurs flaques de lumière sont
+**peints dans l'image**. Le mainteneur ne peut pas ré-exporter autrement : chez cette source
+l'éclairage est forcément cuit, et aucune lumière n'est exportable.
+
+**Ce que fait l'import, et c'est la règle en vigueur.** `ambianceProposee` tient toute valeur
+déclarée ≠ 1 pour délibérée et refuse de la contredire par une mesure d'image. Cette règle est née
+d'un défaut réel, le 27/08/2026 : `manoir-rdc`, un donjon annoncé noir, était repassé en plein jour
+par une devinette sur son image. Les deux étages arrivent donc en **Nuit**, ambiante 0, sans aucune
+source : à la table, les joueurs ne verraient que la portée de vision de leurs pions, sur un décor
+qui a pourtant l'air allumé.
+
+**Pourquoi ça ne se règle pas par une meilleure détection.** Un export Czepeku et un donjon
+volontairement noir sont **indiscernables dans le fichier** : mêmes `lights: []`, même ambiante 0,
+et dans les deux cas une image globalement sombre — la luminance moyenne des Armes du Templier est
+celle d'une scène de nuit, puisque c'en est une. L'UVTT ne porte aucun champ qui nomme le logiciel
+d'origine. Toute règle automatique trancherait donc à l'aveugle, et rejouerait le défaut du 27/08
+dans l'autre sens.
+
+**La question, et elle est produit.** Deux réponses tenables :
+
+1. **Ne rien changer.** Deux clics sur « Jour », un par étage, au premier chargement de la carte —
+   le réglage vit ensuite dans la campagne. C'est l'état actuel, et c'est peut-être suffisant.
+2. **Choisir l'ambiance de départ à la préparation**, dans l'atelier Cartes : une bascule par étage,
+   écrite dans le document de scène. Ce n'est plus une devinette mais une déclaration du mainteneur,
+   faite une fois pour toutes au moment où il regarde l'image. ⛔ Touche le document de scène et
+   l'outil de préparation : rien ne démarre sans arbitrage.
+
+⚠ Ce qui est **hors** de la question : contredire l'ambiante déclarée par une mesure d'image. Cette
+porte-là est fermée depuis le 27/08 et D-13 ne la rouvre pas.
+
 ## E. Dettes techniques consignées, non corrigées
 
 Aucune n'est un défaut actif. Toutes sont des pièges pour qui viendra après.
