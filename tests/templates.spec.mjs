@@ -1222,9 +1222,13 @@ test.describe('Tranche L-10 — Gabarits libres (E2E)', () => {
       store.updateLevel('lvl-ligne', { name: 'Renommé encore' });
       const statutGarde = statut.textContent;
 
+      // Armer l'arrivée fait lister les étages où elle peut se poser : c'est là, depuis la
+      // refonte du 19/11/2026, que l'éditeur relit les étages du store — le menu « Étage B » a
+      // disparu avec la seconde source de vérité qu'il constituait.
+      /** @type {HTMLButtonElement} */ (document.querySelector('#link-pick-b')).click();
       store.addLevel(createLevel({ id: 'cave-b8', name: 'Cave B8' }));
-      const options = [.../** @type {HTMLSelectElement} */ (document.querySelector('#link-level-b')).options]
-        .map((o) => o.value);
+      const options = [...document.querySelectorAll('#link-level-choices button')]
+        .map((b) => /** @type {HTMLElement} */ (b).dataset.levelId ?? '');
       return { memeLigne, options, statutGarde };
     });
     expect(res.memeLigne, 'la ligne du gabarit a été reconstruite par une notification étrangère').toBe(true);

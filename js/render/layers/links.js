@@ -71,6 +71,7 @@ export class LinksLayer {
    *   role?: 'gm'|'players',
    *   selectedLinkId?: string|null,
    *   zoom?: number,
+   *   draft?: { a: {levelId: string, at: {cellX: number, cellY: number}}|null, b: {levelId: string, at: {cellX: number, cellY: number}}|null }|null,
    * }} [options]
    *
    * ⛔ Cette méthode ne connaît PAS l'invite de franchissement, et il ne faut pas l'y ramener.
@@ -130,6 +131,39 @@ export class LinksLayer {
       ctx.restore();
       rendered++;
     }
+
+    // ── La liaison que le MJ est en train de composer ──────────────────────────────────────
+    //
+    // ⭐ Elle n'existe pas encore dans la campagne, donc elle n'est pas comptée dans `rendered` :
+    // ce compteur dit ce que la carte porte de liaisons **enregistrées**, et le diagnostic s'y fie.
+    //
+    // ⛔ MJ seulement, et c'est structurel : le brouillon ne quitte jamais le panneau — il ne
+    // passe par aucun événement réseau, donc la tablette ne peut pas l'avoir.
+    if (role === 'gm' && options.draft) {
+      for (const [lettre, extremite] of /** @type {[string, any][]} */ ([
+        ['A', options.draft.a ?? null],
+        ['B', options.draft.b ?? null],
+      ])) {
+        if (!extremite || extremite.levelId !== level.id) continue;
+        const point = grid.pointFromCell({ a: extremite.at.cellX, b: extremite.at.cellY });
+        ctx.save();
+        ctx.strokeStyle = '#f5a623';
+        ctx.lineWidth = 3 / zoom;
+        // Pointillé : à distinguer d'un coup d'œil des disques pleins des liaisons existantes.
+        ctx.setLineDash([6 / zoom, 4 / zoom]);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius * 1.15, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f5a623';
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 3 / zoom;
+        ctx.strokeText(lettre, point.x, point.y + 0.5 / zoom);
+        ctx.fillText(lettre, point.x, point.y + 0.5 / zoom);
+        ctx.restore();
+      }
+    }
+
     ctx.restore();
     return rendered;
   }

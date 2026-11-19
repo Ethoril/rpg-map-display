@@ -728,6 +728,13 @@ if (linkEditorMount) {
       dire(`✓ Liaison retirée de maps/${currentSceneId}.links.json.`);
     },
     onArmChange: () => drawMapCanvas(),
+    // L'étage d'arrivée se choisit en emmenant la vue dessus : c'est le même geste que pour le
+    // départ, et la case tapée ne peut donc pas appartenir à un autre étage que celui qu'on voit.
+    onShowLevel: (levelId) => {
+      if (selLinkLevel) selLinkLevel.value = levelId;
+      chargerLevelMap(levelId);
+    },
+    getDisplayedLevelId: () => currentLevel?.id ?? null,
     requestRender: () => drawMapCanvas(),
   });
 }
@@ -794,6 +801,39 @@ function drawMapCanvas() {
         ctx.fillText(symbol, pt.x, pt.y);
         ctx.restore();
       }
+    }
+
+    // ── La liaison en cours de composition ────────────────────────────────────────────────
+    //
+    // ⭐ Poser une extrémité ne dessinait rien : on tapait, la carte restait identique, et le seul
+    // retour était une ligne de texte qui, elle, était en retard. Un point posé se VOIT, sur
+    // l'étage auquel il appartient, avant même que la liaison existe.
+    const brouillon = prepLinkEditor?.getDraft();
+    for (const [lettre, extremite] of /** @type {[string, any][]} */ ([
+      ['A', brouillon?.a ?? null],
+      ['B', brouillon?.b ?? null],
+    ])) {
+      if (!extremite || extremite.levelId !== currentLevel.id) continue;
+      const pt = grid.pointFromCell({ a: extremite.at.cellX, b: extremite.at.cellY });
+      const ptNext = grid.pointFromCell({ a: extremite.at.cellX + 1, b: extremite.at.cellY });
+      const r = Math.abs(ptNext.x - pt.x) * 0.38;
+
+      ctx.save();
+      ctx.strokeStyle = couleurs.choisie;
+      ctx.lineWidth = 3 / mapZoom;
+      // Pointillé : ce repère-là n'est pas encore une liaison enregistrée, et il ne doit pas se
+      // confondre avec les disques pleins des liaisons qui, elles, sont dans le fichier.
+      ctx.setLineDash([6 / mapZoom, 4 / mapZoom]);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = couleurs.choisie;
+      ctx.font = `bold ${Math.max(11, Math.round(15 / mapZoom))}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(lettre, pt.x, pt.y);
+      ctx.restore();
     }
   }
 
@@ -919,15 +959,11 @@ if (prepMapCanvas) {
         const cell = grid.cellFromPoint(mapPt);
 
         if (cell) {
-          if (prepLinkEditor?.isArmed()) {
-            prepLinkEditor.setEndpointA(currentLevel.id, { a: cell.a, b: cell.b });
-          } else {
-            // Remplir les champs B au clic pour faciliter la saisie
-            const inputX = /** @type {HTMLInputElement} */ (document.getElementById('link-cell-x'));
-            const inputY = /** @type {HTMLInputElement} */ (document.getElementById('link-cell-y'));
-            if (inputX) inputX.value = String(cell.a);
-            if (inputY) inputY.value = String(cell.b);
-          }
+          // ⛔ Un seul chemin, pour les deux extrémités : l'éditeur sait laquelle il attend, et
+          // une tape hors attente ne pose rien. Jusqu'au 19/11/2026 une tape non armée remplissait
+          // en douce les champs de l'arrivée — un geste que rien n'annonçait et que la ligne
+          // d'état ne reflétait même pas.
+          prepLinkEditor?.setEndpoint(currentLevel.id, { a: cell.a, b: cell.b });
           drawMapCanvas();
         }
       }
@@ -970,6 +1006,10 @@ selLinkScene?.addEventListener('change', () => {
 
 selLinkLevel?.addEventListener('change', () => {
   chargerLevelMap(selLinkLevel.value);
+  // L'éditeur marque l'étage affiché parmi les arrivées possibles : sans ce rafraîchissement, la
+  // marque resterait sur l'étage précédent — soit exactement le genre d'écart qui a coûté le
+  // 9 août 2026.
+  prepLinkEditor?.refresh();
 });
 
 /**

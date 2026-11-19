@@ -1088,6 +1088,20 @@ export function createGMPanel(container, options = {}) {
       onAdd: (link) => { store.addLink(link); options.onAddLink?.(link); },
       onRemove: (linkId) => { if (store.removeLink(linkId)) options.onRemoveLink?.(linkId); },
       onArmChange: (armed) => setActiveTool(armed ? 'link-place' : 'none'),
+      // Désigner l'arrivée d'une liaison demande d'être sur son étage : l'éditeur emmène donc la
+      // vue du MJ, par le même chemin que la barre d'étage.
+      // ⛔ `level.select` et **pas** `level.show` : la table ne suit pas. Poser une liaison est un
+      // geste de préparation, et il n'a aucune raison de déplacer l'écran des joueurs.
+      onShowLevel: (levelId) => {
+        store.selectLevel(levelId);
+        transport?.publish({
+          type: 'level.select',
+          payload: { levelId },
+          at: Date.now(),
+          by: 'gm',
+        });
+      },
+      getDisplayedLevelId: () => store.getActiveLevelId(),
       requestRender,
     });
   }
@@ -2625,6 +2639,11 @@ export function createGMPanel(container, options = {}) {
     const signatureLiaisons = JSON.stringify([
       campagne?.levels.map((l) => [l.id, l.name]) ?? [],
       campagne?.links ?? [],
+      // ⭐ L'étage ACTIF en fait partie depuis la refonte du 19/11/2026 : l'éditeur marque, parmi
+      // les arrivées possibles, celui qu'on regarde. Sans cette entrée, changer d'étage par la
+      // barre du haut laissait la marque sur le précédent — l'écart entre ce qu'on voit et ce que
+      // l'outil croit, exactement ce que la refonte supprime.
+      store.getActiveLevelId(),
     ]);
     if (signatureLiaisons !== derniereSignatureLiaisons) {
       derniereSignatureLiaisons = signatureLiaisons;

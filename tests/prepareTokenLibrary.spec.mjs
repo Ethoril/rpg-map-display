@@ -271,7 +271,7 @@ test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalo
 
   // Extrémité A : armer, puis désigner une case sur la carte. Un clic sans déplacement — même
   // position pour la pression et le relèvement — sinon le geste est interprété comme un glisser.
-  await page.click('#link-arm');
+  await page.click('#link-pick-a');
   const viewport = page.locator('#prep-map-viewport');
   const boite = await viewport.boundingBox();
   if (!boite) throw new Error('Vue de carte absente');
@@ -281,10 +281,19 @@ test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalo
   await page.mouse.down();
   await page.mouse.up();
 
-  // Extrémité B : l'autre étage, à une case explicite.
-  await page.selectOption('#link-level-b', 'etage');
-  await page.fill('#link-cell-x', '4');
-  await page.fill('#link-cell-y', '6');
+  // ⭐ Extrémité B : **le même geste**, sur l'autre étage. Le bouton d'étage emmène la vue, la
+  // tape pose la case — et il n'existe plus aucun second endroit où l'étage d'arrivée pourrait
+  // être choisi différemment de celui qu'on regarde.
+  await page.click('#link-level-choices button[data-level-id="etage"]');
+  const bx = cx + 60;
+  const by = cy + 30;
+  await page.mouse.move(bx, by);
+  // La case lue sous le curseur est celle que la tape va poser : si les deux divergeaient, le
+  // mainteneur viserait une case et en enregistrerait une autre.
+  const luSousLeCurseur = (await page.locator('#prep-map-cell-info').innerText()).replace('Case : ', '').split(',').map((n) => Number(n.trim()));
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.locator('#link-b-state')).toContainText(`case ${luSousLeCurseur[0]}, ${luSousLeCurseur[1]}`);
   await page.fill('#link-label', 'Escalier nord');
 
   await expect(page.locator('#link-create')).toBeEnabled();
@@ -302,10 +311,10 @@ test('V-02 — la liaison enregistrée porte l’identifiant de scène du catalo
   expect(charge.links[0].b.levelId).toBe('etage');
 
   // ⚠ Une extrémité de liaison porte un `CellPoint` — `{ cellX, cellY }` — et non une `Cell`
-  // `{ a, b }`. La vue de carte rend une `Cell` ; c'est `setEndpointA` qui convertit. Les deux
+  // `{ a, b }`. La vue de carte rend une `Cell` ; c'est `setEndpoint` qui convertit. Les deux
   // formes se ressemblent assez pour qu'une confusion passe inaperçue jusqu'à ce qu'un pion
   // téléporté atterrisse ailleurs, d'où l'assertion sur la forme des deux extrémités.
-  expect(charge.links[0].b.at).toEqual({ cellX: 4, cellY: 6 });
+  expect(charge.links[0].b.at).toEqual({ cellX: luSousLeCurseur[0], cellY: luSousLeCurseur[1] });
   expect(Object.keys(charge.links[0].a.at).sort()).toEqual(['cellX', 'cellY']);
 });
 

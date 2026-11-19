@@ -802,6 +802,10 @@ export async function bootstrapGMApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         linksLayer.render(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
           role: 'gm', zoom: camera.zoom, selectedLinkId: gmPanel?.linkEditor?.getSelectedLinkId() ?? null,
+          // La liaison en cours de composition, pour que l'extrémité posée se voie sur la carte
+          // avant d'exister dans la campagne. ⚠ `getDraft` rend un objet stable, refabriqué aux
+          // seuls changements : il est lu ici à chaque image.
+          draft: gmPanel?.linkEditor?.getDraft() ?? null,
         });
         layerDurations.links = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -1818,7 +1822,7 @@ export async function bootstrapGMApp(options = {}) {
       if (activeToolName === 'link-place') {
         const grid = gridFor(activeLevel);
         const cell = grid.cellFromPoint(intention.mapPos);
-        if (cell) gmPanel?.linkEditor?.setEndpointA(activeLevel.id, cell);
+        if (cell) gmPanel?.linkEditor?.setEndpoint(activeLevel.id, cell);
         return;
       }
 
