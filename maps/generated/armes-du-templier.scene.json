@@ -2522,7 +2522,50 @@
       "terrainCost": null
     }
   ],
-  "links": [],
+  "links": [
+    {
+      "id": "link-gv4yhtl5",
+      "kind": "stairs",
+      "label": "",
+      "a": {
+        "levelId": "armes-du-templier-rdc",
+        "at": {
+          "cellX": 24,
+          "cellY": 4
+        }
+      },
+      "b": {
+        "levelId": "armes-du-templier-etage-1",
+        "at": {
+          "cellX": 26,
+          "cellY": 3
+        }
+      },
+      "bidirectional": true,
+      "gmOnly": false
+    },
+    {
+      "id": "link-0sf5hfd7",
+      "kind": "stairs",
+      "label": "escalier sud",
+      "a": {
+        "levelId": "armes-du-templier-etage-1",
+        "at": {
+          "cellX": 11,
+          "cellY": 13
+        }
+      },
+      "b": {
+        "levelId": "armes-du-templier-rdc",
+        "at": {
+          "cellX": 12,
+          "cellY": 16
+        }
+      },
+      "bidirectional": true,
+      "gmOnly": false
+    }
+  ],
   "tokens": [],
   "reserve": [],
   "templates": [],
