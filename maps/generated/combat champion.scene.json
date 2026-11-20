@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-combat champion",
+  "name": "Combat champion",
+  "levels": [
+    {
+      "id": "combat champion",
+      "name": "Combat champion",
+      "pxPerCell": 140,
+      "widthCells": 30,
+      "heightCells": 20,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "walls": [],
+      "portals": [
+        {
+          "id": "portal-1",
+          "a": {
+            "cellX": 7.9900074,
+            "cellY": 15.0032806
+          },
+          "b": {
+            "cellX": 5.99000549,
+            "cellY": 15.0032806
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-2",
+          "a": {
+            "cellX": 25.0100231,
+            "cellY": 15.0032806
+          },
+          "b": {
+            "cellX": 7.9900074,
+            "cellY": 15.0032806
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-3",
+          "a": {
+            "cellX": 5.99000549,
+            "cellY": 10.9932766
+          },
+          "b": {
+            "cellX": 5.99000549,
+            "cellY": 15.0032806
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-4",
+          "a": {
+            "cellX": 5.99000549,
+            "cellY": 7.99334049
+          },
+          "b": {
+            "cellX": 5.99000549,
+            "cellY": 5.983339
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-5",
+          "a": {
+            "cellX": 5.99000549,
+            "cellY": 9.993276
+          },
+          "b": {
+            "cellX": 5.99000549,
+            "cellY": 7.99334049
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-6",
+          "a": {
+            "cellX": 10.99001,
+            "cellY": 5.983339
+          },
+          "b": {
+            "cellX": 5.99000549,
+            "cellY": 5.983339
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-7",
+          "a": {
+            "cellX": 15.0000134,
+            "cellY": 5.983339
+          },
+          "b": {
+            "cellX": 10.99001,
+            "cellY": 5.983339
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-8",
+          "a": {
+            "cellX": 21.01002,
+            "cellY": 5.983339
+          },
+          "b": {
+            "cellX": 15.0000134,
+            "cellY": 5.983339
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-9",
+          "a": {
+            "cellX": 25.0100231,
+            "cellY": 5.983339
+          },
+          "b": {
+            "cellX": 25.0100231,
+            "cellY": 14.00328
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-10",
+          "a": {
+            "cellX": 25.0100231,
+            "cellY": 15.0032806
+          },
+          "b": {
+            "cellX": 25.0100231,
+            "cellY": 14.00328
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-11",
+          "a": {
+            "cellX": 21.01002,
+            "cellY": 5.983339
+          },
+          "b": {
+            "cellX": 24.0100212,
+            "cellY": 5.983339
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-12",
+          "a": {
+            "cellX": 25.0100231,
+            "cellY": 5.983339
+          },
+          "b": {
+            "cellX": 24.0100212,
+            "cellY": 5.983339
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-13",
+          "a": {
+            "cellX": -0.0200000182,
+            "cellY": 20.0032845
+          },
+          "b": {
+            "cellX": -0.0200000182,
+            "cellY": 10.9932766
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-14",
+          "a": {
+            "cellX": -0.0200000182,
+            "cellY": -0.0166666824
+          },
+          "b": {
+            "cellX": -0.0200000182,
+            "cellY": 8.993275
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-15",
+          "a": {
+            "cellX": 30.0200272,
+            "cellY": -0.0166666824
+          },
+          "b": {
+            "cellX": -0.0200000182,
+            "cellY": -0.0166666824
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-16",
+          "a": {
+            "cellX": 4.99000454,
+            "cellY": 20.0032845
+          },
+          "b": {
+            "cellX": -0.0200000182,
+            "cellY": 20.0032845
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-17",
+          "a": {
+            "cellX": 30.0200272,
+            "cellY": 20.0032845
+          },
+          "b": {
+            "cellX": 30.0200272,
+            "cellY": -0.0166666824
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        },
+        {
+          "id": "portal-18",
+          "a": {
+            "cellX": 4.99000454,
+            "cellY": 20.0032845
+          },
+          "b": {
+            "cellX": 30.0200272,
+            "cellY": 20.0032845
+          },
+          "state": "open",
+          "closed": false,
+          "freestanding": false
+        }
+      ],
+      "lights": [
+        {
+          "id": "light-1",
+          "at": {
+            "cellX": 9.478749,
+            "cellY": 6.454241
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-2",
+          "at": {
+            "cellX": 12.4936924,
+            "cellY": 6.454241
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-3",
+          "at": {
+            "cellX": 18.5235863,
+            "cellY": 6.454236
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-4",
+          "at": {
+            "cellX": 21.5385342,
+            "cellY": 6.454236
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-5",
+          "at": {
+            "cellX": 9.435303,
+            "cellY": 14.5373669
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-6",
+          "at": {
+            "cellX": 12.4502449,
+            "cellY": 14.5373669
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-7",
+          "at": {
+            "cellX": 18.4801445,
+            "cellY": 14.5373669
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        },
+        {
+          "id": "light-8",
+          "at": {
+            "cellX": 21.4950848,
+            "cellY": 14.5373669
+          },
+          "range": 5,
+          "intensity": 1,
+          "color": "#FF9800",
+          "shadows": true,
+          "on": false
+        }
+      ],
+      "ambient": {
+        "level": 1,
+        "baked": true
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/combat champion.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "reserve": [],
+  "templates": [],
+  "settings": {}
+}

@@ -70,6 +70,33 @@
       }
     },
     {
+      "id": "Sable Arène",
+      "name": "Sable Arène",
+      "sourceUrl": "maps/Sable Arène.dd2vtt",
+      "sceneUrl": "maps/generated/Sable Arène.scene.json",
+      "imageUrl": "maps/generated/Sable Arène.webp",
+      "thumbUrl": "maps/generated/Sable Arène.thumb.webp",
+      "levels": [
+        {
+          "levelId": "Sable Arène",
+          "name": "Sable Arène",
+          "thumbUrl": "maps/generated/Sable Arène.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1795170250072
+        }
+      ],
+      "sourceHash": "sha256-58b1546398459f376ffc597a1089660a2fa086a244e6be768ddc0738b7ae20c4",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 0,
+        "lights": 0,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
       "id": "barrage_ulric",
       "name": "Barrage — Ulric",
       "sourceUrl": "maps/barrage_ulric.dd2vtt",
@@ -92,6 +119,33 @@
         "walls": 0,
         "portals": 0,
         "lights": 0,
+        "bakedLighting": true,
+        "animated": false
+      }
+    },
+    {
+      "id": "combat champion",
+      "name": "Combat champion",
+      "sourceUrl": "maps/combat champion.dd2vtt",
+      "sceneUrl": "maps/generated/combat champion.scene.json",
+      "imageUrl": "maps/generated/combat champion.webp",
+      "thumbUrl": "maps/generated/combat champion.thumb.webp",
+      "levels": [
+        {
+          "levelId": "combat champion",
+          "name": "Combat champion",
+          "thumbUrl": "maps/generated/combat champion.thumb.webp",
+          "gridType": "square",
+          "source": "uvtt",
+          "updatedAt": 1795170636298
+        }
+      ],
+      "sourceHash": "sha256-32164323405fd7d06fa44279746fa619b95bc47ff3f1b2a660de99314573494e",
+      "levelCount": 1,
+      "features": {
+        "walls": 0,
+        "portals": 18,
+        "lights": 8,
         "bakedLighting": true,
         "animated": false
       }

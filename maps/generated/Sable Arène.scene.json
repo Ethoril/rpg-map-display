@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "campaignId": "campaign-Sable Arène",
+  "name": "Sable Arène",
+  "levels": [
+    {
+      "id": "Sable Arène",
+      "name": "Sable Arène",
+      "pxPerCell": 140,
+      "widthCells": 30,
+      "heightCells": 20,
+      "grid": {
+        "type": "square",
+        "offsetX": 0,
+        "offsetY": 0,
+        "color": "#000000",
+        "opacity": 0.25,
+        "visible": true
+      },
+      "walls": [],
+      "portals": [],
+      "lights": [],
+      "ambient": {
+        "level": 1,
+        "baked": true
+      },
+      "order": 0,
+      "imageUrl": "maps/generated/Sable Arène.webp",
+      "videoUrl": null,
+      "animatedOverlays": [],
+      "terrainCost": null
+    }
+  ],
+  "links": [],
+  "tokens": [],
+  "reserve": [],
+  "templates": [],
+  "settings": {}
+}
