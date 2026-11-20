@@ -23,6 +23,11 @@ maps/*.uvtt
 maps/*.dd2vtt
 maps/*.df2vtt
 
+# Projets Dungeon Alchemist : la source AVANT export, plus lourde encore et illisible par la
+# chaîne — `SUPPORTED_EXTENSIONS` n'en connaît que les exports. Un .dam déposé dans maps/ était
+# le seul fichier de ce dossier qu'un `git add -A` emportait sans qu'on l'ait voulu.
+maps/*.dam
+
 # Fonds animés et leurs affiches : même raisonnement, en plus lourd encore. Un WebM de
 # carte pèse des dizaines de mégaoctets, et seule la copie de maps/generated/ est servie.
 # L'affiche est reproductible par `node scripts/extract-poster.mjs`.
