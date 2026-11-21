@@ -217,6 +217,17 @@ async function setupMobileLocks() {
     ) {
       return;
     }
+    // Le bouton « ? » et le dialogue d'aide restent isolés : un premier tap sur l'aide (ou
+    // dans le guide ouvert au clavier) ne doit pas déclencher le plein écran de la partie.
+    const targetElement =
+      event.target instanceof Element
+        ? event.target
+        : event.target instanceof Node
+          ? event.target.parentElement
+          : null;
+    if (targetElement?.closest('#player-game-help, #player-help-dialog')) {
+      return;
+    }
     if (firstGestureDone) return;
     firstGestureDone = true;
     document.removeEventListener('pointerdown', onFirstGesture);

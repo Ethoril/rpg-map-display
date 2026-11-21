@@ -485,6 +485,7 @@ test('le guide peut être rejoué puis essayé sans interrompre les actions du M
     await aide.tap();
     const guide = player.getByRole('dialog', { name: 'Aide de jeu' });
     await expect(guide).toBeVisible();
+    await guide.getByRole('button', { name: 'Déplacer mon personnage' }).tap();
     await guide.getByRole('button', { name: 'Choisir l’arrivée' }).tap();
     await expect(guide.getByText(CONFIRMER, { exact: true })).toBeVisible();
     await player.screenshot({ path: testInfo.outputPath('aide-de-jeu.png') });

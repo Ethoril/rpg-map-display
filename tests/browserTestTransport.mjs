@@ -134,13 +134,8 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
   }
   await page.addInitScript(
     ({ injectedSessionId, injectedSnapshot }) => {
-      Object.defineProperty(Element.prototype, 'requestFullscreen', {
-        configurable: true,
-        value: () => Promise.resolve(),
-      });
-
       let documentHidden = false;
-      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void, savedSnapshot: string|null, connectivite: Set<(connected: boolean) => void>, setConnected: (connected: boolean) => void}} */
+      /** @type {{published: any[], received: any[], gap: boolean, resyncs: number, resyncFailures: number, fullscreenRequests: number, snapshot: any, setHidden: (hidden: boolean) => void, retenir: boolean, retenus: any[], relacher: () => void, debloquer: () => void, savedSnapshot: string|null, connectivite: Set<(connected: boolean) => void>, setConnected: (connected: boolean) => void}} */
       const wire = {
         published: [],
         received: [],
@@ -152,6 +147,7 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
         gap: false,
         resyncs: 0,
         resyncFailures: 0,
+        fullscreenRequests: 0,
         // Remplacé par un test qui veut simuler un état que ce client a manqué ; `null` laisse
         // l'instantané injecté au démarrage.
         snapshot: null,
@@ -174,6 +170,13 @@ export async function installBrowserTransport(page, sessionId, snapshot) {
           for (const handler of wire.connectivite) handler(connected);
         },
       };
+      Object.defineProperty(Element.prototype, 'requestFullscreen', {
+        configurable: true,
+        value: () => {
+          wire.fullscreenRequests += 1;
+          return Promise.resolve();
+        },
+      });
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => documentHidden });
       Object.defineProperty(document, 'visibilityState', {
         configurable: true,

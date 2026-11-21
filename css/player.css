@@ -377,7 +377,8 @@ canvas {
   width: min(940px, calc(100% - 32px));
   max-height: calc(100% - 32px);
   max-height: calc(100dvh - 32px);
-  padding: clamp(16px, 3vw, 28px);
+  padding: 0;
+  overflow: hidden;
   color: #f4eee2;
   background: #151e26;
   border: 1px solid #485764;
@@ -386,33 +387,121 @@ canvas {
   overscroll-behavior: contain;
 }
 
+#player-help-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 #player-help-dialog::backdrop {
   background: rgba(0, 0, 0, 0.8);
 }
 
 #player-help-dialog header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex: 0 0 auto;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  padding-bottom: 14px;
+  gap: 10px 12px;
+  padding: clamp(12px, 2.2vw, 20px) clamp(14px, 3vw, 28px);
   border-bottom: 1px solid #485764;
   background: #151e26;
 }
 
+.player-help-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-help-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(14px, 2.5vw, 24px) clamp(14px, 3vw, 28px) clamp(18px, 3vw, 28px);
+}
+
+#player-help-dialog [hidden] {
+  display: none !important;
+}
+
 #player-help-dialog h1,
-#player-help-dialog h2 {
+#player-help-dialog h2,
+#player-help-dialog h3 {
   margin: 0;
   line-height: 1.2;
 }
 
 #player-help-dialog h1 { font-size: 1.15rem; }
-#player-help-dialog h2 { margin: 20px 0 16px; font-size: 1.55rem; }
+#player-help-dialog h2 { margin: 0 0 16px; font-size: 1.45rem; }
+#player-help-dialog h2:focus { outline: none; }
 
+/* ── Sommaire des fiches ──────────────────────────────────────────────────────────────────── */
+.player-help-toc-intro {
+  margin: 0 0 16px;
+  color: #cbd5df;
+  font-size: 0.95rem;
+}
+
+.player-help-toc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.player-help-toc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: #1b2630;
+  border: 1px solid #354451;
+  border-radius: 10px;
+}
+
+.player-help-toc-group h2 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  color: #ffbf47;
+}
+
+.player-help-toc-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#player-help-dialog .player-help-toc-item {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  line-height: 1.3;
+}
+
+#player-help-dialog .player-help-toc-item.is-featured {
+  border-color: #ffbf47;
+  color: #fff2c8;
+  background: #273440;
+}
+
+.player-help-toc-arrow {
+  flex: 0 0 auto;
+  color: #ffbf47;
+  font-weight: 700;
+}
+
+/* ── Fiche active ─────────────────────────────────────────────────────────────────────────── */
 .player-help-content {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr);
@@ -420,8 +509,16 @@ canvas {
   gap: 20px;
 }
 
+.player-help-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
 #player-help-dialog button {
   min-height: 44px;
+  min-width: 44px;
   padding: 6px 12px;
   color: #f4eee2;
   background: #242f39;
@@ -432,10 +529,29 @@ canvas {
   touch-action: manipulation;
 }
 
+#player-help-dialog button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+#player-help-dialog .player-help-undo:disabled,
+#player-help-dialog .player-help-level-tab:disabled,
+#player-help-dialog .player-help-share-close:disabled,
+#player-help-dialog .player-help-join-submit:disabled,
+#player-help-dialog .player-help-fs-btn:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 #player-game-help:focus-visible,
-#player-help-dialog button:focus-visible {
+#player-help-dialog button:focus-visible,
+#player-help-dialog input:focus-visible {
   outline: 2px solid #ffdd4a;
   outline-offset: 2px;
+}
+
+.player-help-instructions {
+  min-width: 0;
 }
 
 .player-help-instructions ol {
@@ -446,6 +562,19 @@ canvas {
   list-style: none;
 }
 
+.player-help-step-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.player-help-step-group h3 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #c7d3de;
+}
+
 .player-help-instructions [data-example] {
   width: 100%;
   text-align: left;
@@ -454,15 +583,54 @@ canvas {
 #player-help-dialog [aria-pressed="true"] {
   border-color: #ffbf47;
   color: #fff2c8;
+  background: #2b3844;
 }
 
-.player-help-instructions p {
+.player-help-caption {
   min-height: 3em;
   margin: 14px 0;
   font-size: 1.05rem;
+  color: #f4eee2;
+}
+
+.player-help-note {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: #d6e0e8;
+  background: #1d2933;
+  border-left: 3px solid #63717c;
+  border-radius: 4px;
+}
+
+.player-help-note-link {
+  margin-top: 8px;
+  width: 100%;
+  text-align: left;
 }
 
 .player-help-actions { display: grid; gap: 6px; }
+
+.player-help-extra {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+#player-help-dialog .player-help-assist-btn {
+  background: #1d2933;
+  border-style: dashed;
+  border-color: #8293a2;
+  color: #e6edf3;
+  font-size: 0.88rem;
+}
+
+#player-help-dialog .player-help-gm-btn {
+  background: #213447;
+  border-color: #5b9bd5;
+  color: #e5f1fc;
+}
 
 #player-help-dialog [data-help-practice] {
   background: #ffbf47;
@@ -470,6 +638,7 @@ canvas {
   color: #1e1a10;
 }
 
+/* ── Plateau grille (Déplacer, Corriger, Étages, Monture) ─────────────────────────────────── */
 .player-help-board {
   position: relative;
   display: grid;
@@ -477,22 +646,83 @@ canvas {
   aspect-ratio: 7 / 5;
   background: #28333a;
   border: 1px solid #63717c;
+  overflow: hidden;
+  border-radius: 6px;
 }
 
-#player-help-dialog .player-help-board button {
+.player-help-board.is-upper-floor {
+  background: #2a2f3d;
+}
+
+#player-help-dialog .player-help-board button.player-help-cell {
+  position: relative;
   padding: 0;
   min-height: 0;
+  min-width: 0;
   border: 0;
   border-radius: 0;
   box-shadow: inset 0 0 0 0.5px #4f5a62;
   background: transparent;
 }
 
-#player-help-dialog .player-help-board button:disabled { cursor: default; }
-#player-help-dialog .player-help-board button:focus-visible { outline-offset: -3px; }
-#player-help-dialog .player-help-board .is-reachable { background: #245642; }
-#player-help-dialog .player-help-board .is-route { background: #725123; }
-#player-help-dialog .player-help-board .is-arrival { box-shadow: inset 0 0 0 2px #ffbf47; }
+#player-help-dialog .player-help-board button.player-help-cell:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+#player-help-dialog .player-help-board button.player-help-cell:focus-visible { outline-offset: -3px; }
+#player-help-dialog .player-help-board button.player-help-cell.is-reachable {
+  background: rgba(34, 197, 94, 0.36);
+  box-shadow: inset 0 0 0 1.5px #22c55e;
+}
+
+/* Course : jaune hachuré + bordure pointillée, distinct de la Marche sans la couleur */
+#player-help-dialog .player-help-board button.player-help-cell.is-run {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 221, 74, 0.42) 0 4px,
+      rgba(255, 221, 74, 0.14) 4px 10px
+    );
+  box-shadow: inset 0 0 0 1.5px #ffdd4a;
+}
+
+#player-help-dialog .player-help-board button.player-help-cell.is-route {
+  background-color: rgba(114, 81, 35, 0.68);
+}
+
+#player-help-dialog .player-help-board button.player-help-cell.is-arrival {
+  box-shadow: inset 0 0 0 2.5px #ffbf47;
+}
+
+.player-help-cell-tag {
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font: 700 0.72rem/1.1 system-ui, sans-serif;
+  color: #f4eee2;
+  background: rgba(16, 24, 32, 0.72);
+  pointer-events: none;
+}
+
+.player-help-floor-decor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.player-help-route-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
 
 .player-help-pawn,
 .player-help-touch {
@@ -503,16 +733,44 @@ canvas {
   display: grid;
   place-items: center;
   pointer-events: none;
+  z-index: 3;
 }
 
-.player-help-pawn { color: #fff2c8; transition: transform 480ms cubic-bezier(0.77, 0, 0.175, 1); }
+.player-help-pawn {
+  color: #fff2c8;
+  transition: transform 480ms cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+.player-help-pawn-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #101820;
+  border: 1.5px solid #ffbf47;
+  pointer-events: none;
+}
+
+.player-help-pawn-badge img {
+  width: 12px;
+  height: 12px;
+}
+
+.player-help-touch {
+  z-index: 6;
+}
 
 .player-help-touch::after {
   content: '';
   width: 60%;
   aspect-ratio: 1;
-  border: 2px solid #ffffff;
+  border: 2.5px solid #ffffff;
   border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(16, 24, 32, 0.75);
 }
 
 .player-help-touch[hidden],
@@ -520,25 +778,741 @@ canvas {
 
 .player-help-prompt {
   position: absolute;
-  left: clamp(7rem, var(--help-prompt-x, 50%), 100% - 7rem);
+  z-index: 5;
+  left: clamp(7.2rem, var(--help-prompt-x, 50%), 100% - 7.2rem);
   transform: translateX(-50%);
   max-width: calc(100% - 16px);
   width: max-content;
-  padding: 5px 8px;
+  padding: 5px 9px;
   color: #fff2c8;
   background: #101820;
+  border: 1px solid rgba(255, 191, 71, 0.65);
   border-radius: 6px;
   font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1.25;
   text-align: center;
   pointer-events: none;
 }
 
+.player-help-prompt.has-strip {
+  left: 8px;
+  right: 118px;
+  transform: none;
+  width: auto;
+  max-width: none;
+}
+
+.player-help-prompt-sub {
+  display: block;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #e6edf3;
+}
+
+.player-help-prompt-run {
+  display: block;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #ffd9b8;
+}
+
+/* Bouton « Retirer la dernière étape » dans l'exercice, fidèle à #player-undo-step */
+#player-help-dialog .player-help-undo {
+  position: absolute;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: #fff2c8;
+  background: #101820;
+  border: 1.5px solid #ffbf47;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#player-help-dialog .player-help-undo.is-ringed::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(16, 24, 32, 0.75);
+  pointer-events: none;
+}
+
+.player-help-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.82rem;
+  color: #d6e0e8;
+}
+
+.player-help-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-help-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.player-help-swatch.is-walk {
+  background: rgba(34, 197, 94, 0.45);
+  border: 1.5px solid #22c55e;
+}
+
+.player-help-swatch.is-run {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 221, 74, 0.5) 0 3px,
+    rgba(255, 221, 74, 0.14) 3px 7px
+  );
+  border: 1.5px dashed #ffdd4a;
+}
+
+.player-help-swatch.is-route {
+  height: 0;
+  border-top: 3px dashed #ffbf47;
+  border-radius: 0;
+}
+
+/* ── Scènes Canvas locales (Cadrer, Consulter, Ping, Porte, Gabarit) ──────────────────────── */
+.player-help-canvas-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 7 / 5;
+  background: #1e272e;
+  border: 1px solid #63717c;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.player-help-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+.player-help-gesture-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.player-help-status-pill {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 5;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff2c8;
+  background: rgba(16, 24, 32, 0.85);
+  border: 1px solid rgba(255, 191, 71, 0.45);
+  pointer-events: none;
+}
+
+/* ── Onglets d'étage dans l'aide (fidèles à #player-level-tabs) ───────────────────────────── */
+.player-help-scene-box {
+  position: relative;
+  border: 1px solid #63717c;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1e272e;
+}
+
+.player-help-scene-box .player-help-board {
+  border: 0;
+  border-radius: 0;
+}
+
+.player-help-level-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.48);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  overflow-x: auto;
+}
+
+#player-help-dialog .player-help-level-tab {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 14px;
+  color: #eee;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+#player-help-dialog .player-help-level-tab[aria-selected="true"] {
+  font-weight: 700;
+  color: #111111;
+  background: #eeeeee;
+  border-color: #eeeeee;
+}
+
+#player-help-dialog .player-help-level-tab.is-ringed::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 2.5px solid #ffbf47;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.player-help-link-marker {
+  position: absolute;
+  z-index: 2;
+  width: calc(100% / 7);
+  height: calc(100% / 5);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.player-help-link-dot {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.72);
+  border: 2px solid #dbeafe;
+  color: #ffffff;
+  font: 700 15px/1 system-ui, sans-serif;
+}
+
+/* ── Bande de sélection locale (Consulter & Monture) ──────────────────────────────────────── */
+.player-help-strip {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-height: calc(100% - 16px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  overflow-y: auto;
+  background: rgba(10, 16, 22, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 8px;
+}
+
+#player-help-dialog .player-help-strip .player-selection-mount,
+#player-help-dialog .player-help-strip .player-selection-badge {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+#player-help-dialog .player-help-strip .player-selection-mount:disabled {
+  opacity: 0.65;
+  filter: grayscale(1);
+  border: 1px dashed #a4b3c0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#player-help-dialog .player-help-strip .is-ringed::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(16, 24, 32, 0.8);
+  pointer-events: none;
+}
+
+.player-help-strip-label {
+  position: absolute;
+  right: 118px;
+  bottom: 24px;
+  z-index: 7;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  background: rgba(16, 24, 32, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* ── Encart porte verrouillée ─────────────────────────────────────────────────────────────── */
+.player-help-portal-inset {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(16, 24, 32, 0.92);
+  border: 1px solid #63717c;
+  font-size: 0.82rem;
+  color: #f4eee2;
+  pointer-events: none;
+}
+
+/* ── Fiche Image partagée ─────────────────────────────────────────────────────────────────── */
+.player-help-share-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 7 / 5;
+  border: 1px solid #63717c;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #243038;
+}
+
+.player-help-share-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.player-help-corner-chrome {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.player-help-mini-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  font: 650 17px system-ui, sans-serif;
+  color: #f4eee2;
+  background: rgba(16, 24, 32, 0.78);
+  border: 1px solid #63717c;
+}
+
+.player-help-mini-icon.is-fs {
+  opacity: 0.65;
+}
+
+.player-help-share-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.player-help-share-art {
+  width: min(72%, 280px);
+  max-height: 78%;
+  display: block;
+}
+
+#player-help-dialog .player-help-share-close {
+  position: absolute;
+  top: 8px;
+  right: 98px;
+  z-index: 5;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  line-height: 1;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+}
+
+#player-help-dialog .player-help-share-close.is-ringed::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 2.5px solid #ffbf47;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.player-help-share-ring {
+  position: absolute;
+  top: 8px;
+  right: 98px;
+  z-index: 6;
+  width: 52px;
+  height: 52px;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(16, 24, 32, 0.8);
+  pointer-events: none;
+}
+
+/* ── Fiche Rejoindre la table ─────────────────────────────────────────────────────────────── */
+.player-help-join-frame {
+  box-sizing: border-box;
+  position: relative;
+  min-height: 290px;
+  padding: 16px;
+  background: #121212;
+  border: 1px solid #63717c;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.player-help-join-title {
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.player-help-code-ref {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  background: #1c2833;
+  border: 1px solid #ffbf47;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #fff2c8;
+}
+
+.player-help-code-ref strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.2rem;
+  letter-spacing: 0.28em;
+}
+
+.player-help-join-card {
+  box-sizing: border-box;
+  max-width: 360px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.player-help-join-card h3 {
+  font-size: 1.15rem;
+  color: #50e3c2;
+}
+
+.player-help-join-card label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #cccccc;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.player-help-join-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  background: #2a2a2a;
+  color: #ffffff;
+  border: 1.5px solid #555555;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.25rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  text-align: center;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.player-help-join-input::placeholder {
+  font-family: system-ui, sans-serif;
+  font-size: 0.9rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #9ba7b2;
+}
+
+.player-help-join-input.is-highlighted {
+  border-color: #ffbf47;
+  box-shadow: 0 0 0 2px rgba(255, 191, 71, 0.35);
+}
+
+#player-help-dialog .player-help-join-submit {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #ffffff;
+}
+
+#player-help-dialog .player-help-join-submit.is-ringed::before {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translateY(-50%);
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 0 2.5px rgba(16, 24, 32, 0.85);
+  pointer-events: none;
+}
+
+#player-help-dialog .player-help-join-submit.is-ringed::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2.5px solid #ffbf47;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.player-help-join-error {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #ffd9b8;
+}
+
+.player-help-join-table {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 7 / 4;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #485764;
+  background: #243038;
+}
+
+/* ── Fiche Plein écran ────────────────────────────────────────────────────────────────────── */
+.player-help-fs-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 7 / 5;
+  border: 1px solid #63717c;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0d1318;
+  display: flex;
+  flex-direction: column;
+}
+
+.player-help-browser-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #222c35;
+  border-bottom: 1px solid #41505d;
+  font-size: 0.8rem;
+  color: #cbd5df;
+}
+
+.player-help-browser-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.player-help-browser-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5c6d7c;
+}
+
+.player-help-browser-url {
+  flex: 1 1 auto;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #141c23;
+  color: #aebbc7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-help-fs-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  margin: 10px;
+  border: 1px solid #485764;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #243038;
+  transition: margin 220ms ease;
+}
+
+.player-help-fs-frame.is-fullscreen .player-help-browser-bar {
+  display: none;
+}
+
+.player-help-fs-frame.is-fullscreen .player-help-fs-viewport {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.player-help-fs-tabs {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 112px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.player-help-fs-tabs span {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  color: #eee;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.player-help-fs-tabs span.is-active {
+  color: #111;
+  background: #eee;
+  font-weight: 700;
+}
+
+.player-help-fs-controls {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-help-fs-help-badge {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #f4eee2;
+  background: rgba(16, 24, 32, 0.78);
+  border: 1px solid #63717c;
+  font: 650 18px system-ui, sans-serif;
+  pointer-events: none;
+}
+
+#player-help-dialog .player-help-fs-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(16, 24, 32, 0.82);
+  border: 1px solid #8fa0ae;
+}
+
+#player-help-dialog .player-help-fs-btn.is-ringed::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2.5px solid #ffbf47;
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.player-help-fs-callout {
+  position: absolute;
+  top: 58px;
+  right: 8px;
+  z-index: 5;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #101820;
+  border: 1px solid #ffbf47;
+  color: #fff2c8;
+  font-size: 0.8rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 @media (max-width: 640px) {
+  #player-help-dialog {
+    width: calc(100% - 16px);
+    max-height: calc(100% - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .player-help-toc-grid { grid-template-columns: minmax(0, 1fr); }
   .player-help-content { grid-template-columns: minmax(0, 1fr); }
+  .player-help-strip-label { right: 108px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .player-help-pawn { transition: none; }
+  .player-help-pawn,
+  .player-help-fs-viewport { transition: none; }
 }
 
 .image-share-close:focus-visible {
