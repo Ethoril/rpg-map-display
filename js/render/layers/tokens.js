@@ -86,8 +86,16 @@ function interpolateCell(a, b, ratio) {
  */
 function tokenPosition(token, now) {
   const move = token.move;
+  const repos = { cellX: token.cell.a, cellY: token.cell.b, active: false };
   if (!move || !Number.isFinite(move.startedAt)) {
-    return { cellX: token.cell.a, cellY: token.cell.b, active: false };
+    return repos;
+  }
+  // ⛔ `cell` fait foi, `move` ne fait qu'animer le chemin qui y mène. Un `move` dont l'arrivée
+  // n'est plus la case du pion est périmé : franchissement d'escalier (le pion changeait d'étage
+  // et restait dessiné sur l'escalier de départ, invisible là où l'état le plaçait — combat du
+  // 21/11/2026), conversion de grille, campagne d'une version antérieure. Il ne déplace rien.
+  if (!move.to || move.to.a !== token.cell.a || move.to.b !== token.cell.b) {
+    return repos;
   }
 
   /** @type {Cell[]} */
@@ -95,13 +103,13 @@ function tokenPosition(token, now) {
     ? move.path
     : [move.from, move.to];
   if (path.length < 2) {
-    return { cellX: token.cell.a, cellY: token.cell.b, active: false };
+    return repos;
   }
 
   const elapsed = Math.max(0, now - move.startedAt);
   const duration = (path.length - 1) * TOKEN_MOVE_STEP_MS;
   if (elapsed >= duration) {
-    return { cellX: move.to.a, cellY: move.to.b, active: false };
+    return repos;
   }
 
   const progress = elapsed / TOKEN_MOVE_STEP_MS;
