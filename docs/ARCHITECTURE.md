@@ -179,8 +179,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  LOCALE ; sur les pions, SOUS le fog
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
 │   │       ├─ templates.js       [2]  gabarits de zone d'effet
-│   │       ├─ engagements.js     [L5] traits d'engagement du contrat de liaison §10 —
-│   │                                  ⛔ vue MJ SEULE, jamais publiés ; paires reçues de l'outil MJ
+│   │       ├─ engagements.js     [L5] traits d'engagement du contrat de liaison §10, et halo
+│   │                                  du pion actif (mj.turn, 21/11/2026) —
+│   │                                  ⛔ vue MJ SEULE, jamais publiés ; reçus de l'outil MJ
 │   │       ├─ measure.js         [4]  mesure de distance au geste (MJ local)
 │   │       ├─ pings.js           [4]  marqueur « regarde ici », transitoire — ⚠ ne lit
 │   │                                  PAS le store : un ping est un geste, pas une donnée,

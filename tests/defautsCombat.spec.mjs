@@ -194,3 +194,72 @@ test('Encart joueurs : dans le noir, un pion hors de la vision de la table ne s�
   await expect(player.locator(BANDE)).toBeHidden();
   await context.close();
 });
+
+// ── Pion actif cerné sur l'écran MJ (`mj.turn`, contrat §10, révision du 21/11/2026) ───────────
+
+/**
+ * Pixels dorés (halo du tour) autour du centre de la case (a, b), en pixels écran.
+ * @param {import('@playwright/test').Page} page @param {number} a @param {number} b
+ */
+const orAutour = (page, a, b) => page.evaluate(([ca, cb, px]) => {
+  const app = /** @type {any} */ (window).__RPG_APP__;
+  const c = app.camera.mapToScreen({ x: (ca + 0.5) * px, y: (cb + 0.5) * px });
+  const res = app.stage?.resolution ?? window.devicePixelRatio ?? 1;
+  const demi = (px / 2) * app.camera.zoom + 24;
+  const d = app.context.getImageData(Math.round((c.screenX - demi) * res), Math.round((c.screenY - demi) * res), Math.round(2 * demi * res), Math.round(2 * demi * res)).data;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i] > 225 && d[i + 1] > 180 && d[i + 1] < 225 && d[i + 2] < 90) n++;
+  return n / (res * res);
+}, [a, b, PXE]);
+
+/** Message de l'outil MJ, par le vrai canal (même origine). @param {import('@playwright/test').Page} page @param {any} payload */
+const envoyerTour = (page, payload) => page.evaluate((p) => {
+  const canal = new BroadcastChannel('wfrp-map-link');
+  canal.postMessage({ v: 1, type: 'mj.turn', seq: Date.now(), at: Date.now(), from: 'outil-mj', payload: p });
+  canal.close();
+}, payload);
+
+test('Pion actif : le MJ voit le pion du participant actif cerné d’or ; la tablette, jamais', async ({ browser }) => {
+  const context = await browser.newContext();
+  const sessionId = `defauts-tour-${Date.now()}`;
+  const gm = await context.newPage();
+  const player = await context.newPage();
+  const snap = instantaneEncart(1);
+  // Le gobelin et le PJ sont liés à l'outil MJ.
+  const tokens = /** @type {any[]} */ (snap.campaign.tokens);
+  tokens[0].link = { source: 'outil-mj', ref: 'pj:c1' };
+  tokens[1].link = { source: 'outil-mj', ref: 'p:gob' };
+  await Promise.all([installBrowserTransport(gm, sessionId, snap), installBrowserTransport(player, sessionId, snap)]);
+  await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
+  await Promise.all([waitForApp(gm), waitForApp(player)]);
+  await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getSessionVision('rdc') !== null), { timeout: 8000 }).toBe(true);
+
+  // Aucun tour : aucun or autour des pions.
+  expect(await orAutour(gm, 5, 4)).toBe(0);
+  expect(await orAutour(gm, 4, 4)).toBe(0);
+
+  await envoyerTour(gm, { ref: 'p:gob' });
+  await expect.poll(() => orAutour(gm, 5, 4), { timeout: 5000 }).toBeGreaterThan(150);
+
+  // Le tour passe au PJ : le halo le suit.
+  await envoyerTour(gm, { ref: 'pj:c1' });
+  await expect.poll(() => orAutour(gm, 4, 4), { timeout: 5000 }).toBeGreaterThan(150);
+  // Et quitte le gobelin — hors de la bande qu'il partage avec le PJ voisin, côté droit.
+  await expect.poll(() => gm.evaluate(([ca, cb, px]) => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const c = app.camera.mapToScreen({ x: (ca + 1) * px, y: (cb + 0.5) * px });
+    const res = app.stage?.resolution ?? window.devicePixelRatio ?? 1;
+    const d = app.context.getImageData(Math.round(c.screenX * res), Math.round((c.screenY - 20) * res), Math.round(20 * res), Math.round(40 * res)).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i] > 225 && d[i + 1] > 180 && d[i + 1] < 225 && d[i + 2] < 90) n++;
+    return n;
+  }, [5, 4, PXE]), { timeout: 5000 }).toBe(0);
+
+  // La tablette ne montre jamais le tour.
+  expect(await orAutour(player, 4, 4)).toBe(0);
+
+  // Fin du combat : plus de halo.
+  await envoyerTour(gm, { ref: null });
+  await expect.poll(() => orAutour(gm, 4, 4), { timeout: 5000 }).toBe(0);
+  await context.close();
+});

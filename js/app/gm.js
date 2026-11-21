@@ -135,6 +135,8 @@ export async function bootstrapGMApp(options = {}) {
   /** Traits d'engagement de l'outil MJ (contrat §10) — ⛔ vue MJ seule ; paires fournies par la liaison. */
   const engagementsLayer = new EngagementsLayer();
   let engagementPairs = () => /** @type {[string, string][]} */ ([]);
+  /** Participant actif de l'outil MJ (`mj.turn`, contrat §10) — ⛔ vue MJ seule. */
+  let activeTurnRef = () => /** @type {string|null} */ (null);
   /** @type {{ levelId: string, start: import('../core/types.js').MapPoint, end: import('../core/types.js').MapPoint|null, distance: number }|null} */
   let currentMeasure = null;
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -935,6 +937,12 @@ export async function bootstrapGMApp(options = {}) {
           pairs: engagementPairs(),
           zoom: camera.zoom,
         });
+        // Le pion qui joue, cerné d'or (combat du 21/11/2026).
+        engagementsLayer.renderActiveTurn(stage.context, grid, activeLevel, {
+          tokens: state.campaign?.tokens ?? [],
+          ref: activeTurnRef(),
+          zoom: camera.zoom,
+        });
       },
       measure: () => {
         measureLayer.render(stage.context, grid, activeLevel, {
@@ -1411,6 +1419,7 @@ export async function bootstrapGMApp(options = {}) {
   if (mjLink) reportMove = (tokenId, path) => { mjLink.reportMove(tokenId, path); };
   if (mjLink) {
     engagementPairs = () => mjLink.engagements();
+    activeTurnRef = () => mjLink.activeTurn();
     mjLink.subscribe(() => requestRender());
   }
 

@@ -8,6 +8,9 @@ import { SquareGrid } from '../js/grid/SquareGrid.js';
 import { TokensLayer } from '../js/render/layers/tokens.js';
 import { applyNetworkEvent } from '../js/app/networkEvents.js';
 import { getCampaign, moveTokenToCell, resetStore, traverseLink } from '../js/state/store.js';
+import * as storeModule from '../js/state/store.js';
+import { startMjLink, MJ_LINK_TIMEOUT_MS } from '../js/app/mjLink.js';
+import { EngagementsLayer, activeTurnToken } from '../js/render/layers/engagements.js';
 
 const PX = 100;
 
@@ -100,4 +103,84 @@ test('Bug escaliers : le franchissement reçu du réseau (tablette → MJ) donne
   const hero = getCampaign()?.tokens.find((t) => t.id === 'hero');
   assert.ok(hero);
   assert.deepEqual(drawnCell(hero, 'et1'), { a: 6, b: 5 });
+});
+
+// ── Pion actif cerné sur l'écran MJ (`mj.turn`, contrat §10, révision du 21/11/2026) ───────────
+
+
+class FakeChannel {
+  /** @type {FakeChannel|null} */ static last = null;
+  /** @type {((e: any) => void)|null} */ onmessage = null;
+  constructor() { FakeChannel.last = this; }
+  postMessage() {}
+  close() {}
+  /** @param {any} data */ deliver(data) { this.onmessage?.({ data }); }
+}
+/** @param {string} type @param {any} payload */
+const mj = (type, payload) => ({ v: 1, type, seq: 1, at: 0, from: 'outil-mj', payload });
+
+test('Pion actif : mj.turn retenu pour l’écran MJ, abonnés prévenus, oublié à la déconnexion', () => {
+  storeModule.loadCampaign(campagneAEscalier());
+  let horloge = 0;
+  const link = startMjLink({
+    store: /** @type {any} */ (storeModule), publish: () => {}, createToken, activeLevelId: () => storeModule.getActiveLevelId(),
+    sessionId: 's', Channel: /** @type {any} */ (FakeChannel), now: () => horloge,
+  });
+  assert.ok(link && FakeChannel.last);
+  const canal = /** @type {FakeChannel} */ (FakeChannel.last);
+  let prevenus = 0;
+  link.subscribe(() => prevenus++);
+  canal.deliver(mj('mj.ping', {}));
+  prevenus = 0;
+  assert.equal(link.activeTurn(), null);
+  canal.deliver(mj('mj.turn', { ref: 'p:gob' }));
+  assert.equal(link.activeTurn(), 'p:gob');
+  assert.equal(prevenus, 1, 'le rendu MJ est relancé');
+  canal.deliver(mj('mj.turn', { ref: 'p:gob' }));
+  assert.equal(prevenus, 1, 'tour inchangé : rien à redessiner');
+  canal.deliver(mj('mj.turn', { ref: null }));
+  assert.equal(link.activeTurn(), null, 'hors tour');
+  canal.deliver(mj('mj.turn', { ref: 'pj:c1' }));
+  canal.deliver(mj('mj.turn', { ref: 42 }));
+  assert.equal(link.activeTurn(), null, 'ref mal formée = aucun pion');
+  canal.deliver(mj('mj.turn', { ref: 'pj:c1' }));
+  horloge += MJ_LINK_TIMEOUT_MS + 1;
+  link.tick();
+  assert.equal(link.activeTurn(), null, 'outil MJ perdu : plus de halo figé sur un ancien tour');
+  link.close();
+});
+
+test('Pion actif : le halo cerne l’emprise du pion lié ou de la monture fusionnée, sur son étage seulement', () => {
+  const level = createLevel({ id: 'rdc', pxPerCell: PX, widthCells: 10, heightCells: 8 });
+  const grid = new SquareGrid(level);
+  const lie = (/** @type {string} */ id, /** @type {string} */ ref, /** @type {number} */ a, /** @type {number} */ b, patch = {}) =>
+    ({ ...createToken({ id, levelId: 'rdc', cell: { a, b } }), link: { source: /** @type {'outil-mj'} */ ('outil-mj'), ref }, ...patch });
+  const tokens = [
+    lie('gob', 'p:gob', 2, 3, { sizeCells: 2 }),
+    lie('cav', 'pj:c1', 6, 1, { rider: { ref: 'p:cheval', label: 'Cheval', imageUrl: null } }),
+    lie('cave', 'p:cave', 1, 1, { levelId: 'et1' }),
+  ];
+  assert.equal(activeTurnToken(/** @type {any} */ (tokens), 'rdc', 'p:cheval')?.id, 'cav', 'monture fusionnée : le pion du cavalier');
+  assert.equal(activeTurnToken(/** @type {any} */ (tokens), 'rdc', 'p:cave'), null, 'autre étage : aucun halo ici');
+  assert.equal(activeTurnToken(/** @type {any} */ (tokens), 'rdc', null), null);
+
+  /** @type {{x: number, y: number, r: number}[]} */
+  const arcs = [];
+  let traits = 0;
+  const ctx = /** @type {any} */ ({
+    save() {}, restore() {}, beginPath() {}, stroke() { traits++; }, lineWidth: 1, strokeStyle: '',
+    arc(/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ r) { arcs.push({ x, y, r }); },
+  });
+  const layer = new EngagementsLayer();
+  assert.equal(layer.renderActiveTurn(ctx, grid, level, { tokens: /** @type {any} */ (tokens), ref: 'p:gob', zoom: 1 }), true);
+  assert.ok(traits > 0);
+  // Pion 2×2 en (2,3) : centre (300, 400), rayon au-delà de la demi-emprise (100 px).
+  for (const arc of arcs) {
+    assert.equal(arc.x, 300);
+    assert.equal(arc.y, 400);
+    assert.ok(arc.r > 100, `halo autour de l’emprise, pas dessus (rayon ${arc.r})`);
+  }
+  arcs.length = 0;
+  assert.equal(layer.renderActiveTurn(ctx, grid, level, { tokens: /** @type {any} */ (tokens), ref: 'p:inconnu' }), false);
+  assert.deepEqual(arcs, [], 'pion inconnu : rien');
 });

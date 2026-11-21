@@ -576,7 +576,7 @@ export const MJ_LINK_ECHO_MS = LIAISON_CARTE.echoMs;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, engagements: () => [string, string][] }|null}
+ * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, engagements: () => [string, string][], activeTurn: () => string|null }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -598,6 +598,13 @@ export function startMjLink(options) {
   /** Traits d'engagement (`mj.engagements`, contrat §10) : écran MJ seul, jamais republiés. */
   /** @type {[string, string][]} */
   let engagements = [];
+  /**
+   * `ref` du participant actif (`mj.turn`, contrat §10, révision du 21/11/2026) : halo sur l'écran
+   * MJ seul, jamais republié ni persisté. Oublié à la déconnexion : un halo figé sur l'ancien tour
+   * tromperait le MJ.
+   * @type {string|null}
+   */
+  let activeTurn = null;
   /** Dernier état « posé » annoncé à l'outil MJ (`map.placed` / `map.unplaced`), `ref` → étage. */
   /** @type {Map<string, string>} */
   let announcedPlaced = new Map();
@@ -672,6 +679,14 @@ export function startMjLink(options) {
       notify();
       return;
     }
+    if (message.type === 'mj.turn') {
+      const ref = typeof message.payload?.ref === 'string' && message.payload.ref ? message.payload.ref : null;
+      if (ref !== activeTurn) {
+        activeTurn = ref;
+        notify();
+      }
+      return;
+    }
     const campaign = options.store.getCampaign();
     if (!campaign) {
       if (message.type !== 'mj.ping') missedWithoutCampaign = true;
@@ -724,7 +739,10 @@ export function startMjLink(options) {
         missedWithoutCampaign = false;
         hello();
       }
-      if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) setStatus('disconnected');
+      if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) {
+        activeTurn = null;
+        setStatus('disconnected');
+      }
     },
     close() {
       unsubscribe();
@@ -738,6 +756,7 @@ export function startMjLink(options) {
     },
     roster: () => roster.map((entry) => ({ ...entry })),
     engagements: () => engagements.map(([a, b]) => /** @type {[string, string]} */ ([a, b])),
+    activeTurn: () => activeTurn,
     /**
      * Fin de déplacement d'un pion : s'il est lié et que son trajet dépasse la Marche, il a couru
      * et l'outil MJ en est prévenu (`map.ran`, contrat §10) — une fois par déplacement.
