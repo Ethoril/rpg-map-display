@@ -390,6 +390,20 @@ n°2) : son contenu est fixé là, et un bouton de plus s'y décide comme toute 
 s'ouvre que sur un pion que la tablette a le droit de déplacer, puisque c'est le seul qu'elle sache
 sélectionner.
 
+> **Amendement du 21/11/2026 — l'encart du pion, et la consultation** (demande du mainteneur après
+> un combat réel : « toucher un ennemi n'ouvre rien »). En tête de bande, au-dessus du bouton
+> cheval, un **encart** : portrait (à défaut, disque du camp et initiales), nom, vitalité. Toucher,
+> sans sélection active, un pion que la tablette ne déplace pas — PNJ, ennemi, neutre, PJ bridé —
+> l'ouvre en **consultation**, en lecture seule : l'encart et les badges, **sans aucun bouton**,
+> sans zone ni préparation, rien de publié. Tout autre tap la referme.
+>
+> - ⛔ **Rien de secret.** Vitalité d'un PJ : ses PV, déjà sur son anneau. De tout autre pion : son
+>   état à trois crans (Indemne, Blessé, Mal en point), déjà sur son anneau — **jamais ses PV**.
+>   Tous les états, ceux des ennemis compris (contrat de liaison §4).
+> - ⛔ **Seulement ce que la table voit** : un pion caché, hors de la vision publiée ou sur un autre
+>   étage ne s'ouvre pas, et l'encart se ferme dès qu'il cesse d'être vu ; il ne se rouvre pas seul.
+> - La consultation est un état **local** de la tablette, jamais publié ni persisté.
+
 **Vue MJ (souris) — le même parcours par clics est disponible ; drag conservé**, sans contrainte d'atteignabilité pour le glisser, avec seuil de
 ~150 ms pour distinguer tap et drag. Le MJ garde ainsi le placement libre hors grille
 quand il en a besoin.

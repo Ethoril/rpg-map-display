@@ -88,3 +88,109 @@ for (const [nom, patch] of /** @type {const} */ ([['publique', {}], ['MJ seule',
   await expect.poll(() => encreInvite(gm), { timeout: 8000 }).toBeGreaterThan(avant + 40);
   await context.close();
 });
+
+// ── Encart des joueurs : consulter un pion que la tablette ne déplace pas ──────────────────────
+
+const PXE = 100;
+/** @param {number} ambiant */
+const etageEncart = (ambiant) => ({ id: 'rdc', name: 'RDC', order: 0, imageUrl: '', videoUrl: null, animatedOverlays: [], pxPerCell: PXE, widthCells: 14, heightCells: 8, grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true }, terrainCost: null, walls: [], portals: [], lights: [], ambient: { level: ambiant, baked: false } });
+/**
+ * @param {string} id
+ * @param {{a: number, b: number}} cell
+ * @param {Record<string, unknown>} patch
+ */
+const pionEncart = (id, cell, patch) => ({ id, levelId: 'rdc', cell, sizeCells: 1, kind: 'npc', imageUrl: '', borderColor: '#ff0000', label: id, hidden: false, visionDim: 2, emitsLight: null, speedCells: 4, playerMovable: true, locked: false, elevation: 0, markers: [], hp: null, health: 'unharmed', mounted: false, ...patch });
+const instantaneEncart = (ambiant = 1) => ({
+  campaign: {
+    schemaVersion: 2, campaignId: 'defauts-encart', name: 'Encart', levels: [etageEncart(ambiant)], links: [],
+    tokens: [
+      pionEncart('pj', { a: 4, b: 4 }, { kind: 'pc', label: 'Elysia', hp: { current: 7, max: 12 } }),
+      pionEncart('gob', { a: 5, b: 4 }, { label: 'Gobelin 2', camp: 'ennemi', health: 'wounded', hp: { current: 3, max: 10 }, markers: ['prone', 'bleeding'] }),
+      pionEncart('cache', { a: 4, b: 2 }, { label: 'Assassin', camp: 'ennemi', hidden: true }),
+      pionEncart('loin', { a: 12, b: 4 }, { label: 'Sentinelle', camp: 'neutre' }),
+    ],
+    templates: [], settings: {},
+  }, activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+});
+/** @param {import('@playwright/test').Page} page @param {number} a @param {number} b */
+const taperCase = (page, a, b) => page.evaluate(([ca, cb, px]) => /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({ type: 'tap', mapPos: { x: (ca + 0.5) * px, y: (cb + 0.5) * px }, screenPos: { x: 0, y: 0 } }), [a, b, PXE]);
+const BANDE = '#player-selection-strip';
+
+/** @param {import('@playwright/test').Browser} browser @param {number} ambiant */
+async function tableAvecMj(browser, ambiant) {
+  const context = await browser.newContext();
+  const sessionId = `defauts-encart-${ambiant}-${Date.now()}`;
+  const gm = await context.newPage();
+  const player = await context.newPage();
+  const snap = instantaneEncart(ambiant);
+  await Promise.all([installBrowserTransport(gm, sessionId, snap), installBrowserTransport(player, sessionId, snap)]);
+  await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
+  await Promise.all([waitForApp(gm), waitForApp(player)]);
+  // La vision du MJ doit être arrivée : sans elle, la tablette ne montre aucun pion.
+  await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getSessionVision('rdc') !== null), { timeout: 8000 }).toBe(true);
+  return { context, gm, player };
+}
+
+test('Encart joueurs : un ennemi visible s’ouvre en lecture seule — image, nom, état à trois crans, états ; jamais ses PV', async ({ browser }) => {
+  const { context, player } = await tableAvecMj(browser, 1);
+  await expect(player.locator(BANDE)).toBeHidden();
+  const avant = await player.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.published.length);
+
+  await taperCase(player, 5, 4);
+  const bande = player.locator(BANDE);
+  await expect(bande).toBeVisible();
+  await expect(bande.locator('.player-selection-name')).toHaveText('Gobelin 2');
+  await expect(bande.locator('.player-selection-vitality')).toHaveText('Blessé');
+  await expect(bande.locator('.player-selection-portrait')).toHaveText('G2');
+  await expect(bande).not.toContainText('PV');
+  await expect(bande).not.toContainText('3/10');
+  await expect(bande.locator('.player-selection-badge')).toHaveCount(2);
+  // Lecture seule : aucun bouton d'action, aucune sélection, rien publié.
+  await expect(bande.locator('.player-selection-mount')).toHaveCount(0);
+  expect(await player.evaluate(async () => (await import('../js/state/store.js')).getState().selectedTokenId)).toBe(null);
+  expect(await player.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.published.length)).toBe(avant);
+
+  // Un état change côté MJ : l'encart suit.
+  await player.evaluate(async () => (await import('../js/state/store.js')).updateToken('gob', { markers: ['prone'] }));
+  await expect(bande.locator('.player-selection-badge')).toHaveCount(1);
+
+  // Un tap ailleurs referme.
+  await taperCase(player, 10, 6);
+  await expect(bande).toBeHidden();
+
+  // Un PJ sélectionné ouvre la bande avec son encart : nom et PV (lisibles sur son anneau).
+  await taperCase(player, 4, 4);
+  await expect(bande.locator('.player-selection-name')).toHaveText('Elysia');
+  await expect(bande.locator('.player-selection-vitality')).toHaveText('PV 7/12');
+  await expect(bande.locator('.player-selection-mount')).toHaveCount(1);
+  await context.close();
+});
+
+test('Encart joueurs : un pion caché ne s’ouvre pas, et l’encart se ferme quand le MJ cache le pion consulté', async ({ browser }) => {
+  const { context, player } = await tableAvecMj(browser, 1);
+  await taperCase(player, 4, 2);
+  await player.waitForTimeout(200);
+  await expect(player.locator(BANDE)).toBeHidden();
+
+  await taperCase(player, 5, 4);
+  await expect(player.locator(BANDE)).toBeVisible();
+  await player.evaluate(async () => (await import('../js/state/store.js')).updateToken('gob', { hidden: true }));
+  await expect(player.locator(BANDE)).toBeHidden();
+  // Redevenu visible, il ne se rouvre pas tout seul.
+  await player.evaluate(async () => (await import('../js/state/store.js')).updateToken('gob', { hidden: false }));
+  await player.waitForTimeout(200);
+  await expect(player.locator(BANDE)).toBeHidden();
+  await context.close();
+});
+
+test('Encart joueurs : dans le noir, un pion hors de la vision de la table ne s’ouvre pas', async ({ browser }) => {
+  const { context, player } = await tableAvecMj(browser, 0);
+  // Témoin : le gobelin, adjacent au PJ, est vu — l'encart s'ouvre, la vision est donc bien là.
+  await taperCase(player, 5, 4);
+  await expect(player.locator(BANDE)).toBeVisible();
+  // La sentinelle, à huit cases dans le noir, n'est pas peinte : la toucher ne dit rien.
+  await taperCase(player, 12, 4);
+  await player.waitForTimeout(200);
+  await expect(player.locator(BANDE)).toBeHidden();
+  await context.close();
+});

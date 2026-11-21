@@ -192,6 +192,61 @@ canvas {
   pointer-events: none;
 }
 
+/* Encart du pion, en tête de bande (combat du 21/11/2026) : portrait, nom, vitalité. Le même en
+   sélection et en consultation ; en consultation, la bande n'a aucun bouton. Jamais tapable. */
+.player-selection-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 92px;
+  font-family: system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.player-selection-portrait {
+  box-sizing: border-box;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.player-selection-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.player-selection-portrait.is-dead {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+.player-selection-name {
+  max-width: 100%;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  color: #ffffff;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px #000000;
+}
+
+.player-selection-vitality {
+  font-size: 0.75rem;
+  color: #e5e7eb;
+  text-shadow: 0 1px 2px #000000;
+}
+
 /* ⛔ Le focus reste VISIBLE (même règle que `.player-level-tab`). Décalage vers l'intérieur :
    la bande défile, et un contour qui déborde y serait coupé. */
 .player-selection-mount:focus-visible,

@@ -220,8 +220,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │       ├─ imageShareOverlay.js [C-13] image partagée en plein écran, croix qui la ferme pour tous
 │   │       ├─ levelSelector.js   [3]  sélecteur d'étage joueurs
 │   │       └─ selectionStrip.js [C-9] bande de sélection, bord droit, tant qu'un pion est
-│   │                                  sélectionné : monter / descendre, badges d'état et leur
-│   │                                  nom — 5e dérogation de CONVENTIONS.md §8 n°2
+│   │                                  sélectionné : encart du pion, monter / descendre, badges
+│   │                                  d'état et leur nom ; consultation en lecture seule d'un
+│   │                                  pion vu (21/11/2026) — 5e dérogation de CONVENTIONS.md §8 n°2
 │   │
 │   └─ app/
 │       ├─ movePlanning.js        [Retour session] contrôleur commun et aperçus éphémères

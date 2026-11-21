@@ -87,27 +87,41 @@ const ICON_FULLSCREEN_EXIT =
  */
 function promptAtCellOf(state, activeLevel, visibleCanvas) {
   const porteur = state.selectedToken;
-  if (!porteur || porteur.levelId !== activeLevel.id) return null;
-  if (porteur.hidden) return null;
+  if (!porteur) return null;
   if (!isPlayerManipulableToken(porteur)) return null;
-  if (store.getSessionVision(activeLevel.id) === null) return null;
+  if (!visibleALaTable(porteur, activeLevel, visibleCanvas)) return null;
+  return porteur.cell;
+}
+
+/**
+ * Ce pion est-il peint sur la tablette à l'instant ? Les DEUX conditions de `TokensLayer` (voir
+ * `promptAtCellOf`) : une vision publiée pour l'étage, et la case d'ancrage dans ce masque. Plus
+ * l'étage affiché et `hidden`.
+ *
+ * ⛔ Sert aussi de garde à la consultation d'un pion (combat du 21/11/2026) : `findHitToken` ne
+ * consulte pas le fog, et un encart ouvert sur un pion que la table ne voit pas dirait qu'il est
+ * là.
+ *
+ * @param {import('../core/types.js').Token} token
+ * @param {import('../core/types.js').Level} activeLevel
+ * @param {HTMLCanvasElement|null} visibleCanvas Masque de vision courant de cet étage
+ * @returns {boolean}
+ */
+function visibleALaTable(token, activeLevel, visibleCanvas) {
+  if (token.levelId !== activeLevel.id || token.hidden) return false;
+  if (store.getSessionVision(activeLevel.id) === null) return false;
   const maskAlpha = visibleCanvas
     ? getOrExtractMaskAlpha(visibleCanvas, activeLevel.widthCells, activeLevel.heightCells)
     : null;
-  if (!maskAlpha) return null;
-  if (
-    !isCellVisibleInMask(
-      porteur.cell,
-      maskAlpha,
-      activeLevel.widthCells,
-      activeLevel.heightCells,
-      activeLevel.grid?.type === 'hex' ? 'hex' : 'square',
-      gridFor(activeLevel).maskLatticeShift()
-    )
-  ) {
-    return null;
-  }
-  return porteur.cell;
+  if (!maskAlpha) return false;
+  return isCellVisibleInMask(
+    token.cell,
+    maskAlpha,
+    activeLevel.widthCells,
+    activeLevel.heightCells,
+    activeLevel.grid?.type === 'hex' ? 'hex' : 'square',
+    gridFor(activeLevel).maskLatticeShift()
+  );
 }
 
 /**
@@ -923,9 +937,26 @@ export async function bootstrapPlayerApp(options = {}) {
   const selectionStripMount = /** @type {HTMLElement|null} */ (
     document.getElementById('player-selection-strip')
   );
+  // Pion consulté (combat du 21/11/2026) : état LOCAL à la tablette, jamais publié ni persisté.
+  /** @type {string|null} */
+  let inspectedTokenId = null;
+  /** @returns {import('../core/types.js').Token|null} */
+  const inspectedToken = () => {
+    if (!inspectedTokenId) return null;
+    const state = store.getState();
+    const token = state.campaign?.tokens.find((t) => t.id === inspectedTokenId) ?? null;
+    // Sorti de la vue, caché, retiré, étage changé : l'encart se ferme pour de bon. Il ne se
+    // rouvrira pas tout seul quand le pion réapparaîtra.
+    if (!token || !state.activeLevel || !visibleALaTable(token, state.activeLevel, getPlayerVisibleCanvas(state.activeLevel))) {
+      inspectedTokenId = null;
+      return null;
+    }
+    return token;
+  };
   const selectionStrip = selectionStripMount
     ? createSelectionStrip(selectionStripMount, {
         getSelectedToken: () => store.getSelectedToken(),
+        getInspectedToken: inspectedToken,
         // État ABSOLU publié, comme le bouton du MJ : `token.mounted` est rejouable. La zone se
         // recalcule d'elle-même, `setTokenMounted` appelant `rafraichirZoneAtteignable`.
         onToggleMounted: (token) => {
@@ -1185,6 +1216,12 @@ export async function bootstrapPlayerApp(options = {}) {
     onTemplatePreview: (preview) => {
       templateDragPreview = preview;
       requestRender();
+    },
+    onInspectToken: (token) => {
+      inspectedTokenId = token ? token.id : null;
+      // La garde de visibilité s'applique dès l'ouverture : un pion hors vision ne s'ouvre pas.
+      inspectedToken();
+      selectionStrip?.update();
     },
   });
   invalidatePendingMoveTap = () => playerControls.pointerInput.invalidatePendingTapIfContextChanged();

@@ -179,8 +179,8 @@ test('C-9 bande : le bouton cheval publie token.mounted (by players), monte le p
   await expect(bouton).not.toHaveAttribute('aria-pressed', /.*/);
   await expect(bouton.locator('img')).toHaveAttribute('src', 'assets/icons/mounted.svg');
   expect(await barre(bouton), 'à pied, le cheval n’est pas barré').toBe(false);
-  // Aucun marqueur → aucun badge : le bouton cheval reste seul.
-  await expect(page.locator(`${BANDE} > *`)).toHaveCount(1);
+  // Aucun marqueur → aucun badge : l'encart du pion (21/11/2026) et le bouton cheval, seuls.
+  await expect(page.locator(`${BANDE} > *`)).toHaveCount(2);
 
   const zoneAPied = await tailleZone(page);
   expect(zoneAPied).toBeGreaterThan(0);
@@ -263,10 +263,10 @@ test('C-9 bande : badges dans l’ordre canonique, bulle du nom à gauche pendan
     { label: 'À terre', src: 'assets/icons/status/prone.svg' },
     { label: 'Empoisonné', src: 'assets/icons/status/poisoned.svg' },
   ]);
-  // Le bouton cheval est en haut, avant les badges.
+  // L'encart du pion en tête (21/11/2026), puis le bouton cheval, avant les badges.
   expect(
     await page.locator(`${BANDE} > *`).evaluateAll((els) => els.map((el) => el.className))
-  ).toEqual(['player-selection-mount', 'player-selection-badge', 'player-selection-badge']);
+  ).toEqual(['player-selection-card', 'player-selection-mount', 'player-selection-badge', 'player-selection-badge']);
 
   // Le temps est figé à partir d'ici : seuls `runFor` le font avancer.
   await page.clock.pauseAt(Date.now() + 1000);
@@ -367,11 +367,14 @@ test('C-9 bande : un token.mounted reçu du MJ pendant la sélection barre le bo
   await context.close();
 });
 
-test('C-9 bande : jamais ouverte pour un PNJ, même sélectionné par un autre chemin que le tap', async ({
+test('C-9 bande : jamais ouverte EN SÉLECTION pour un PNJ, même sélectionné par un autre chemin que le tap', async ({
   page,
 }) => {
   await ouvrir(page, 'pnj');
 
+  // ⚠ Depuis le 21/11/2026, toucher un PNJ VISIBLE l'ouvre en consultation, sans bouton
+  // (`defautsCombat.spec.mjs`). Ici aucun MJ ne publie de vision : la tablette ne peint aucun
+  // pion, et l'encart ne s'ouvre donc pas non plus — c'est la garde de visibilité qui joue.
   await taper(page, 8, 4);
   await page.waitForTimeout(200);
   expect(await selection(page)).toBe(null);
