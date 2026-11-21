@@ -31,7 +31,11 @@ function recordingCtx() {
   };
 }
 
-/** Case où la couche des pions a réellement peint ce pion, déduite de la boîte dessinée. */
+/**
+ * Case où la couche des pions a réellement peint ce pion, déduite de la boîte dessinée.
+ * @param {import('../js/core/types.js').Token} token
+ * @param {string} levelId
+ */
 function drawnCell(token, levelId) {
   const level = getCampaign()?.levels.find((l) => l.id === levelId);
   assert.ok(level);

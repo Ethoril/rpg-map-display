@@ -55,6 +55,19 @@ const LINK_PROMPT_DEFAUT = 'Retaper pour franchir';
  */
 function extremiteJoueur(link, levelId) {
   if (link.gmOnly) return null;
+  return extremiteFranchissable(link, levelId);
+}
+
+/**
+ * L'extrémité d'où cette liaison se PREND depuis cet étage, liaison MJ seule comprise : l'entrée
+ * B d'un sens unique reste écartée. C'est l'équivalent de `store.findLinkAtCell` avec
+ * `includeGmOnly`, que le franchissement côté MJ consulte (combat du 21/11/2026).
+ *
+ * @param {Link} link
+ * @param {string} levelId
+ * @returns {import('../../core/types.js').LinkEndpoint|null}
+ */
+function extremiteFranchissable(link, levelId) {
   if (link.a.levelId === levelId) return link.a;
   if (link.b.levelId === levelId && link.bidirectional) return link.b;
   return null;
@@ -189,7 +202,10 @@ export class LinksLayer {
    * @param {GridAdapter} grid
    * @param {Level} level
    * @param {Link[]} links
-   * @param {{zoom?: number, promptAtCell?: {a: number, b: number}|null}} [options]
+   * Côté MJ (`role: 'gm'`), l'invite vaut aussi pour une liaison MJ seule : le MJ la franchit
+   * du même geste (combat du 21/11/2026).
+   *
+   * @param {{zoom?: number, promptAtCell?: {a: number, b: number}|null, role?: 'gm'|'players'}} [options]
    * @returns {number} 0 ou 1 — jamais plus, voir ci-dessous.
    */
   renderPrompt(ctx, grid, level, links, options = {}) {
@@ -203,7 +219,7 @@ export class LinksLayer {
     // possible. Parcourir `links` dans le même ordre que le store est ce qui garantit que
     // l'invite affichée décrit bien la liaison que le tap prendra.
     for (const link of links) {
-      const endpoint = extremiteJoueur(link, level.id);
+      const endpoint = options.role === 'gm' ? extremiteFranchissable(link, level.id) : extremiteJoueur(link, level.id);
       if (!endpoint) continue;
       if (endpoint.at.cellX !== promptAtCell.a || endpoint.at.cellY !== promptAtCell.b) continue;
 

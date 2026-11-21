@@ -902,6 +902,16 @@ export async function bootstrapGMApp(options = {}) {
             }
           );
         }
+        // Invite de franchissement, au-dessus du voile comme côté joueurs : le pion sélectionné
+        // est posé sur une liaison que le MJ peut prendre d'un second tap (combat du 21/11/2026).
+        const porteur = state.selectedToken;
+        if (porteur && porteur.levelId === activeLevel.id && store.findLinkAtCell(activeLevel.id, porteur.cell, { includeGmOnly: true })) {
+          linksLayer.renderPrompt(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
+            role: 'gm',
+            zoom: camera.zoom,
+            promptAtCell: porteur.cell,
+          });
+        }
         layerDurations.fog = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       // ⛔ Vue MJ SEULE (rang 12) : `player.js` ne branche jamais cette couche.
@@ -1904,6 +1914,47 @@ export async function bootstrapGMApp(options = {}) {
 
       if (winner === 'token' && tokenHit) {
         cancelledMoveAt = null;
+        // ── Franchir une liaison, côté MJ (combat du 21/11/2026) ─────────────────────────
+        //
+        // Même geste en deux temps que la tablette (`ui/player/bootstrap.js`, « Lot 3, S-03 ») :
+        // le pion sélectionné est posé sur l'escalier, le MJ retape sa case. Jusqu'ici ce
+        // second tap ne faisait rien côté MJ, et la liaison paraissait morte dès que le MJ
+        // menait le pion. Case EXACTE (`findLinkAtCell`), comme côté joueurs.
+        //
+        // Le MJ n'est bridé ni par la monture, ni par le verrou, ni par `gmOnly` : il franchit
+        // ce qu'il voit. Le sens unique, lui, tient — c'est la géométrie de la liaison.
+        // ⛔ Aucun écran ne bascule (CLAUDE.md, règle 4) : le pion quitte l'étage affiché.
+        if (
+          activeToolName === 'none' &&
+          state.selectedTokenId === tokenHit.token.id &&
+          tokenHit.token.levelId === activeLevel.id
+        ) {
+          const pion = tokenHit.token;
+          const caseTapee = gridFor(activeLevel).cellFromPoint(intention.mapPos);
+          const liaison =
+            caseTapee && caseTapee.a === pion.cell.a && caseTapee.b === pion.cell.b
+              ? store.findLinkAtCell(activeLevel.id, caseTapee, { includeGmOnly: true })
+              : null;
+          if (liaison) {
+            let destination;
+            try {
+              destination = movePlanning.withSuppressedReconcile(() => store.traverseLink(pion.id, liaison.link.id));
+            } catch {
+              moveZoneLayer.showDestinationFeedback(caseTapee ?? pion.cell, 'refused');
+              requestRender();
+              return;
+            }
+            movePlanning.cancel();
+            transport?.publish({
+              type: 'link.traverse',
+              payload: { tokenId: pion.id, linkId: liaison.link.id, destination },
+              at: Date.now(),
+              by: 'gm',
+            });
+            requestRender();
+            return;
+          }
+        }
         if (state.selectedTokenId !== tokenHit.token.id) {
           movePlanning.cancel();
           cancelledMoveAt = null;
