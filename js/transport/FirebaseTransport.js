@@ -32,6 +32,7 @@ import {
   getFirestore,
   doc,
   getDoc,
+  getDocFromServer,
   deleteField,
   runTransaction as runFirestoreTransaction,
 } from 'firebase/firestore';
@@ -42,6 +43,16 @@ import { MOVE_PREVIEW_MAX_PATH_CELLS } from '../core/constants.js';
 /** @typedef {import('../core/types.js').SharedImage} SharedImage */
 /** @typedef {import('../core/types.js').MovePreview} MovePreview */
 /** @typedef {import('./Transport.js').Transport} Transport */
+
+/** Les événements de jeu durable passent par le réducteur. Les gestes et effets se jouent en direct. */
+const LIVE_ONLY_EVENTS = new Set(['ping', 'fx', 'vision.request', 'vision.update', 'fog.update', 'level.show', 'gm.evict']);
+const EVENT_KEY = /^[-_A-Za-z0-9]{20}$/;
+
+/** @param {unknown} key */
+function snapshotCursor(key) {
+  if (key === null || (typeof key === 'string' && EVENT_KEY.test(key))) return key;
+  return undefined;
+}
 
 /** Champs sans lesquels rien ne peut fonctionner. `databaseURL` n'apparaît dans la console
  * Firebase qu'une fois la Realtime Database créée : son absence est l'oubli le plus fréquent. */
@@ -705,12 +716,13 @@ export function splitSnapshotForFirestoreV3(snapshot, sessionId, revision = Date
     tokenIds,
     activeLevelId: snapshot.activeLevelId ?? null,
     selectedTokenId: snapshot.selectedTokenId ?? null,
+    ...(snapshotCursor(snapshot.eventCursor) !== undefined ? { eventCursor: snapshot.eventCursor } : {}),
   };
   const levels = campaign.levels.map((/** @type {any} */ level) => ({
     id: level.id,
     data: { revision, level: encodeSnapshotForFirestore({ levels: [level] }).levels[0] },
   }));
-  const tokens = campaign.tokens.map((/** @type {any} */ token) => ({ id: token.id, data: { revision, token: { ...token } } }));
+  const tokens = campaign.tokens.map((/** @type {any} */ { move: _animation, ...token }) => ({ id: token.id, data: { revision, token } }));
   const state = {
     revision,
     templates: campaign.templates ?? [],
@@ -880,7 +892,10 @@ export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
   const tokensById = new Map(
     tokens
       .filter((entry) => entry?.data?.revision === attendue(parent.tokenRevisions, entry.id) && entry.data.token)
-      .map((entry) => [entry.id, entry.data.token])
+      .map((entry) => {
+        const { move: _animation, ...token } = entry.data.token;
+        return [entry.id, token];
+      })
   );
   if (expectedTokens.some((/** @type {any} */ id) => !tokensById.has(id))) {
     throw new Error('Snapshot v3 incomplet : un pion référencé manque');
@@ -898,6 +913,7 @@ export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
     },
     activeLevelId: parent.activeLevelId ?? null,
     selectedTokenId: parent.selectedTokenId ?? null,
+    ...(snapshotCursor(parent.eventCursor) !== undefined ? { eventCursor: parent.eventCursor } : {}),
   };
 }
 
@@ -1044,8 +1060,15 @@ export class FirebaseTransport {
     /** @type {Set<(connected: boolean) => void>} Abonnés aux bascules de connexion (A9). */
     this._connectivityHandlers = new Set();
 
-    /** @type {NetEvent[]} Événements reçus avant que `snapshot()` ne soit remis */
+    /** @type {{key: string, event: NetEvent}[]} Événements reçus avant que `snapshot()` ne soit remis */
     this._eventBuffer = [];
+    /** @type {string|null} Dernière clé présente à l'ouverture du canal */
+    this._joinEventCursor = null;
+    /** @type {string|null} Repère dans l'état effectivement remis à l'application */
+    this._integratedEventCursor = null;
+    /** @type {string|null} Evénements déjà intégrés par l'instantané lu */
+    this._loadedSnapshotCursor = null;
+    this._snapshotCursorTrusted = false;
     /** @type {'inactive'|'buffering'|'draining'|'live'} */
     this._deliveryState = 'inactive';
     /** @type {Promise<object>|null} */
@@ -1242,9 +1265,11 @@ export class FirebaseTransport {
    * @private
    * @param {unknown} err
    * @param {string} contexte
+   * @param {'rtdb'|'firestore'} [channel]
+   * @param {string} [operation]
    * @returns {Error} l'erreur normalisée, telle qu'elle a été signalée
    */
-  _reportError(err, contexte) {
+  _reportError(err, contexte, channel, operation = contexte) {
     const detail =
       /** @type {any} */ (err)?.code || /** @type {any} */ (err)?.message || String(err);
     const message = `FirebaseTransport : échec ${contexte} — ${detail}`;
@@ -1254,6 +1279,7 @@ export class FirebaseTransport {
             code: /** @type {any} */ (err).code,
           })
         : new Error(message);
+    if (channel) Object.assign(reported, { syncContext: { channel, operation } });
     console.error(message, err);
 
     if (this._errorHandlers.size === 0) {
@@ -1331,6 +1357,10 @@ export class FirebaseTransport {
     this._deliveryState = 'buffering';
     this._snapshotPromise = null;
     this._eventBuffer = [];
+    this._joinEventCursor = null;
+    this._integratedEventCursor = null;
+    this._loadedSnapshotCursor = null;
+    this._snapshotCursorTrusted = false;
     this._eventCursor = null;
     this._eventsSinceRetentionAttempt = 0;
     this._lastRetentionAttemptAt = 0;
@@ -1350,11 +1380,8 @@ export class FirebaseTransport {
     // client, qui manquerait alors un delta sans aucun moyen de le savoir.
     await this._startRetentionClient(epoch);
 
-    // Ne recevoir QUE les événements postérieurs à la connexion. `onChildAdded` rejoue sinon
-    // tous les enfants déjà présents : à la reconnexion, un client se verrait resservir
-    // l'historique entier de la séance. On relève donc la dernière clé existante et on
-    // n'écoute qu'au-delà. Les clés `push` sont chronologiquement ordonnées, ce qui rend ce
-    // repère fiable sans dépendre d'une horloge cliente.
+    // L'écoute reçoit les événements postérieurs à la connexion. Le rattrapage des mutations
+    // antérieures partira du repère de l'instantané, une fois Firestore lu.
     /** @type {string|null} */
     let derniereCle = null;
     try {
@@ -1380,6 +1407,7 @@ export class FirebaseTransport {
     // effectivement branchée. Les callbacks peuvent déjà le faire avancer sans lever cette
     // barrière ; seule `_activateRetentionClient()` publie l'état `active`.
     this._eventCursor = derniereCle;
+    this._joinEventCursor = derniereCle;
 
     // Canal vide : la référence nue suffit, elle ne rejouera rien puisqu'il n'y a rien.
     // Canal non vide : on borne strictement après la dernière clé connue. Pas de sentinelle
@@ -1393,28 +1421,29 @@ export class FirebaseTransport {
       (snapshot) => {
         if (epoch !== this._sessionEpoch) return;
         const eventKey = snapshot.key;
+        if (!eventKey) return;
         const netEvent = decodeEventFromRtdb(snapshot.val());
         // M\u00eame une ancienne entr\u00e9e invalide ne doit pas bloquer toute la file. Le client
         // l'a observ\u00e9e et n'en a donc pas besoin. Les entr\u00e9es valides sont d'abord
         // tamponn\u00e9es ou livr\u00e9es, puis seulement accus\u00e9es au r\u00e9seau.
         if (!netEvent || typeof netEvent.type !== 'string') {
-          if (eventKey) this._acknowledgeEvent(eventKey, epoch);
+          this._acknowledgeEvent(eventKey, epoch);
           return;
         }
         if (this._deliveryState === 'live') {
-          this._notifySubscribers(netEvent);
+          this._deliverEvent(eventKey, netEvent);
         } else {
-          this._eventBuffer.push(netEvent);
+          this._eventBuffer.push({ key: eventKey, event: netEvent });
         }
-        if (eventKey) this._acknowledgeEvent(eventKey, epoch);
+        this._acknowledgeEvent(eventKey, epoch);
       },
       (err) => {
         if (epoch === this._sessionEpoch) {
-          this._reportError(err, `écoute des événements de la session "${sessionId}"`);
+          this._reportError(err, `écoute des événements de la session "${sessionId}"`, 'rtdb', 'Réception des événements');
         }
       }
     );
-    await this._activateRetentionClient(epoch);
+    // Le client reste `joining` jusqu'au rattrapage : la queue antérieure peut encore lui servir.
   }
 
   /**
@@ -1639,25 +1668,26 @@ export class FirebaseTransport {
     // Rendre `current` à la place ferait retélécharger TOUTE la session, événements compris, à
     // chaque tentative.
     //
-    // Lecture puis suppression, sans transaction, et c'est sûr parce que la frontière est
-    // MONOTONE : un curseur n'avance jamais qu'en avant, donc une frontière lue en retard est
-    // prudente. Un client qui arrive après la lecture s'annonce `joining`, lit la dernière clé et
-    // n'écoute qu'après elle : il n'a jamais besoin d'un événement antérieur à la frontière. Un
-    // client dont le bail a expiré en est exclu, et c'est `mayHaveMissedEvents` qui le resynchronise.
+    // Lecture puis suppression sous deux bornes : les clients actifs ont reçu les deltas, et
+    // Firestore les intègre déjà. Un client qui arrive après la lecture part de ce repère durable.
     const db = this._db;
     const sessionId = this._sessionId;
     const serverNow = Date.now() + this._serverTimeOffset;
-    const [clientsSnap, presenceSnap] = await Promise.all([
+    const [clientsSnap, presenceSnap, saved] = await Promise.all([
       get(ref(db, `session/${sessionId}/retentionClients`)),
       get(ref(db, `session/${sessionId}/presence`)),
+      this._firestore ? getDocFromServer(doc(this._firestore, 'campaigns', sessionId)) : null,
     ]);
     if (epoch !== this._sessionEpoch) return 0;
     const status = getAcknowledgedEventFrontier(clientsSnap.val(), serverNow, presenceSnap.val() ?? {});
     if (status.blocked || !status.frontier) return 0;
+    const durable = snapshotCursor(saved?.data()?.eventCursor);
+    if (!durable) return 0;
+    const frontier = status.frontier < durable ? status.frontier : durable;
 
     const eventsRef = ref(db, `session/${sessionId}/events`);
     const aSupprimer = await get(
-      query(eventsRef, orderByKey(), endAt(status.frontier), limitToFirst(EVENT_RETENTION_BATCH_SIZE))
+      query(eventsRef, orderByKey(), endAt(frontier), limitToFirst(EVENT_RETENTION_BATCH_SIZE))
     );
     if (!aSupprimer.exists() || epoch !== this._sessionEpoch) return 0;
     /** @type {Record<string, null>} */
@@ -1715,7 +1745,7 @@ export class FirebaseTransport {
         clientId: this._clientId,
       });
     } catch (err) {
-      return { ok: false, error: this._reportError(err, contexte) };
+      return { ok: false, error: this._reportError(err, contexte, 'rtdb') };
     }
 
     this._scheduleAutomaticRetention();
@@ -1753,10 +1783,11 @@ export class FirebaseTransport {
     const epoch = this._sessionEpoch;
     this._snapshotPromise = (async () => {
       let etat = {};
+      let remoteReadSucceeded = !this._firestore;
       if (this._firestore) {
         try {
           const docRef = doc(this._firestore, 'campaigns', sessionId);
-          const docSnap = await getDoc(docRef);
+          const docSnap = await getDocFromServer(docRef);
           if (docSnap.exists()) {
             const parent = docSnap.data();
             if (parent.schemaVersion === FIRESTORE_V3_SCHEMA_VERSION) {
@@ -1766,8 +1797,9 @@ export class FirebaseTransport {
               etat = decodeSnapshotFromFirestore(parent);
             }
           }
+          remoteReadSucceeded = true;
         } catch (err) {
-          this._reportError(err, `lecture du snapshot "${sessionId}"`);
+          this._reportError(err, `lecture du snapshot "${sessionId}"`, 'firestore', 'Lecture de la sauvegarde');
         }
       }
 
@@ -1799,6 +1831,15 @@ export class FirebaseTransport {
         throw new Error('La session a changé pendant la lecture du snapshot');
       }
 
+      const durable = snapshotCursor(/** @type {any} */ (etat).eventCursor);
+      const historical = await this._readSnapshotGap(durable);
+      if (epoch !== this._sessionEpoch) throw new Error('La session a changé pendant le rattrapage');
+      this._loadedSnapshotCursor = durable ?? null;
+      this._snapshotCursorTrusted = remoteReadSucceeded;
+      this._integratedEventCursor = durable === undefined ? this._joinEventCursor : durable;
+      this._eventBuffer = historical.concat(this._eventBuffer);
+      if (this._liveQuery) await this._activateRetentionClient(epoch);
+
       // La continuation de `await snapshot()` applique l'état complet avant que ce timer
       // ne vide les deltas reçus pendant sa lecture.
       setTimeout(() => this._activateBufferedEvents(epoch), 0);
@@ -1817,6 +1858,36 @@ export class FirebaseTransport {
   }
 
   /**
+   * Recharge les mutations conservées entre la dernière sauvegarde et l'ouverture du canal.
+   * Un repère absent désigne un ancien instantané dont la frontière reste inconnue.
+   * @param {string|null|undefined} durable
+   * @returns {Promise<{key: string, event: NetEvent}[]>}
+   */
+  async _readSnapshotGap(durable) {
+    const tail = this._joinEventCursor;
+    if (durable === undefined || !tail || (durable && durable >= tail) || !this._liveQuery) return [];
+    const eventsRef = this._liveQuery.ref;
+    const range = durable === null ? query(eventsRef, orderByKey(), endAt(tail))
+      : query(eventsRef, orderByKey(), startAfter(durable), endAt(tail));
+    const children = await get(range);
+    /** @type {{key: string, event: NetEvent}[]} */
+    const historical = [];
+    children.forEach((child) => {
+      const event = decodeEventFromRtdb(child.val());
+      if (child.key && event?.type && !LIVE_ONLY_EVENTS.has(event.type)) {
+        historical.push({ key: child.key, event: { ...event, recovered: true } });
+      }
+    });
+    return historical;
+  }
+
+  /** Repère à capturer en même temps que l'état de la campagne. */
+  getSnapshotEventCursor() {
+    return this._snapshotCursorTrusted && (this._deliveryState === 'live' || this._deliveryState === 'draining')
+      ? this._integratedEventCursor : undefined;
+  }
+
+  /**
    * Persiste le document de campagne dans Firestore et LocalStorage (repli).
    *
    * @param {object} campaignData
@@ -1829,6 +1900,9 @@ export class FirebaseTransport {
     const sessionId = this._sessionId;
     if (!campaignData || typeof campaignData !== 'object') {
       throw new Error('Snapshot invalide pour sauvegarde');
+    }
+    if (!Object.hasOwn(campaignData, 'eventCursor')) {
+      campaignData = { ...campaignData, eventCursor: this.getSnapshotEventCursor() };
     }
     assertNoTransientAssetUrls(campaignData, 'snapshot');
 
@@ -1869,6 +1943,11 @@ export class FirebaseTransport {
           // réellement validée, jamais d'une énumération périmée de sous-collection.
           const previousParentSnap = await transaction.get(parentRef);
           const existingParent = previousParentSnap.exists() ? previousParentSnap.data() : null;
+          const previousCursor = snapshotCursor(existingParent?.eventCursor);
+          const writingCursor = snapshotCursor(/** @type {any} */ (campaignData).eventCursor);
+          if (previousCursor && (!writingCursor || previousCursor > writingCursor)) {
+            throw new Error('Sauvegarde dépassée par un état qui intègre des événements plus récents');
+          }
           const v3 = splitSnapshotForFirestoreV3(
             campaignData,
             sessionId,
@@ -1928,10 +2007,22 @@ export class FirebaseTransport {
           });
         }
       } catch (err) {
-        this._reportError(err, `sauvegarde du snapshot "${this._sessionId}"`);
+        this._reportError(err, `sauvegarde du snapshot "${this._sessionId}"`, 'firestore', 'Sauvegarde');
         throw err;
       }
     }
+  }
+
+  /** @param {import('../core/types.js').SyncIncident[]} incidents */
+  async saveTabletDiagnostics(incidents) {
+    if (!this._db || !this._sessionId || this._role !== 'players') throw new Error('Tablette déconnectée');
+    await set(ref(this._db, `session/${this._sessionId}/tabletDiagnostics`), incidents);
+  }
+
+  /** @param {(incidents: unknown) => void} handler */
+  watchTabletDiagnostics(handler) {
+    if (!this._db || !this._sessionId || this._role !== 'gm') return () => {};
+    return onValue(ref(this._db, `session/${this._sessionId}/tabletDiagnostics`), (value) => handler(value.val()));
   }
 
   /**
@@ -2502,7 +2593,7 @@ export class FirebaseTransport {
    *
    * @param {string} sessionId
    * @param {{ dryRun?: boolean, confirm?: boolean }} [options]
-   * @returns {Promise<{ sessionId: string, dryRun: boolean, hasEvents: boolean, purged: boolean, activeRetentionClients: string[], retentionBlocked: boolean }>}
+   * @returns {Promise<{ sessionId: string, dryRun: boolean, hasEvents: boolean, purged: boolean, retained?: number, activeRetentionClients: string[], retentionBlocked: boolean }>}
    */
   async purgeSessionEvents(sessionId, options = {}) {
     const [inspection] = await this.inspectSessions([sessionId]);
@@ -2530,13 +2621,19 @@ export class FirebaseTransport {
       blocked: true,
     };
     let hadEvents = false;
+    let retained = 0;
+    let removed = 0;
     try {
+      const saved = this._firestore ? await getDocFromServer(doc(this._firestore, 'campaigns', sessionId)) : null;
+      const durable = snapshotCursor(saved?.data()?.eventCursor);
       const result = await runTransaction(
         sessionRef,
         (/** @type {any} */ current) => {
           if (!current || typeof current !== 'object') {
             transactionStatus = { frontier: null, activeClientIds: [], blocked: false };
             hadEvents = false;
+            retained = 0;
+            removed = 0;
             return current;
           }
           transactionStatus = getAcknowledgedEventFrontier(
@@ -2547,8 +2644,17 @@ export class FirebaseTransport {
           if (transactionStatus.blocked || transactionStatus.activeClientIds.length > 0) {
             return; // `undefined` annule la transaction sans écrire.
           }
-          hadEvents = Boolean(current.events && typeof current.events === 'object');
-          return { ...current, events: null };
+          const events = Object.entries(current.events ?? {});
+          // Les sessions historiques sans repère conservent le ménage explicite existant.
+          // Avec repère, la purge garde les mutations que la prochaine reprise doit lire.
+          const keep = durable === undefined ? [] : events.filter(([key, raw]) => {
+            const event = decodeEventFromRtdb(raw);
+            return (!durable || key > durable) && event?.type && !LIVE_ONLY_EVENTS.has(event.type);
+          });
+          hadEvents = events.length > 0;
+          retained = keep.length;
+          removed = events.length - keep.length;
+          return { ...current, events: retained ? Object.fromEntries(keep) : null };
         },
         { applyLocally: false }
       );
@@ -2563,7 +2669,8 @@ export class FirebaseTransport {
         sessionId,
         dryRun: false,
         hasEvents: hadEvents,
-        purged: hadEvents,
+        purged: removed > 0,
+        retained,
         activeRetentionClients: [],
         retentionBlocked: false,
       };
@@ -2722,10 +2829,20 @@ export class FirebaseTransport {
     if (epoch !== this._sessionEpoch || this._deliveryState !== 'buffering') return;
     this._deliveryState = 'draining';
     while (this._eventBuffer.length > 0) {
-      const event = /** @type {NetEvent} */ (this._eventBuffer.shift());
-      this._notifySubscribers(event);
+      const { key, event } = /** @type {{key: string, event: NetEvent}} */ (this._eventBuffer.shift());
+      this._deliverEvent(key, event);
+    }
+    if (this._joinEventCursor && (!this._integratedEventCursor || this._joinEventCursor > this._integratedEventCursor)) {
+      this._integratedEventCursor = this._joinEventCursor;
     }
     this._deliveryState = 'live';
+  }
+
+  /** @param {string} key @param {NetEvent} event */
+  _deliverEvent(key, event) {
+    const alreadySaved = this._loadedSnapshotCursor && key <= this._loadedSnapshotCursor;
+    if (!alreadySaved || LIVE_ONLY_EVENTS.has(event.type)) this._notifySubscribers(event);
+    if (!this._integratedEventCursor || key > this._integratedEventCursor) this._integratedEventCursor = key;
   }
 
   /**

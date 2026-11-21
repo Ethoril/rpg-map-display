@@ -176,6 +176,45 @@ test('le ping du MJ apparaît sur la vue joueurs, dans le budget de 500 ms', asy
   await context.close();
 });
 
+test('le ping hors cadre indique son bord et redevient un ping quand les joueurs glissent la carte', async ({ browser }) => {
+  const { context, mj, joueurs } = await ouvrirLesDeux(browser, `ping-bord-${Date.now()}`);
+  try {
+    await joueurs.evaluate(() => {
+      const { camera, frameLoop } = /** @type {any} */ (window).__RPG_APP__;
+      camera.setZoom(2);
+      camera.setPan(300, 500);
+      frameLoop.requestFrame();
+    });
+    const pixelsJaunes = () => joueurs.evaluate(() => {
+      const { canvas, context, camera } = /** @type {any} */ (window).__RPG_APP__;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      const ratio = canvas.width / camera.screenWidth;
+      let bord = 0, centre = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] > 200 && pixels[i + 1] > 150 && pixels[i + 1] < 235 && pixels[i + 2] < 90) {
+          const x = ((i / 4) % canvas.width) / ratio;
+          if (x > camera.screenWidth - 52) bord++;
+          else if (x > camera.screenWidth / 2 - 80 && x < camera.screenWidth / 2 + 250) centre++;
+        }
+      }
+      return { bord, centre, x: camera.x, zoom: camera.zoom };
+    });
+    await pinger(mj);
+    await expect.poll(async () => (await pixelsJaunes()).bord).toBeGreaterThan(10);
+    expect(await pixelsJaunes()).toMatchObject({ x: 300, zoom: 2, centre: 0 });
+    const rect = await joueurs.locator('#board').boundingBox();
+    if (!rect) throw new Error('Carte absente');
+    await joueurs.mouse.move(rect.x + rect.width - 70, rect.y + rect.height / 2);
+    await joueurs.mouse.down();
+    await joueurs.mouse.move(rect.x + rect.width - 850, rect.y + rect.height / 2, { steps: 3 });
+    await joueurs.mouse.up();
+    await expect.poll(async () => (await pixelsJaunes()).centre).toBeGreaterThan(10);
+    expect(await pixelsJaunes()).toMatchObject({ bord: 0, zoom: 2 });
+  } finally {
+    await context.close();
+  }
+});
+
 test('⭐ un MJ dont l’horloge avance de 5,3 s reste visible chez les joueurs', async ({ browser }) => {
   // Le test qui justifie la conception du chantier. Si le ping était animé depuis `event.at`, comme
   // l'animation des pions l'est depuis `move.startedAt`, cet horodatage arriverait 5,3 s dans le

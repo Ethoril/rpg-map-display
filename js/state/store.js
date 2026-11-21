@@ -692,6 +692,8 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
       path: moveData.path ?? [fromCell, { a: cell.a, b: cell.b }],
       startedAt: moveData.startedAt ?? Date.now(),
     };
+  } else {
+    delete token.move;
   }
 
   assertValidCampaign(candidate, `Déplacement du pion "${tokenId}"`);

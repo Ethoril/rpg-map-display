@@ -20,7 +20,8 @@ import { FxLayer, parseFx, prefersReducedMotion, shouldPlayFx } from '../render/
 import { decodeFogPng, getOrExtractMaskAlpha, isCellVisibleInMask } from '../vision/fog.js';
 import { createPlayerLevelSelector } from '../ui/player/levelSelector.js';
 import { createSelectionStrip } from '../ui/player/selectionStrip.js';
-import { gridFor } from '../grid/index.js';
+import { mountPlayerGameHelp } from '../ui/player/gameHelp.js';
+import { distanceBetweenFootprints, gridFor } from '../grid/index.js';
 import { extractBlockedSegments } from '../import/blockedEdges.js';
 import { bootstrapPlayerView } from '../ui/player/bootstrap.js';
 import { isPlayerManipulableToken } from '../input/tokenHit.js';
@@ -28,6 +29,7 @@ import { withTemplatePreview } from '../input/templateHit.js';
 import { mountPlayerVersionBadge } from '../ui/versionBadge.js';
 import { mountImageShareOverlay } from '../ui/player/imageShareOverlay.js';
 import { VISION_REQUEST_EVENT } from '../core/constants.js';
+import { isLinkedToken } from '../core/schema.js';
 import {
   createNetworkStatus,
   connectSession,
@@ -55,84 +57,14 @@ const ICON_FULLSCREEN_EXIT =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h3a2 2 0 0 0 2-2V3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M21 16h-3a2 2 0 0 0-2 2v3"/></svg>';
 
 /**
- * La case sur laquelle une invite de franchissement a le droit de s'allumer, ou `null`.
- *
- * ⚠ Ces conditions doivent rester l'exact équivalent de la branche de franchissement de
- * `ui/player/bootstrap.js` (« Lot 3, S-03 »). Les dissocier ferait promettre à l'écran un geste
- * que le tap refuserait ensuite en silence, et le joueur retaperait indéfiniment — c'est-à-dire
- * précisément le défaut de séance que cette invite existe pour corriger.
- *
- * `hidden` en fait partie, et la branche de franchissement de `bootstrap.js` le teste désormais
- * aussi. Les deux ont été alignées le 16 août 2026 : l'écran se taisait pour un PJ rendu invisible
- * par le MJ, mais le tap le franchissait quand même — `updateToken` ne purge pas la sélection,
- * contrairement à `removeToken`, donc une sélection d'avant le masquage survit. Le personnage
- * changeait d'étage sans que rien n'apparaisse à l'écran.
- *
- * ⛔ La visibilité en fait partie aussi, et pour une raison de fond : l'invite se rend AU-DESSUS
- * du brouillard, donc rien ne la masque. Or `findHitToken` ne consulte pas le fog : un joueur peut
- * sélectionner son pion à l'aveugle sur un écran noir. Sans garde, « Retaper pour prendre
- * l'escalier » s'y écrivait, sous un pion que la couche des pions avait écarté — et apprenait au
- * joueur qu'il y a une liaison là.
- *
- * ⚠ Les DEUX conditions de `TokensLayer`, pas une seule. Une première version ne testait que le
- * masque publié ; c'est nécessaire mais pas suffisant, car la couche des pions écarte en plus tout
- * pion dont la case d'ancrage n'est pas dans ce masque — PJ hors de toute lumière, masque calculé
- * pour d'autres, masque en retard d'une publication. L'invite se serait peinte sur du noir dans
- * tous ces cas-là.
- *
- * @param {{selectedToken: import('../core/types.js').Token|null}} state
- * @param {import('../core/types.js').Level} activeLevel
- * @param {HTMLCanvasElement|null} visibleCanvas Masque de vision courant de cet étage
- * @returns {{a: number, b: number}|null}
- */
-function promptAtCellOf(state, activeLevel, visibleCanvas) {
-  const porteur = state.selectedToken;
-  if (!porteur) return null;
-  if (!isPlayerManipulableToken(porteur)) return null;
-  if (!visibleALaTable(porteur, activeLevel, visibleCanvas)) return null;
-  return porteur.cell;
-}
-
-/**
- * Ce pion est-il peint sur la tablette à l'instant ? Les DEUX conditions de `TokensLayer` (voir
- * `promptAtCellOf`) : une vision publiée pour l'étage, et la case d'ancrage dans ce masque. Plus
- * l'étage affiché et `hidden`.
- *
- * ⛔ Sert aussi de garde à la consultation d'un pion (combat du 21/11/2026) : `findHitToken` ne
- * consulte pas le fog, et un encart ouvert sur un pion que la table ne voit pas dirait qu'il est
- * là.
- *
- * @param {import('../core/types.js').Token} token
- * @param {import('../core/types.js').Level} activeLevel
- * @param {HTMLCanvasElement|null} visibleCanvas Masque de vision courant de cet étage
- * @returns {boolean}
- */
-function visibleALaTable(token, activeLevel, visibleCanvas) {
-  if (token.levelId !== activeLevel.id || token.hidden) return false;
-  if (store.getSessionVision(activeLevel.id) === null) return false;
-  const maskAlpha = visibleCanvas
-    ? getOrExtractMaskAlpha(visibleCanvas, activeLevel.widthCells, activeLevel.heightCells)
-    : null;
-  if (!maskAlpha) return false;
-  return isCellVisibleInMask(
-    token.cell,
-    maskAlpha,
-    activeLevel.widthCells,
-    activeLevel.heightCells,
-    activeLevel.grid?.type === 'hex' ? 'hex' : 'square',
-    gridFor(activeLevel).maskLatticeShift()
-  );
-}
-
-/**
- * La préparation partagée suit la même visibilité que le pion : étage courant, non masqué,
- * vision publiée et case d'ancrage visible. Le trajet lui-même n'est pas découpé par le masque.
+ * Sélection, consultation et aperçus suivent la visibilité de `TokensLayer` : étage courant,
+ * pion non masqué, case d'ancrage dans le masque de vision courante publié.
  * @param {import('../core/types.js').Token|null|undefined} token
  * @param {import('../core/types.js').Level} activeLevel
  * @param {Uint8Array|null} maskAlpha
  * @returns {boolean}
  */
-function isMovePreviewOwnerVisible(token, activeLevel, maskAlpha) {
+function visibleALaTable(token, activeLevel, maskAlpha) {
   if (!token || token.levelId !== activeLevel.id || token.hidden || !maskAlpha) return false;
   return isCellVisibleInMask(
     token.cell,
@@ -372,7 +304,7 @@ export async function bootstrapPlayerApp(options = {}) {
    * Ping courant. ⛔ `at` est posé à la **réception locale**, jamais lu de `event.at` : c'est le
    * poste où la règle compte le plus, la tablette de ce projet ayant été mesurée 5,3 s en avance.
    * Un ping jugé sur l'horloge du MJ n'apparaîtrait jamais ici. Voir `PING_DURATION_MS`.
-   * @type {{levelId: string, mapPos: {x: number, y: number}, at: number}|null}
+   * @type {{levelId: string, mapPos: {x: number, y: number}, at: number, fromGm?: boolean}|null}
    */
   let currentPing = null;
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -448,6 +380,7 @@ export async function bootstrapPlayerApp(options = {}) {
 
   /** @type {Map<string, { png: string, canvas: any }>} */
   const playerVisibleCanvasMap = new Map();
+  let refreshTokenVisibility = () => {};
 
   /**
    * @param {import('../core/types.js').Level|null} level
@@ -470,12 +403,24 @@ export async function bootstrapPlayerApp(options = {}) {
       // `vision.update` successifs alors que les décompressions précédentes sont encore actives.
       if (store.getSessionVision(level.id) !== png) return;
       playerVisibleCanvasMap.set(level.id, { png, canvas });
+      if (store.getActiveLevelId() === level.id) refreshTokenVisibility();
       requestRender();
     }).finally(() => {
       if (decodagesEnCours.get(cleVisible) === png) decodagesEnCours.delete(cleVisible);
     });
 
     return existing ? existing.canvas : null;
+  }
+
+  /** @param {import('../core/types.js').Level} level */
+  function currentVisionAlpha(level) {
+    const canvas = getPlayerVisibleCanvas(level);
+    return canvas ? getOrExtractMaskAlpha(canvas, level.widthCells, level.heightCells) : null;
+  }
+
+  /** @param {import('../core/types.js').Token} token @param {import('../core/types.js').Level} level */
+  function isTokenVisible(token, level) {
+    return visibleALaTable(token, level, currentVisionAlpha(level));
   }
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -582,9 +527,27 @@ export async function bootstrapPlayerApp(options = {}) {
     // couper la vidéo laisserait le fond animé de l'étage précédent seul à l'écran, en
     // lecture, sans grille ni pions. Pas un vide — pire : une carte orpheline.
     videoBackdrop.sync(activeLevel);
-    if (!activeLevel) return;
+    if (!activeLevel) {
+      undoStepButton.hidden = true;
+      return;
+    }
 
     const grid = gridFor(activeLevel);
+    const plan = movePlanning.getPlan();
+    const campaignTokens = state.campaign?.tokens ?? [];
+    const maskAlpha = currentVisionAlpha(activeLevel);
+    const ranStartOf = ranStartResolver(campaignTokens, activeLevel);
+    const selected = state.selectedToken;
+    const selectedIsVisible = visibleALaTable(selected, activeLevel, maskAlpha);
+    const visibleLocalPreview = plan?.steps.length && plan.levelId === activeLevel.id &&
+      selected?.id === plan.tokenId && selected.cell.a === plan.start.a && selected.cell.b === plan.start.b &&
+      selectedIsVisible ? movePlanPreview(plan) : null;
+    const confirmation = plan?.status === 'ready' ? visibleLocalPreview : null;
+    if (confirmation && plan) {
+      placeUndoButton(grid, plan.steps.at(-2) ?? plan.start, confirmation.destination);
+    } else {
+      undoStepButton.hidden = true;
+    }
     // ⛔ `mapExtent()`, jamais le coin bas-droit — E-13 : `mapFromCellPoint` porte le décalage
     // odd-r de la rangée, qui n'a rien à voir avec la taille de la carte. Sur une carte
     // hexagonale à nombre de rangées IMPAIR, il rendait une demi-case de trop, et c'est le
@@ -665,7 +628,6 @@ export async function bootstrapPlayerApp(options = {}) {
       },
       moveZone: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const plan = movePlanning.getPlan();
         moveZoneLayer.render(stage.context, grid, {
           selectedToken: state.selectedToken,
           reachableCells: plan ? plan.reachable : state.reachableCells,
@@ -675,24 +637,15 @@ export async function bootstrapPlayerApp(options = {}) {
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       movePlan: () => {
-        const plan = movePlanning.getPlan();
-        const localPreview = plan?.steps.length ? movePlanPreview(plan) : null;
-        const campaignTokens = state.campaign?.tokens ?? [];
-        const visibleCanvas = getPlayerVisibleCanvas(activeLevel);
-        const visionPublished = store.getSessionVision(activeLevel.id) !== null;
-        const maskAlpha = visionPublished && visibleCanvas
-          ? getOrExtractMaskAlpha(visibleCanvas, activeLevel.widthCells, activeLevel.heightCells)
-          : null;
         const previewOwnerIsVisible = /** @param {import('../core/types.js').MovePreview} preview */ (preview) => {
           const owner = campaignTokens.find((token) => token.id === preview.tokenId);
           return owner && owner.cell.a === preview.start.a && owner.cell.b === preview.start.b &&
-            isMovePreviewOwnerVisible(owner, activeLevel, maskAlpha);
+            visibleALaTable(owner, activeLevel, maskAlpha);
         };
-        const visibleLocalPreview = localPreview && previewOwnerIsVisible(localPreview) ? localPreview : null;
         const remotes = Object.fromEntries(Object.entries(movePlanning.getRemotePreviews()).filter(([, preview]) => {
           return preview.levelId === activeLevel.id && previewOwnerIsVisible(preview);
         }));
-        movePlanLayer.render(stage.context, grid, activeLevel.id, visibleLocalPreview, remotes, camera.zoom, ranStartResolver(state.campaign?.tokens ?? [], activeLevel));
+        movePlanLayer.render(stage.context, grid, activeLevel.id, visibleLocalPreview, remotes, camera.zoom, ranStartOf, !confirmation);
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -768,17 +721,31 @@ export async function bootstrapPlayerApp(options = {}) {
         });
         // ⛔ Au-dessus du brouillard, et pas avec le reste des liaisons au rang 5. L'invite
         // s'écrit dans la case du VOISIN, que rien ne garantit explorée — voir `renderPrompt`.
-        linksLayer.renderPrompt(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
-          zoom: camera.zoom,
-          promptAtCell: promptAtCellOf(state, activeLevel, getPlayerVisibleCanvas(activeLevel)),
-        });
+        if (selected && selectedIsVisible && isPlayerManipulableToken(selected)) {
+          linksLayer.renderPrompt(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
+            zoom: camera.zoom,
+            promptAtCell: selected.cell,
+            mounted: selected.mounted ? (isLinkedToken(selected) ? 'linked' : 'local') : undefined,
+            camera,
+            insetTop: levelTabsMount?.offsetHeight ?? 0,
+          });
+        }
+        if (confirmation) {
+          const strip = selectionStripMount?.getBoundingClientRect();
+          movePlanLayer.renderConfirmation(stage.context, grid, confirmation, camera, ranStartOf(confirmation), {
+            top: levelTabsMount?.offsetHeight ?? 0,
+            selectionStrip: strip?.width ? strip : undefined,
+          });
+        }
         layerDurations.feedback = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       pings: () => {
+        const strip = currentPing?.fromGm ? selectionStripMount?.getBoundingClientRect() : null;
         const result = pingsLayer.render(stage.context, grid, activeLevel, {
           ping: currentPing,
           now: Date.now(),
           zoom: camera.zoom,
+          edge: currentPing?.fromGm ? { camera, top: levelTabsMount?.offsetHeight ?? 0, strip: strip?.width ? strip : undefined } : undefined,
         });
         animationActive ||= result.animationActive;
         if (currentPing && !result.animationActive) currentPing = null;
@@ -820,9 +787,7 @@ export async function bootstrapPlayerApp(options = {}) {
   const connexion = await attendreConnexion(tentative, options.connexionDelaiMs ?? CONNEXION_DEADLINE_MS);
   transport = connexion.transport;
   movePlanning.setTransport(transport);
-  // Audit du 08/11, A9 : la coupure du temps réel n'est signalée par aucune erreur. Le badge de la
-  // tablette, masqué quand tout va bien, réapparaît « hors ligne » et se retire au retour.
-  transport?.onConnectivity?.((connected) => networkStatus.update(connected ? 'connected' : 'offline'));
+  networkStatus.bindTransport(transport);
   if (connexion.delaiDepasse) {
     networkStatus.update('offline');
     tentative.then(
@@ -851,13 +816,19 @@ export async function bootstrapPlayerApp(options = {}) {
       // l'écriture, pas à sa programmation, pour la réduire au minimum.
       if (listOtherGmClients().length > 0) return null;
       if (!store.getCampaign()) return null;
-      const snapshot = createSnapshotPayload();
+      const snapshot = { ...createSnapshotPayload(), eventCursor: transportExtended.getSnapshotEventCursor?.() };
       const diagnostic = transportExtended.getSnapshotSizeDiagnostic?.(snapshot);
       if (diagnostic?.severity === 'warning') networkStatus.update('warning', diagnostic.message);
       return snapshot;
     },
-    save: (snapshot) => transportExtended.saveSnapshot(snapshot),
-    onError: (error) => networkStatus.update('error', error),
+    save: async (snapshot) => {
+      await transportExtended.saveSnapshot(snapshot);
+      networkStatus.diagnostics.recovered('firestore', 'Sauvegarde');
+    },
+    onError: (error) => {
+      networkStatus.diagnostics.failed('firestore', 'Sauvegarde');
+      networkStatus.update('error', error);
+    },
   });
 
   function scheduleSnapshot() {
@@ -937,18 +908,70 @@ export async function bootstrapPlayerApp(options = {}) {
   const selectionStripMount = /** @type {HTMLElement|null} */ (
     document.getElementById('player-selection-strip')
   );
+  const undoStepButton = document.createElement('button');
+  undoStepButton.type = 'button';
+  undoStepButton.id = 'player-undo-step';
+  undoStepButton.hidden = true;
+  undoStepButton.title = 'Retirer la dernière étape';
+  undoStepButton.setAttribute('aria-label', undoStepButton.title);
+  undoStepButton.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5 4 10l5 5M4 10h10a5 5 0 0 1 0 10h-3"/></svg>';
+  canvas.parentElement?.appendChild(undoStepButton);
+  undoStepButton.onclick = () => {
+    const { selectedToken, activeLevel } = store.getState();
+    if (selectedToken && activeLevel && isTokenVisible(selectedToken, activeLevel)) {
+      movePlanning.undoLastStep(selectedToken, activeLevel);
+    }
+  };
+
+  /**
+   * Le bouton jouxte l'étape précédente. Les deux cases restent des cibles de déplacement.
+   * @param {import('../grid/GridAdapter.js').GridAdapter} grid
+   * @param {import('../core/types.js').Cell} previous
+   * @param {import('../core/types.js').Cell} destination
+   */
+  function placeUndoButton(grid, previous, destination) {
+    const radius = 22;
+    const margin = 8;
+    const bounds = grid.cellBounds({ cellX: previous.a, cellY: previous.b }, 1);
+    const end = grid.cellBounds({ cellX: destination.a, cellY: destination.b }, 1);
+    const startCorner = camera.mapToScreen({ x: bounds.x, y: bounds.y });
+    const endCorner = camera.mapToScreen({ x: end.x, y: end.y });
+    const center = camera.mapToScreen(grid.cellCenter(previous));
+    const pad = radius + margin;
+    const strip = selectionStripMount?.getBoundingClientRect();
+    const top = (levelTabsMount?.offsetHeight ?? 0) + pad;
+    const candidates = [
+      { x: center.screenX, y: startCorner.screenY - pad },
+      { x: startCorner.screenX - pad, y: center.screenY },
+      { x: center.screenX, y: startCorner.screenY + bounds.height * camera.zoom + pad },
+      { x: startCorner.screenX + bounds.width * camera.zoom + pad, y: center.screenY },
+    ];
+    const target = candidates.find(({ x, y }) => {
+      if (x < pad || x > stage.width - pad || y < top || y > stage.height - pad) return false;
+      if (strip?.width && x + radius > strip.left && y + radius > strip.top && y - radius < strip.bottom) return false;
+      return x + radius <= endCorner.screenX || y + radius <= endCorner.screenY ||
+        x - radius >= endCorner.screenX + end.width * camera.zoom ||
+        y - radius >= endCorner.screenY + end.height * camera.zoom;
+    });
+    undoStepButton.hidden = !target;
+    if (!target) return;
+    undoStepButton.style.left = `${target.x - radius}px`;
+    undoStepButton.style.top = `${target.y - radius}px`;
+  }
   // Pion consulté (combat du 21/11/2026) : état LOCAL à la tablette, jamais publié ni persisté.
-  /** @type {string|null} */
-  let inspectedTokenId = null;
+  /** @type {{tokenId: string, selectedTokenId: string|null}|null} */
+  let inspection = null;
   /** @returns {import('../core/types.js').Token|null} */
   const inspectedToken = () => {
-    if (!inspectedTokenId) return null;
+    if (!inspection) return null;
+    const { tokenId, selectedTokenId } = inspection;
     const state = store.getState();
-    const token = state.campaign?.tokens.find((t) => t.id === inspectedTokenId) ?? null;
+    const token = state.campaign?.tokens.find((t) => t.id === tokenId) ?? null;
     // Sorti de la vue, caché, retiré, étage changé : l'encart se ferme pour de bon. Il ne se
     // rouvrira pas tout seul quand le pion réapparaîtra.
-    if (!token || !state.activeLevel || !visibleALaTable(token, state.activeLevel, getPlayerVisibleCanvas(state.activeLevel))) {
-      inspectedTokenId = null;
+    if (state.selectedTokenId !== selectedTokenId || !token || !state.activeLevel ||
+        !isTokenVisible(token, state.activeLevel)) {
+      inspection = null;
       return null;
     }
     return token;
@@ -957,6 +980,11 @@ export async function bootstrapPlayerApp(options = {}) {
     ? createSelectionStrip(selectionStripMount, {
         getSelectedToken: () => store.getSelectedToken(),
         getInspectedToken: inspectedToken,
+        getInspectionDistance: (from, to) => {
+          const level = store.getActiveLevel();
+          return level && from.levelId === level.id && to.levelId === level.id
+            ? distanceBetweenFootprints(level, from, to) : null;
+        },
         // État ABSOLU publié, comme le bouton du MJ : `token.mounted` est rejouable. La zone se
         // recalcule d'elle-même, `setTokenMounted` appelant `rafraichirZoneAtteignable`.
         onToggleMounted: (token) => {
@@ -979,18 +1007,23 @@ export async function bootstrapPlayerApp(options = {}) {
 
   let invalidatePendingMoveTap = () => {};
 
+  refreshTokenVisibility = () => {
+    const { selectedToken, activeLevel } = store.getState();
+    if (selectedToken && (!isPlayerManipulableToken(selectedToken) || !activeLevel ||
+        !isTokenVisible(selectedToken, activeLevel))) {
+      movePlanning.cancel();
+      store.selectToken(null);
+    }
+    selectionStrip?.update();
+  };
+
   const unsubscribeStore = store.subscribe((change) => {
     const moveState = store.getState();
     movePlanning.clearIfLevelDiffers(moveState.activeLevelId || '');
     if (!change?.session) {
       movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel, true);
-      const selected = moveState.selectedToken;
-      if (selected && (selected.hidden || !isPlayerManipulableToken(selected))) {
-        // Le reconcile supprime d'abord le plan et signale sa cause. La sélection elle-même
-        // doit ensuite cesser d'autoriser les intentions de préparation de bootstrapPlayerView.
-        store.selectToken(null);
-      }
     }
+    refreshTokenVisibility();
     invalidatePendingMoveTap();
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
@@ -1003,14 +1036,13 @@ export async function bootstrapPlayerApp(options = {}) {
     // compris avant qu'un sélecteur existe pour en changer (UX-12).
     memoriserEtage(store.getActiveLevelId());
     playerLevelSelector?.update();
-    selectionStrip?.update();
   });
 
   /** @type {(() => void)|null} */
   let unsubscribeEvents = null;
   if (transport) {
     unsubscribeEvents = transport.subscribe((event) => {
-      if (transportExtended.isOwnEvent?.(event)) return;
+      if (!event.recovered && transportExtended.isOwnEvent?.(event)) return;
       // ⛔ Plus de `view.change` (D-6, tranché le 23/09/2026) : chaque écran déplace et zoome sa
       // vue indépendamment, toujours. Un événement de ce type encore présent dans la file d'une
       // ancienne session est ignoré par `applyNetworkEvent`, qui ne le connaît pas.
@@ -1022,7 +1054,7 @@ export async function bootstrapPlayerApp(options = {}) {
         const p = /** @type {any} */ (event.payload) || {};
         if (p.mapPos && Number.isFinite(p.mapPos.x) && Number.isFinite(p.mapPos.y)) {
           // ⛔ `Date.now()` local, pas `event.at`. Voir `PING_DURATION_MS`.
-          currentPing = { levelId: p.levelId, mapPos: p.mapPos, at: Date.now() };
+          currentPing = { levelId: p.levelId, mapPos: p.mapPos, at: Date.now(), fromGm: event.by === 'gm' };
           requestRender();
         }
         return;
@@ -1217,10 +1249,9 @@ export async function bootstrapPlayerApp(options = {}) {
       templateDragPreview = preview;
       requestRender();
     },
+    isTokenVisible,
     onInspectToken: (token) => {
-      inspectedTokenId = token ? token.id : null;
-      // La garde de visibilité s'applique dès l'ouverture : un pion hors vision ne s'ouvre pas.
-      inspectedToken();
+      inspection = token ? { tokenId: token.id, selectedTokenId: store.getSelectedToken()?.id ?? null } : null;
       selectionStrip?.update();
     },
   });
@@ -1230,6 +1261,7 @@ export async function bootstrapPlayerApp(options = {}) {
     role: 'players',
   });
   const imageShareOverlay = mountImageShareOverlay({ transport: transport || undefined });
+  const destroyGameHelp = mountPlayerGameHelp();
 
   function persistCamera() {
     try {
@@ -1294,11 +1326,14 @@ export async function bootstrapPlayerApp(options = {}) {
   const destroy = () => {
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     if (repriseDiffereeTimer !== null) clearTimeout(repriseDiffereeTimer);
+    refreshTokenVisibility = () => {};
     playerControls.detach();
     movePlanning.dispose();
     versionBadge.detach();
     imageShareOverlay.detach();
+    destroyGameHelp();
     playerLevelSelector?.destroy();
+    undoStepButton.remove();
     selectionStrip?.destroy();
     cleanupMobileLocks();
     unsubscribeStore();

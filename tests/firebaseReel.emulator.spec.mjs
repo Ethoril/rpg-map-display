@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
-import { waitForApp } from './browserTestTransport.mjs';
+import { waitForApp, waitForPlayerVision } from './browserTestTransport.mjs';
 
 /**
  * Les vrais SDK et le vrai `FirebaseTransport`, contre les émulateurs RTDB et Firestore (audit
@@ -291,6 +291,7 @@ test('vrai SDK : une reprise tardive ne désynchronise pas la tablette', async (
     }, { snapshot: initial, sessionId: sid });
     await gm.waitForTimeout(800);
     const player = await openEmulatedPage(browser, sid, contexts, 'players');
+    await waitForPlayerVision(player);
     await player.evaluate(() => {
       const w = /** @type {any} */ (window);
       const transport = w.__RPG_APP__.transport.real;
@@ -320,6 +321,136 @@ test('vrai SDK : une reprise tardive ne désynchronise pas la tablette', async (
     await player.waitForTimeout(500);
     const positions = await Promise.all([gm, player].map(page => page.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens[0]?.cell)));
     expect(positions).toEqual([{ a: 3, b: 2 }, { a: 3, b: 2 }]);
+  } finally {
+    for (const context of contexts) await context.close();
+  }
+});
+
+test('vrai SDK : la tablette rattrape un déplacement publié avant la sauvegarde, sans rejouer son animation', async ({ browser }) => {
+  test.skip(!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_DATABASE_EMULATOR_HOST, 'Émulateurs Firebase requis');
+  const sid = `jonction${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 10, heightCells: 8 });
+  const token = createToken({ id: 'hero', levelId: 'a', cell: { a: 2, b: 2 }, visionDim: 4 });
+  const initial = { campaign: createCampaign({ campaignId: sid, levels: [level], tokens: [token] }), activeLevelId: 'a' };
+  /** @type {import('@playwright/test').BrowserContext[]} */
+  const contexts = [];
+  try {
+    const gm = await openEmulatedPage(browser, sid, contexts, 'gm');
+    await gm.evaluate(async ({ initial, sid }) => {
+      const store = await import('../js/state/store.js');
+      const w = /** @type {any} */ (window);
+      const transport = w.__RPG_APP__.transport.real;
+      store.restoreFromSnapshot(initial, { sessionId: sid });
+      await transport.saveSnapshot(initial);
+      const save = transport.saveSnapshot.bind(transport);
+      const gate = new Promise(resolve => { w.__libererSauvegarde = resolve; });
+      transport.saveSnapshot = async (/** @type {object} */ snapshot) => { await gate; return save(snapshot); };
+      const to = { a: 3, b: 2 };
+      const from = { a: 2, b: 2 };
+      store.moveTokenToCell('hero', to, { from, to, path: [from, to], startedAt: Date.now() });
+      const outcome = await transport.publish({ type: 'token.move', payload: { tokenId: 'hero', from, to, path: [from, to] }, at: Date.now(), by: 'gm' });
+      if (!outcome.ok) throw outcome.error;
+    }, { initial, sid });
+
+    const durableCell = () => gm.evaluate(async sessionId => {
+      const fs = await import('firebase/firestore');
+      const transport = /** @type {any} */ (window).__RPG_APP__.transport.real;
+      return (await fs.getDocFromServer(fs.doc(transport._firestore, 'campaigns', sessionId, 'tokens', 'hero'))).data()?.token?.cell;
+    }, sid);
+    expect(await durableCell()).toEqual({ a: 2, b: 2 });
+    const movesAfterPruning = await gm.evaluate(async sessionId => {
+      const db = await import('firebase/database');
+      const t = /** @type {any} */ (window).__RPG_APP__.transport.real;
+      await t._pruneAcknowledgedEvents(t._sessionEpoch);
+      const events = (await db.get(db.ref(t._db, `session/${sessionId}/events`))).val();
+      return Object.values(events ?? {}).filter((/** @type {any} */ event) => event.type === 'token.move').length;
+    }, sid);
+    expect(movesAfterPruning).toBe(1);
+
+    const player = await openEmulatedPage(browser, sid, contexts, 'players');
+    const actual = () => player.evaluate(async () => {
+      const token = (await import('../js/state/store.js')).getCampaign()?.tokens[0];
+      return { cell: token?.cell, animated: !!token?.move };
+    });
+    await expect.poll(actual).toEqual({ cell: { a: 3, b: 2 }, animated: false });
+    await gm.evaluate(() => /** @type {any} */ (window).__libererSauvegarde());
+    await expect.poll(durableCell, { timeout: 8000 }).toEqual({ a: 3, b: 2 });
+
+    await player.evaluate(() => {
+      const t = /** @type {any} */ (window).__RPG_APP__.transport.real;
+      const snapshot = t.snapshot.bind(t);
+      t.mayHaveMissedEvents = () => true;
+      t.snapshot = async () => {
+        const result = await snapshot();
+        /** @type {any} */ (window).__repriseLue = true;
+        return result;
+      };
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await player.waitForFunction(() => /** @type {any} */ (window).__repriseLue);
+    await expect.poll(actual).toEqual({ cell: { a: 3, b: 2 }, animated: false });
+  } finally {
+    for (const context of contexts) await context.close();
+  }
+});
+
+test('vrai SDK : le MJ retrouve les échecs RTDB et Firestore, et seule une écriture réussie rétablit la sauvegarde', async ({ browser }) => {
+  test.skip(!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_DATABASE_EMULATOR_HOST, 'Émulateurs Firebase requis');
+  const sid = `diagnostic${Date.now()}`;
+  const level = createLevel({ id: 'a', widthCells: 8, heightCells: 8 });
+  const hero = createToken({ id: 'hero', levelId: 'a', cell: { a: 2, b: 2 } });
+  const initial = { campaign: createCampaign({ campaignId: sid, levels: [level], tokens: [hero] }), activeLevelId: 'a' };
+  /** @type {import('@playwright/test').BrowserContext[]} */
+  const contexts = [];
+  try {
+    const gm = await openEmulatedPage(browser, sid, contexts, 'gm');
+    await gm.evaluate(async ({ initial, sid }) => {
+      const store = await import('../js/state/store.js');
+      const transport = /** @type {any} */ (window).__RPG_APP__.transport.real;
+      store.restoreFromSnapshot(initial, { sessionId: sid });
+      await transport.saveSnapshot(initial);
+    }, { initial, sid });
+    const player = await openEmulatedPage(browser, sid, contexts, 'players');
+    await player.evaluate(async () => {
+      const w = /** @type {any} */ (window);
+      const t = w.__RPG_APP__.transport.real;
+      const push = t._pushEvent;
+      const sendDiagnostics = t.saveTabletDiagnostics;
+      t.saveTabletDiagnostics = async () => { throw new Error('Envoi du diagnostic suspendu'); };
+      t._pushEvent = async () => { throw new Error('Envoi RTDB refusé'); };
+      await t.publish({ type: 'token.move', payload: {}, by: 'players', at: Date.now() });
+      t._pushEvent = push;
+      w.__reprendreDiagnostic = () => {
+        t.saveTabletDiagnostics = sendDiagnostics;
+        t._emitConnectivity(true);
+      };
+    });
+    const incidents = gm.locator('#gm-sync-incidents');
+    expect(await player.evaluate(sid => localStorage.getItem(`rpg_sync_incidents_${sid}_players`), sid)).toContain('token.move');
+    await expect(incidents).toBeHidden();
+    await player.evaluate(() => /** @type {any} */ (window).__reprendreDiagnostic());
+    await expect(incidents).toBeVisible();
+    await incidents.locator('summary').click();
+    await expect(incidents).toContainText('Tablette · Temps réel (RTDB) · publication de "token.move" · Échec constaté');
+
+    await gm.evaluate(async (emulator) => {
+      const [fs, firebase] = await Promise.all([import('firebase/firestore'), import('firebase/app')]);
+      const w = /** @type {any} */ (window);
+      const t = w.__RPG_APP__.transport.real;
+      const store = await import('../js/state/store.js');
+      const authorized = t._firestore;
+      const [host, port] = emulator.split(':');
+      const denied = fs.getFirestore(firebase.initializeApp(t._config, 'diagnostic-refuse'));
+      fs.connectFirestoreEmulator(denied, host, Number(port), { mockUserToken: { sub: 'audit-refuse' } });
+      t._firestore = denied;
+      w.__retablirFirestore = () => { t._firestore = authorized; };
+      store.updateToken('hero', { label: 'Échec voulu' });
+    }, process.env.FIRESTORE_EMULATOR_HOST || '');
+    await expect(incidents).toContainText('Poste MJ · Firestore · Sauvegarde · Échec constaté', { timeout: 8000 });
+    await gm.evaluate(() => /** @type {any} */ (window).__retablirFirestore());
+    await expect(incidents).not.toContainText('Sauvegarde rétablie');
+    await gm.evaluate(async () => (await import('../js/state/store.js')).updateToken('hero', { label: 'Écriture réussie' }));
+    await expect(incidents).toContainText('Sauvegarde rétablie', { timeout: 8000 });
   } finally {
     for (const context of contexts) await context.close();
   }

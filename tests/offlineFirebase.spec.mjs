@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, setPlayerTestVision } from './browserTestTransport.mjs';
 
 /**
  * R0-03 — le repli local ne doit pas seulement afficher son badge : il doit pouvoir démarrer
@@ -68,6 +68,7 @@ test('R0-03 : une session locale joue avec le CDN Firebase bloqué', async ({ pa
   await expect(page.locator('#network-status-players')).toHaveAttribute('data-status', 'local');
   expect(gstaticRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
+  await setPlayerTestVision(page);
 
   await page.evaluate(() => {
     const app = /** @type {any} */ (window).__RPG_APP__;

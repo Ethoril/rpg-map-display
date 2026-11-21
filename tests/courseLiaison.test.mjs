@@ -58,7 +58,7 @@ function recorder() {
     save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, arc() {},
     clip() { calls.push('clip'); },
     setLineDash(/** @type {number[]} */ d) { calls.push(`dash:${d.length}`); },
-    fill() { calls.push('fill'); }, stroke() { calls.push('stroke'); },
+    fill() { calls.push(`fill:${this.fillStyle}`); }, stroke() { calls.push(`stroke:${this.strokeStyle}`); },
     strokeText() {}, fillText(/** @type {string} */ t) { calls.push(`text:${t}`); },
   };
   return { ctx, calls };
@@ -70,6 +70,7 @@ test('zone : Marche en aplat, Course hachurée (clip) et pointillée ; sans pali
   const deux = recorder();
   new MoveZoneLayer().render(deux.ctx, fakeGrid, { selectedToken: pion(), reachableCells: cells, walkLimit: 4 });
   assert.ok(deux.calls.includes('clip'), 'hachures de la Course');
+  assert.ok(deux.calls.includes('fill:#ffdd4a') && deux.calls.includes('stroke:#ffdd4a'), 'Course en jaune');
   assert.ok(deux.calls.some((c) => c.startsWith('dash:2')), 'bordure pointillée');
   const un = recorder();
   new MoveZoneLayer().render(un.ctx, fakeGrid, { selectedToken: pion(), reachableCells: cells });

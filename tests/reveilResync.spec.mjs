@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision } from './browserTestTransport.mjs';
 
 /**
  * Réveil d'un onglet endormi : quand faut-il resynchroniser, et surtout quand ne le faut-il pas ?
@@ -194,6 +194,7 @@ test('Bail valide : aucune resynchro, et aucune régression de l’état', async
 
   // Le store avance par un vrai geste, l'instantané reste celui du démarrage : il est donc
   // périmé, exactement comme l'instantané réel écrit 250 ms après la mutation.
+  await waitForPlayerVision(player);
   await tap(player, 250, 250);
   await tap(player, 650, 250);
   // Le second tap prépare désormais le déplacement ; retaper le même endpoint le valide.
@@ -489,6 +490,7 @@ test('A4 : en présence du MJ, c’est lui qui écrit le coup joué à la table'
     await page.evaluate(() => { /** @type {any} */ (window).__RPG_TEST_WIRE__.savedSnapshot = null; });
   }
   // Préparer puis valider, comme au doigt.
+  await waitForPlayerVision(player);
   await tap(player, 250, 250);
   await tap(player, 350, 250);
   await tap(player, 350, 250);

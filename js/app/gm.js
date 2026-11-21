@@ -721,6 +721,11 @@ export async function bootstrapGMApp(options = {}) {
     if (!activeLevel) return;
 
     const grid = gridFor(activeLevel);
+    const plan = movePlanning.getPlan();
+    const localPreview = plan?.steps.length && plan.levelId === activeLevel.id ? movePlanPreview(plan) : null;
+    const ranStartOf = ranStartResolver(state.campaign?.tokens ?? [], activeLevel);
+    const confirmation = plan?.status === 'ready' && (gmPanel?.getActiveToolName?.() ?? 'none') === 'none'
+      ? localPreview : null;
     // ⛔ `mapExtent()`, jamais le coin bas-droit — E-13 : `mapFromCellPoint` porte le décalage
     // odd-r de la rangée, qui n'a rien à voir avec la taille de la carte. Sur une carte
     // hexagonale à nombre de rangées IMPAIR, il rendait une demi-case de trop, et c'est le
@@ -828,14 +833,12 @@ export async function bootstrapGMApp(options = {}) {
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       movePlan: () => {
-        const plan = movePlanning.getPlan();
-        const localPreview = plan?.steps.length ? movePlanPreview(plan) : null;
         const remotes = Object.fromEntries(Object.entries(movePlanning.getRemotePreviews()).filter(([, preview]) => {
           const owner = state.campaign?.tokens.find((token) => token.id === preview.tokenId);
           return preview.levelId === activeLevel.id && owner && owner.levelId === preview.levelId &&
             owner.cell.a === preview.start.a && owner.cell.b === preview.start.b;
         }));
-        movePlanLayer.render(stage.context, grid, activeLevel.id, localPreview, remotes, camera.zoom, ranStartResolver(state.campaign?.tokens ?? [], activeLevel));
+        movePlanLayer.render(stage.context, grid, activeLevel.id, localPreview, remotes, camera.zoom, ranStartOf, !confirmation);
       },
       templates: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -966,6 +969,9 @@ export async function bootstrapGMApp(options = {}) {
       },
     });
 
+    if (confirmation) {
+      movePlanLayer.renderConfirmation(stage.context, grid, confirmation, camera, ranStartOf(confirmation));
+    }
     stage.context.restore();
     if (animationActive) requestRender();
 
@@ -1067,14 +1073,7 @@ export async function bootstrapGMApp(options = {}) {
     reprise = null;
   }
 
-  // Une publication qui échoue doit se voir à la table, pas seulement dans la console : le badge
-  // réseau du MJ est la seule surface d'erreur permanente de cette vue. `connectSession` ne
-  // branche `onError` que sur le transport Firebase qu'il fabrique lui-même ; un transport injecté
-  // n'était relié à rien. (E-9)
-  transport?.onError?.((error) => networkStatus.update('error', error));
-  // Audit du 08/11, A9 : une coupure du temps réel ne lève rien. Sans ce signal, le badge
-  // restait sur « Firebase connecté » pendant que plus rien ne partait.
-  transport?.onConnectivity?.((connected) => networkStatus.update(connected ? 'connected' : 'offline'));
+  networkStatus.bindTransport(transport);
 
   const transportExtended = /** @type {any} */ (transport);
   // Vrai pendant qu'un INSTANTANÉ lu sur le réseau remplace la campagne : le réécrire aussitôt
@@ -1092,13 +1091,19 @@ export async function bootstrapGMApp(options = {}) {
     capture: () => {
       // Une campagne pas encore chargée ne s'écrit jamais : elle écraserait la vraie.
       if (!store.getCampaign()) return null;
-      const snapshot = createSnapshotPayload();
+      const snapshot = { ...createSnapshotPayload(), eventCursor: transportExtended.getSnapshotEventCursor?.() };
       const diagnostic = transportExtended.getSnapshotSizeDiagnostic?.(snapshot);
       if (diagnostic?.severity === 'warning') networkStatus.update('warning', diagnostic.message);
       return snapshot;
     },
-    save: (snapshot) => transportExtended.saveSnapshot(snapshot),
-    onError: (error) => networkStatus.update('error', error),
+    save: async (snapshot) => {
+      await transportExtended.saveSnapshot(snapshot);
+      networkStatus.diagnostics.recovered('firestore', 'Sauvegarde');
+    },
+    onError: (error) => {
+      networkStatus.diagnostics.failed('firestore', 'Sauvegarde');
+      networkStatus.update('error', error);
+    },
   });
 
   function scheduleSnapshot() {
@@ -1183,7 +1188,7 @@ export async function bootstrapGMApp(options = {}) {
 
   if (transport) {
     unsubscribeEvents = transport.subscribe((event) => {
-      if (transportExtended.isOwnEvent?.(event)) return;
+      if (!event.recovered && transportExtended.isOwnEvent?.(event)) return;
 
       // Une éviction n'est pas une mutation de l'état de jeu : elle ne passe pas par
       // `applyNetworkEvent`, qui l'ignore d'ailleurs silencieusement côté joueurs. Et le test
@@ -1281,7 +1286,7 @@ export async function bootstrapGMApp(options = {}) {
       //      à la tablette le retour « case occupée » ;
       //   2. l'occupant est réannoncé à sa case : la tablette, qui avait refusé le coup du MJ pour
       //      la même raison, peut maintenant l'appliquer, la case venant d'être libérée.
-      if (event.type === 'token.move' && event.by === 'players' && payload.tokenId && payload.to) {
+      if (!event.recovered && event.type === 'token.move' && event.by === 'players' && payload.tokenId && payload.to) {
         const occupant = store.findMoveConflict(payload.tokenId, payload.to);
         if (occupant && avant) {
           const now = Date.now();
@@ -1309,7 +1314,7 @@ export async function bootstrapGMApp(options = {}) {
 
       // ⛔ Pas d'`applyingRemote` ici (A4) : la mutation reçue doit être écrite par le MJ.
       const mute = applyNetworkEvent(event);
-      if (event.type === 'token.move' && event.by === 'players' && payload.tokenId && !payload.refus && Array.isArray(payload.path)) {
+      if (!event.recovered && event.type === 'token.move' && event.by === 'players' && payload.tokenId && !payload.refus && Array.isArray(payload.path)) {
         reportMove(payload.tokenId, payload.path);
       }
 
@@ -1402,6 +1407,7 @@ export async function bootstrapGMApp(options = {}) {
   // Liaison outil MJ Warhammer (docs/CONTRAT-LIAISON-OUTIL-MJ.md) : onglet du même navigateur,
   // même origine. Ouverte après le chargement de la campagne, pour que l'instantané reçu trouve
   // les pions liés déjà là.
+  let liaisonConnectee = false;
   const mjLink = startMjLink({
     store,
     publish: (type, payload) => transport?.publish({ type, payload, at: Date.now(), by: 'gm' }),
@@ -1412,10 +1418,16 @@ export async function bootstrapGMApp(options = {}) {
     createToken,
     activeLevelId: () => store.getActiveLevelId(),
     sessionId,
+    onStatus: (status) => {
+      const connected = status === 'connected';
+      if (liaisonConnectee && !connected) networkStatus.diagnostics.failed('mj-link', 'Échange entre onglets');
+      if (!liaisonConnectee && connected) networkStatus.diagnostics.recovered('mj-link', 'Échange entre onglets');
+      liaisonConnectee = connected;
+    },
     // Démontage (contrat §8.2) : le cavalier attend en réserve que le MJ touche une case adjacente.
     onRiderToPlace: (tokenId, around) => gmPanel?.armRiderPose?.(tokenId, around),
   });
-  if (mjLink) setInterval(mjLink.tick, MJ_LINK_PING_MS);
+  const mjLinkHeartbeat = mjLink ? setInterval(mjLink.tick, MJ_LINK_PING_MS) : null;
   if (mjLink) reportMove = (tokenId, path) => { mjLink.reportMove(tokenId, path); };
   if (mjLink) {
     engagementPairs = () => mjLink.engagements();
@@ -2406,6 +2418,8 @@ export async function bootstrapGMApp(options = {}) {
     frameProbe.stop();
     unsubscribeStore();
     unsubscribeEvents?.();
+    if (mjLinkHeartbeat !== null) clearInterval(mjLinkHeartbeat);
+    mjLink?.close();
     movePlanning.dispose();
     snapshotSaver.stop();
     window.removeEventListener('resize', onResize);

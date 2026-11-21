@@ -228,12 +228,12 @@ test.describe('Chantier C-13 — Partage d\'image', () => {
   }) => {
     const { pageGM, pagePlayer } = await ouvrir(context, 'test-partage-zeroui');
 
-    // Ce que l'overlay ajouterait à la vue joueurs. Deux tolérances, et rien d'autre : le bouton
-    // plein écran (dérogation du 30/07/2026) et le sélecteur d'étage (CONVENTIONS.md, interdiction 2).
+    // Ce que l'overlay rend visible en plus des commandes de la carte prévues dans les conventions.
     const controlesHorsTolerances = () =>
       pagePlayer.evaluate(() =>
         Array.from(document.querySelectorAll('button, nav, input')).filter(
-          (el) => el.id !== 'player-fullscreen-btn' && !el.closest('#player-level-tabs')
+          (el) => !['player-fullscreen-btn', 'player-game-help'].includes(el.id) &&
+            !el.closest('#player-level-tabs, dialog:not([open])') && !el.hasAttribute('hidden')
         ).map((el) => el.getAttribute('aria-label') || el.tagName)
       );
 
@@ -249,6 +249,11 @@ test.describe('Chantier C-13 — Partage d\'image', () => {
     const boite = await croix(pagePlayer).boundingBox();
     expect(boite?.width).toBeGreaterThanOrEqual(56);
     expect(boite?.height).toBeGreaterThanOrEqual(56);
+    const aide = pagePlayer.getByRole('button', { name: 'Aide de jeu' });
+    await expect(aide).toBeVisible();
+    const boiteAide = await aide.boundingBox();
+    if (!boite || !boiteAide) throw new Error('Contrôles du coin supérieur absents');
+    expect(boite.x + boite.width).toBeLessThan(boiteAide.x);
     // L'overlay capte les gestes : au centre de l'écran, c'est lui que touche le doigt, pas la carte.
     const auCentre = await pagePlayer.evaluate(() => {
       const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);

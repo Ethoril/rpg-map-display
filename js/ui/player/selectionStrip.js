@@ -13,14 +13,16 @@ import { CAMP_FILL, campInitials } from '../../render/layers/tokens.js';
 
 /** @typedef {import('../../core/types.js').Token} Token */
 
+const formatDistance = new Intl.NumberFormat('fr-FR');
+
 /**
  * Options de la bande de sélection de la vue joueurs (chantier C-9).
  *
  * @typedef {Object} SelectionStripOptions
  * @property {() => Token | null} getSelectedToken Pion sélectionné à la tablette
  * @property {() => Token | null} [getInspectedToken] Pion **consulté** (combat du 21/11/2026) :
- *   pion que la tablette ne déplace pas — PNJ, ennemi, PJ bridé — touché sans sélection, et que
- *   la table voit à l'instant. `null` = aucun. La vue joueurs décide de ce qui est visible.
+ *   pion que la tablette ne déplace pas, touché sans sélection ou consulté le temps d'un appui.
+ * @property {(from: Token, to: Token) => number|null} [getInspectionDistance] Distance réelle en cases
  * @property {(token: Token) => void} onToggleMounted Bascule monter / descendre. La bande ne
  *   publie rien elle-même : `ui/*` n'importe pas `transport/*` en direct (`ARCHITECTURE.md` §2).
  * @property {number} [labelDurationMs] Durée de la bulle de nom d'un badge ; défaut
@@ -172,9 +174,10 @@ export function createSelectionStrip(container, options) {
    * @param {Token} token
    * @param {string} image
    * @param {string} vie
+   * @param {string} distance
    * @returns {HTMLElement}
    */
-  function creerEncart(token, image, vie) {
+  function creerEncart(token, image, vie, distance) {
     const carte = document.createElement('div');
     carte.className = 'player-selection-card';
     const portrait = document.createElement('div');
@@ -199,6 +202,12 @@ export function createSelectionStrip(container, options) {
       ligne.textContent = vie;
       carte.appendChild(ligne);
     }
+    if (distance) {
+      const ligne = document.createElement('div');
+      ligne.className = 'player-selection-distance';
+      ligne.textContent = distance;
+      carte.appendChild(ligne);
+    }
     return carte;
   }
 
@@ -210,8 +219,9 @@ export function createSelectionStrip(container, options) {
    */
   function update() {
     const selectionne = options.getSelectedToken();
-    const enSelection = !!selectionne && isPlayerManipulableToken(selectionne);
-    const token = enSelection ? selectionne : (options.getInspectedToken?.() ?? null);
+    const consulte = options.getInspectedToken?.() ?? null;
+    const enSelection = !consulte && !!selectionne && isPlayerManipulableToken(selectionne);
+    const token = consulte ?? (enSelection ? selectionne : null);
     if (!token) {
       container.style.display = 'none';
       delete container.dataset.signature;
@@ -227,8 +237,13 @@ export function createSelectionStrip(container, options) {
     const lie = isLinkedToken(token);
     const image = displayImageUrl(token).trim();
     const vie = vitalite(token);
+    const cases = consulte && selectionne ? options.getInspectionDistance?.(selectionne, consulte) : null;
+    const nomReference = selectionne?.label || 'ton personnage';
+    const reference = /^[aeiouy]/i.test(nomReference.normalize('NFD')) ? `d’${nomReference}` : `de ${nomReference}`;
+    const distance = typeof cases === 'number' && Number.isFinite(cases) && selectionne
+      ? `À ${formatDistance.format(cases)} ${cases <= 1 ? 'case' : 'cases'} ${reference}` : '';
     const mode = enSelection ? 'selection' : 'consultation';
-    const signature = JSON.stringify([mode, token.id, monte, lie, marqueurs, token.label, image, vie, token.camp ?? null]);
+    const signature = JSON.stringify([mode, token.id, monte, lie, marqueurs, token.label, image, vie, distance, token.camp ?? null]);
     if (container.dataset.signature === signature) return;
     container.dataset.signature = signature;
     container.dataset.mode = mode;
@@ -236,7 +251,7 @@ export function createSelectionStrip(container, options) {
     masquerBulle();
     // ⛔ En consultation, aucun bouton : la tablette ne touche pas à ce pion.
     container.replaceChildren(
-      creerEncart(token, image, vie),
+      creerEncart(token, image, vie, distance),
       ...(enSelection ? [creerBoutonMonture(monte, lie)] : []),
       ...marqueurs.map(creerBadge)
     );

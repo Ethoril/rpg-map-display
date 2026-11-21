@@ -31,9 +31,8 @@ import {
  *   Pose d'aperçu d'un gabarit en cours de glisser, `null` quand il s'achève ou s'interrompt (B4).
  * @property {()=>void} [onMovePlanChanged] Demande un rendu après un changement de préparation.
  * @property {MovePlanningApi} [movePlanning] Contrôleur injecté par la vue applicative.
- * @property {(token: Token|null) => void} [onInspectToken] Consultation (combat du 21/11/2026) :
- *   un pion que la tablette ne déplace pas est touché sans sélection active (`token`), ou tout
- *   autre tap la referme (`null`). La vue décide si ce pion est visible de la table.
+ * @property {(token: Token, level: import('../../core/types.js').Level) => boolean} [isTokenVisible]
+ * @property {(token: Token|null) => void} [onInspectToken] Ouvre ou ferme la consultation locale.
  */
 
 /** @typedef {import('../../app/movePlanning.js').MovePlanningController} MovePlanningApi */
@@ -49,6 +48,7 @@ export function bootstrapPlayerView(options) {
   const onDestinationRejected = options.onDestinationRejected ?? (() => {});
   const onTemplatePreview = options.onTemplatePreview ?? (() => {});
   const movePlanning = options.movePlanning;
+  const isTokenVisible = options.isTokenVisible ?? ((token) => !token.hidden);
   const onInspectToken = options.onInspectToken ?? (() => {});
   /** @type {Cell|null} */
   let cancelledAtCell = null;
@@ -130,13 +130,14 @@ export function bootstrapPlayerView(options) {
       return;
     }
 
+    const filter = /** @param {Token} token */ (token) => isTokenVisible(token, activeLevel);
     const tappedHit = findHitToken(
       grid,
       activeLevel,
       intention.mapPos,
       camera.zoom,
       campaign.tokens,
-      { filter: (t) => !t.hidden, deprioritize: (t) => !isPlayerManipulableToken(t) }
+      { filter, deprioritize: (t) => !isPlayerManipulableToken(t) }
     );
     const tappedToken = tappedHit ? tappedHit.token : null;
 
@@ -146,7 +147,7 @@ export function bootstrapPlayerView(options) {
     // borner la retombée vers la porte juste en dessous, et à décider de la destination d'un
     // déplacement plus bas.
     const exactTappedToken = exactTokenAtCell(activeLevel, targetCell, campaign.tokens, {
-      filter: (t) => !t.hidden,
+      filter,
       grid,
     });
 
@@ -347,6 +348,16 @@ export function bootstrapPlayerView(options) {
   const pointerInput = new PointerInput(element, camera, {
     role: 'players',
     onIntention: handleIntention,
+    startTouchHold: (mapPos) => {
+      const { campaign, activeLevel, selectedToken } = store.getState();
+      if (!campaign || !activeLevel || !selectedToken) return;
+      const hit = findHitToken(gridFor(activeLevel), activeLevel, mapPos, camera.zoom, campaign.tokens, {
+        filter: (token) => isTokenVisible(token, activeLevel),
+      });
+      if (!hit || isPlayerManipulableToken(hit.token)) return;
+      onInspectToken(hit.token);
+      return () => onInspectToken(null);
+    },
     canDoubleTap: () => store.getState().selectedTokenId === null,
     contextKey: () => {
       const current = store.getState();

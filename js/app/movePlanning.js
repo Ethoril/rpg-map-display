@@ -1,7 +1,7 @@
 // @ts-check
 
 import { movementRulesFor, bondZoneFor } from '../state/selection.js';
-import { createMovePlan, extendMovePlan, movePlanPreview, validateMovePlan, ranStartIndex } from '../state/movePlan.js';
+import { createMovePlan, extendMovePlan, movePlanPreview, removeLastMoveStep, validateMovePlan, ranStartIndex } from '../state/movePlan.js';
 import { getPresenceList, PRESENCE_STALE_AFTER_MS, subscribePresence } from '../state/presence.js';
 import { computeReachable } from '../movement/reachable.js';
 import { cellKey } from '../core/cellKey.js';
@@ -113,6 +113,19 @@ export class MovePlanningController {
     this.publish();
     this.onChange();
     return { ok: true, plan: this.plan };
+  }
+
+  /** @param {Token} token @param {Level} level */
+  undoLastStep(token, level) {
+    const plan = this.plan;
+    if (!plan?.steps.length || plan.status !== 'ready' || plan.tokenId !== token.id || plan.levelId !== level.id) return;
+    if (plan.steps.length === 1) {
+      this.start(token, level);
+      return;
+    }
+    this.plan = removeLastMoveStep(plan, movementRulesFor(token, level));
+    this.publish();
+    this.onChange();
   }
 
   /** Annule et retire l'aperçu du réseau. @returns {string|null} planId retiré */

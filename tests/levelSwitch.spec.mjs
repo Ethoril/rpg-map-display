@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision } from './browserTestTransport.mjs';
 
 /**
  * Lot 3, S-02 — la bascule d'étage traverse le réseau.
@@ -651,6 +651,7 @@ test('groupe séparé — un PJ bouge sur un étage que le MJ ne regarde pas : s
   await expect.poll(() => etageActif(joueur), { timeout: 8000 }).toBe('etage');
 
   // Il déplace son PJ, posté là-haut, d'une case : sélection puis destination.
+  await waitForPlayerVision(joueur);
   await taper(joueur, 5, 5, 100);
   await taper(joueur, 6, 5, 100);
   await taper(joueur, 6, 5, 100);

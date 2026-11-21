@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { createCampaign, createLevel } from '../js/core/schema.js';
 
 // Vérification de T-14 contre un VRAI projet Firebase, dans deux contextes de navigateur
 // distincts — donc deux clients au sens du contrat : stockage isolé, authentification
@@ -212,12 +213,8 @@ test('une reconnexion ne rejoue pas l\'historique de la session', async ({ brows
 });
 
 
-// C1 (audit du 22/09/2026) — la purge AUTOMATIQUE des événements supprime-t-elle quoi que ce soit ?
-// À la lecture, son `runTransaction` sur `session/{id}` rendait `undefined` quand le cache local
-// était vide, ce qui annule la transaction : `events` grossirait alors sans fin. Seule une base
-// réelle tranche. Deux clients reçoivent tout, leurs curseurs atteignent le dernier événement :
-// la purge doit en supprimer.
-test('C1 : la purge automatique supprime les événements que tous les clients ont reçus', async ({ browser }) => {
+// C1 : les accusés des clients protègent les écoutes, le repère Firestore protège les reprises.
+test('C1 : la purge automatique attend les clients et la sauvegarde des événements', async ({ browser }) => {
   test.skip(!complet, RAISON);
 
   const sessionId = `test-purge-auto-${Date.now()}`;
@@ -240,6 +237,10 @@ test('C1 : la purge automatique supprime les événements que tous les clients o
       .toBe(true);
     await expect.poll(() => mj.horlogePrete(), { timeout: 10000 }).toBe(true);
 
+    expect(await mj.purgeAutomatique()).toBe(0);
+    expect(await mj.compterEvenements()).toBe(avant);
+    const level = createLevel({ id: 'a' });
+    await mj.sauver({ campaign: createCampaign({ campaignId: sessionId, levels: [level] }), activeLevelId: level.id });
     const supprimes = await mj.purgeAutomatique();
     const apres = await mj.compterEvenements();
     console.log(`[C1] avant ${avant}, supprimés annoncés ${supprimes}, après ${apres}`);

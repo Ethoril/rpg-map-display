@@ -205,7 +205,8 @@ export class LinksLayer {
    * Côté MJ (`role: 'gm'`), l'invite vaut aussi pour une liaison MJ seule : le MJ la franchit
    * du même geste (combat du 21/11/2026).
    *
-   * @param {{zoom?: number, promptAtCell?: {a: number, b: number}|null, role?: 'gm'|'players'}} [options]
+   * @param {{zoom?: number, promptAtCell?: {a: number, b: number}|null, role?: 'gm'|'players', mounted?: 'local'|'linked',
+   *   camera?: import('../camera.js').Camera, insetTop?: number}} [options]
    * @returns {number} 0 ou 1 — jamais plus, voir ci-dessous.
    */
   renderPrompt(ctx, grid, level, links, options = {}) {
@@ -245,18 +246,31 @@ export class LinksLayer {
       // à la vue « carte entière » de la tablette (zoom 0,238). Plus grosse que le libellé MJ et
       // contournée de noir — le MJ lit son écran à 50 cm, la table lit une tablette posée au
       // milieu, sur un fond de carte qui peut être clair comme sombre.
-      const labelY = point.y - demiHauteur - 18 / zoom;
-      const label = LINK_PROMPT[link.kind] ?? LINK_PROMPT_DEFAUT;
+      let labelX = point.x;
+      let labelY = point.y - demiHauteur - 18 / zoom;
+      const label = options.mounted === 'linked' ? 'Demander au MJ de vous faire descendre de cheval'
+        : options.mounted === 'local' ? 'Descendre de cheval'
+          : (LINK_PROMPT[link.kind] ?? LINK_PROMPT_DEFAUT);
 
       ctx.save();
       ctx.font = `600 ${15 / zoom}px system-ui, sans-serif`;
+      let width;
+      const camera = options.camera;
+      if (camera) {
+        const min = camera.screenToMap({ screenX: 8, screenY: (options.insetTop ?? 0) + 12 });
+        const max = camera.screenToMap({ screenX: camera.screenWidth - 8, screenY: camera.screenHeight - 12 });
+        width = Math.max(1, max.x - min.x);
+        const halfWidth = Math.min(width, ctx.measureText(label).width + 4 / zoom) / 2;
+        labelX = Math.max(min.x + halfWidth, Math.min(max.x - halfWidth, point.x));
+        if (labelY < min.y) labelY = Math.min(max.y, point.y + demiHauteur + 18 / zoom);
+      }
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = '#111827';
       ctx.lineWidth = 4 / zoom;
-      ctx.strokeText(label, point.x, labelY);
-      ctx.fillText(label, point.x, labelY);
+      ctx.strokeText(label, labelX, labelY, width);
+      ctx.fillText(label, labelX, labelY, width);
       ctx.restore();
       return 1;
     }

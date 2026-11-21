@@ -87,3 +87,18 @@ export function footprintsAdjacent(level, first, second) {
   if (firstCells.some((c) => secondKeys.has(cellKey(c)))) return false;
   return firstCells.some((c) => grid.neighbors(c).some((n) => secondKeys.has(cellKey(n))));
 }
+
+/**
+ * Distance entre les deux cases occupées les plus proches, avec la métrique de l'étage.
+ * @param {import('../core/types.js').Level} level
+ * @param {{cell: import('../core/types.js').Cell, sizeCells: number}} first
+ * @param {{cell: import('../core/types.js').Cell, sizeCells: number}} second
+ */
+export function distanceBetweenFootprints(level, first, second) {
+  const grid = gridFor(level);
+  const fromCells = grid.cellsOccupied(first.cell, first.sizeCells || 1);
+  const toCells = grid.cellsOccupied(second.cell, second.sizeCells || 1);
+  let distance = Infinity;
+  for (const a of fromCells) for (const b of toCells) distance = Math.min(distance, grid.distance(a, b));
+  return distance;
+}

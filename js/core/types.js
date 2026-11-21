@@ -365,6 +365,11 @@
  * @property {object} payload
  * @property {number} at
  * @property {'gm'|'players'} by
+ * @property {boolean} [recovered] Mutation rattrapée après un instantané, sans animation historique
+ */
+
+/**
+ * @typedef {{channel: 'rtdb'|'firestore'|'mj-link', operation: string, failedAt: number, recoveredAt?: number}} SyncIncident
  */
 
 // Ce fichier ne contient AUCUN code exécutable : uniquement des @typedef et l'export vide

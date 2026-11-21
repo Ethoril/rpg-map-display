@@ -1166,3 +1166,20 @@ button.gm-flash-ok {
   border: 1px solid var(--gm-trait);
   border-radius: var(--gm-r);
 }
+#gm-sync-incidents {
+  position: fixed;
+  z-index: 901;
+  bottom: 38px;
+  left: 8px;
+  max-width: min(540px, calc(100vw - 16px));
+  padding: 6px 8px;
+  color: #e5e7eb;
+  background: #20252b;
+  border: 1px solid #485764;
+  border-radius: 6px;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+
+#gm-sync-incidents summary { cursor: pointer; }
+#gm-sync-incidents ul { margin: 8px 0 2px; padding-left: 18px; }
+#gm-sync-incidents li + li { margin-top: 5px; }

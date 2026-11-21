@@ -23,6 +23,7 @@ html, body {
 
 canvas {
   touch-action: none;
+  -webkit-touch-callout: none;
   display: block;
   width: 100%;
   height: 100%;
@@ -62,7 +63,7 @@ canvas {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  right: 112px;
   z-index: 5;
   display: none;
   gap: 6px;
@@ -247,6 +248,41 @@ canvas {
   text-shadow: 0 1px 2px #000000;
 }
 
+.player-selection-distance {
+  max-width: 100%;
+  margin-top: 3px;
+  color: #fff2c8;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+#player-undo-step {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #fff2c8;
+  background: #101820;
+  border: 1px solid #ffbf47;
+  border-radius: 50%;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#player-undo-step[hidden] {
+  display: none;
+}
+
+#player-undo-step:focus-visible {
+  outline: 2px solid #fff2c8;
+  outline-offset: 2px;
+}
+
 /* ⛔ Le focus reste VISIBLE (même règle que `.player-level-tab`). Décalage vers l'intérieur :
    la bande défile, et un contour qui déborde y serait coupé. */
 .player-selection-mount:focus-visible,
@@ -301,7 +337,7 @@ canvas {
 .image-share-close {
   position: absolute;
   top: 12px;
-  right: 72px;
+  right: 124px;
   width: 64px;
   height: 64px;
   display: flex;
@@ -317,6 +353,192 @@ canvas {
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+
+#player-game-help {
+  position: fixed;
+  z-index: 9500;
+  top: 12px;
+  right: 64px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #f4eee2;
+  background: rgba(16, 24, 32, 0.75);
+  border: 1px solid #63717c;
+  border-radius: 8px;
+  font: 650 20px system-ui, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#player-help-dialog {
+  box-sizing: border-box;
+  width: min(940px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: clamp(16px, 3vw, 28px);
+  color: #f4eee2;
+  background: #151e26;
+  border: 1px solid #485764;
+  border-radius: 14px;
+  font: 1rem/1.45 system-ui, sans-serif;
+  overscroll-behavior: contain;
+}
+
+#player-help-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+#player-help-dialog header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #485764;
+  background: #151e26;
+}
+
+#player-help-dialog h1,
+#player-help-dialog h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+#player-help-dialog h1 { font-size: 1.15rem; }
+#player-help-dialog h2 { margin: 20px 0 16px; font-size: 1.55rem; }
+
+.player-help-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+#player-help-dialog button {
+  min-height: 44px;
+  padding: 6px 12px;
+  color: #f4eee2;
+  background: #242f39;
+  border: 1px solid #63717c;
+  border-radius: 6px;
+  font: 600 0.95rem/1.2 system-ui, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#player-game-help:focus-visible,
+#player-help-dialog button:focus-visible {
+  outline: 2px solid #ffdd4a;
+  outline-offset: 2px;
+}
+
+.player-help-instructions ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-help-instructions [data-example] {
+  width: 100%;
+  text-align: left;
+}
+
+#player-help-dialog [aria-pressed="true"] {
+  border-color: #ffbf47;
+  color: #fff2c8;
+}
+
+.player-help-instructions p {
+  min-height: 3em;
+  margin: 14px 0;
+  font-size: 1.05rem;
+}
+
+.player-help-actions { display: grid; gap: 6px; }
+
+#player-help-dialog [data-help-practice] {
+  background: #ffbf47;
+  border-color: #ffbf47;
+  color: #1e1a10;
+}
+
+.player-help-board {
+  position: relative;
+  display: grid;
+  grid-template: repeat(5, 1fr) / repeat(7, 1fr);
+  aspect-ratio: 7 / 5;
+  background: #28333a;
+  border: 1px solid #63717c;
+}
+
+#player-help-dialog .player-help-board button {
+  padding: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 0.5px #4f5a62;
+  background: transparent;
+}
+
+#player-help-dialog .player-help-board button:disabled { cursor: default; }
+#player-help-dialog .player-help-board button:focus-visible { outline-offset: -3px; }
+#player-help-dialog .player-help-board .is-reachable { background: #245642; }
+#player-help-dialog .player-help-board .is-route { background: #725123; }
+#player-help-dialog .player-help-board .is-arrival { box-shadow: inset 0 0 0 2px #ffbf47; }
+
+.player-help-pawn,
+.player-help-touch {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: calc(100% / 7);
+  height: calc(100% / 5);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.player-help-pawn { color: #fff2c8; transition: transform 480ms cubic-bezier(0.77, 0, 0.175, 1); }
+
+.player-help-touch::after {
+  content: '';
+  width: 60%;
+  aspect-ratio: 1;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+}
+
+.player-help-touch[hidden],
+.player-help-prompt[hidden] { display: none; }
+
+.player-help-prompt {
+  position: absolute;
+  left: clamp(7rem, var(--help-prompt-x, 50%), 100% - 7rem);
+  transform: translateX(-50%);
+  max-width: calc(100% - 16px);
+  width: max-content;
+  padding: 5px 8px;
+  color: #fff2c8;
+  background: #101820;
+  border-radius: 6px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .player-help-content { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-help-pawn { transition: none; }
 }
 
 .image-share-close:focus-visible {

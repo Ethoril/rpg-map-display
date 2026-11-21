@@ -17,6 +17,7 @@ import { reconstructPath } from '../movement/path.js';
  * @property {string} levelId
  * @property {Cell} start
  * @property {Cell[]} steps
+ * @property {number[]} stepEnds Indice de fin de chaque étape dans le chemin parcouru
  * @property {Cell[]} path
  * @property {number} budget
  * @property {number} walkBudget Marche : part du budget avant que la Course (l'Action du Tour) ne commence
@@ -43,7 +44,7 @@ export function createMovePlan(token, level, rules) {
   result.distances.delete(cellKey(start));
   return {
     planId: makePlanId(), revision: 0, tokenId: token.id, levelId: level.id,
-    start, steps: [], path: [start], budget: rules.budget, walkBudget: rules.walkBudget ?? rules.budget, cost: 0,
+    start, steps: [], stepEnds: [], path: [start], budget: rules.budget, walkBudget: rules.walkBudget ?? rules.budget, cost: 0,
     remaining: rules.budget, reachable: result.distances, predecessors: result.predecessors,
     status: /** @type {'ready'} */ ('ready'),
   };
@@ -75,6 +76,7 @@ export function extendMovePlan(plan, destination, rules) {
     ...plan,
     revision: plan.revision + 1,
     steps: [...plan.steps, { a: destination.a, b: destination.b }],
+    stepEnds: [...plan.stepEnds, plan.path.length + segment.length - 2],
     path: [...plan.path, ...segment.slice(1).map((cell) => ({ a: cell.a, b: cell.b }))],
     cost: totalCost,
     remaining: Math.max(0, plan.budget - totalCost),
@@ -85,6 +87,21 @@ export function extendMovePlan(plan, destination, rules) {
   next.reachable = reachable.distances;
   next.predecessors = reachable.predecessors;
   return { plan: next, reason: null };
+}
+
+/** @param {MovePlan} plan @param {MovementRules} rules @returns {MovePlan} */
+export function removeLastMoveStep(plan, rules) {
+  const steps = plan.steps.slice(0, -1);
+  const stepEnds = plan.stepEnds.slice(0, -1);
+  const path = plan.path.slice(0, (stepEnds.at(-1) ?? 0) + 1);
+  const destination = path[path.length - 1];
+  let cost = 0;
+  for (let i = 1; i < path.length; i++) cost += movementStepCost(rules.grid, path[i - 1], path[i], rules.terrainCost);
+  const remaining = Math.max(0, plan.budget - cost);
+  const reachable = computeReachable(rules.grid, destination, remaining, rules.blockedEdges, rules.terrainCost, rules.footprint);
+  reachable.distances.delete(cellKey(destination));
+  return { ...plan, revision: plan.revision + 1, steps, stepEnds, path, cost, remaining,
+    reachable: reachable.distances, predecessors: reachable.predecessors };
 }
 
 /** Revalidates the complete route against the current grid and movement rules. @param {MovePlan} plan @param {Token} token @param {Level} level @param {MovementRules} rules @returns {{valid:boolean,reason:string|null,cost:number}} */

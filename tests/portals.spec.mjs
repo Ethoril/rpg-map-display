@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { waitForApp, installBrowserTransport } from './browserTestTransport.mjs';
+import { waitForApp, installBrowserTransport, setPlayerTestVision } from './browserTestTransport.mjs';
 
 /**
  * Étage 02 de `test_village_complet`, tel que décrit dans le fait de séance : une porte fermée
@@ -101,6 +101,7 @@ async function tapPortalAtZoom(page, zoom, errorPx = 0) {
   await installBrowserTransport(page, sessionId, buildEtage02Snapshot());
   await page.goto(`/player.html?session=${sessionId}`);
   await waitForApp(page);
+  await setPlayerTestVision(page);
 
   // Cadre la porte : caméra centrée sur la case de liaison, au zoom demandé. Le cadrage naturel
   // de `fitActiveLevel` a déjà eu lieu pendant le boot (voir le commentaire de `ETAGE_02`), donc
@@ -269,10 +270,9 @@ test('Ouvrir une porte rafraîchit immédiatement les cases atteignables du pion
   await waitForApp(page);
 
   await page.evaluate(async () => {
-    const [store, schema, selection] = await Promise.all([
+    const [store, schema] = await Promise.all([
       import('../js/state/store.js'),
       import('../js/core/schema.js'),
-      import('../js/state/selection.js'),
     ]);
 
     const level = schema.createLevel({
@@ -300,13 +300,15 @@ test('Ouvrir une porte rafraîchit immédiatement les cases atteignables du pion
 
     const campaign = schema.createCampaign({ levels: [level], tokens: [token] });
     store.loadCampaign(campaign);
-    selection.setSelectionState(token, level);
   });
+  await setPlayerTestVision(page);
+  await page.evaluate(async () => (await import('../js/state/store.js')).selectToken('hero-reach'));
 
   const reachableClosedCount = await page.evaluate(async () => {
     const selection = await import('../js/state/selection.js');
     return selection.getReachableCells().size;
   });
+  expect(reachableClosedCount).toBeGreaterThan(0);
 
   // Ouvrir la porte via setPortalState
   await page.evaluate(async () => {
@@ -414,6 +416,7 @@ test('Protection chantier O — un tap en plein sur un pion à moins d\'un quart
   // Tap à (310, 350) : à 10 unités carte de la porte (dans sa capsule de 25), mais à
   // l'INTÉRIEUR du rectangle du pion (dist=0). La protection du chantier O doit lui revenir
   // d'elle-même — un pion sous le doigt bat toujours une porte à distance non nulle.
+  await setPlayerTestVision(page);
   await page.evaluate(() => {
     /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
       type: 'tap',

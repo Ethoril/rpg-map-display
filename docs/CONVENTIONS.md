@@ -324,7 +324,7 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    menu, ni bouton, ni panneau, ni tchat. Seuls la carte, la grille, l'indicateur d'état des portes,
    les pions, le fog, le sélecteur d'étage et les gabarits s'affichent.
 
-   > **Cinq dérogations, et cinq seulement** (cf. `STACK.md` §5bis) :
+   > **Dérogations à la vue sans interface** :
    > - **Overlay de version au chargement** — 4 s puis disparition totale,
    >   `pointer-events: none`, rappelable par tap à trois doigts. Rien de persistant, rien
    >   de tapable.
@@ -357,7 +357,14 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    >   en tête l'**encart du pion** — portrait, nom, vitalité. Toucher sans sélection un pion que
    >   la tablette ne déplace pas (PNJ, ennemi, PJ bridé) **et que la table voit** l'ouvre en
    >   **consultation** : encart et badges, **aucun bouton**, rien de publié ; tout autre tap la
-   >   referme. La vitalité d'un PNJ est son état à trois crans, jamais ses PV.
+   >   referme. La vitalité d'un PNJ est son état à trois crans, jamais ses PV. Pendant une
+   >   sélection, un appui maintenu sur un adversaire visible affiche aussi la distance depuis
+   >   le PJ. Le relâchement rend l'encart au PJ et conserve le trajet.
+   > - **Recul d’une étape** (21/11/2026) — une commande jouxte l’étape précédente, seulement
+   >   pendant la préparation locale. Les cases restent des cibles de déplacement.
+   > - **Aide de jeu** (21/11/2026, validée par le MJ) — bouton permanent de 44 × 44 px près du
+   >   plein écran. Son guide et sa carte fictive s’ouvrent sur demande. Revenir à la partie
+   >   rend le cadrage et la préparation encore valide.
    >
    > Toute autre exception se demande. Elle ne se décide pas.
 3. **Ne jamais afficher un pion dans une zone explorée mais hors vision courante.** Cela

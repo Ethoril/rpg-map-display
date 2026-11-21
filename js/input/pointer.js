@@ -28,6 +28,8 @@ import { distanceBetween, centerBetween, isDragThresholdExceeded } from './gestu
  * @property {number} [dragHoldMs=DRAG_HOLD_MS] Seuil temporel de drag (ms)
  * @property {number} [dragDistanceThreshold=5] Seuil spatial de drag (pixels)
  * @property {number} [longPressMs=500] Seuil pour l'appui long (ms)
+ * @property {(mapPos: MapPoint) => (() => void)|undefined} [startTouchHold]
+ *   Effet temporaire côté joueurs. La fonction retournée le termine à la fin du geste.
  * @property {number} [doubleTapMs=300] Fenêtre de reconnaissance du double tap
  * @property {number} [doubleTapDistancePx=32] Distance maximale écran entre deux taps
  * @property {() => boolean} [canDoubleTap] Prédicat de la vue; l'input ne lit pas le store
@@ -63,6 +65,7 @@ export class PointerInput {
     this.dragHoldMs = options.dragHoldMs ?? DRAG_HOLD_MS;
     this.dragDistanceThreshold = options.dragDistanceThreshold ?? 5;
     this.longPressMs = options.longPressMs ?? 500;
+    this.startTouchHold = options.startTouchHold;
     this.doubleTapMs = options.doubleTapMs ?? DOUBLE_TAP_MS;
     this.doubleTapDistancePx = options.doubleTapDistancePx ?? DOUBLE_TAP_DISTANCE_PX;
     this.canDoubleTap = options.canDoubleTap ?? (() => false);
@@ -87,6 +90,8 @@ export class PointerInput {
     this.longPressTimer = null;
     /** @type {boolean} */
     this.longPressTriggered = false;
+    /** @type {(() => void)|undefined} */
+    this.endTouchHold = undefined;
     /** @type {{intention: Extract<InputIntention, {type:'tap'}>, contextKey: string|number, at: number}|null} */
     this.pendingTap = null;
     /** @type {ReturnType<typeof setTimeout>|null} */
@@ -134,6 +139,7 @@ export class PointerInput {
     this.element.addEventListener('pointermove', this.handlePointerMove);
     this.element.addEventListener('pointerup', this.handlePointerUp);
     this.element.addEventListener('pointercancel', this.handlePointerCancel);
+    this.element.addEventListener('lostpointercapture', this.handlePointerCancel);
     this.element.addEventListener('wheel', this.handleWheel, { passive: false });
     window.addEventListener('blur', this.handleWindowBlur);
   }
@@ -146,6 +152,7 @@ export class PointerInput {
     this.element.removeEventListener('pointermove', this.handlePointerMove);
     this.element.removeEventListener('pointerup', this.handlePointerUp);
     this.element.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.element.removeEventListener('lostpointercapture', this.handlePointerCancel);
     this.element.removeEventListener('wheel', this.handleWheel);
     window.removeEventListener('blur', this.handleWindowBlur);
 
@@ -158,6 +165,7 @@ export class PointerInput {
    */
   resetInteraction() {
     this.clearLongPressTimer();
+    this.finishTouchHold();
     this.clearPendingTap();
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
@@ -199,6 +207,12 @@ export class PointerInput {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
+  }
+
+  finishTouchHold() {
+    const finish = this.endTouchHold;
+    this.endTouchHold = undefined;
+    finish?.();
   }
 
   /** Annule tout tap différé. Un contexte périmé ne doit jamais agir sur une nouvelle sélection. */
@@ -346,12 +360,18 @@ export class PointerInput {
             : null;
         this.longPressTriggered = false;
 
-        // Planification du timer d'appui long : pose la candidature sans appliquer l'effet au milieu du geste
+        // Le MJ traite l'appui long au relâchement. Sur le canvas joueurs, seul un effet
+        // temporaire peut commencer avant, en laissant la priorité au gabarit.
         this.clearLongPressTimer();
+        const holdContext = this.contextKey();
         this.longPressTimer = setTimeout(() => {
-          if (this.activePointers.size === 1 && this.startScreenPos) {
+          if (this.activePointers.size === 1 && this.mode === 'tapCandidate') {
             this.longPressTriggered = true;
             this.clearPendingTap();
+            if (this.role === 'players' && e.pointerType === 'touch' && !this.dragTemplateHit &&
+                this.contextKey() === holdContext) {
+              this.endTouchHold = this.startTouchHold?.(mapPos);
+            }
           }
         }, this.longPressMs);
       }
@@ -392,6 +412,7 @@ export class PointerInput {
       // Si mouvement significatif, annuler le long press et sa candidature
       if (distFromStart >= this.dragDistanceThreshold) {
         this.clearLongPressTimer();
+        this.finishTouchHold();
         this.longPressTriggered = false;
         this.clearPendingTap();
       }
@@ -566,6 +587,9 @@ export class PointerInput {
     // occupée — sortait d'ici avant `activePointers.delete`. Le pointeur restait enregistré,
     // l'automate restait en glisser, et un pion fantôme suivait la souris au simple survol.
     try {
+      const hadTouchHold = !!this.endTouchHold;
+      this.finishTouchHold();
+      if (hadTouchHold) return;
       if (this.activePointers.size === 1 && this.startScreenPos) {
         // Vider tout pan coalescé en attente
         if (this.mode === 'panning' && this.rafId !== null) {
@@ -661,6 +685,7 @@ export class PointerInput {
    * @param {PointerEvent} e
    */
   handlePointerCancel(e) {
+    if (!this.activePointers.has(e.pointerId)) return;
     this.clearPendingTap();
     this.clearLongPressTimer();
     this.longPressTriggered = false;
@@ -703,6 +728,7 @@ export class PointerInput {
    */
   interruptGesture() {
     this.clearPendingTap();
+    this.finishTouchHold();
     const screenPos = this.lastScreenPos || this.startScreenPos;
     if (!screenPos) return;
     const mapPos = this.camera.screenToMap(screenPos);

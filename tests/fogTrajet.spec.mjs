@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision } from './browserTestTransport.mjs';
 
 /**
  * Qui révèle un trajet, et qui ne le révèle pas.
@@ -155,6 +155,7 @@ async function monterSession(browser, sessionId) {
   // On attend la première publication : sans elle, un « pas encore exploré » ne
   // prouverait rien, il dirait seulement que rien n'est encore arrivé.
   await expect.poll(() => alphaCase(player, CELL_DEPART), { timeout: 8000 }).toBeGreaterThan(0);
+  await waitForPlayerVision(player);
 
   return { context, gm, player, erreurs };
 }
@@ -165,15 +166,19 @@ test('Un déplacement joueur révèle tout le trajet, y compris son milieu', asy
   expect(await alphaCase(player, CELL_MILIEU)).toBe(0);
 
   // Le joueur sélectionne son pion, puis tape la case d'arrivée : un vrai geste.
-  await player.evaluate(
-    ([depart, arrivee]) => {
+  const deplacement = await player.evaluate(
+    async ([depart, arrivee]) => {
+      const store = await import('../js/state/store.js');
       const input = /** @type {any} */ (window).__RPG_APP__.pointerInput;
       input.emit({ type: 'tap', mapPos: depart, screenPos: { x: 0, y: 0 } });
+      const selection = store.getState().selectedTokenId;
       input.emit({ type: 'tap', mapPos: arrivee, screenPos: { x: 0, y: 0 } });
       input.emit({ type: 'tap', mapPos: arrivee, screenPos: { x: 0, y: 0 } });
+      return { selection, cell: store.getCampaign()?.tokens[0]?.cell };
     },
     [centre(CELL_DEPART), centre(CELL_ARRIVEE)]
   );
+  expect(deplacement).toEqual({ selection: TOKEN.id, cell: CELL_ARRIVEE });
 
   await expect.poll(() => alphaCase(player, CELL_ARRIVEE), { timeout: 8000 }).toBeGreaterThan(0);
 

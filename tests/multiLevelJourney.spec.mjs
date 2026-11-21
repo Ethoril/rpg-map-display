@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision, setPlayerTestVision } from './browserTestTransport.mjs';
 
 /** @param {string} id @param {string} name @param {number} order */
 const level = (id, name, order) => ({ id, name, order, imageUrl: '', videoUrl: null, animatedOverlays: [], pxPerCell: 80, widthCells: 10, heightCells: 8, grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true }, terrainCost: null, walls: [], portals: [], lights: [], ambient: { level: 1, baked: false } });
@@ -37,6 +37,7 @@ test('R3-03/UX-10 — téléportation, découplage des deux vues et fog restaur�
   await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('rdc')), { timeout: 8000 }).not.toBeNull();
 
   // Deux taps : sélectionner le pion puis franchir exactement l'escalier.
+  await waitForPlayerVision(player);
   await tapLink(player); await tapLink(player);
 
   // ⭐ UX-10 : le pion monte, **aucun écran ne bouge**. Ce test asseyait l'inverse jusqu'au
@@ -63,6 +64,7 @@ test('R3-03/UX-10 — téléportation, découplage des deux vues et fog restaur�
   expect(await state(gm), 'le choix de la table ne doit pas déplacer le MJ').toMatchObject({ activeLevelId: 'rdc' });
 
   // Le pion redescend : là encore, aucun écran ne suit.
+  await waitForPlayerVision(player);
   await tapLink(player); await tapLink(player);
   await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1', token: { levelId: 'rdc' } });
   await expect.poll(() => state(gm), { timeout: 8000 }).toMatchObject({ activeLevelId: 'rdc', token: { levelId: 'rdc' } });
@@ -177,6 +179,7 @@ test('R3-03 — le MJ bride le pion pendant qu’il est sélectionné : l’invi
     await Promise.all([installBrowserTransport(gm, sessionId, snapshot), installBrowserTransport(player, sessionId, snapshot)]);
     await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
     await Promise.all([waitForApp(gm), waitForApp(player)]);
+    await waitForPlayerVision(player);
     await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('rdc')), { timeout: 8000 }).not.toBeNull();
 
     // Le joueur sélectionne son pion, posé sur l'escalier : l'invite s'allume.
@@ -240,6 +243,7 @@ test('R3-03 — une campagne chargée avec deux PJ empilés se normalise : le se
   expect(etatChargement.enReserve).toEqual(['zzz-second']);
 
   // Le survivant se sélectionne et franchit l'escalier comme n'importe quel pion seul sur sa case.
+  await setPlayerTestVision(player);
   await tapLink(player); await tapLink(player);
   await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({
     token: { levelId: 'et1', cell: { a: 2, b: 2 } },
@@ -292,6 +296,7 @@ test('R3-03 — l’UI joueurs ne traverse ni une liaison MJ seule ni un pion ve
     await installBrowserTransport(player, sessionId, restrictedSnapshot);
     await player.goto(`/player.html?session=${sessionId}`);
     await waitForApp(player);
+    await setPlayerTestVision(player);
 
     await tapLink(player); await tapLink(player);
     await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({

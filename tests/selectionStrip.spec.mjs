@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision, setPlayerTestVision } from './browserTestTransport.mjs';
 
 /**
  * Chantier C-9, tranche 2 — la bande de sélection de la tablette, sur la vraie vue joueurs.
@@ -144,11 +144,13 @@ const BANDE = '#player-selection-strip';
  * @param {import('@playwright/test').Page} page
  * @param {string} nom
  * @param {string[]} [markers]
+ * @param {boolean} [avecVision]
  */
-async function ouvrir(page, nom, markers = []) {
+async function ouvrir(page, nom, markers = [], avecVision = true) {
   await installBrowserTransport(page, `c9-bande-${nom}-${Date.now()}`, instantane(markers));
   await page.goto('/player.html');
   await waitForApp(page);
+  if (avecVision) await setPlayerTestVision(page);
 }
 
 test('C-9 bande : masquée sans sélection, visible sur un PJ sélectionné, masquée à la désélection', async ({
@@ -349,6 +351,7 @@ test('C-9 bande : un token.mounted reçu du MJ pendant la sélection barre le bo
   await installBrowserTransport(joueur, sessionId, instantane());
   await joueur.goto(`/player.html?session=${sessionId}`);
   await waitForApp(joueur);
+  await waitForPlayerVision(joueur);
 
   await taper(joueur, 4, 4);
   const bouton = joueur.locator(`${BANDE} .player-selection-mount`);
@@ -370,7 +373,7 @@ test('C-9 bande : un token.mounted reçu du MJ pendant la sélection barre le bo
 test('C-9 bande : jamais ouverte EN SÉLECTION pour un PNJ, même sélectionné par un autre chemin que le tap', async ({
   page,
 }) => {
-  await ouvrir(page, 'pnj');
+  await ouvrir(page, 'pnj', [], false);
 
   // ⚠ Depuis le 21/11/2026, toucher un PNJ VISIBLE l'ouvre en consultation, sans bouton
   // (`defautsCombat.spec.mjs`). Ici aucun MJ ne publie de vision : la tablette ne peint aucun

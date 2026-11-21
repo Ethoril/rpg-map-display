@@ -1,7 +1,7 @@
 // @ts-check
 // Défauts relevés par le MJ après un vrai combat (21/11/2026) — partie navigateur.
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision, setPlayerTestVision } from './browserTestTransport.mjs';
 
 /** @param {string} id @param {string} name @param {number} order */
 const level = (id, name, order) => ({ id, name, order, imageUrl: '', videoUrl: null, animatedOverlays: [], pxPerCell: 80, widthCells: 10, heightCells: 8, grid: { type: 'square', offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.25, visible: true }, terrainCost: null, walls: [], portals: [], lights: [], ambient: { level: 1, baked: false } });
@@ -116,6 +116,18 @@ const instantaneEncart = (ambiant = 1) => ({
 const taperCase = (page, a, b) => page.evaluate(([ca, cb, px]) => /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({ type: 'tap', mapPos: { x: (ca + 0.5) * px, y: (cb + 0.5) * px }, screenPos: { x: 0, y: 0 } }), [a, b, PXE]);
 const BANDE = '#player-selection-strip';
 
+/** @param {import('@playwright/test').Page} page @param {number} x @param {number} y */
+const pointEcran = (page, x, y) => page.evaluate(([x, y]) => {
+  const { camera, canvas } = /** @type {any} */ (window).__RPG_APP__;
+  const point = camera.mapToScreen({ x, y });
+  const rect = canvas.getBoundingClientRect();
+  return { x: Math.round(point.screenX + rect.left), y: Math.round(point.screenY + rect.top) };
+}, [x, y]);
+
+/** @param {import('@playwright/test').Page} page */
+const selectionJoueur = (page) => page.evaluate(async () =>
+  (await import('../js/state/store.js')).getState().selectedTokenId);
+
 /** @param {import('@playwright/test').Browser} browser @param {number} ambiant */
 async function tableAvecMj(browser, ambiant) {
   const context = await browser.newContext();
@@ -127,7 +139,7 @@ async function tableAvecMj(browser, ambiant) {
   await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
   await Promise.all([waitForApp(gm), waitForApp(player)]);
   // La vision du MJ doit être arrivée : sans elle, la tablette ne montre aucun pion.
-  await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getSessionVision('rdc') !== null), { timeout: 8000 }).toBe(true);
+  await waitForPlayerVision(player);
   return { context, gm, player };
 }
 
@@ -193,6 +205,175 @@ test('Encart joueurs : dans le noir, un pion hors de la vision de la table ne s�
   await player.waitForTimeout(200);
   await expect(player.locator(BANDE)).toBeHidden();
   await context.close();
+});
+
+test.describe('Gestes sur tablette pendant un trajet', () => {
+  test.use({ hasTouch: true, viewport: { width: 1024, height: 768 } });
+
+  for (const lie of [false, true]) {
+    test(`la consigne à cheval indique comment descendre (${lie ? 'outil MJ' : 'autonome'})`, async ({ page }) => {
+      const snapshot = snapshotEscalier();
+      Object.assign(snapshot.campaign.tokens[0], { mounted: true }, lie ? { link: { source: 'outil-mj', ref: 'pj:hero' } } : {});
+      const sid = `tablette-escalier-${lie}-${Date.now()}`;
+      await installBrowserTransport(page, sid, snapshot);
+      await page.goto(`/player.html?session=${sid}`);
+      await waitForApp(page);
+      await setPlayerTestVision(page);
+      await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        const ctx = /** @type {CanvasRenderingContext2D} */ (w.__RPG_APP__.context);
+        const original = ctx.fillText.bind(ctx);
+        w.__textesLiaison = [];
+        ctx.fillText = (text, x, y, maxWidth) => {
+          w.__textesLiaison.push(text);
+          original(text, x, y, maxWidth);
+        };
+      });
+      const textes = () => page.evaluate(() => /** @type {any} */ (window).__textesLiaison);
+      const p = await pointEcran(page, 200, 200);
+      await page.touchscreen.tap(p.x, p.y);
+      await expect.poll(textes).toContain(lie ? 'Demander au MJ de vous faire descendre de cheval' : 'Descendre de cheval');
+      expect(await textes()).not.toContain('Retaper pour prendre l’escalier');
+      await page.touchscreen.tap(p.x, p.y);
+      expect(await etat(page)).toMatchObject({ token: { levelId: 'rdc', mounted: true } });
+
+      const bouton = page.locator(`${BANDE} .player-selection-mount`);
+      if (lie) {
+        await expect(bouton).toBeDisabled();
+        // Même événement que la descente commandée depuis l'outil MJ.
+        await page.evaluate(async () => (await import('../js/app/networkEvents.js')).applyNetworkEvent({
+          type: 'token.mounted', payload: { tokenId: 'hero', mounted: false }, at: Date.now(), by: 'gm',
+        }));
+      } else {
+        await bouton.tap();
+      }
+      await expect.poll(textes).toContain('Retaper pour prendre l’escalier');
+      await page.touchscreen.tap(p.x, p.y);
+      await expect.poll(() => etat(page)).toMatchObject({ token: { levelId: 'et1', mounted: false } });
+    });
+  }
+
+  test('l’appui tenu consulte l’adversaire, puis restaure le PJ et son trajet', async ({ page }) => {
+    const snapshot = instantaneEncart();
+    const sid = `tablette-consultation-${Date.now()}`;
+    await installBrowserTransport(page, sid, snapshot);
+    await page.goto(`/player.html?session=${sid}`);
+    await waitForApp(page);
+    await setPlayerTestVision(page);
+    const toucher = async (/** @type {number} */ x, /** @type {number} */ y) => {
+      const point = await pointEcran(page, x, y);
+      await page.touchscreen.tap(point.x, point.y);
+    };
+    const lireTrajets = () => page.evaluate((sid) =>
+      /** @type {any} */ (window).__rpgTestMovePreviews('get', sid, 'lecteur', null), sid);
+    const lirePublications = () => page.evaluate(() => /** @type {any} */ (window).__RPG_TEST_WIRE__.published);
+    await toucher(450, 450);
+    await expect.poll(() => selectionJoueur(page)).toBe('pj');
+    await toucher(450, 550);
+    await expect.poll(async () => Object.keys(await lireTrajets())).toHaveLength(1);
+    const trajet = await lireTrajets();
+    const publications = await lirePublications();
+    const bande = page.locator(BANDE);
+    const devTools = await page.context().newCDPSession(page);
+    for (const fin of ['touchEnd', 'touchCancel', 'glissement', 'pincement']) {
+      const adversaire = await pointEcran(page, 550, 450);
+      await devTools.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...adversaire, id: 0 }] });
+      await expect(bande).toHaveAttribute('data-mode', 'consultation');
+      await expect(bande).toContainText('Gobelin 2');
+      await expect(bande).toContainText('À 1 case d’Elysia');
+      await expect(bande.locator('.player-selection-mount')).toHaveCount(0);
+      expect(await selectionJoueur(page)).toBe('pj');
+      expect(await lireTrajets()).toEqual(trajet);
+
+      if (fin === 'glissement') {
+        const cameraX = () => page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.camera.x);
+        const avant = await cameraX();
+        await devTools.send('Input.dispatchTouchEvent', {
+          type: 'touchMove', touchPoints: [{ ...adversaire, x: adversaire.x + 60, id: 0 }],
+        });
+        await expect(bande).toContainText('Elysia');
+        await expect.poll(cameraX).toBeLessThan(avant);
+      } else if (fin === 'pincement') {
+        const cameraZoom = () => page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.camera.zoom);
+        const avant = await cameraZoom();
+        await devTools.send('Input.dispatchTouchEvent', {
+          type: 'touchStart', touchPoints: [{ ...adversaire, id: 0 }, { x: adversaire.x + 80, y: adversaire.y, id: 1 }],
+        });
+        await expect(bande).toContainText('Elysia');
+        await devTools.send('Input.dispatchTouchEvent', {
+          type: 'touchMove', touchPoints: [{ ...adversaire, id: 0 }, { x: adversaire.x + 120, y: adversaire.y, id: 1 }],
+        });
+        await expect.poll(cameraZoom).toBeGreaterThan(avant);
+      }
+      await devTools.send('Input.dispatchTouchEvent', { type: fin === 'touchCancel' ? 'touchCancel' : 'touchEnd', touchPoints: [] });
+      await expect(bande).toHaveAttribute('data-mode', 'selection');
+      await expect(bande).toContainText('Elysia');
+    }
+    expect(await lireTrajets()).toEqual(trajet);
+    expect(await lirePublications()).toEqual(publications);
+    expect(await page.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken()?.cell))
+      .toEqual({ a: 4, b: 4 });
+
+    // La poignée d'un gabarit posé sur l'adversaire garde la priorité, même après le délai.
+    await page.evaluate(async () => (await import('../js/state/store.js')).placeTemplate({
+      id: 'sur-gobelin', levelId: 'rdc', shape: 'circle', origin: { x: 550, y: 450 },
+      radiusCells: 1, directionDeg: 0, widthCells: 1, color: '#ef4444', visibleToPlayers: true,
+    }));
+    const poignee = await pointEcran(page, 550, 450);
+    await devTools.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...poignee, id: 0 }] });
+    await page.waitForTimeout(600);
+    await expect(bande).toHaveAttribute('data-mode', 'selection');
+    await devTools.send('Input.dispatchTouchEvent', {
+      type: 'touchMove', touchPoints: [{ ...poignee, x: poignee.x + 48, id: 0 }],
+    });
+    await devTools.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(async () => (await lirePublications()).filter((/** @type {any} */ e) => e.type === 'template.move'))
+      .toHaveLength(1);
+    expect(await lireTrajets()).toEqual(trajet);
+  });
+
+  test('la sélection suit la vision courante, y compris dans la marge d’un pion invisible', async ({ page }) => {
+    const snapshot = instantaneEncart();
+    snapshot.campaign.tokens.push(pionEncart('pj-hors-vision', { a: 3, b: 4 }, { kind: 'pc' }));
+    const sid = `tablette-vision-${Date.now()}`;
+    await installBrowserTransport(page, sid, snapshot);
+    await page.goto(`/player.html?session=${sid}`);
+    await waitForApp(page);
+    const taper = async (/** @type {number} */ x, /** @type {number} */ y) => {
+      const p = await pointEcran(page, x, y);
+      await page.touchscreen.tap(p.x, p.y);
+    };
+    const bande = page.locator(BANDE);
+    await taper(450, 450);
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.pointerInput.pendingTap)).toBeNull();
+    expect(await selectionJoueur(page)).toBeNull();
+    await expect(bande).toBeHidden();
+
+    await setPlayerTestVision(page, [{ a: 5, b: 4 }], true);
+    await taper(450, 450);
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.pointerInput.pendingTap)).toBeNull();
+    expect(await selectionJoueur(page)).toBeNull();
+    await expect(bande).toBeHidden();
+
+    await setPlayerTestVision(page, [{ a: 4, b: 4 }, { a: 5, b: 4 }]);
+    // x=395 est dans le rectangle du PJ hors vision, à 5 px carte du PJ visible.
+    await taper(395, 450);
+    await expect.poll(() => selectionJoueur(page)).toBe('pj');
+    await expect(bande).toContainText('Elysia');
+    await taper(450, 550);
+    const lireTrajets = () => page.evaluate((sid) =>
+      /** @type {any} */ (window).__rpgTestMovePreviews('get', sid, 'lecteur', null), sid);
+    await expect.poll(async () => Object.keys(await lireTrajets())).toHaveLength(1);
+
+    await setPlayerTestVision(page, [{ a: 5, b: 4 }]);
+    await expect(bande).toBeHidden();
+    expect(await selectionJoueur(page)).toBeNull();
+    await expect.poll(async () => Object.keys(await lireTrajets())).toHaveLength(0);
+    await setPlayerTestVision(page, [{ a: 4, b: 4 }, { a: 5, b: 4 }]);
+    await expect(bande).toBeHidden();
+    await taper(450, 450);
+    await expect(bande).toContainText('Elysia');
+  });
 });
 
 // ── Pion actif cerné sur l'écran MJ (`mj.turn`, contrat §10, révision du 21/11/2026) ───────────

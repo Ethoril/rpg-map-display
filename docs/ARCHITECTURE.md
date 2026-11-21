@@ -203,6 +203,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                              les joueurs ne basculent pas une lampe (décision du 10/09/2026)
 │   │
 │   ├─ ui/
+│   │   ├─ networkDiagnostics.js [Tablette] incidents de session et transmission différée au MJ
 │   │   ├─ versionBadge.js        [1a] affichage MJ (permanent) / joueurs (transitoire) + mise à jour forcée
 │   │   ├─ gm/
 │   │   │   ├─ panel.js           [1a] panneau latéral (conteneur)
@@ -218,6 +219,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │   │   └─ levelSelector.js   [3]  sélecteur d'étage MJ
 │   │   └─ player/
 │   │       ├─ bootstrap.js       [1a] montage de la vue joueurs
+│   │       ├─ gameHelp.js        [Tablette] guide et exercice fictif, hors du store de la partie
 │   │       ├─ imageShareOverlay.js [C-13] image partagée en plein écran, croix qui la ferme pour tous
 │   │       ├─ levelSelector.js   [3]  sélecteur d'étage joueurs
 │   │       └─ selectionStrip.js [C-9] bande de sélection, bord droit, tant qu'un pion est
@@ -584,17 +586,25 @@ n'entre ni dans les événements de campagne ni dans l'instantané Firestore.
 >   `session/$sessionId`, pas la lecture de `/session`. Une énumération globale exige donc une
 >   règle et un outil d'administration distincts ; l'interface Web ne feint pas de la fournir.
 >
-> **Rétention des événements.** Chaque `FirebaseTransport` écrit d'abord une barrière éphémère
-> `retentionClients/{clientId}` à l'état `joining`, avant de lire le dernier événement. Après le
-> branchement de l'écoute, elle devient `active` avec le dernier curseur reçu ; elle est datée par
-> `serverTimestamp()` et retirée avec `onDisconnect`. Au plus 32 événements sont effacés après 32
-> publications et 30 s, seulement jusqu'au plus petit curseur de tous les clients actifs. Le
-> contrôle des leases et la suppression sont une même transaction au niveau de la session : une
-> arrivée ou un ACK concurrent force une réévaluation. Le temps serveur (offset RTDB) ne sert qu'à
-> écarter une trace périmée après 120 s ; il ne date jamais les événements.
+> **Rétention des événements.** `FirebaseTransport` garde son bail `joining` jusqu'à la lecture
+> de l'instantané et des mutations RTDB entre son `eventCursor` et l'ouverture du canal. Le
+> repère est capturé avec la campagne et écrit dans la même transaction Firestore. Les mutations
+> rattrapées s'appliquent sans animation historique. Pings, effets et vision restent des signaux
+> directs. Un ancien instantané sans repère reprend selon la borne historique d'ouverture.
+> Le bail devient ensuite `active`, daté par `serverTimestamp()` et retiré par `onDisconnect`.
+> Une purge automatique est bornée par le plus petit curseur actif et par le dernier repère
+> Firestore confirmé. Le temps serveur ne sert qu'à écarter les traces périmées.
+> La purge manuelle garde aussi les mutations non sauvegardées lorsque le repère existe.
 > Une `presence` active sans curseur homologue — notamment une ancienne version cliente — bloque
 > intégralement le ménage. Cela privilégie une file qui reste trop longue à une suppression
 > douteuse.
+>
+> **Incidents.** Le poste MJ peut consulter la dernière erreur de chaque canal avec le poste,
+> l’opération et l’heure. La tablette conserve ses incidents localement puis les transmet par
+> `session/{sessionId}/tabletDiagnostics` au retour de RTDB. Une confirmation de connexion ne
+> clôt pas un incident d’écriture Firestore.
+> Plusieurs postes MJ peuvent être connectés durant les essais sur PC et Mac. La table utilise
+> une seule tablette physique à la fois, d’où le nœud de diagnostic de la tablette par session.
 >
 > **L'authentification n'est PAS dans l'interface**, à dessein : elle est propre à Firebase
 > (un transport LAN n'a pas de compte Google). `FirebaseTransport` expose `signInWithGoogle()`,

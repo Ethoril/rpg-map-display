@@ -21,7 +21,7 @@ import { MOVE_ZONE_FILL_ALPHA, MOVE_ZONE_OUTLINE_PX } from '../../core/constants
 
 const DESTINATION_FEEDBACK_MS = 650;
 
-/** Couleur propre au palier Bond : ni celle du pion (Marche, Course) ni les retours de destination. */
+const RUN_COLOR = '#ffdd4a';
 const BOND_COLOR = '#a855f7';
 
 /**
@@ -131,8 +131,7 @@ export class MoveZoneLayer {
     }
     ctx.fill();
 
-    // Course : anneau extérieur plus pâle et hachuré (lisible sans la couleur, donc sur la TV et
-    // dans le brouillard), bordure en pointillés.
+    // Course : aplat jaune léger, hachures jaunes et bordure en pointillés.
     if (runKeys.length > 0) {
       ctx.beginPath();
       let minX = Infinity;
@@ -149,12 +148,13 @@ export class MoveZoneLayer {
         maxX = Math.max(maxX, box.x + box.width);
         maxY = Math.max(maxY, box.y + box.height);
       }
+      ctx.fillStyle = RUN_COLOR;
       ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA * 0.4;
       ctx.fill();
       ctx.save();
       ctx.clip();
       ctx.globalAlpha = MOVE_ZONE_FILL_ALPHA * 1.1;
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = RUN_COLOR;
       ctx.lineWidth = 2 / Math.max(0.01, zoom);
       const step = 9 / Math.max(0.01, zoom);
       ctx.beginPath();
@@ -217,6 +217,7 @@ export class MoveZoneLayer {
       ctx.stroke();
     }
     if (runKeys.length > 0) {
+      ctx.strokeStyle = RUN_COLOR;
       ctx.setLineDash([6 / Math.max(0.01, zoom), 5 / Math.max(0.01, zoom)]);
       for (const key of runKeys) {
         ctx.beginPath();

@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, setPlayerTestVision } from './browserTestTransport.mjs';
 import { createToken } from '../js/core/schema.js';
 
 /**
@@ -431,6 +431,7 @@ test('Ping joueur au double tap réel sur un pion ou une porte sans sélection',
   await installBrowserTransport(page, sessionId, snapshot);
   await page.goto(`/player.html?session=${sessionId}`);
   await waitForApp(page);
+  await setPlayerTestVision(page);
 
   /** @param {{x: number, y: number}} mapPoint */
   const clickMap = async (mapPoint, count = 1) => {
@@ -499,12 +500,11 @@ test.describe('T-23 — Vue joueurs autonome', () => {
 
     // 1. Vérification Zero-UI strict (aucun button, nav, input)
     //
-    // Une seule tolérance, nommée : le bouton plein écran (dérogation demandée le
-    // 30 juillet 2026, cf. CONVENTIONS.md §8, interdiction 2). L'exclure par identifiant
-    // plutôt qu'assouplir le compte garde le test capable de refuser tout le reste.
+    // Les deux commandes permanentes sont nommées dans CONVENTIONS.md §8.
     const uiElementsCount = await page.evaluate(() => {
       const forbidden = Array.from(document.querySelectorAll('button, nav, input')).filter(
-        (el) => el.id !== 'player-fullscreen-btn'
+        (el) => !['player-fullscreen-btn', 'player-game-help'].includes(el.id) &&
+          !el.closest('dialog:not([open])') && !el.hasAttribute('hidden')
       );
       return forbidden.length;
     });

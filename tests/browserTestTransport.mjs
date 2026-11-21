@@ -1,4 +1,5 @@
 // @ts-check
+import { expect } from '@playwright/test';
 /**
  * Helpers Playwright partagés par les suites qui font converger de vraies pages.
  *
@@ -13,6 +14,53 @@
  */
 export async function waitForApp(page) {
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__RPG_APP__));
+}
+
+/** @param {import('@playwright/test').Page} page */
+export async function waitForPlayerVision(page) {
+  await expect.poll(() => page.evaluate(async () => {
+    const { getActiveLevel } = await import('../js/state/store.js');
+    return Boolean(/** @type {any} */ (window).__RPG_APP__.getPlayerVisibleCanvas(getActiveLevel()));
+  }), { timeout: 8000 }).toBe(true);
+}
+
+/**
+ * Pose une vision de session dans les scénarios qui isolent la vue joueurs. Sans liste de cases,
+ * tout l'étage est visible. Attend le décodage que l'application utilise réellement.
+ * @param {import('@playwright/test').Page} page
+ * @param {import('../js/core/types.js').Cell[]} [cells] Cases visibles d'un étage carré
+ * @param {boolean} [explored] Remplit aussi le masque exploré, indépendamment de la vision
+ */
+export async function setPlayerTestVision(page, cells, explored = false) {
+  await page.evaluate(async ({ cells, explored }) => {
+    const [store, { ExploredFog }] = await Promise.all([import('../js/state/store.js'), import('../js/vision/fog.js')]);
+    const level = store.getActiveLevel();
+    if (!level) throw new Error('Étage actif absent');
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const fog = new ExploredFog(level.widthCells, level.heightCells);
+    if (explored) {
+      fog.revealAll();
+      store.setSessionFog(level.id, await fog.exportPng());
+      fog.clear();
+    }
+    if (cells) {
+      fog.reveal(cells.map(({ a, b }) => [
+        { x: a, y: b }, { x: a + 1, y: b }, { x: a + 1, y: b + 1 }, { x: a, y: b + 1 },
+      ]), { x: 0, y: 0 }, 1, 1);
+    } else {
+      fog.revealAll();
+    }
+    const png = await fog.exportPng();
+    const oldCanvas = store.getSessionVision(level.id) !== png ? app.getPlayerVisibleCanvas(level) : null;
+    store.setSessionVision(level.id, png);
+    const deadline = performance.now() + 5000;
+    for (;;) {
+      const current = app.getPlayerVisibleCanvas(level);
+      if (current && current !== oldCanvas) return;
+      if (performance.now() > deadline) throw new Error('Masque de vision de test absent');
+      await new Promise((resolve) => setTimeout(resolve, 16));
+    }
+  }, { cells, explored });
 }
 
 /**

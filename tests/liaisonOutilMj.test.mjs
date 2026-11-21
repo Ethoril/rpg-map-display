@@ -252,6 +252,24 @@ test('mjLink : un simple battement sans campagne ne redemande pas l’état', as
   assert.equal(count('map.hello'), 1);
 });
 
+test('mjLink : après 21 secondes de silence, le premier battement redemande l’état et les placements une fois', async () => {
+  const reserve = linked({ id: 'reserve', link: { source: 'outil-mj', ref: 'p:reserve' } });
+  const campaign = { ...createCampaign({ levels: [level], tokens: [linked()] }), reserve: [reserve] };
+  const { link, channel, count, advance, published } = await openLink({ campaign: () => campaign });
+  const states = { tokens: [{ ref: 'p:g1' }, { ref: 'p:reserve' }] };
+  channel.deliver(msg('mj.snapshot', states));
+  assert.equal(count('map.placed'), 1);
+  advance(21_000);
+  channel.deliver(msg('mj.ping', {}));
+  channel.deliver(msg('mj.ping', {}));
+  assert.equal(count('map.hello'), 2);
+  channel.deliver(msg('mj.snapshot', states));
+  assert.equal(link.status().status, 'connected');
+  const placements = FakeChannel.sent.filter((message) => message.type === 'map.placed');
+  assert.deepEqual(placements.map(({ payload }) => payload.ref), ['p:g1', 'p:g1']);
+  assert.equal(published.filter(([type]) => type === 'fx').length, 0);
+});
+
 test('rendu « mort » (contrat §7) : portrait désaturé et croix sur un pion lié mort, rien sur un vivant', async () => {
   const { TokensLayer } = await import('../js/render/layers/tokens.js');
   const { SquareGrid } = await import('../js/grid/SquareGrid.js');

@@ -339,7 +339,13 @@ export function applyNetworkEvent(event) {
     }
     case 'token.move': {
       if (!payload.tokenId || !payload.to) return false;
-      if (!campaign?.tokens.some((token) => token.id === payload.tokenId)) return false;
+      const token = campaign?.tokens.find((token) => token.id === payload.tokenId);
+      if (!token) return false;
+      if (event.recovered) {
+        if (token.cell.a === payload.to.a && token.cell.b === payload.to.b) return false;
+        store.moveTokenToCell(payload.tokenId, payload.to);
+        return true;
+      }
       store.moveTokenToCell(payload.tokenId, payload.to, {
         from: payload.from,
         to: payload.to,

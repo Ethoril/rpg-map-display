@@ -15,7 +15,7 @@ import { isLinkedToken, isTokenLibraryPath } from '../core/schema.js';
 import { movementRulesFor } from '../state/selection.js';
 import { ranStartIndex } from '../state/movePlan.js';
 import { parseFx } from '../render/layers/fx.js';
-import { footprintsAdjacent, gridFor } from '../grid/index.js';
+import { distanceBetweenFootprints, footprintsAdjacent } from '../grid/index.js';
 import { LIAISON_CARTE } from '../core/donnees-communes.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
@@ -265,12 +265,7 @@ export function answerDistanceQuery(campaign, payload) {
   const to = placed(toRef);
   const level = from ? campaign.levels.find((l) => l.id === from.levelId) : undefined;
   if (!from || !to || !level || from.levelId !== to.levelId) return { queryId, cells: null };
-  const grid = gridFor(level);
-  const fromCells = grid.cellsOccupied(from.cell, from.sizeCells || 1);
-  const toCells = grid.cellsOccupied(to.cell, to.sizeCells || 1);
-  let cells = Infinity;
-  for (const a of fromCells) for (const b of toCells) cells = Math.min(cells, grid.distance(a, b));
-  return { queryId, cells };
+  return { queryId, cells: distanceBetweenFootprints(level, from, to) };
 }
 
 /**
@@ -584,7 +579,8 @@ export function startMjLink(options) {
   const now = options.now ?? Date.now;
   const channel = new Channel(MJ_LINK_CHANNEL);
   let seq = 0;
-  let lastSeen = 0;
+  /** @type {number|null} */
+  let lastSeen = null;
   let lastPing = -Infinity;
   // Message reçu sans campagne chargée : l'état est perdu, on le redemande dès qu'une campagne existe.
   let missedWithoutCampaign = false;
@@ -662,12 +658,21 @@ export function startMjLink(options) {
       setStatus('version-mismatch');
       return;
     }
-    lastSeen = now();
+    // Le réveil peut livrer le premier message avant le prochain tick de déconnexion.
+    const receivedAt = now();
+    const resumed = lastSeen !== null && (status === 'disconnected' || receivedAt - lastSeen > MJ_LINK_TIMEOUT_MS);
+    if (resumed && status === 'connected') {
+      activeTurn = null;
+      setStatus('disconnected');
+    }
+    lastSeen = receivedAt;
     setStatus('connected');
-    if (message.type === 'mj.hello') hello();
+    if (message.type === 'mj.hello' || (resumed && message.type !== 'mj.snapshot')) hello();
     // L'outil MJ (re)démarre ou renvoie son état : il ne sait plus ce qui est posé, on le lui redit.
     if (message.type === 'mj.hello' || message.type === 'mj.snapshot') announcedPlaced = new Map();
     if (message.type === 'mj.ping' && now() - lastPing > MJ_LINK_ECHO_MS) ping();
+    if ((message.type === 'fx.wound' || message.type === 'fx.death') && Number.isFinite(message.at) &&
+        receivedAt - message.at > MJ_LINK_TIMEOUT_MS) return;
     if (message.type === 'mj.roster') {
       const characters = Array.isArray(message.payload?.characters) ? message.payload.characters : [];
       roster = characters.filter((/** @type {any} */ c) => typeof c?.ref === 'string' && c.ref.startsWith('pj:') && typeof c.label === 'string')
@@ -739,7 +744,7 @@ export function startMjLink(options) {
         missedWithoutCampaign = false;
         hello();
       }
-      if (status === 'connected' && now() - lastSeen > MJ_LINK_TIMEOUT_MS) {
+      if (status === 'connected' && lastSeen !== null && now() - lastSeen > MJ_LINK_TIMEOUT_MS) {
         activeTurn = null;
         setStatus('disconnected');
       }

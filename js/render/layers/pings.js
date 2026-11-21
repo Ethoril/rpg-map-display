@@ -65,7 +65,8 @@ export class PingsLayer {
    * @param {{
    *   ping?: { levelId: string, mapPos: { x: number, y: number }, at: number }|null,
    *   now?: number,
-   *   zoom?: number
+   *   zoom?: number,
+   *   edge?: {camera: import('../camera.js').Camera, top: number, strip?: DOMRect},
    * }} [options]
    * @returns {{ drawn: boolean, animationActive: boolean }}
    */
@@ -88,6 +89,9 @@ export class PingsLayer {
     /** @param {number} screenPx */
     const px = (screenPx) => screenPx / zoom;
     const { x, y } = ping.mapPos;
+    if (options.edge && this.drawOffscreenArrow(ctx, ping.mapPos, options.edge, age)) {
+      return { drawn: true, animationActive: true };
+    }
 
     ctx.save();
     ctx.lineCap = 'round';
@@ -119,5 +123,52 @@ export class PingsLayer {
     result.drawn = true;
     result.animationActive = true;
     return result;
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import('../../core/types.js').MapPoint} target
+   * @param {{camera: import('../camera.js').Camera, top: number, strip?: DOMRect}} edge
+   * @param {number} age
+   */
+  drawOffscreenArrow(ctx, target, { camera, top, strip }, age) {
+    const { screenWidth, screenHeight, zoom } = camera;
+    const { screenX, screenY } = camera.mapToScreen(target);
+    if (screenX >= 0 && screenX <= screenWidth && screenY >= 0 && screenY <= screenHeight) return false;
+
+    const margin = 24;
+    const cx = screenWidth / 2;
+    const cy = screenHeight / 2;
+    const dx = screenX - cx;
+    const dy = screenY - cy;
+    const limitY = dy < 0 ? Math.max(0, cy - top - margin) : cy - margin;
+    let fraction = Math.min((cx - margin) / Math.abs(dx), limitY / Math.abs(dy));
+    const edgeY = cy + fraction * dy;
+    if (strip && dx > 0 && cx + fraction * dx > strip.left - margin &&
+        edgeY > strip.top - margin && edgeY < strip.bottom + margin) {
+      fraction = Math.min(fraction, Math.max(0, strip.left - cx - margin) / dx);
+    }
+    const anchor = camera.screenToMap({ screenX: cx + fraction * dx, screenY: cy + fraction * dy });
+
+    ctx.save();
+    ctx.translate(anchor.x, anchor.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.globalAlpha = Math.min(1, 2 * (1 - age / PING_DURATION_MS));
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.fillStyle = '#101820';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-6, -8);
+    ctx.lineTo(7, 0);
+    ctx.lineTo(-6, 8);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = PING_COLOR;
+    ctx.stroke();
+    ctx.restore();
+    return true;
   }
 }

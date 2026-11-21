@@ -1,6 +1,7 @@
 // @ts-check
 
 import { resolveFirebaseConfig } from './runtimeConfig.js';
+import { mountNetworkDiagnostics } from '../ui/networkDiagnostics.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 /** @typedef {import('../transport/FirebaseTransport.js').FirebaseTransport} FirebaseTransport */
@@ -76,7 +77,8 @@ export function normalizeSessionId(brut) {
  *
  * @param {'gm'|'players'} role
  * @param {string} [sessionId]
- * @returns {{element: HTMLElement, update: (status: 'local'|'auth'|'connecting'|'connected'|'warning'|'error'|'offline', detail?: unknown) => void, remove: () => void}}
+ * @returns {{element: HTMLElement, update: (status: 'local'|'auth'|'connecting'|'connected'|'warning'|'error'|'offline', detail?: unknown) => void,
+ *   diagnostics: ReturnType<typeof mountNetworkDiagnostics>, bindTransport: (transport: Transport|null) => void, remove: () => void}}
  */
 export function createNetworkStatus(role, sessionId = '') {
   const element = document.createElement('div');
@@ -85,10 +87,15 @@ export function createNetworkStatus(role, sessionId = '') {
     'position:fixed;z-index:900;left:8px;bottom:8px;padding:5px 8px;border-radius:4px;' +
     'font:12px system-ui,sans-serif;pointer-events:none;background:#222;color:#ddd';
   document.body.appendChild(element);
+  const diagnostics = mountNetworkDiagnostics(role, sessionId);
+  /** @type {Array<() => void>} */
+  const unbind = [];
 
   return {
     element,
+    diagnostics,
     update(status, detail) {
+      if (status === 'error') diagnostics.capture(detail);
       const messages = {
         local: 'Mode local — Firebase non configuré',
         auth: 'Connexion Google requise',
@@ -108,7 +115,29 @@ export function createNetworkStatus(role, sessionId = '') {
       element.style.display =
         role === 'players' && status === 'connected' ? 'none' : 'block';
     },
+    bindTransport(transport) {
+      if (!transport) return;
+      const onError = transport.onError?.((error) => this.update('error', error));
+      if (onError) unbind.push(onError);
+      const onConnectivity = transport.onConnectivity?.((connected) => {
+        this.update(connected ? 'connected' : 'offline');
+        if (connected) {
+          diagnostics.recovered('rtdb', 'Connexion');
+          void diagnostics.flush();
+        } else {
+          diagnostics.failed('rtdb', 'Connexion');
+        }
+      });
+      if (onConnectivity) unbind.push(onConnectivity);
+      if (role === 'players' && transport.saveTabletDiagnostics) {
+        diagnostics.setSender((incidents) => transport.saveTabletDiagnostics?.(incidents) ?? Promise.resolve());
+      }
+      const watch = role === 'gm' ? transport.watchTabletDiagnostics?.(diagnostics.setTabletIncidents) : undefined;
+      if (watch) unbind.push(watch);
+    },
     remove() {
+      for (const cleanup of unbind) cleanup();
+      diagnostics.destroy();
       element.remove();
     },
   };

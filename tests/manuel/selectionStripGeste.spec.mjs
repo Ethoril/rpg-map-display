@@ -18,7 +18,7 @@
  * l'en-tête de `gmToolDisarmGeste.spec.mjs`.
  */
 import { test, expect } from '@playwright/test';
-import { waitForApp, installBrowserTransport } from '../browserTestTransport.mjs';
+import { waitForApp, installBrowserTransport, setPlayerTestVision } from '../browserTestTransport.mjs';
 
 const PX = 100;
 
@@ -88,6 +88,7 @@ test('GESTE C-9 — un vrai appui sur le cheval de la bande monte le pion, sans 
   await installBrowserTransport(page, `c9-bande-geste-${Date.now()}`, INSTANTANE);
   await page.goto('/player.html');
   await waitForApp(page);
+  await setPlayerTestVision(page);
 
   const etat = () =>
     page.evaluate(async () => {

@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, waitForPlayerVision, setPlayerTestVision } from './browserTestTransport.mjs';
 import { edgeKey } from '../js/core/cellKey.js';
 import { movementRulesFor } from '../js/state/selection.js';
 
@@ -12,9 +12,10 @@ import { movementRulesFor } from '../js/state/selection.js';
 const START = { a: 2, b: 2 };
 const LEVEL_ID = 'rdc';
 const TOKEN_ID = 'hero-preview';
+const CONFIRMER = 'Retoucher ici pour déplacer';
 
-/** @param {{door?:boolean,npcOutsideFog?:boolean,hex?:boolean,hexNeighbor?:boolean}} [options] */
-function makeSnapshot({ door = false, npcOutsideFog = false, hex = false, hexNeighbor = false } = {}) {
+/** @param {{door?:boolean,npcOutsideFog?:boolean,hex?:boolean,hexNeighbor?:boolean,course?:boolean}} [options] */
+function makeSnapshot({ door = false, npcOutsideFog = false, hex = false, hexNeighbor = false, course = false } = {}) {
   const level = createLevel({
     id: LEVEL_ID,
     name: 'RDC',
@@ -41,6 +42,7 @@ function makeSnapshot({ door = false, npcOutsideFog = false, hex = false, hexNei
     speedCells: 3,
     visionDim: 2,
     playerMovable: true,
+    ...(course ? { link: { source: 'outil-mj', ref: 'pj:preview' }, runCells: 8 } : {}),
   });
   const tokens = [token];
   if (hexNeighbor) {
@@ -73,9 +75,9 @@ function makeSnapshot({ door = false, npcOutsideFog = false, hex = false, hexNei
   };
 }
 
-/** @param {Browser} browser @param {{door?:boolean,npcOutsideFog?:boolean,hex?:boolean,hexNeighbor?:boolean}} [options] */
+/** @param {Browser} browser @param {Parameters<typeof makeSnapshot>[0]} [options] */
 async function openPair(browser, options = {}) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 1280, height: 720 } });
   const gm = await context.newPage();
   const player = await context.newPage();
   const sessionId = `move-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -89,8 +91,36 @@ async function openPair(browser, options = {}) {
     player.goto(`/player.html?session=${sessionId}`),
   ]);
   await Promise.all([waitForApp(gm), waitForApp(player)]);
+  await waitForPlayerVision(player);
   await Promise.all([instrumentMovePlanLayer(gm), instrumentMovePlanLayer(player)]);
   return { context, gm, player, sessionId };
+}
+
+/** @param {Page} page */
+async function releverTextesCanvas(page) {
+  await page.evaluate(() => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const ctx = /** @type {CanvasRenderingContext2D} */ (app.context);
+    const clearRect = ctx.clearRect.bind(ctx);
+    const fillText = ctx.fillText.bind(ctx);
+    const w = /** @type {any} */ (window);
+    w.__textesCanvas = [];
+    ctx.clearRect = (x, y, width, height) => {
+      if (x === 0 && y === 0 && width === ctx.canvas.width && height === ctx.canvas.height) w.__textesCanvas = [];
+      clearRect(x, y, width, height);
+    };
+    ctx.fillText = (text, x, y, maxWidth) => {
+      const tr = ctx.getTransform();
+      const ratio = ctx.canvas.width / app.camera.screenWidth;
+      const width = Math.min(maxWidth ?? Infinity, ctx.measureText(text).width) * tr.a / ratio;
+      w.__textesCanvas.push({
+        text, width, x: (x * tr.a + tr.e) / ratio, y: (y * tr.d + tr.f) / ratio,
+        size: Number(ctx.font.match(/([\d.]+)px/)?.[1]) * tr.a / ratio,
+      });
+      fillText(text, x, y, maxWidth);
+    };
+  });
+  return () => page.evaluate(() => /** @type {any} */ (window).__textesCanvas);
 }
 
 /** @param {Page} page */
@@ -253,6 +283,8 @@ test('le MJ prépare et valide un trajet rendu sur les deux vues sans toucher à
   const { context, gm, player, sessionId } = await openPair(browser);
   try {
     await waitForActualVisionCanvases(player);
+    const textesMj = await releverTextesCanvas(gm);
+    const textesJoueur = await releverTextesCanvas(player);
     const gmClientId = await gm.evaluate(() => /** @type {any} */ (window).__RPG_APP__.transport.getClientId());
     await addGmPresenceToPlayer(player, gmClientId);
 
@@ -269,6 +301,8 @@ test('le MJ prépare et valide un trajet rendu sur les deux vues sans toucher à
     ]);
     await tapCell(gm, { a: 3, b: 2 });
     await expect.poll(async () => Object.keys(await readSharedPreviews(gm, sessionId)).length).toBe(1);
+    await expect.poll(async () => (await textesMj()).map((/** @type {any} */ entry) => entry.text)).toContain(CONFIRMER);
+    expect((await textesJoueur()).map((/** @type {any} */ entry) => entry.text)).not.toContain(CONFIRMER);
     expect(await Promise.all([
       canvasPixelSignature(player, 'visible'),
       canvasPixelSignature(player, 'explored'),
@@ -337,6 +371,145 @@ test('le MJ prépare et valide un trajet rendu sur les deux vues sans toucher à
       ]);
       return after.some((signature, index) => signature !== signaturesBeforePreview[index]);
     }, { timeout: 7000 }).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test('l’invite suit deux trajets tactiles, avec la portée et la Course près du bord à zoom d’ensemble', async ({ browser }, testInfo) => {
+  const { context, gm, player, sessionId } = await openPair(browser, { course: true });
+  try {
+    const textes = await releverTextesCanvas(player);
+    const textesMj = await releverTextesCanvas(gm);
+    const arrivee = { a: 7, b: 4 };
+    await player.evaluate(({ a, b }) => {
+      const { camera, frameLoop } = /** @type {any} */ (window).__RPG_APP__;
+      camera.setZoom(0.2);
+      camera.setPan((a + 0.5) * 140 - (camera.screenWidth / 2 - 24) / camera.zoom,
+        (b + 0.5) * 140 - (camera.screenHeight / 2 - 26) / camera.zoom);
+      frameLoop.requestFrame();
+    }, arrivee);
+    const toucher = async (/** @type {Cell} */ cell) => {
+      const { screenX, screenY } = await screenPoint(player, cell);
+      await player.touchscreen.tap(Math.round(screenX), Math.round(screenY));
+    };
+    const lireInvite = async () => (await textes()).find((/** @type {any} */ entry) => entry.text === CONFIRMER) ?? null;
+
+    await toucher(START);
+    await expect(player.locator('#player-selection-strip')).toBeVisible();
+    await toucher({ a: 3, b: 2 });
+    await expect.poll(lireInvite).not.toBeNull();
+    const inviteMarche = await lireInvite();
+    expect((await textes()).map((/** @type {any} */ entry) => entry.text)).not.toContain('Course : Action utilisée');
+    await player.touchscreen.tap(50, 550);
+    await expect.poll(lireInvite).toBeNull();
+    await expect.poll(async () => Object.keys(await readSharedPreviews(player, sessionId))).toHaveLength(0);
+
+    await toucher({ a: 3, b: 3 });
+    await expect.poll(lireInvite).not.toBeNull();
+    const inviteEtape = await lireInvite();
+    await toucher(arrivee);
+    await expect.poll(async () => (await textes()).map((/** @type {any} */ entry) => entry.text)).toContain('Course : Action utilisée');
+    const inviteCourse = await lireInvite();
+    expect(inviteEtape.y).not.toBe(inviteMarche.y);
+    expect(inviteCourse.y).not.toBe(inviteEtape.y);
+    expect(inviteCourse.size).toBeCloseTo(16);
+    expect(inviteCourse.x + inviteCourse.width / 2).toBeLessThan(1280);
+    expect((await textes()).some((/** @type {any} */ entry) => entry.text.endsWith('de portée restante'))).toBe(true);
+    expect((await textesMj()).map((/** @type {any} */ entry) => entry.text)).not.toContain(CONFIRMER);
+    await player.screenshot({ path: testInfo.outputPath('confirmation-au-bord.png') });
+
+    await toucher(arrivee);
+    await expect.poll(lireInvite).toBeNull();
+    await expect.poll(async () => player.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens[0]?.cell))
+      .toEqual(arrivee);
+    await expect.poll(async () => Object.keys(await readSharedPreviews(player, sessionId))).toHaveLength(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('le bouton de retour retire une étape, et toucher la même case permet un aller-retour', async ({ browser }) => {
+  const { context, player, sessionId } = await openPair(browser, { course: true });
+  try {
+    const lire = () => readSharedPreviews(player, sessionId).then((previews) => Object.values(previews)[0]);
+    const toucher = async (/** @type {Cell} */ cell) => {
+      const { screenX, screenY } = await screenPoint(player, cell);
+      await player.touchscreen.tap(Math.round(screenX), Math.round(screenY));
+    };
+    const first = { a: 3, b: 2 };
+    const second = { a: 4, b: 3 };
+    await toucher(START);
+    await expect(player.locator('#player-selection-strip')).toBeVisible();
+    await toucher(first);
+    await expect.poll(lire).toMatchObject({ destination: first });
+    const original = await lire();
+    await toucher(second);
+    await expect.poll(lire).toMatchObject({ destination: second });
+    const retour = player.getByRole('button', { name: 'Retirer la dernière étape' });
+    await retour.tap();
+    await expect.poll(lire).toMatchObject({ planId: original.planId, revision: original.revision + 2,
+      destination: first, path: original.path, remaining: original.remaining });
+    await toucher(second);
+    await expect.poll(lire).toMatchObject({ destination: second });
+    await toucher(first);
+    await expect.poll(lire).toMatchObject({ destination: first, path: [...original.path, second, first] });
+    await retour.tap();
+    await expect.poll(lire).toMatchObject({ destination: second });
+    await retour.tap();
+    await expect.poll(lire).toMatchObject({ destination: first });
+    await retour.tap();
+    await expect.poll(lire).toBeUndefined();
+    await expect(retour).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});
+
+test('le guide peut être rejoué puis essayé sans interrompre les actions du MJ ni la préparation', async ({ browser }, testInfo) => {
+  const { context, gm, player, sessionId } = await openPair(browser, { npcOutsideFog: true });
+  try {
+    await tapCell(player, START);
+    await expect(player.locator('#player-selection-strip')).toBeVisible();
+    await tapCell(player, { a: 3, b: 2 });
+    const lireTrajets = () => readSharedPreviews(player, sessionId);
+    await expect.poll(async () => Object.keys(await lireTrajets())).toHaveLength(1);
+    const trajet = await lireTrajets();
+    const lireCamera = () => player.evaluate(() => {
+      const { x, y, zoom } = /** @type {any} */ (window).__RPG_APP__.camera;
+      return { x, y, zoom };
+    });
+    const vue = await lireCamera();
+    const aide = player.getByRole('button', { name: 'Aide de jeu' });
+    expect(await aide.boundingBox()).toMatchObject({ width: 44, height: 44 });
+    await aide.tap();
+    const guide = player.getByRole('dialog', { name: 'Aide de jeu' });
+    await expect(guide).toBeVisible();
+    await guide.getByRole('button', { name: 'Choisir l’arrivée' }).tap();
+    await expect(guide.getByText(CONFIRMER, { exact: true })).toBeVisible();
+    await player.screenshot({ path: testInfo.outputPath('aide-de-jeu.png') });
+    await guide.getByRole('button', { name: 'Rejouer la démonstration' }).tap();
+    await expect(guide.getByText(/Ton personnage rejoint la case choisie/)).toBeVisible({ timeout: 6500 });
+    await guide.getByRole('button', { name: 'À toi d’essayer' }).tap();
+    await guide.getByRole('button', { name: 'Pion d’essai' }).tap();
+    const cible = guide.getByRole('button', { name: 'Case 5, 3', exact: true });
+    await cible.tap();
+    await expect(guide.locator('[data-help-caption]')).toHaveText(CONFIRMER);
+    await cible.tap();
+    await expect(guide.locator('[data-help-caption]')).toHaveText('Ton personnage a rejoint l’arrivée.');
+
+    await gm.evaluate(async () => {
+      const transport = /** @type {any} */ (window).__RPG_APP__.transport;
+      await transport.publish({ type: 'token.update', payload: { tokenId: 'npc-outside-fog', patch: { label: 'Renfort' } }, at: Date.now(), by: 'gm' });
+    });
+    await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.tokens[1]?.label))
+      .toBe('Renfort');
+    await guide.getByRole('button', { name: 'Revenir à la partie' }).tap();
+    await expect(guide).toBeHidden();
+    await expect(aide).toBeFocused();
+    expect(await lireCamera()).toEqual(vue);
+    expect(await lireTrajets()).toEqual(trajet);
+    await expect(player.locator('#player-selection-strip')).toHaveAttribute('data-mode', 'selection');
   } finally {
     await context.close();
   }
@@ -653,6 +826,7 @@ test('A12 : la portée ne propose pas une arrivée hors carte pour un pion 2×2'
     await installBrowserTransport(player, sid, snapshot);
     await player.goto(`/player.html?session=${sid}`);
     await waitForApp(player);
+    await setPlayerTestVision(player);
     await player.evaluate(() => {
       const app = /** @type {any} */ (window).__RPG_APP__;
       const point = { x: 150, y: 150 };
@@ -691,6 +865,7 @@ test('A12 : un pion 2×2 ne traverse pas un mur avec son emprise', async ({ brow
     await installBrowserTransport(player, sid, snapshot);
     await player.goto(`/player.html?session=${sid}`);
     await waitForApp(player);
+    await setPlayerTestVision(player);
     await player.evaluate(() => {
       const app = /** @type {any} */ (window).__RPG_APP__;
       const point = { x: 50, y: 150 };

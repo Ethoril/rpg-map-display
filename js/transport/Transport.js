@@ -26,6 +26,9 @@
  * @property {(handler: (e: NetEvent & {eventId?: string, clientId?: string}) => void) => () => void} subscribe
  * @property {() => Promise<object>} snapshot   état complet — TOUJOURS avant les deltas
  * @property {(snapshot: object) => Promise<void>} [saveSnapshot]
+ * @property {() => string|null|undefined} [getSnapshotEventCursor]
+ * @property {(incidents: import('../core/types.js').SyncIncident[]) => Promise<void>} [saveTabletDiagnostics]
+ * @property {(handler: (incidents: unknown) => void) => () => void} [watchTabletDiagnostics]
  * @property {(event: NetEvent & {eventId?: string, clientId?: string}) => boolean} [isOwnEvent]
  * @property {(handler: (error: unknown) => void) => (() => void)|void} [onError]
  * @property {(handler: (connected: boolean) => void) => () => void} [onConnectivity] bascules

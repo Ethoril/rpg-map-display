@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, setPlayerTestVision } from './browserTestTransport.mjs';
 
 test('les vraies pages Canvas arrêtent de rendre lorsque la scène est immobile', async ({ page }) => {
   for (const path of ['/gm.html?session=idle-gm', '/player.html?session=idle-player']) {
@@ -170,6 +170,7 @@ test('deux vraies pages joueurs convergent via leur transport, sans relais du te
     page2.goto(`/player.html?session=${sessionId}`),
   ]);
   await Promise.all([waitForApp(page1), waitForApp(page2)]);
+  await setPlayerTestVision(page1);
 
   const points = await page1.evaluate(async () => {
     const { gridFor } = await import('../js/grid/index.js');

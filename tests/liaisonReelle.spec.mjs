@@ -13,9 +13,10 @@ import path from 'node:path';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
-/** @param {import('@playwright/test').BrowserContext} context @param {string} mjRoot */
-async function openMj(context, mjRoot) {
+/** @param {import('@playwright/test').BrowserContext} context @param {string} mjRoot @param {boolean} [clock] */
+async function openMj(context, mjRoot, clock = false) {
   const mj = await context.newPage();
+  if (clock) await mj.clock.install();
   await mj.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
@@ -110,6 +111,65 @@ test('liaison réelle : le changement de carte réinitialise les pions posés co
     await waitForApp(second);
     await expect.poll(() => second.evaluate(async () => (await import('../js/state/store.js')).getCampaign()?.reserve?.some(token => /** @type {any} */ (token).link?.ref === 'p:audit-change')), { timeout: 10000 }).toBe(true);
     await expect(mj.locator('#map-link-pending')).toBeVisible({ timeout: 2000 });
+  } finally {
+    await context.close();
+  }
+});
+
+test('liaison réelle : une interruption de 21 secondes redonne les seuls pions posés', async ({ browser }) => {
+  const mjRoot = process.env.RPG_AUDIT_MJ_ROOT;
+  test.skip(!mjRoot, 'Chemin de l’outil MJ requis dans RPG_AUDIT_MJ_ROOT');
+  const sid = `audit-reprise-liaison-${Date.now()}`;
+  const level = createLevel({ id: 'a', pxPerCell: 100, widthCells: 10, heightCells: 8 });
+  const snapshot = { campaign: createCampaign({ campaignId: sid, levels: [level] }), activeLevelId: 'a' };
+  const context = await browser.newContext({ serviceWorkers: 'block' });
+  try {
+    await context.addInitScript(() => {
+      const Native = window.BroadcastChannel;
+      window.BroadcastChannel = class extends Native {
+        /** @param {any} message */
+        postMessage(message) {
+          if (this.name === 'wfrp-map-link' && /** @type {any} */ (window).__interrompreLiaison) return;
+          super.postMessage(message);
+        }
+      };
+    });
+    const gm = await context.newPage();
+    await gm.clock.install();
+    await installBrowserTransport(gm, sid, snapshot);
+    await gm.goto(`/gm.html?session=${sid}`);
+    await waitForApp(gm);
+    const mj = await openMj(context, mjRoot || '', true);
+    await mj.evaluate(async () => {
+      const source = '/outil-mj/js/main.js';
+      const { Store } = await import(source);
+      await Store.ready;
+      for (const [id, name] of [['audit-pose', 'Garde posé'], ['audit-reserve', 'Garde en réserve']]) {
+        await Store.addParticipant({ id, name, kind: 'PNJ', camp: 'ennemi', zone: 'active', hp: 10, maxHp: 10, states: [] });
+      }
+    });
+    const pending = mj.locator('#map-link-pending');
+    await expect(pending).toHaveText('À poser (2)');
+    await gm.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const token = store.getCampaign()?.reserve?.find((candidate) => candidate.link?.ref === 'p:audit-pose');
+      if (!token) throw new Error('Pion lié absent de la réserve');
+      store.placeTokenFromReserve(token.id, 'a', { a: 3, b: 3 });
+    });
+    await expect(pending).toHaveText('À poser (1)');
+
+    for (const page of [gm, mj]) await page.evaluate(() => {
+      /** @type {any} */ (window).__interrompreLiaison = true;
+    });
+    await Promise.all([gm.clock.fastForward(21_000), mj.clock.fastForward(21_000)]);
+    await expect(mj.locator('#map-link-indicator')).toHaveAttribute('data-state', 'disconnected');
+    for (const page of [gm, mj]) await page.evaluate(() => {
+      /** @type {any} */ (window).__interrompreLiaison = false;
+    });
+    await Promise.all([gm.clock.fastForward(5_000), mj.clock.fastForward(5_000)]);
+    await expect(mj.locator('#map-link-indicator')).toHaveAttribute('data-state', 'connected');
+    await expect(pending).toHaveText('À poser (1)');
+    await expect(pending).toHaveAttribute('title', /Garde en réserve/);
   } finally {
     await context.close();
   }

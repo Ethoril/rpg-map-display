@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
+import { installBrowserTransport, waitForApp, setPlayerTestVision } from './browserTestTransport.mjs';
 
 /**
  * Chantier C-9 — le pion monté, dans les vraies vues.
@@ -128,6 +128,7 @@ test('C-9 tablette : le chemin animé d’un pion monté contourne la porte ouve
     await installBrowserTransport(page, `c9-chemin-${mounted}-${Date.now()}`, instantane(mounted));
     await page.goto('/player.html');
     await waitForApp(page);
+    await setPlayerTestVision(page);
 
     await taper(page, 4, 4);
     await expect
