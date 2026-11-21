@@ -986,6 +986,10 @@ export function traverseLink(tokenId, linkId, options = {}) {
   }
   cible.levelId = destination.levelId;
   cible.cell = destination.cell;
+  // Le dernier trajet menait à l'escalier de départ : il n'a plus de sens sur l'étage d'arrivée.
+  // Laissé en place, le rendu le relisait et dessinait le pion sur l'ancienne case (combat du
+  // 21/11/2026) — même famille que `reserveToken`.
+  delete cible.move;
   assertValidCampaign(candidate, `Franchissement de la liaison "${linkId}"`);
   replaceCampaign(candidate);
 

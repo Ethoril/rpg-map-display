@@ -62,7 +62,55 @@ export function engagementSegments(grid, level, tokens, pairs) {
   return segments;
 }
 
+/**
+ * Pion du participant actif (`mj.turn`, contrat §10, révision du 21/11/2026) sur cet étage, ou
+ * `null` : hors tour, pion non posé ou sur un autre étage.
+ *
+ * @param {readonly Token[]} tokens
+ * @param {string} levelId
+ * @param {string|null|undefined} ref
+ * @returns {Token|null}
+ */
+export function activeTurnToken(tokens, levelId, ref) {
+  return ref ? tokenForRef(tokens, levelId, ref) : null;
+}
+
+/** Or du halo du tour : tranche sur le liseré des camps, le trait orange des engagements et le sang. */
+export const ACTIVE_TURN_COLOR = '#facc15';
+
 export class EngagementsLayer {
+  /**
+   * Halo du pion actif, **écran MJ seul** (combat du 21/11/2026) : le MJ voit d'un coup d'œil qui
+   * joue, sans toucher chaque pion. Un anneau doré, cerné de sombre, posé AUTOUR de l'emprise —
+   * il ne couvre ni le portrait ni les badges du pion.
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {GridAdapter} grid
+   * @param {Level|null} level
+   * @param {{ tokens?: readonly Token[], ref?: string|null, zoom?: number }} [options]
+   * @returns {boolean} true si un halo a été dessiné
+   */
+  renderActiveTurn(ctx, grid, level, options = {}) {
+    if (!ctx || !grid || !level) return false;
+    const token = activeTurnToken(options.tokens ?? [], level.id, options.ref);
+    if (!token) return false;
+    const bounds = grid.cellBounds({ cellX: token.cell.a, cellY: token.cell.b }, Math.max(1, token.sizeCells || 1));
+    const centre = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    // Épaisseurs en pixels ÉCRAN : visible au zoom « carte entière » comme de près.
+    const k = 1 / Math.max(0.01, options.zoom ?? 1);
+    const rayon = Math.max(bounds.width, bounds.height) / 2 + 7 * k;
+    ctx.save();
+    for (const [width, color] of /** @type {const} */ ([[16, 'rgba(250, 204, 21, 0.28)'], [8, 'rgba(15, 23, 42, 0.9)'], [4.5, ACTIVE_TURN_COLOR]])) {
+      ctx.lineWidth = width * k;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.arc(centre.x, centre.y, rayon, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return true;
+  }
+
   /**
    * @param {CanvasRenderingContext2D} ctx
    * @param {GridAdapter} grid

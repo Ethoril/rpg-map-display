@@ -353,6 +353,11 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    >   un appui sur un badge affiche son nom quelques secondes. Son contenu est **fixé ici** :
    >   un bouton de plus s'y ajoute sur décision du mainteneur, comme toute dérogation. Détail au
    >   CdC §5.3bis.
+   >   **Amendement du 21/11/2026** (demande du mainteneur après un combat réel) : la bande porte
+   >   en tête l'**encart du pion** — portrait, nom, vitalité. Toucher sans sélection un pion que
+   >   la tablette ne déplace pas (PNJ, ennemi, PJ bridé) **et que la table voit** l'ouvre en
+   >   **consultation** : encart et badges, **aucun bouton**, rien de publié ; tout autre tap la
+   >   referme. La vitalité d'un PNJ est son état à trois crans, jamais ses PV.
    >
    > Toute autre exception se demande. Elle ne se décide pas.
 3. **Ne jamais afficher un pion dans une zone explorée mais hors vision courante.** Cela

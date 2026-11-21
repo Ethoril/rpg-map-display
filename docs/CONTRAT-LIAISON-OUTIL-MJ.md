@@ -4,6 +4,7 @@ Version du contrat : **1** (04/11/2026). Statut : implémenté et publié des de
 Révision du 08/11/2026 : précisions au §10 (remise à zéro des pions posés à chaque instantané, liste d'engagements vide). Elle décrit un comportement existant, sans rien changer aux messages : la version du protocole (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = 1) ne bouge pas.
 Révision du 11/11/2026 : `campaignName` retiré de `map.hello` (§2.3). Aucun côté ne l'a jamais envoyé ni lu : le texte rejoint le comportement existant, la version du protocole ne bouge pas.
 Révision du 16/11/2026 : l'image d'un PJ choisie dans l'outil MJ part vers la carte comme celle d'un PNJ (`imageUrl` non nul dans `token.state`) ; sans image choisie, `imageUrl: null` et la carte garde la sienne (§6). Changement compatible : la version du protocole ne bouge pas.
+Révision du 21/11/2026 : nouveau message `mj.turn { ref }`, le participant actif, que la carte cerne **sur l'écran MJ seulement** (§10). Ajout compatible : une carte qui ne le connaît pas l'ignore, un jeu qui ne fournit pas le tour ne l'envoie pas ; la version du protocole ne bouge pas.
 Révision du 13/11/2026 : `imageUrl` (et `rider.imageUrl`) admet aussi un chemin relatif sous `maps/tokens/` (bibliothèque d'images de Map Display) ; nouveau champ `formImageUrl` de `token.state` (§4, §6). Ajouts compatibles, comme `color` et `deathCause` : la version du protocole ne bouge pas.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
@@ -246,7 +247,7 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 
 L'outil MJ envoie aussi `mj.engagements { pairs }`, à chaque changement et à chaque instantané, même avec `pairs: []` quand il n'y a aucun engagement, pour que la carte efface les traits périmés. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
 
-Le tour de jeu, c'est-à-dire le personnage actif, **n'est pas affiché** sur la carte.
+L'outil MJ envoie aussi `mj.turn { ref }` (révision du 21/11/2026) : la `ref` du pion du participant actif, `null` hors tour ou si l'actif n'est pas dans la scène. Il part à chaque changement de tour et **toujours** dans l'instantané. Map Display cerne ce pion d'un halo **sur l'écran MJ seulement**, jamais sur la tablette ; une monture fusionnée (§8.1) se trouve par `rider.ref`. Le tour n'est ni persisté ni republié.
 
 ## 11. Amendements de Map Display couverts par ce contrat
 

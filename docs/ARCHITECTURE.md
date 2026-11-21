@@ -179,8 +179,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │                                  LOCALE ; sur les pions, SOUS le fog
 │   │       ├─ fogLayer.js        [2]  masque + trois états de rendu
 │   │       ├─ templates.js       [2]  gabarits de zone d'effet
-│   │       ├─ engagements.js     [L5] traits d'engagement du contrat de liaison §10 —
-│   │                                  ⛔ vue MJ SEULE, jamais publiés ; paires reçues de l'outil MJ
+│   │       ├─ engagements.js     [L5] traits d'engagement du contrat de liaison §10, et halo
+│   │                                  du pion actif (mj.turn, 21/11/2026) —
+│   │                                  ⛔ vue MJ SEULE, jamais publiés ; reçus de l'outil MJ
 │   │       ├─ measure.js         [4]  mesure de distance au geste (MJ local)
 │   │       ├─ pings.js           [4]  marqueur « regarde ici », transitoire — ⚠ ne lit
 │   │                                  PAS le store : un ping est un geste, pas une donnée,
@@ -220,8 +221,9 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │       ├─ imageShareOverlay.js [C-13] image partagée en plein écran, croix qui la ferme pour tous
 │   │       ├─ levelSelector.js   [3]  sélecteur d'étage joueurs
 │   │       └─ selectionStrip.js [C-9] bande de sélection, bord droit, tant qu'un pion est
-│   │                                  sélectionné : monter / descendre, badges d'état et leur
-│   │                                  nom — 5e dérogation de CONVENTIONS.md §8 n°2
+│   │                                  sélectionné : encart du pion, monter / descendre, badges
+│   │                                  d'état et leur nom ; consultation en lecture seule d'un
+│   │                                  pion vu (21/11/2026) — 5e dérogation de CONVENTIONS.md §8 n°2
 │   │
 │   └─ app/
 │       ├─ movePlanning.js        [Retour session] contrôleur commun et aperçus éphémères

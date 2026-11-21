@@ -31,6 +31,9 @@ import {
  *   Pose d'aperçu d'un gabarit en cours de glisser, `null` quand il s'achève ou s'interrompt (B4).
  * @property {()=>void} [onMovePlanChanged] Demande un rendu après un changement de préparation.
  * @property {MovePlanningApi} [movePlanning] Contrôleur injecté par la vue applicative.
+ * @property {(token: Token|null) => void} [onInspectToken] Consultation (combat du 21/11/2026) :
+ *   un pion que la tablette ne déplace pas est touché sans sélection active (`token`), ou tout
+ *   autre tap la referme (`null`). La vue décide si ce pion est visible de la table.
  */
 
 /** @typedef {import('../../app/movePlanning.js').MovePlanningController} MovePlanningApi */
@@ -46,6 +49,7 @@ export function bootstrapPlayerView(options) {
   const onDestinationRejected = options.onDestinationRejected ?? (() => {});
   const onTemplatePreview = options.onTemplatePreview ?? (() => {});
   const movePlanning = options.movePlanning;
+  const onInspectToken = options.onInspectToken ?? (() => {});
   /** @type {Cell|null} */
   let cancelledAtCell = null;
 
@@ -114,6 +118,9 @@ export function bootstrapPlayerView(options) {
     if (!campaign || !activeLevel) {
       return;
     }
+
+    // Tout tap referme la consultation ; seul le tap sur un pion consultable la rouvre, plus bas.
+    onInspectToken(null);
 
     const grid = gridFor(activeLevel);
     const targetCell = grid.cellFromPoint(intention.mapPos);
@@ -185,6 +192,9 @@ export function bootstrapPlayerView(options) {
       store.selectToken(tappedMovablePc ? tappedMovablePc.id : null);
       cancelledAtCell = null;
       if (tappedMovablePc) movePlanning?.start(tappedMovablePc, activeLevel);
+      // Un pion que la tablette ne déplace pas ne se sélectionne pas : il se CONSULTE, en
+      // lecture seule (combat du 21/11/2026). Ni zone, ni préparation, rien ne part au réseau.
+      else if (tappedToken) onInspectToken(tappedToken);
       return;
     }
 
