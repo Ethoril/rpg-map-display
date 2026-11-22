@@ -1,11 +1,12 @@
 # Contrat de liaison Outil MJ Warhammer ↔ RPG Map Display
 
-Version du contrat : **1** (04/11/2026). Statut : implémenté et publié des deux côtés (06/11/2026).
+Version du contrat : **2** (22/11/2026 ; version 1 du 04/11/2026). Statut : version 1 implémentée et publiée des deux côtés (06/11/2026) ; version 2 à publier des deux côtés le même jour.
 Révision du 08/11/2026 : précisions au §10 (remise à zéro des pions posés à chaque instantané, liste d'engagements vide). Elle décrit un comportement existant, sans rien changer aux messages : la version du protocole (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = 1) ne bouge pas.
 Révision du 11/11/2026 : `campaignName` retiré de `map.hello` (§2.3). Aucun côté ne l'a jamais envoyé ni lu : le texte rejoint le comportement existant, la version du protocole ne bouge pas.
 Révision du 16/11/2026 : l'image d'un PJ choisie dans l'outil MJ part vers la carte comme celle d'un PNJ (`imageUrl` non nul dans `token.state`) ; sans image choisie, `imageUrl: null` et la carte garde la sienne (§6). Changement compatible : la version du protocole ne bouge pas.
 Révision du 21/11/2026 : nouveau message `mj.turn { ref }`, le participant actif, que la carte cerne **sur l'écran MJ seulement** (§10). Ajout compatible : une carte qui ne le connaît pas l'ignore, un jeu qui ne fournit pas le tour ne l'envoie pas ; la version du protocole ne bouge pas.
 Révision du 13/11/2026 : `imageUrl` (et `rider.imageUrl`) admet aussi un chemin relatif sous `maps/tokens/` (bibliothèque d'images de Map Display) ; nouveau champ `formImageUrl` de `token.state` (§4, §6). Ajouts compatibles, comme `color` et `deathCause` : la version du protocole ne bouge pas.
+Révision du 22/11/2026 : nouveau message carte → outil `map.turnReset { ref }`, émis à chaque annulation du mouvement du tour ; l'outil MJ rend l'Action du Tour dépensée par une Course signalée et remet à zéro le déplacement du Tour (§10). **Changement de protocole** : la version passe à **2** (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = `LIAISON_CARTE.version` = 2, §2.3) ; aucun autre message ni champ ne change.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -47,7 +48,7 @@ La tablette n'écoute jamais le canal. Elle reçoit tout par le transport Fireba
 ### 2.2 Enveloppe
 
 ```js
-{ v: 1, type: 'token.state', seq: 42, at: 1730700000000, from: 'outil-mj' | 'map', payload: {…} }
+{ v: 2, type: 'token.state', seq: 42, at: 1730700000000, from: 'outil-mj' | 'map', payload: {…} }
 ```
 
 - `seq` croît de 1 à chaque message, pour chaque émetteur.
@@ -64,6 +65,7 @@ Le MJ est le seul utilisateur. **L'onglet gm.html ouvert fait foi.**
 3. Les deux côtés affichent un indicateur « carte connectée » ou « outil MJ connecté ». Un battement toutes les 5 s (`*.ping`) détecte la fermeture de l'autre onglet. Après 15 s sans battement, l'indicateur passe à « déconnecté ». Un onglet caché voit ses minuteries ralenties par le navigateur (une par minute après 5 min) : chaque côté **répond au battement reçu par le sien** s'il n'a pas battu depuis 4 s. L'onglet visible entretient ainsi la liaison, sans boucle (amendement du 05/11, constaté en recette).
    - Si la carte reçoit un message alors qu'aucune campagne n'est chargée, elle réémet `map.hello` dès qu'une campagne l'est, pour recevoir l'instantané (amendement du 05/11).
 4. Rien n'est rejoué à la reconnexion, sauf l'état. Les effets manqués sont perdus, et c'est voulu.
+5. **Version.** La version de la liaison est **2** depuis la révision du 22/11/2026 (`LIAISON_CARTE.version`, donnée commune recopiée dans les deux dépôts). La version 2 ajoute au protocole de la version 1 un seul message, `map.turnReset { ref }` (§10) ; tout le reste est inchangé. Chaque côté écrit sa version dans le champ `v` de chaque enveloppe, `map.hello` et `mj.hello` compris, et ignore un message d'une autre version : l'indicateur passe à « versions de liaison différentes » et rien n'est échangé. L'outil MJ et la carte se publient donc ensemble.
 
 ## 3. Identité et liaison
 
@@ -242,6 +244,7 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 | `map.adjacency` | `{ pairs: [[refA, refB], …] }` (camps opposés seulement : PJ et alliés contre ennemis, un neutre n'est engagé avec personne ; pions morts exclus) : liste **complète** du plateau, envoyée à chaque fin de déplacement | **Suggestion** d'engagement, jamais automatique : le MJ accepte ou ignore. |
 | `map.distance` | Réponse à `mj.distanceQuery { fromRef, toRef, queryId }` : `{ queryId, cells }` (la carte ne connaît pas les mètres ; diagonale = 1,5 case, voir §14 ; distance entre les cases les plus proches des deux emprises ; `cells: null` si un des pions n'est pas posé ou s'ils sont sur des étages différents, l'outil MJ laisse alors la saisie au MJ) | Portée préremplie : l'outil MJ convertit les cases selon le §4 (×2 m pour un tir, 1 m par case pour un sort, une prière ou un talent). |
 | `map.ran` | `{ ref }` quand un pion lié termine un déplacement dont le trajet dépasse sa Marche (`speedCells`), donc a couru, une fois par déplacement | Le participant a utilisé son Action du Tour pour courir. Jamais envoyé pour un déplacement à la Marche ni pour un pion non lié. |
+| `map.turnReset` | `{ ref }` à chaque annulation du mouvement du tour d'un pion lié (le pion revient à sa case et à son étage de début de tour), que l'annulation vienne de la tablette ou de l'écran MJ, une fois par annulation ; toujours émis par l'onglet gm.html (révision du 22/11/2026, version 2) | Si `ref` est le participant actif, pendant son Tour : l'outil MJ rend l'Action du Tour **si une Course signalée par la carte** (`map.ran`) l'a dépensée et que rien d'autre ne l'a dépensée depuis, remet à zéro le déplacement du Tour et retire la proposition de Course encore ouverte ; une seule commande annulable. Sans effet si `ref` n'est pas l'actif ou hors combat ; idempotent : un second `map.turnReset` ne rend rien de plus. Jamais envoyé pour un pion non lié. |
 
 À chaque `mj.snapshot` reçu, Map Display remet à zéro ce qu'elle a annoncé, puis renvoie un `map.placed` pour chaque pion réellement posé. L'outil MJ vide donc sa liste des pions posés quand il envoie un instantané (réponse à `map.hello`) et quand la liaison passe à « déconnectée » : la liste se remplit aussitôt avec les placements exacts, sans indicateur « posé » périmé.
 

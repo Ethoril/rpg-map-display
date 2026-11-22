@@ -65,7 +65,7 @@ export function especeDe(valeur) {
 /** Contrat de liaison outil MJ ↔ RPG Map Display (docs/CONTRAT_LIAISON_MAP_DISPLAY.md §2). */
 export const LIAISON_CARTE = Object.freeze({
   canal: 'wfrp-map-link',
-  version: 1,
+  version: 2,
   battementMs: 5000,
   delaiDeconnexionMs: 15000,
   echoMs: 4000
