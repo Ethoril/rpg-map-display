@@ -26,23 +26,28 @@ let reachableCells = new Map();
  *
  * @param {Token} token
  * @param {Level} level
+ * @param {number} [spentCells] Cases déjà parcourues dans le tour courant (0 par défaut).
+ *   Paramètre explicite : ne pas lire le store ici (`gameHelp.js` calcule sur une carte fictive).
  * @returns {{ grid: GridAdapter, budget: number, walkBudget: number, blockedEdges: Set<string>, terrainCost: Map<string, number>, footprint?: import('../movement/reachable.js').Footprint }}
  */
-export function movementRulesFor(token, level) {
+export function movementRulesFor(token, level, spentCells = 0) {
   const grid = gridFor(level);
   const mounted = token.mounted === true;
   // Pion lié : l'outil MJ envoie déjà la portée de la monture (contrat §4), pas de ×2.
   const multiplier = mounted && !isLinkedToken(token) ? MOUNTED_SPEED_MULTIPLIER : 1;
-  const walkBudget = token.speedCells * multiplier;
+  const spent = typeof spentCells === 'number' && Number.isFinite(spentCells) && spentCells > 0 ? spentCells : 0;
+  const baseWalkBudget = token.speedCells * multiplier;
   // Pion lié : le déplacement peut aller jusqu'à la Course (contrat §4, second palier §11.6) ; au-delà
   // de `walkBudget` (la Marche), le MJ paie l'Action du Tour. Un pion non lié ou sans `runCells`
   // n'a qu'un palier.
   const runBudget = isLinkedToken(token) && Number.isFinite(token.runCells) ? token.runCells ?? 0 : 0;
+  const baseBudget = Math.max(baseWalkBudget, runBudget);
   return {
     grid,
-    // Monté, le budget double (chantier C-9).
-    budget: Math.max(walkBudget, runBudget),
-    walkBudget,
+    // Monté, le budget double (chantier C-9). Les cases déjà parcourues dans le tour se retranchent
+    // du budget ET de la Marche (plancher 0), donc la Course commence après `Marche − n` (CA18).
+    budget: Math.max(0, baseBudget - spent),
+    walkBudget: Math.max(0, baseWalkBudget - spent),
     // Masque d'arêtes bloquées obtenu par la fonction dédiée. Recréer un `new Set()` ici rendrait
     // les murs sans effet sur les déplacements, et le symptôme apparaîtrait très loin de sa cause.
     // Monté, tout portail bloque, quel que soit son état : un cheval ne passe pas les portes.
@@ -57,14 +62,22 @@ export function movementRulesFor(token, level) {
  * la case du pion. ⛔ Affichage seul : `movementRulesFor` ne le lit pas, le budget et la poursuite
  * restent ceux de la Course. `null` sans palier (pion non lié, `bondCells` absent, 0 ou ≤ Course).
  *
+ * ⭐ **Le palier recule des cases déjà parcourues dans le tour, comme le budget** (arbitrage du
+ * 22/11/2026, revue du chantier TJ). Sans cela l'anneau hachuré partait toujours du budget entier
+ * alors que la zone s'arrêtait à `budget − n` : il restait un trou entre les deux, et l'anneau
+ * promettait des cases que le budget refusait.
+ *
  * @param {Token} token
  * @param {Level} level
+ * @param {number} [spentCells] Cases déjà parcourues dans le tour courant (0 par défaut).
+ *   Paramètre explicite, pour la même raison que `movementRulesFor`.
  * @returns {Map<string, number>|null} cellKey -> coût, coûts dans ]budget, bondCells]
  */
-export function bondZoneFor(token, level) {
+export function bondZoneFor(token, level, spentCells = 0) {
   if (!isLinkedToken(token) || !Number.isFinite(token.bondCells)) return null;
-  const rules = movementRulesFor(token, level);
-  const bond = token.bondCells ?? 0;
+  const spent = typeof spentCells === 'number' && Number.isFinite(spentCells) && spentCells > 0 ? spentCells : 0;
+  const rules = movementRulesFor(token, level, spent);
+  const bond = Math.max(0, (token.bondCells ?? 0) - spent);
   if (bond <= rules.budget) return null;
   const { grid, blockedEdges, terrainCost, footprint } = rules;
   const all = footprint
@@ -100,9 +113,10 @@ function footprintFor(token, grid) {
  *
  * @param {Token|null} token Pion à sélectionner, ou `null` pour désélectionner
  * @param {Level|null} level Étage actif — obligatoire dès que `token` est fourni
+ * @param {number} [spentCells] Cases déjà parcourues dans le tour courant (0 par défaut)
  * @returns {void}
  */
-export function setSelectionState(token, level) {
+export function setSelectionState(token, level, spentCells = 0) {
   if (!token) {
     clearSelectionState();
     return;
@@ -114,7 +128,7 @@ export function setSelectionState(token, level) {
     );
   }
 
-  const { grid, budget, blockedEdges, terrainCost, footprint } = movementRulesFor(token, level);
+  const { grid, budget, blockedEdges, terrainCost, footprint } = movementRulesFor(token, level, spentCells);
 
   selectedTokenId = token.id;
   // Grand pion : la zone suit toute l'emprise (A12) — d'où Dijkstra direct, `cellsInRange` ne

@@ -1920,6 +1920,70 @@ depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jo
 ⚠ **« Complet » ne veut pas dire « fini »** : ce qui est complet, c'est la liste des critères
 d'acceptation du §11.
 
+> ### ✅ Chantier Tour de jeu, portes et liaisons côté joueurs — livré le 22/11/2026 (hors §11)
+>
+> Demande du mainteneur après la séance réelle du 21/11/2026, arbitrée en sept décisions (`TJ-1` à
+> `TJ-7` dans `docs/QUESTIONS-EN-ATTENTE.md`, amendements au CdC §5.3 / §5.3bis / §7, à
+> `CONVENTIONS.md` §8 et au contrat §10) :
+>
+> - **Tour de jeu non persisté** (`store.getTurn` / `setTurn` / `addTurnSpent` / `getTurnSpent` /
+>   `undoTurnMove`), republié vers la tablette par `turn.select` (au changement de tour, après
+>   `reportMove`, après `turn.undo` et à l'arrivée d'une présence joueurs) et annulable par
+>   `turn.undo`. Le budget total et le palier de Marche retranchent les cases déjà parcourues dans
+>   le tour ; le glisser libre MJ ne consomme rien. Seul le PJ actif est manipulable côté joueurs
+>   en session liée (un PJ sans `link` n'est jamais bridé).
+> - **Boutons contextuels sur Canvas** (rang `feedback`, au-dessus du brouillard, absents **dès
+>   qu'un pion est sélectionné** et pendant une animation de déplacement, `TJ-8`) : bouton de porte carré de 44 px sur la case
+>   opposée au PJ adjacent (fusionné et déporté si deux PJ encadrent la porte, grisé et sans effet
+>   hors tour) remplaçant le toucher direct de porte côté joueurs (conservé côté MJ) ; bouton de
+>   liaison remplaçant le re-tap de la case du pion côté joueurs (mention « Descendre de cheval »
+>   conservée pour un pion monté).
+> - **Bouton d'annulation du mouvement du tour** (`#player-turn-undo-btn`, 44 × 44 px à `top: 12px`,
+>   `right: 116px`), présent uniquement lorsque le tour actif désigne un PJ manipulable de la
+>   tablette avec `spentCells > 0`. Replace le pion (case et étage, sans basculer d'écran), refuse
+>   si la case de départ est occupée, préserve les portes ouvertes et le brouillard exploré.
+> - **Mention à reporter** : l'amendement du §10 de `docs/CONTRAT-LIAISON-OUTIL-MJ.md` est à
+>   reporter dans la copie du dépôt outil MJ (hors de cet arbre).
+> - **Vérifié par mutation** (chaque mécanisme vu rouge avant retour au vert) : côté opposé du
+>   bouton de porte, fusion des deux PJ, grisé hors tour, entrée B d'un sens unique, retranchement
+>   du budget et du palier Marche, conservation sur même `tokenId` et remise à zéro au changement
+>   de tour, bridage hors tour, non-consommation du glisser MJ, replacement à l'annulation,
+>   application locale de `turn.undo`, absence du bouton d'annulation à `spentCells === 0`,
+>   suppression du toucher direct de porte côté joueurs, absence de bouton pendant une préparation
+>   (rendu et tap).
+>
+> **Relu dans l'arbre de travail le 22/11/2026, et deux défauts réels trouvés** — le code venait
+> d'un autre modèle, et la règle « vérifier, jamais croire » a encore payé :
+>
+> 1. **Le bouton d'annulation volait le tap de la croix du partage d'image.** La croix est à
+>    `right: 124px` sur 64 px de large (124 → 188), le bouton occupe 116 → 160 avec un `z-index`
+>    de 9500 contre 9000 pour l'overlay : il recouvrait la moitié gauche de la croix. ⛔ La faute
+>    est dans le brief, qui fixait `right: 116px` sans vérifier le voisinage. Corrigé : le bouton
+>    se retire tant qu'une image est affichée (`onVisibility` de `mountImageShareOverlay`) et
+>    revient à sa fermeture.
+> 2. **La tablette ne décomptait rien localement.** Elle attendait le `turn.select` republié par le
+>    MJ après son `reportMove`, et proposait le budget ENTIER pendant tout l'aller-retour — relevé
+>    entre 336 ms et 2,4 s en séance le 7 août 2026. Trois taps rapides suffisaient à rejouer un
+>    trajet complet dans le même tour (4 cases puis 8, soit 12 pour un budget de 8). Corrigé :
+>    décompte local au moment de la validation, à partir du coût revalidé que `validate` passe
+>    désormais à son `commit`. Sans danger de double compte, `turn.select` portant une valeur
+>    **absolue** que `setTurn` ne fait jamais redescendre.
+>
+> Deux points arbitrés en même temps : `TJ-8` (le silence des boutons commence à la **sélection**,
+> pas à la première étape — le code le faisait déjà, les documents disaient autre chose) et `TJ-9`
+> (la **couronne de Bond** recule des cases parcourues ; elle partait du budget entier alors que la
+> zone s'arrêtait à `budget − n`).
+>
+> ⚠ **Un faux vert attrapé dans mon propre test de la couronne de Bond** : l'assertion ne tenait
+> que la borne haute de l'anneau, si bien qu'un budget laissé non reculé la satisfaisait encore.
+> Les deux bornes sont désormais tenues. Douze mutations, douze rouges.
+>
+> ⏳ **À éprouver à la table** : lisibilité et portée tactile des boutons de porte (44 px) et de
+> liaison au cadrage réel de la Tab S9 FE ; voisinage du bouton d'annulation à gauche de l'aide de
+> jeu ; et surtout le **coût de `TJ-8`** — pour ouvrir une porte il faut n'avoir rien de
+> sélectionné, et après être descendu de cheval il faut taper ailleurs avant que le bouton
+> d'escalier n'apparaisse.
+
 > ### ✅ Chantier C-10 — refonte de la vue MJ, livrée le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur : la vue MJ était « fonctionnelle mais inesthétique et peu pratique ».

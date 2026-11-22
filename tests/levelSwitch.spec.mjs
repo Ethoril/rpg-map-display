@@ -212,6 +212,36 @@ const taper = (page, a, b, pxPerCell) =>
   );
 
 /**
+ * Tape le bouton de liaison d'un pion côté joueurs (décision 1 du 22/11/2026, CA1–CA3).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} tokenId
+ */
+const taperBoutonLiaison = (page, tokenId) =>
+  page.evaluate(async (id) => {
+    const [store, gridMod, linksMod] = await Promise.all([
+      import('../js/state/store.js'),
+      import('../js/grid/index.js'),
+      import('../js/render/layers/links.js'),
+    ]);
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    const { campaign, activeLevel } = store.getState();
+    const token = campaign?.tokens.find((t) => t.id === id);
+    if (!campaign || !activeLevel || !token) throw new Error(`Pion "${id}" introuvable`);
+    const btn = linksMod.boutonLiaison(gridMod.gridFor(activeLevel), activeLevel, campaign.links ?? [], token, {
+      zoom: app.camera.zoom,
+      turn: store.getTurn(),
+      camera: app.camera,
+      insetTop: document.getElementById('player-level-tabs')?.offsetHeight ?? 0,
+    });
+    if (!btn) throw new Error(`Bouton de liaison introuvable pour "${id}"`);
+    app.pointerInput.emit({
+      type: 'tap',
+      mapPos: { x: btn.rect.x + btn.rect.width / 2, y: btn.rect.y + btn.rect.height / 2 },
+      screenPos: { x: 0, y: 0 },
+    });
+  }, tokenId);
+
+/**
  * @param {import('@playwright/test').Page} page
  * @param {string} tokenId
  */
@@ -254,9 +284,9 @@ test("UX-10 : franchir l'escalier téléporte le pion, et ne déplace ni l'écra
   await mj.goto('/gm.html');
   await waitForApp(mj);
 
-  // Le joueur sélectionne son pion, puis retape sa case pour prendre l'escalier.
-  await taper(joueur, 3, 3, 100);
-  await taper(joueur, 3, 3, 100);
+  // Le joueur franchit l'escalier par le bouton de liaison (décision 1 du 22/11/2026).
+  await expect.poll(() => aLaVision(joueur, 'rdc'), { timeout: 8000 }).toBe(true);
+  await taperBoutonLiaison(joueur, 'pj-1');
 
   // 1. Le pion a bien changé d'étage ET de case, sur les deux postes : le franchissement
   //    lui-même est inchangé, c'est une mutation de l'état de jeu que tous appliquent.
@@ -501,9 +531,8 @@ test('syncVision — un PJ franchit une liaison, le MJ ne touche à rien, la tab
 
   await expect.poll(() => aLaVision(joueur, 'rdc'), { timeout: 8000 }).toBe(true);
 
-  // Le joueur seul franchit l'escalier — deux taps sur sa propre case.
-  await taper(joueur, 3, 3, 100);
-  await taper(joueur, 3, 3, 100);
+  // Le joueur seul franchit l'escalier par le bouton de liaison (décision 1 du 22/11/2026).
+  await taperBoutonLiaison(joueur, 'pj-1');
   await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
 
   // ⭐ Le MJ n'a rien fait : il regarde toujours le rez-de-chaussée.
@@ -595,10 +624,8 @@ test('syncVision — le dernier PJ quitte un étage : son masque visible publié
   await mj.selectOption('#gm-level-select', 'etage');
   await expect.poll(() => etageActif(mj), { timeout: 8000 }).toBe('etage');
 
-  // Le PJ, seul sur le rez-de-chaussée, franchit l'escalier vers l'étage — deux taps sur sa
-  // propre case, comme dans les tests ci-dessus.
-  await taper(joueur, 3, 3, 100);
-  await taper(joueur, 3, 3, 100);
+  // Le PJ, seul sur le rez-de-chaussée, franchit l'escalier vers l'étage par le bouton de liaison.
+  await taperBoutonLiaison(joueur, 'pj-1');
   await expect.poll(() => etageDuPion(joueur, 'pj-1'), { timeout: 8000 }).toBe('etage:7,6');
 
   // Le rez-de-chaussée n'a plus aucun PJ, et le MJ n'y est pas : sans le correctif, son masque

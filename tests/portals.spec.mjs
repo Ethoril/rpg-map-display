@@ -86,9 +86,14 @@ function buildEtage02Snapshot() {
 }
 
 /**
- * Monte une vraie page `player.html` (transport réel via BroadcastChannel, pas d'appel direct
+ * Monte une vraie page `gm.html` (transport réel via BroadcastChannel, pas d'appel direct
  * à `store.setPortalState`) puis tape à l'écran, au vrai milieu du segment de la porte, pour
  * juger si le geste **réel** — pas une intention synthétique — bascule la porte.
+ *
+ * Amendé le 22/11/2026 (décision 2, CA12–CA13) : côté joueurs (`player.html`), toucher la porte
+ * directement est supprimé au profit du bouton de porte adjacent (testé dans
+ * `tests/tourDeJeu.spec.mjs`) ; côté MJ (`gm.html`), `findHitPortal` et cet arbitrage par
+ * distance restent en place.
  *
  * @param {import('@playwright/test').Page} page
  * @param {number} zoom
@@ -99,9 +104,8 @@ function buildEtage02Snapshot() {
 async function tapPortalAtZoom(page, zoom, errorPx = 0) {
   const sessionId = `portal-repro-${zoom}-${errorPx}-${Date.now()}`;
   await installBrowserTransport(page, sessionId, buildEtage02Snapshot());
-  await page.goto(`/player.html?session=${sessionId}`);
+  await page.goto(`/gm.html?session=${sessionId}`);
   await waitForApp(page);
-  await setPlayerTestVision(page);
 
   // Cadre la porte : caméra centrée sur la case de liaison, au zoom demandé. Le cadrage naturel
   // de `fitActiveLevel` a déjà eu lieu pendant le boot (voir le commentaire de `ETAGE_02`), donc

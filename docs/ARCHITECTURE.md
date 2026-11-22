@@ -297,6 +297,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   ├─ movePlanning.spec.mjs      [Retour session] préparation visible, vision inchangée avant validation, annulation et invalidation
 │   ├─ movePlan.test.mjs          [Retour session] étapes, coûts cumulatifs et revalidation
 │   ├─ movePlanning.test.mjs      [Retour session] contrôleur, ordre présence/aperçus et validation unique
+│   ├─ tourDeJeu.test.mjs         [Tour de jeu] état de tour, budget retranché, bridage manipulation, réducteurs turn.*, boutons de porte et liaison
+│   ├─ tourDeJeu.spec.mjs         [Tour de jeu] scénarios e2e portes par bouton, liaisons par bouton, mouvement interrompu, annulation du tour et brouillard cumulatif
 │                                      *.test.mjs → node:test (logique pure)
 │                                      *.spec.mjs → Playwright (navigateur, vrai Canvas)
 │                                      mountStage.mjs, mountTransport.mjs → sondes chargées

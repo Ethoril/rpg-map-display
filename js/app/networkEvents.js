@@ -817,6 +817,78 @@ export function applyNetworkEvent(event) {
       }
       return true;
     }
+    // ── Tour de jeu (22/11/2026) : désignation du pion actif et annulation du tour ──────────
+    //
+    // `turn.select` est émis par le MJ vers la tablette ; `turn.undo` part de la tablette vers
+    // le MJ sans transmettre la case de départ (chaque poste relit la sienne, même raisonnement
+    // que `link.traverse`). Calqué sur `level.select` : payload malformé ou identifiant inconnu
+    // refusé bruyamment (`console.error`), rejeu inoffensif.
+    case 'turn.select': {
+      const tokenIdValid =
+        payload.tokenId === null || (typeof payload.tokenId === 'string' && payload.tokenId.length > 0);
+      const spentValid =
+        payload.spentCells === undefined ||
+        (typeof payload.spentCells === 'number' && Number.isFinite(payload.spentCells) && payload.spentCells >= 0);
+      if (!tokenIdValid || !spentValid) {
+        console.error('Événement "turn.select" refusé : payload malformé');
+        return false;
+      }
+      if (payload.tokenId === null) {
+        if (store.getTurn() === null) return false;
+        store.setTurn(null);
+        return true;
+      }
+      if (!campaign?.tokens.some((token) => token.id === payload.tokenId)) {
+        console.error(`Événement "turn.select" refusé : pion inconnu "${payload.tokenId}"`);
+        return false;
+      }
+      const current = store.getTurn();
+      const spent = payload.spentCells;
+      if (current && current.tokenId === payload.tokenId && (spent === undefined || spent <= current.spentCells)) {
+        return false;
+      }
+      try {
+        store.setTurn(payload.tokenId, spent ?? 0);
+      } catch (err) {
+        console.error(
+          `Événement "turn.select" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
+    case 'turn.undo': {
+      if (!payload.tokenId || typeof payload.tokenId !== 'string') {
+        console.error('Événement "turn.undo" refusé : payload malformé');
+        return false;
+      }
+      const token = campaign?.tokens.find((t) => t.id === payload.tokenId);
+      if (!token) {
+        console.error(`Événement "turn.undo" refusé : pion inconnu "${payload.tokenId}"`);
+        return false;
+      }
+      const current = store.getTurn();
+      // Rejeu inoffensif : le pion est déjà revenu au départ avec son mouvement intégral.
+      if (
+        current &&
+        current.tokenId === payload.tokenId &&
+        current.spentCells === 0 &&
+        token.levelId === current.startLevelId &&
+        token.cell.a === current.startCell.a &&
+        token.cell.b === current.startCell.b
+      ) {
+        return false;
+      }
+      try {
+        store.undoTurnMove(payload.tokenId);
+      } catch (err) {
+        console.error(
+          `Événement "turn.undo" refusé : ${err instanceof Error ? err.message : String(err)}`
+        );
+        return false;
+      }
+      return true;
+    }
 
     default:
       return false;

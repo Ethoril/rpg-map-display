@@ -14,11 +14,17 @@
  * la croix, qui ferme l'image **pour tous**. Le z-index (`css/player.css`) reste strictement
  * inférieur à 9999, l'avertissement de version.
  *
- * @param {{ transport?: Transport, container?: HTMLElement }} [options]
+ * @param {{ transport?: Transport, container?: HTMLElement, onVisibility?: (visible: boolean) => void }} [options]
+ *   `onVisibility` prévient la vue quand l'overlay apparaît ou disparaît. Il existe pour une
+ *   raison concrète : le bouton d'annulation du mouvement du tour (`right: 116px`) recouvrirait
+ *   la croix de fermeture (`right: 124px`, 64 px de large) et lui volerait son tap. La vue le
+ *   retire donc tant qu'une image est à l'écran, et ce rappel est le seul signal qu'elle ait —
+ *   l'overlay suit son propre nœud réseau, pas le store.
  * @returns {{ detach: () => void }}
  */
 export function mountImageShareOverlay(options = {}) {
   const { transport, container = document.body } = options;
+  const annoncer = () => options.onVisibility?.(overlay !== null);
 
   /** @type {HTMLDivElement|null} */
   let overlay = null;
@@ -39,6 +45,7 @@ export function mountImageShareOverlay(options = {}) {
     // Masquée tout de suite, sans attendre l'aller-retour : la croix doit répondre au doigt.
     affichee = null;
     retirer();
+    annoncer();
     transport?.closeSharedImage?.(id);
   }
 
@@ -66,10 +73,12 @@ export function mountImageShareOverlay(options = {}) {
     affichee = image;
     if (!image) {
       retirer();
+      annoncer();
       return;
     }
     if (!overlay) construire();
     if (img && img.getAttribute('src') !== image.dataUrl) img.src = image.dataUrl;
+    annoncer();
   }
 
   const unsubscribe =

@@ -1,8 +1,15 @@
 // @ts-check
 
+import { isPlayerManipulableToken } from '../../input/tokenHit.js';
+
 /** @typedef {import('../../core/types.js').Link} Link */
 /** @typedef {import('../../core/types.js').Level} Level */
+/** @typedef {import('../../core/types.js').Token} Token */
 /** @typedef {import('../../grid/GridAdapter.js').GridAdapter} GridAdapter */
+/** @typedef {{ x: number, y: number, width: number, height: number }} MapRect */
+/** @typedef {{ linkId: string, rect: MapRect, label: string }} LinkButton */
+
+const LINK_BUTTON_HEIGHT_SCREEN_PX = 44;
 
 // ⛔ Prototype nul, et pas un objet littéral ordinaire. `kind` vient d'un import et n'est
 // contraint par aucun validateur : une liaison de `kind: 'constructor'` ou `'toString'` ferait
@@ -33,13 +40,23 @@ const LINK_SYMBOL = Object.freeze(Object.assign(Object.create(null), {
  */
 // Prototype nul pour la même raison que `LINK_SYMBOL` ci-dessus.
 const LINK_PROMPT = Object.freeze(Object.assign(Object.create(null), {
-  stairs: 'Retaper pour prendre l’escalier',
-  elevator: 'Retaper pour prendre l’ascenseur',
-  ladder: 'Retaper pour prendre l’échelle',
-  hatch: 'Retaper pour passer la trappe',
-  passage: 'Retaper pour prendre le passage',
+  stairs: 'Prendre l’escalier',
+  elevator: 'Prendre l’ascenseur',
+  ladder: 'Prendre l’échelle',
+  hatch: 'Passer la trappe',
+  passage: 'Prendre le passage',
 }));
-const LINK_PROMPT_DEFAUT = 'Retaper pour franchir';
+const LINK_PROMPT_DEFAUT = 'Franchir';
+
+/**
+ * Libellé d'invite côté MJ (où le re-tap reste le geste, CA5) dérivé de `LINK_PROMPT`.
+ * @param {string} kind
+ * @returns {string}
+ */
+function gmLinkPrompt(kind) {
+  const action = LINK_PROMPT[kind] ?? LINK_PROMPT_DEFAUT;
+  return `Retaper pour ${action.charAt(0).toLowerCase()}${action.slice(1)}`;
+}
 
 /**
  * L'extrémité que les JOUEURS peuvent prendre depuis cet étage, s'il y en a une.
@@ -71,6 +88,101 @@ function extremiteFranchissable(link, levelId) {
   if (link.a.levelId === levelId) return link.a;
   if (link.b.levelId === levelId && link.bidirectional) return link.b;
   return null;
+}
+
+/**
+ * Géométrie pure du bouton de liaison côté joueurs (décision 1 du 22/11/2026, CA1, CA4).
+ * Appelée à la fois par `LinksLayer.renderButton` et par le test de tap (`bootstrap.js`).
+ *
+ * - `extremiteJoueur` reste l'unique règle de franchissabilité côté joueurs.
+ * - Pion monté : aucun bouton (la mention « Descendre de cheval » reste rendue par `renderPrompt`).
+ * - Première liaison trouvée dans l'ordre du store : au plus un bouton.
+ * - `rect` en unités CARTE, hauteur `44 / zoom`.
+ *
+ * @param {GridAdapter} grid
+ * @param {Level} level
+ * @param {readonly Link[]} links
+ * @param {Token|null|undefined} token
+ * @param {{ zoom?: number, turn?: { tokenId: string }|null, camera?: import('../camera.js').Camera, insetTop?: number }} [options]
+ * @returns {LinkButton|null}
+ */
+export function boutonLiaison(grid, level, links, token, options = {}) {
+  if (!grid || !level || !Array.isArray(links) || !token) return null;
+  if (token.levelId !== level.id || token.hidden || token.mounted === true) return null;
+  if (!isPlayerManipulableToken(token, options.turn ?? null)) return null;
+
+  const zoom = Math.max(0.01, options.zoom ?? 1);
+
+  for (const link of links) {
+    const endpoint = extremiteJoueur(link, level.id);
+    if (!endpoint) continue;
+    if (endpoint.at.cellX !== token.cell.a || endpoint.at.cellY !== token.cell.b) continue;
+
+    const point = grid.pointFromCell({ a: endpoint.at.cellX, b: endpoint.at.cellY });
+    const voisineDessus = grid.pointFromCell({
+      a: endpoint.at.cellX,
+      b: endpoint.at.cellY - 1,
+    });
+    const pasVertical = Math.abs(point.y - voisineDessus.y);
+    const demiHauteur = pasVertical > 0 ? (pasVertical * 2) / 3 : 20 / zoom;
+
+    const label = LINK_PROMPT[link.kind] ?? LINK_PROMPT_DEFAUT;
+    const height = LINK_BUTTON_HEIGHT_SCREEN_PX / zoom;
+    const width = Math.max(120, label.length * 9 + 24) / zoom;
+    const gap = 8 / zoom;
+
+    let centerX = point.x;
+    let centerY = point.y - demiHauteur - height / 2 - gap;
+
+    const camera = options.camera;
+    if (camera) {
+      const min = camera.screenToMap({ screenX: 8, screenY: (options.insetTop ?? 0) + 8 });
+      const max = camera.screenToMap({ screenX: camera.screenWidth - 8, screenY: camera.screenHeight - 8 });
+      const clampedW = Math.min(width, Math.max(1, max.x - min.x));
+      centerX = Math.max(min.x + clampedW / 2, Math.min(max.x - clampedW / 2, centerX));
+      if (centerY - height / 2 < min.y) {
+        centerY = Math.min(max.y - height / 2, point.y + demiHauteur + height / 2 + gap);
+      }
+    }
+
+    return {
+      linkId: link.id,
+      rect: {
+        x: centerX - width / 2,
+        y: centerY - height / 2,
+        width,
+        height,
+      },
+      label,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Trace un rectangle arrondi sur le contexte Canvas courant.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {MapRect} rect
+ * @param {number} radius
+ */
+function traceRoundedRect(ctx, rect, radius) {
+  const r = Math.min(radius, rect.width / 2, rect.height / 2);
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(rect.x, rect.y, rect.width, rect.height, r);
+  } else {
+    ctx.moveTo(rect.x + r, rect.y);
+    ctx.lineTo(rect.x + rect.width - r, rect.y);
+    ctx.quadraticCurveTo(rect.x + rect.width, rect.y, rect.x + rect.width, rect.y + r);
+    ctx.lineTo(rect.x + rect.width, rect.y + rect.height - r);
+    ctx.quadraticCurveTo(rect.x + rect.width, rect.y + rect.height, rect.x + rect.width - r, rect.y + rect.height);
+    ctx.lineTo(rect.x + r, rect.y + rect.height);
+    ctx.quadraticCurveTo(rect.x, rect.y + rect.height, rect.x, rect.y + rect.height - r);
+    ctx.lineTo(rect.x, rect.y + r);
+    ctx.quadraticCurveTo(rect.x, rect.y, rect.x + r, rect.y);
+    ctx.closePath();
+  }
 }
 
 /** Rendu des extrémités de liaison. Le MJ obtient libellé et sens ; les joueurs un repère discret. */
@@ -182,29 +294,59 @@ export class LinksLayer {
   }
 
   /**
-   * Le TEXTE de l'invite de franchissement, à rendre **après le brouillard**.
+   * Dessine le bouton de franchissement d'une liaison côté joueurs, dans le rang `feedback`
+   * (au-dessus du brouillard, CA1). S'appuie sur `boutonLiaison` comme source unique.
    *
-   * ⭐ Séparé de `render` pour cette seule raison, et il ne faut pas le rapatrier. Les liaisons
-   * se dessinent au rang 5 de `CANVAS_LAYER_ORDER`, le fog au rang 9, et l'invite s'écrit
-   * au-dessus de la case — donc dans la case du VOISIN, dont rien ne garantit qu'elle soit
-   * explorée. Un escalier collé au mur nord d'une pièce a sa case du dessus derrière le mur : le
-   * joueur voyait le repère, sur sa case éclairée, et aucun texte. Le correctif retombait dans le
-   * silence qu'il corrige, et dans un cas courant.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {GridAdapter} grid
+   * @param {Level} level
+   * @param {readonly Link[]} links
+   * @param {Token|null|undefined} token
+   * @param {{ zoom?: number, turn?: { tokenId: string }|null, camera?: import('../camera.js').Camera, insetTop?: number }} [options]
+   * @returns {number} 0 ou 1
+   */
+  renderButton(ctx, grid, level, links, token, options = {}) {
+    if (!ctx) return 0;
+    const button = boutonLiaison(grid, level, links, token, options);
+    if (!button) return 0;
+
+    const zoom = Math.max(0.01, options.zoom ?? 1);
+    const px = (/** @type {number} */ screenPx) => screenPx / zoom;
+
+    ctx.save();
+    traceRoundedRect(ctx, button.rect, px(10));
+    ctx.fillStyle = 'rgba(29, 78, 216, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = px(2);
+    ctx.stroke();
+
+    ctx.font = `600 ${px(14)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(
+      button.label,
+      button.rect.x + button.rect.width / 2,
+      button.rect.y + button.rect.height / 2,
+      button.rect.width - px(12)
+    );
+    ctx.restore();
+    return 1;
+  }
+
+  /**
+   * Mention textuelle au-dessus d'une liaison, à rendre **après le brouillard**.
    *
-   * Ce n'est pas une fuite d'information, pour la raison déjà écrite au sujet du ping dans
-   * `render/stage.js` : l'invite est ancrée sur la case où se tient le pion de ce joueur, donc
-   * sur un endroit qu'il voit par construction. Elle ne révèle rien qu'il ne sache déjà.
-   *
-   * Effet de bord bienvenu : le texte échappe aussi à la teinte verte de la zone de déplacement,
-   * qui se peint au rang 6.
+   * Côté joueurs (décision 1 du 22/11/2026, CA4) : réduit au seul cas **pion monté** (« Descendre
+   * de cheval » / « Demander au MJ de vous faire descendre de cheval »), non tapable. Le
+   * franchissement à pied passe par `boutonLiaison` / `renderButton`.
+   * Côté MJ (`role: 'gm'`, CA5) : inchangé, l'invite « Retaper pour… » reste affichée.
    *
    * @param {CanvasRenderingContext2D} ctx
    * @param {GridAdapter} grid
    * @param {Level} level
    * @param {Link[]} links
-   * Côté MJ (`role: 'gm'`), l'invite vaut aussi pour une liaison MJ seule : le MJ la franchit
-   * du même geste (combat du 21/11/2026).
-   *
    * @param {{zoom?: number, promptAtCell?: {a: number, b: number}|null, role?: 'gm'|'players', mounted?: 'local'|'linked',
    *   camera?: import('../camera.js').Camera, insetTop?: number}} [options]
    * @returns {number} 0 ou 1 — jamais plus, voir ci-dessous.
@@ -212,6 +354,8 @@ export class LinksLayer {
   renderPrompt(ctx, grid, level, links, options = {}) {
     const promptAtCell = options.promptAtCell ?? null;
     if (!ctx || !grid || !level || !Array.isArray(links) || !promptAtCell) return 0;
+    // Côté joueurs, `renderPrompt` se réduit au seul cas pion monté (T8, CA4).
+    if (options.role !== 'gm' && !options.mounted) return 0;
     const zoom = Math.max(0.01, options.zoom ?? 1);
 
     // ⚠ UNE seule invite, la première trouvée. Rien n'interdit deux liaisons sur la même case du
@@ -250,7 +394,7 @@ export class LinksLayer {
       let labelY = point.y - demiHauteur - 18 / zoom;
       const label = options.mounted === 'linked' ? 'Demander au MJ de vous faire descendre de cheval'
         : options.mounted === 'local' ? 'Descendre de cheval'
-          : (LINK_PROMPT[link.kind] ?? LINK_PROMPT_DEFAUT);
+          : gmLinkPrompt(link.kind);
 
       ctx.save();
       ctx.font = `600 ${15 / zoom}px system-ui, sans-serif`;

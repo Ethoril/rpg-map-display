@@ -1736,3 +1736,46 @@ autorisation, et la licence des cartes reste le domaine du mainteneur.
    est un chantier court vérifiable par mutation.
 3. **G-2** est plus petite qu'annoncée (aucun manifeste touché) mais demande deux choix d'affichage.
 4. **G-5, G-7, G-8** touchent le §7 du CdC : ⛔ arrêt, rien ne se démarre sans arbitrage.
+
+---
+
+## TJ. Tour de jeu, portes et liaisons côté joueurs
+
+> Arbitré par le mainteneur le 22/11/2026 (sept sélecteurs). Spécification : `docs/CADRAGE-TOUR-DE-JEU-2026-11-22.md`. Plan : `docs/PLAN-TOUR-DE-JEU-2026-11-22.md`. Les deux noms d'événements réseau arrêtés pour le §7 du cahier des charges sont `turn.select` (MJ → tablette, `{ tokenId: string|null, spentCells?: number }`) et `turn.undo` (tablette → MJ, `{ tokenId: string }`).
+
+### TJ-1 ✅ TRANCHÉ le 22/11/2026 — Prise d'une liaison par un bouton
+
+**Une liaison se prend par un bouton**, jamais automatiquement en fin de mouvement. Une case d'escalier est aussi une case marchable : on s'y poste, on la traverse, on y finit un tour faute de cases. Basculer d'étage sans l'avoir demandé est exactement ce qu'interdit la règle 4 du projet.
+
+### TJ-2 ✅ TRANCHÉ le 22/11/2026 — Ouverture de porte par bouton d'adjacence
+
+**Une porte s'ouvre par un bouton d'adjacence**, posé de l'autre côté de la porte par rapport au PJ. Le toucher de la porte elle-même disparaît de la vue joueurs.
+
+### TJ-3 ✅ TRANCHÉ le 22/11/2026 — Deux PJ de part et d'autre de la même porte
+
+**Deux PJ de part et d'autre de la même porte : un seul bouton**, légèrement déporté.
+
+### TJ-4 ✅ TRANCHÉ le 22/11/2026 — Porte verrouillée
+
+**Porte verrouillée : aucun bouton.** L'indicateur d'état le dit déjà, et un bouton grisé voudrait dire deux choses différentes.
+
+### TJ-5 ✅ TRANCHÉ le 22/11/2026 — Bridage de la tablette par le tour actif
+
+**En session liée avec un tour actif, seul le pion actif se déplace** depuis la tablette ; les boutons de porte des autres PJ sont **grisés**. `ref` à `null` ou liaison déconnectée : la table retrouve sa liberté entière.
+
+### TJ-6 ✅ TRANCHÉ le 22/11/2026 — Glisser libre du MJ et consommation du mouvement
+
+**Le glisser libre du MJ ne consomme pas le mouvement du tour.** Seul un trajet marché le consomme.
+
+### TJ-7 ✅ TRANCHÉ le 22/11/2026 — Annulation du mouvement du tour
+
+**L'annulation rend tout le mouvement du tour**, et n'existe qu'en session liée. Événements réseau arrêtés (§7) : `turn.select` et `turn.undo`.
+
+### TJ-8 ✅ TRANCHÉ le 22/11/2026 — Seuil du silence des boutons
+
+**Les boutons de porte et de liaison disparaissent dès qu'un pion est sélectionné**, et pas seulement à partir de la première étape préparée. Le bouton de porte occupe une case voisine, souvent atteignable : sélection active, il volerait le tap de destination juste derrière la porte ouverte. Conséquence acceptée à la table : on ouvre une porte sans rien de sélectionné, et après être descendu de cheval (qui exige la sélection) il faut taper ailleurs avant que le bouton d'escalier n'apparaisse.
+
+### TJ-9 ✅ TRANCHÉ le 22/11/2026 — Couronne de Bond et mouvement déjà parcouru
+
+**La couronne de Bond (Charge, Saut, Sprint) recule des cases déjà parcourues**, comme le budget et la Marche. Sans cela l'anneau hachuré partait toujours du budget entier alors que la zone s'arrêtait à `budget − n` : il restait un trou entre les deux, et l'anneau promettait des cases que le budget refusait. Mouvement entièrement consommé : plus d'anneau.
+

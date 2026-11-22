@@ -23,6 +23,7 @@ import { cellKey, parseCellKey } from '../core/cellKey.js';
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Cell} Cell */
 /** @typedef {import('../core/types.js').CellPoint} CellPoint */
+/** @typedef {import('../core/types.js').Turn} Turn */
 
 /** @type {Campaign | null} */
 let campaign = null;
@@ -140,6 +141,7 @@ export function setSessionId(sessionId) {
   if (sessionId !== currentSessionId) {
     sessionFogMap.clear();
     sessionVisionMap.clear();
+    currentTurn = null;
   }
   currentSessionId = sessionId;
 }
@@ -431,11 +433,15 @@ export function restoreFromSnapshot(snapshotData, options = {}) {
       : campaign.levels[0]?.id ?? null
     : null;
 
+  if (currentTurn && (!campaign || !campaign.tokens.some((t) => t.id === currentTurn?.tokenId))) {
+    currentTurn = null;
+  }
+
   const targetTokenId = snapshotData.selectedTokenId || null;
   if (campaign && targetTokenId && campaign.tokens.some((t) => t.id === targetTokenId)) {
     const token = campaign.tokens.find((t) => t.id === targetTokenId);
     const level = campaign.levels.find((l) => l.id === activeLevelId) || null;
-    if (token) setSelectionState(token, level);
+    if (token) setSelectionState(token, level, getTurnSpent(token.id));
   } else {
     clearSelectionState();
   }
@@ -534,6 +540,7 @@ export function loadCampaign(campaignData) {
   const chargee = structuredClone(normalise);
   replaceCampaign(chargee);
   activeLevelId = chargee.levels.length > 0 ? chargee.levels[0].id : null;
+  currentTurn = null;
   clearSelectionState();
 
   notifySubscribers();
@@ -567,7 +574,7 @@ export function selectLevel(levelId) {
     const selToken = campaign.tokens.find((t) => t.id === selTokenId);
     if (selToken && selToken.levelId === levelId) {
       const activeLevel = campaign.levels.find((l) => l.id === activeLevelId) || null;
-      setSelectionState(selToken, activeLevel);
+      setSelectionState(selToken, activeLevel, getTurnSpent(selToken.id));
     } else {
       clearSelectionState();
     }
@@ -601,7 +608,7 @@ export function setSelection(tokenId) {
   }
 
   const activeLevel = campaign.levels.find((l) => l.id === activeLevelId) || null;
-  setSelectionState(token, activeLevel);
+  setSelectionState(token, activeLevel, getTurnSpent(token.id));
 
   notifySubscribers();
 }
@@ -618,15 +625,17 @@ export const selectToken = setSelection;
  *
  * @param {string} tokenId
  * @param {Cell} cell
+ * @param {string} [levelId] Étage à contrôler (par défaut l'étage actuel du pion)
  * @returns {Token|null}
  */
-export function findMoveConflict(tokenId, cell) {
+export function findMoveConflict(tokenId, cell, levelId) {
   if (!campaign) return null;
   const token = campaign.tokens.find((t) => t.id === tokenId);
   if (!token) return null;
-  const level = campaign.levels.find((l) => l.id === token.levelId);
+  const targetLevelId = levelId ?? token.levelId;
+  const level = campaign.levels.find((l) => l.id === targetLevelId);
   if (!level) return null;
-  return findStackingConflict(campaign.tokens, level, token.levelId, cell, token.sizeCells || 1, tokenId) ?? null;
+  return findStackingConflict(campaign.tokens, level, targetLevelId, cell, token.sizeCells || 1, tokenId) ?? null;
 }
 
 /**
@@ -702,7 +711,7 @@ export function moveTokenToCell(tokenId, cell, moveData = null) {
   // Si le pion est actuellement sélectionné, mettre à jour les cases atteignables
   if (getSelectedTokenId() === tokenId) {
     const activeLevel = campaign.levels.find((l) => l.id === activeLevelId) || null;
-    setSelectionState(token, activeLevel);
+    setSelectionState(token, activeLevel, getTurnSpent(token.id));
   }
 
   notifySubscribers();
@@ -1057,7 +1066,7 @@ function rafraichirZoneAtteignable(levelId) {
   if (!token) return;
   if (levelId !== undefined && token.levelId !== levelId) return;
   const level = campaign.levels.find((l) => l.id === token.levelId) || null;
-  if (level) setSelectionState(token, level);
+  if (level) setSelectionState(token, level, getTurnSpent(token.id));
 }
 
 /**
@@ -1136,6 +1145,9 @@ export function removeLevel(levelId) {
   const selTokenId = getSelectedTokenId();
   if (selTokenId && !candidate.tokens.some((t) => t.id === selTokenId)) {
     clearSelectionState();
+  }
+  if (currentTurn && !candidate.tokens.some((t) => t.id === currentTurn?.tokenId)) {
+    currentTurn = null;
   }
 
   notifySubscribers();
@@ -1493,7 +1505,7 @@ export function setPortalState(levelId, portalId, state) {
     const token = campaign.tokens.find((t) => t.id === selectedId);
     if (token && token.levelId === levelId) {
       const targetLevel = candidate.levels.find((l) => l.id === levelId) || null;
-      setSelectionState(token, targetLevel);
+      setSelectionState(token, targetLevel, getTurnSpent(token.id));
     }
   }
 
@@ -1690,7 +1702,7 @@ export function addWall(levelId, wall) {
     const token = campaign.tokens.find((t) => t.id === selectedId);
     if (token && token.levelId === levelId) {
       const targetLevel = candidate.levels.find((l) => l.id === levelId) || null;
-      setSelectionState(token, targetLevel);
+      setSelectionState(token, targetLevel, getTurnSpent(token.id));
     }
   }
 
@@ -1733,7 +1745,7 @@ export function removeWall(levelId, wall) {
     const token = campaign.tokens.find((t) => t.id === selectedId);
     if (token && token.levelId === levelId) {
       const targetLevel = candidate.levels.find((l) => l.id === levelId) || null;
-      setSelectionState(token, targetLevel);
+      setSelectionState(token, targetLevel, getTurnSpent(token.id));
     }
   }
 
@@ -1972,6 +1984,9 @@ export function removeToken(tokenId) {
   if (getSelectedTokenId() === tokenId) {
     clearSelectionState();
   }
+  if (currentTurn?.tokenId === tokenId) {
+    currentTurn = null;
+  }
 
   notifySubscribers();
 }
@@ -2016,6 +2031,9 @@ export function reserveToken(tokenId) {
   // déplacement désigneraient un pion qui n'est plus sur aucune carte.
   if (getSelectedTokenId() === tokenId) {
     clearSelectionState();
+  }
+  if (currentTurn?.tokenId === tokenId) {
+    currentTurn = null;
   }
 
   notifySubscribers();
@@ -2320,6 +2338,7 @@ export function resetStore() {
   activeLevelId = null;
   sessionFogMap.clear();
   sessionVisionMap.clear();
+  currentTurn = null;
   clearSelectionState();
   notifySubscribers();
 }
@@ -2577,4 +2596,167 @@ export function setSessionVision(levelId, png) {
     sessionVisionMap.set(levelId, png);
   }
   notifySubscribers({ session: true });
+}
+
+/**
+ * Tour de jeu courant — état de session, hors campagne, jamais persisté (précédent
+ * `sessionVisionMap`, contrat de liaison §10).
+ * @type {Turn | null}
+ */
+let currentTurn = null;
+
+/**
+ * Retourne une copie figée du tour actif, ou `null` hors tour.
+ * @returns {Readonly<Turn> | null}
+ */
+export function getTurn() {
+  if (!currentTurn) return null;
+  return deepFreeze({
+    tokenId: currentTurn.tokenId,
+    startCell: { a: currentTurn.startCell.a, b: currentTurn.startCell.b },
+    startLevelId: currentTurn.startLevelId,
+    spentCells: currentTurn.spentCells,
+  });
+}
+
+/**
+ * Définit le tour actif, ou l'efface (`null`).
+ * Même `tokenId` : ne remet jamais `spentCells` à zéro (CA19), mais accepte une progression
+ * explicite (ex. `turn.select` après un déplacement).
+ * Autre `tokenId` : remet le compteur à `spentCells` (0 par défaut) et relit `startCell` et
+ * `startLevelId` sur le pion.
+ *
+ * @param {string | null} tokenId
+ * @param {number} [spentCells]
+ * @returns {void}
+ */
+export function setTurn(tokenId, spentCells = 0) {
+  if (tokenId === null) {
+    if (currentTurn !== null) {
+      currentTurn = null;
+      rafraichirZoneAtteignable();
+      notifySubscribers({ session: true });
+    }
+    return;
+  }
+  if (typeof tokenId !== 'string' || tokenId.length === 0) {
+    throw new Error('Identifiant de pion requis pour le tour');
+  }
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const token = campaign.tokens.find((t) => t.id === tokenId);
+  if (!token) {
+    throw new Error(`Pion inconnu : "${tokenId}"`);
+  }
+  if (typeof spentCells !== 'number' || !Number.isFinite(spentCells) || spentCells < 0) {
+    throw new Error(`Cases parcourues invalides : "${spentCells}"`);
+  }
+
+  if (currentTurn && currentTurn.tokenId === tokenId) {
+    if (spentCells > currentTurn.spentCells) {
+      currentTurn = { ...currentTurn, spentCells };
+      rafraichirZoneAtteignable();
+      notifySubscribers({ session: true });
+    }
+    return;
+  }
+
+  currentTurn = {
+    tokenId,
+    startCell: { a: token.cell.a, b: token.cell.b },
+    startLevelId: token.levelId,
+    spentCells,
+  };
+  rafraichirZoneAtteignable();
+  notifySubscribers({ session: true });
+}
+
+/**
+ * Incrémente les cases parcourues du pion actif dans son tour.
+ * Sans effet si `tokenId` n'est pas le pion du tour courant.
+ *
+ * @param {string} tokenId
+ * @param {number} cells
+ * @returns {void}
+ */
+export function addTurnSpent(tokenId, cells) {
+  if (typeof cells !== 'number' || !Number.isFinite(cells) || cells < 0) {
+    throw new Error(`Coût de déplacement invalide : "${cells}"`);
+  }
+  if (cells === 0 || !currentTurn || currentTurn.tokenId !== tokenId) return;
+  currentTurn = { ...currentTurn, spentCells: currentTurn.spentCells + cells };
+  rafraichirZoneAtteignable();
+  notifySubscribers({ session: true });
+}
+
+/**
+ * Nombre de cases déjà parcourues dans le tour courant pour `tokenId` (0 s'il n'est pas l'actif).
+ *
+ * @param {string} tokenId
+ * @returns {number}
+ */
+export function getTurnSpent(tokenId) {
+  return currentTurn && currentTurn.tokenId === tokenId ? currentTurn.spentCells : 0;
+}
+
+/**
+ * Annule le mouvement du tour pour `tokenId` : contrôle l'occupation de la case de départ via
+ * `findMoveConflict`, replace le pion sur sa case et son étage de début de tour, et remet
+ * `spentCells` à 0. Lève sans muter si la case de départ est occupée.
+ *
+ * @param {string} tokenId
+ * @returns {Cell} Case de départ restaurée
+ */
+export function undoTurnMove(tokenId) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!currentTurn || currentTurn.tokenId !== tokenId) {
+    throw new Error(`Aucun tour actif pour le pion "${tokenId}"`);
+  }
+  const turn = currentTurn;
+  const token = campaign.tokens.find((t) => t.id === tokenId);
+  if (!token) {
+    throw new Error(`Pion inconnu : "${tokenId}"`);
+  }
+  const startLevel = campaign.levels.find((l) => l.id === turn.startLevelId);
+  if (!startLevel) {
+    throw new Error(`Étage de départ inconnu : "${turn.startLevelId}"`);
+  }
+
+  const startCell = { a: turn.startCell.a, b: turn.startCell.b };
+  const conflict = findMoveConflict(tokenId, startCell, turn.startLevelId);
+  if (conflict) {
+    throw new Error(
+      `Annulation du tour pour "${tokenId}" refusée : case de départ occupée par "${conflict.id}"`
+    );
+  }
+
+  const candidate = structuredClone(campaign);
+  const cible = candidate.tokens.find((t) => t.id === tokenId);
+  if (!cible) {
+    throw new Error(`Pion "${tokenId}" perdu à la copie de la campagne`);
+  }
+  cible.levelId = turn.startLevelId;
+  cible.cell = startCell;
+  // Le dernier trajet ne vaut plus rien après le retour au départ (même famille que `traverseLink`).
+  delete cible.move;
+
+  assertValidCampaign(candidate, `Annulation du tour du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+
+  currentTurn = { ...turn, spentCells: 0 };
+
+  const selId = getSelectedTokenId();
+  if (selId === tokenId) {
+    if (getActiveLevelId() !== turn.startLevelId) {
+      clearSelectionState();
+    } else {
+      rafraichirZoneAtteignable();
+    }
+  }
+
+  notifySubscribers();
+  return { a: startCell.a, b: startCell.b };
 }

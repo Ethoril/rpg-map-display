@@ -171,6 +171,8 @@ async function sondeJoueur(page) {
       import { bootstrapPlayerView } from './js/ui/player/bootstrap.js';
       import { createCampaign, createLevel, createToken } from './js/core/schema.js';
       import { Camera } from './js/render/camera.js';
+      import { gridFor } from './js/grid/index.js';
+      import { boutonLiaison } from './js/render/layers/links.js';
 
       const canvas = document.createElement('canvas');
       canvas.width = 800;
@@ -200,6 +202,18 @@ async function sondeJoueur(page) {
         taper: (a, b) => vue.pointerInput.onIntention({
           type: 'tap', screenPos: { screenX: 0, screenY: 0 }, mapPos: { x: (a + 0.5) * 140, y: (b + 0.5) * 140 },
         }),
+        taperMap: (x, y) => vue.pointerInput.onIntention({
+          type: 'tap', screenPos: { screenX: 0, screenY: 0 }, mapPos: { x, y },
+        }),
+        bouton: () => {
+          const { campaign, activeLevel } = store.getState();
+          const token = campaign.tokens.find((x) => x.id === 'pj');
+          return boutonLiaison(gridFor(activeLevel), activeLevel, campaign.links, token, {
+            zoom: camera.zoom,
+            turn: store.getTurn(),
+            camera,
+          });
+        },
         pion: () => { const t = store.getCampaign().tokens.find((x) => x.id === 'pj'); return t.levelId + ':' + t.cell.a + ',' + t.cell.b; },
       };
     `,
@@ -207,9 +221,11 @@ async function sondeJoueur(page) {
   await page.waitForFunction(() => Boolean(/** @type {any} */ (window).__c9));
 }
 
-test('C-9 tablette : monté sur un escalier, retaper sa case est refusé et ne publie aucun link.traverse ; à pied, il franchit', async ({
+test('C-9 tablette : monté sur un escalier, aucun bouton de liaison et aucun link.traverse ; à pied, le bouton franchit', async ({
   page,
 }) => {
+  // Amendé le 22/11/2026 (décision 1, CA1–CA4) : sur la vue joueurs, le franchissement passe par
+  // le bouton de liaison (plus par re-tap de la case) ; monté, aucun bouton n'est proposé.
   /** @type {string[]} */
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(e.message));
@@ -220,6 +236,7 @@ test('C-9 tablette : monté sur un escalier, retaper sa case est refusé et ne p
       const c9 = /** @type {any} */ (window).__c9;
       return {
         pion: c9.pion(),
+        bouton: c9.bouton(),
         types: c9.publies.map((/** @type {any} */ e) => e.type),
         refus: c9.refus,
         selection: c9.store.getState().selectedTokenId,
@@ -232,16 +249,22 @@ test('C-9 tablette : monté sur un escalier, retaper sa case est refusé et ne p
 
   const monte = await etat();
   expect(monte.pion, 'monté, le pion reste sur l’escalier').toBe('rdc:3,3');
+  expect(monte.bouton, 'monté, aucun bouton de liaison').toBeNull();
   expect(monte.types).not.toContain('link.traverse');
-  expect(monte.refus).toEqual([{ cell: { a: 3, b: 3 }, kind: 'refused' }]);
 
-  // Témoin : descendu de cheval, le même geste franchit.
-  await page.evaluate(() => /** @type {any} */ (window).__c9.store.setTokenMounted('pj', false));
-  await page.evaluate(() => /** @type {any} */ (window).__c9.taper(3, 3));
+  // Témoin : descendu de cheval et hors préparation (désélectionné), le bouton de liaison apparaît et son tap franchit.
+  await page.evaluate(() => {
+    const c9 = /** @type {any} */ (window).__c9;
+    c9.store.setTokenMounted('pj', false);
+    c9.store.selectToken(null);
+  });
+  const btn = (await etat()).bouton;
+  expect(btn).not.toBeNull();
+  expect(btn.label).toBe('Prendre l’escalier');
+  await page.evaluate((r) => /** @type {any} */ (window).__c9.taperMap(r.x + r.width / 2, r.y + r.height / 2), btn.rect);
   const aPied = await etat();
   expect(aPied.pion).toBe('etage:7,6');
   expect(aPied.types).toContain('link.traverse');
-  expect(aPied.refus.length, 'aucun nouveau refus à pied').toBe(1);
   expect(erreurs).toEqual([]);
 });
 

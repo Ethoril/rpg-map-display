@@ -55,6 +55,8 @@ const ICON_FULLSCREEN_ENTER =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
 const ICON_FULLSCREEN_EXIT =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h3a2 2 0 0 0 2-2V3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M21 16h-3a2 2 0 0 0-2 2v3"/></svg>';
+const ICON_TURN_UNDO =
+  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
 
 /**
  * Sélection, consultation et aperçus suivent la visibilité de `TokensLayer` : étage courant,
@@ -225,7 +227,7 @@ async function setupMobileLocks() {
         : event.target instanceof Node
           ? event.target.parentElement
           : null;
-    if (targetElement?.closest('#player-game-help, #player-help-dialog')) {
+    if (targetElement?.closest('#player-game-help, #player-help-dialog, #player-turn-undo-btn')) {
       return;
     }
     if (firstGestureDone) return;
@@ -573,6 +575,7 @@ export async function bootstrapPlayerApp(options = {}) {
     // le mutant**. Voir le commentaire jumeau dans `gm.js`.
     videoBackdrop.place(camera, etendue.width, etendue.height, stage.width, stage.height);
     let animationActive = false;
+    let tokensAnimating = false;
     layerDurations.background = 0;
     layerDurations.grid = 0;
     layerDurations.portals = 0;
@@ -698,6 +701,7 @@ export async function bootstrapPlayerApp(options = {}) {
         // couche susceptible de s'animer, et une affectation effacerait le drapeau d'une couche
         // dessinée avant eux. Rien ne s'anime avant eux ici aujourd'hui — c'est justement pour
         // que ce ne soit pas un piège demain.
+        tokensAnimating = result.animationActive;
         animationActive ||= result.animationActive;
         layerDurations.tokens = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
@@ -730,15 +734,38 @@ export async function bootstrapPlayerApp(options = {}) {
           now: Date.now(),
           zoom: camera.zoom,
         });
-        // ⛔ Au-dessus du brouillard, et pas avec le reste des liaisons au rang 5. L'invite
-        // s'écrit dans la case du VOISIN, que rien ne garantit explorée — voir `renderPrompt`.
-        if (selected && selectedIsVisible && isPlayerManipulableToken(selected)) {
+        const turn = store.getTurn();
+        // Une préparation commence dès la sélection du pion (zone affichée) : aucun bouton de porte
+        // ni de liaison ne doit recouvrir une case atteignable juste derrière une porte ouverte ou
+        // au-dessus d'un escalier (CA1, CA11).
+        const hasPreparation = Boolean(selected || plan);
+        const insetTop = levelTabsMount?.offsetHeight ?? 0;
+        // ⛔ Au-dessus du brouillard (rang `feedback`), et jamais pendant une préparation ou une
+        // animation de déplacement (CA8, CA11). Ne réveille jamais `animationActive`.
+        if (!hasPreparation && !tokensAnimating) {
+          const visibleTokens = campaignTokens.filter((token) => visibleALaTable(token, activeLevel, maskAlpha));
+          portalsLayer.renderButtons(stage.context, grid, activeLevel, visibleTokens, {
+            zoom: camera.zoom,
+            turn,
+          });
+          const links = state.campaign?.links ?? [];
+          for (const token of visibleTokens) {
+            linksLayer.renderButton(stage.context, grid, activeLevel, links, token, {
+              zoom: camera.zoom,
+              turn,
+              camera,
+              insetTop,
+            });
+          }
+        }
+        // Pion monté sur une liaison : mention non tapable (CA4).
+        if (selected && selectedIsVisible && selected.mounted && isPlayerManipulableToken(selected, turn)) {
           linksLayer.renderPrompt(stage.context, grid, activeLevel, state.campaign?.links ?? [], {
             zoom: camera.zoom,
             promptAtCell: selected.cell,
-            mounted: selected.mounted ? (isLinkedToken(selected) ? 'linked' : 'local') : undefined,
+            mounted: isLinkedToken(selected) ? 'linked' : 'local',
             camera,
-            insetTop: levelTabsMount?.offsetHeight ?? 0,
+            insetTop,
           });
         }
         if (confirmation) {
@@ -1020,7 +1047,7 @@ export async function bootstrapPlayerApp(options = {}) {
 
   refreshTokenVisibility = () => {
     const { selectedToken, activeLevel } = store.getState();
-    if (selectedToken && (!isPlayerManipulableToken(selectedToken) || !activeLevel ||
+    if (selectedToken && (!isPlayerManipulableToken(selectedToken, store.getTurn()) || !activeLevel ||
         !isTokenVisible(selectedToken, activeLevel))) {
       movePlanning.cancel();
       store.selectToken(null);
@@ -1028,13 +1055,113 @@ export async function bootstrapPlayerApp(options = {}) {
     selectionStrip?.update();
   };
 
+  // Bouton d'annulation du mouvement du tour (décision 7 du 22/11/2026, CA22–CA27) :
+  // même moule que `player-fullscreen-btn`, à `right: 116px` (à gauche de l'aide et du plein
+  // écran). N'existe dans le DOM que si `getTurn()` désigne un PJ de cette tablette avec
+  // `spentCells > 0`.
+  const turnUndoButton = document.createElement('button');
+  turnUndoButton.id = 'player-turn-undo-btn';
+  turnUndoButton.type = 'button';
+  turnUndoButton.style.position = 'fixed';
+  turnUndoButton.style.top = '12px';
+  turnUndoButton.style.right = '116px';
+  turnUndoButton.style.zIndex = '9500';
+  turnUndoButton.style.width = '44px';
+  turnUndoButton.style.height = '44px';
+  turnUndoButton.style.display = 'flex';
+  turnUndoButton.style.alignItems = 'center';
+  turnUndoButton.style.justifyContent = 'center';
+  turnUndoButton.style.padding = '0';
+  turnUndoButton.style.border = '0';
+  turnUndoButton.style.borderRadius = '8px';
+  turnUndoButton.style.background = 'rgba(0, 0, 0, 0.45)';
+  turnUndoButton.style.color = '#ffffff';
+  turnUndoButton.style.opacity = '0.4';
+  turnUndoButton.style.transition = 'opacity 0.2s ease';
+  turnUndoButton.style.cursor = 'pointer';
+  turnUndoButton.style.touchAction = 'manipulation';
+  turnUndoButton.style.setProperty('-webkit-tap-highlight-color', 'transparent');
+  turnUndoButton.title = 'Annuler le mouvement du tour';
+  turnUndoButton.setAttribute('aria-label', turnUndoButton.title);
+  turnUndoButton.innerHTML = ICON_TURN_UNDO;
+  turnUndoButton.addEventListener('pointerdown', () => { turnUndoButton.style.opacity = '1'; });
+  turnUndoButton.addEventListener('pointerenter', () => { turnUndoButton.style.opacity = '1'; });
+  turnUndoButton.addEventListener('pointerup', () => { turnUndoButton.style.opacity = '0.4'; });
+  turnUndoButton.addEventListener('pointerleave', () => { turnUndoButton.style.opacity = '0.4'; });
+  turnUndoButton.addEventListener('pointercancel', () => { turnUndoButton.style.opacity = '0.4'; });
+
+  function syncTurnUndoButton() {
+    // ⛔ Pas de bouton tant qu'une image partagée est à l'écran. La croix de fermeture est à
+    // `right: 124px` sur 64 px de large (124 → 188) ; ce bouton occupe 116 → 160 et porte un
+    // `z-index` de 9500 contre 9000 pour l'overlay : il recouvrirait la moitié gauche de la
+    // croix et volerait le tap qui ferme l'image. Les deux ne coexistent donc jamais — l'image
+    // se ferme d'abord, le bouton revient ensuite.
+    if (typeof document !== 'undefined' && document.getElementById('image-share-overlay')) {
+      if (turnUndoButton.isConnected) turnUndoButton.remove();
+      return;
+    }
+    const turn = store.getTurn();
+    const token = turn
+      ? store.getRenderSnapshot().campaign?.tokens.find((t) => t.id === turn.tokenId) ?? null
+      : null;
+    const show = Boolean(
+      turn &&
+      turn.spentCells > 0 &&
+      token &&
+      isLinkedToken(token) &&
+      !token.hidden &&
+      isPlayerManipulableToken(token, turn)
+    );
+    if (show) {
+      if (!turnUndoButton.isConnected) document.body.appendChild(turnUndoButton);
+    } else if (turnUndoButton.isConnected) {
+      turnUndoButton.remove();
+    }
+  }
+
+  turnUndoButton.addEventListener('click', () => {
+    const turn = store.getTurn();
+    if (!turn || turn.spentCells <= 0) {
+      syncTurnUndoButton();
+      return;
+    }
+    const token = store.getRenderSnapshot().campaign?.tokens.find((t) => t.id === turn.tokenId) ?? null;
+    if (!token || !isLinkedToken(token) || token.hidden || !isPlayerManipulableToken(token, turn)) {
+      syncTurnUndoButton();
+      return;
+    }
+    movePlanning.cancel();
+    try {
+      store.undoTurnMove(turn.tokenId);
+    } catch {
+      const feedbackCell = store.getActiveLevelId() === turn.startLevelId ? turn.startCell : token.cell;
+      moveZoneLayer.showDestinationFeedback(feedbackCell, 'refused');
+      requestRender();
+      return;
+    }
+    transport?.publish({
+      type: 'turn.undo',
+      payload: { tokenId: turn.tokenId },
+      at: Date.now(),
+      by: 'players',
+    });
+    syncTurnUndoButton();
+    requestRender();
+  });
+
+  let lastTurnSignature = '';
   const unsubscribeStore = store.subscribe((change) => {
     const moveState = store.getState();
     movePlanning.clearIfLevelDiffers(moveState.activeLevelId || '');
-    if (!change?.session) {
+    const turn = store.getTurn();
+    const turnSignature = turn ? `${turn.tokenId}:${turn.spentCells}` : '';
+    const turnChanged = turnSignature !== lastTurnSignature;
+    lastTurnSignature = turnSignature;
+    if (!change?.session || turnChanged) {
       movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel, true);
     }
     refreshTokenVisibility();
+    syncTurnUndoButton();
     invalidatePendingMoveTap();
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
@@ -1261,6 +1388,7 @@ export async function bootstrapPlayerApp(options = {}) {
       requestRender();
     },
     isTokenVisible,
+    getInsetTop: () => levelTabsMount?.offsetHeight ?? 0,
     onInspectToken: (token) => {
       inspection = token ? { tokenId: token.id, selectedTokenId: store.getSelectedToken()?.id ?? null } : null;
       selectionStrip?.update();
@@ -1271,7 +1399,12 @@ export async function bootstrapPlayerApp(options = {}) {
     transport: transport || undefined,
     role: 'players',
   });
-  const imageShareOverlay = mountImageShareOverlay({ transport: transport || undefined });
+  const imageShareOverlay = mountImageShareOverlay({
+    transport: transport || undefined,
+    // Le bouton d'annulation du tour partage le coin haut-droit avec la croix de l'image : il se
+    // retire pendant l'affichage et revient à la fermeture (voir `syncTurnUndoButton`).
+    onVisibility: () => syncTurnUndoButton(),
+  });
   const destroyGameHelp = mountPlayerGameHelp();
 
   function persistCamera() {
@@ -1332,6 +1465,7 @@ export async function bootstrapPlayerApp(options = {}) {
   };
   if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
   window.addEventListener('resize', onResize);
+  syncTurnUndoButton();
   requestRender();
 
   const destroy = () => {
@@ -1345,6 +1479,7 @@ export async function bootstrapPlayerApp(options = {}) {
     destroyGameHelp();
     playerLevelSelector?.destroy();
     undoStepButton.remove();
+    turnUndoButton.remove();
     selectionStrip?.destroy();
     cleanupMobileLocks();
     unsubscribeStore();

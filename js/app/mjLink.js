@@ -14,6 +14,7 @@
 import { isLinkedToken, isTokenLibraryPath } from '../core/schema.js';
 import { movementRulesFor } from '../state/selection.js';
 import { ranStartIndex } from '../state/movePlan.js';
+import { movementStepCost } from '../movement/reachable.js';
 import { parseFx } from '../render/layers/fx.js';
 import { distanceBetweenFootprints, footprintsAdjacent } from '../grid/index.js';
 import { LIAISON_CARTE } from '../core/donnees-communes.js';
@@ -560,7 +561,14 @@ export const MJ_LINK_ECHO_MS = LIAISON_CARTE.echoMs;
  * (navigateur ancien, test), ne fait rien et rend `null`.
  *
  * @param {{
- *   store: Parameters<typeof executeMjOperations>[1]['store'] & { setTokenLink: (tokenId: string, ref: string|null) => void, subscribe?: (listener: () => void) => () => void },
+ *   store: Parameters<typeof executeMjOperations>[1]['store'] & {
+ *     setTokenLink: (tokenId: string, ref: string|null) => void,
+ *     subscribe?: (listener: () => void) => () => void,
+ *     getTurn?: () => Readonly<import('../core/types.js').Turn>|null,
+ *     setTurn?: (tokenId: string|null, spentCells?: number) => void,
+ *     addTurnSpent?: (tokenId: string, cells: number) => void,
+ *     getTurnSpent?: (tokenId: string) => number,
+ *   },
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
  *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
@@ -595,12 +603,14 @@ export function startMjLink(options) {
   /** @type {[string, string][]} */
   let engagements = [];
   /**
-   * `ref` du participant actif (`mj.turn`, contrat §10, révision du 21/11/2026) : halo sur l'écran
-   * MJ seul, jamais republié ni persisté. Oublié à la déconnexion : un halo figé sur l'ancien tour
-   * tromperait le MJ.
+   * `ref` du participant actif (`mj.turn`, contrat §10, révision du 21/11/2026 ; republié vers la
+   * tablette par `turn.select`, 22/11/2026). Oublié à la déconnexion : un halo figé ou une table
+   * bridée sur l'ancien tour tromperait tout le monde.
    * @type {string|null}
    */
   let activeTurn = null;
+  /** Dernier `tokenId` de tour publié vers la tablette (`turn.select`). @type {string|null} */
+  let announcedTurnTokenId = null;
   /** Dernier état « posé » annoncé à l'outil MJ (`map.placed` / `map.unplaced`), `ref` → étage. */
   /** @type {Map<string, string>} */
   let announcedPlaced = new Map();
@@ -647,9 +657,32 @@ export function startMjLink(options) {
     positionsSignature = signature;
     if (previous !== null && previous !== signature) send('map.adjacency', { pairs: adjacencyPairs(campaign) });
   };
+  /** Synchronise le tour dans le store et publie `turn.select` vers la tablette s'il change. */
+  const syncTurn = () => {
+    if (!options.store.setTurn) return;
+    const campaign = options.store.getCampaign();
+    const token = activeTurn && campaign
+      ? campaign.tokens.find((t) => isLinkedToken(t) && (t.link?.ref === activeTurn || t.rider?.ref === activeTurn)) ?? null
+      : null;
+    const nextTokenId = token ? token.id : null;
+    const current = options.store.getTurn?.() ?? null;
+    if ((current?.tokenId ?? null) !== nextTokenId) {
+      options.store.setTurn(nextTokenId);
+    }
+    const after = options.store.getTurn?.() ?? null;
+    const afterTokenId = after ? after.tokenId : null;
+    if (afterTokenId !== announcedTurnTokenId) {
+      announcedTurnTokenId = afterTokenId;
+      options.publish(
+        'turn.select',
+        after ? { tokenId: after.tokenId, spentCells: after.spentCells } : { tokenId: null }
+      );
+    }
+  };
   const onStoreChange = () => {
     syncPlaced();
     syncAdjacency();
+    syncTurn();
   };
   channel.onmessage = (event) => {
     const message = event?.data;
@@ -663,6 +696,7 @@ export function startMjLink(options) {
     const resumed = lastSeen !== null && (status === 'disconnected' || receivedAt - lastSeen > MJ_LINK_TIMEOUT_MS);
     if (resumed && status === 'connected') {
       activeTurn = null;
+      syncTurn();
       setStatus('disconnected');
     }
     lastSeen = receivedAt;
@@ -688,7 +722,10 @@ export function startMjLink(options) {
       const ref = typeof message.payload?.ref === 'string' && message.payload.ref ? message.payload.ref : null;
       if (ref !== activeTurn) {
         activeTurn = ref;
+        syncTurn();
         notify();
+      } else {
+        syncTurn();
       }
       return;
     }
@@ -746,6 +783,7 @@ export function startMjLink(options) {
       }
       if (status === 'connected' && lastSeen !== null && now() - lastSeen > MJ_LINK_TIMEOUT_MS) {
         activeTurn = null;
+        syncTurn();
         setStatus('disconnected');
       }
     },
@@ -763,16 +801,33 @@ export function startMjLink(options) {
     engagements: () => engagements.map(([a, b]) => /** @type {[string, string]} */ ([a, b])),
     activeTurn: () => activeTurn,
     /**
-     * Fin de déplacement d'un pion : s'il est lié et que son trajet dépasse la Marche, il a couru
-     * et l'outil MJ en est prévenu (`map.ran`, contrat §10) — une fois par déplacement.
+     * Fin de déplacement marché d'un pion : incrémente les cases parcourues du tour actif
+     * (décision 6 : le glisser libre MJ n'appelle pas cette méthode) puis publie `turn.select` ;
+     * si le pion est lié et que son trajet dépasse la Marche restante, prévient l'outil MJ
+     * (`map.ran`, contrat §10) — une fois par déplacement.
      * @param {string} tokenId @param {import('../core/types.js').Cell[]} path @returns {boolean} true si `map.ran` est parti
      */
     reportMove(tokenId, path) {
       const campaign = options.store.getCampaign();
       const token = campaign?.tokens.find((t) => t.id === tokenId);
       const level = campaign?.levels.find((l) => l.id === token?.levelId);
-      if (!token || !level || !isLinkedToken(token) || !token.link || !Array.isArray(path)) return false;
-      if (ranStartIndex(path, movementRulesFor(token, level)) < 0) return false;
+      if (!token || !level || !Array.isArray(path)) return false;
+      const spentBefore = options.store.getTurnSpent?.(tokenId) ?? 0;
+      const rules = movementRulesFor(token, level, spentBefore);
+      let pathCost = 0;
+      for (let i = 1; i < path.length; i++) {
+        pathCost += movementStepCost(rules.grid, path[i - 1], path[i], rules.terrainCost);
+      }
+      if (pathCost > 0 && options.store.addTurnSpent) {
+        options.store.addTurnSpent(tokenId, pathCost);
+        const turn = options.store.getTurn?.() ?? null;
+        if (turn && turn.tokenId === tokenId) {
+          announcedTurnTokenId = turn.tokenId;
+          options.publish('turn.select', { tokenId: turn.tokenId, spentCells: turn.spentCells });
+        }
+      }
+      if (!isLinkedToken(token) || !token.link) return false;
+      if (ranStartIndex(path, rules) < 0) return false;
       send('map.ran', { ref: token.link.ref });
       return true;
     },

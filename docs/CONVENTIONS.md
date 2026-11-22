@@ -310,9 +310,11 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
 
    Amendement du 04/10/2026 : le déplacement par taps prépare plusieurs étapes avant validation
    par un second tap sur l’arrivée. Un clic sur le fond hors zone annule la préparation ; le
-   suivant désélectionne. Le clic sur le pion conserve les liaisons. Sans sélection active,
-   le double tap émet un ping. Le chemin et le nombre restant sont dessinés sur la carte,
-   sans bouton ni panneau joueur supplémentaire.
+   suivant désélectionne. Sans sélection active, le double tap émet un ping. Le chemin et le
+   nombre restant sont dessinés sur la carte, sans bouton ni panneau joueur supplémentaire.
+   **Amendement du 22/11/2026** (demande du mainteneur, `TJ-1`) : retaper la case du pion
+   sélectionné ne franchit plus de liaison côté joueurs ; le franchissement passe exclusivement
+   par le bouton de liaison ci-dessous (la vue MJ conserve son re-tap).
 
    Lorsqu’un pion est sélectionné, un tap de déplacement désigne la **case** calculée par
    `GridAdapter.cellFromPoint`. La marge tactile et le rectangle visuel d’un pion voisin ne
@@ -365,6 +367,27 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    > - **Aide de jeu** (21/11/2026, validée par le MJ) — bouton permanent de 44 × 44 px près du
    >   plein écran. Son guide et sa carte fictive s’ouvrent sur demande. Revenir à la partie
    >   rend le cadrage et la préparation encore valide.
+   > - **Bouton de porte** (22/11/2026, demande du mainteneur, `TJ-2` à `TJ-5`) — carré de
+   >   44 px écran (« Ouvrir » / « Fermer »), dessiné sur le Canvas au-dessus du brouillard sur la
+   >   case opposée au PJ adjacent à une porte non verrouillée (fusionné et déporté si deux PJ
+   >   encadrent la porte ; grisé et sans effet hors tour ; absent **dès qu'un pion est
+   >   sélectionné** — donc pendant toute préparation — et pendant une animation de déplacement,
+   >   parce qu'il occupe une case souvent atteignable et volerait le tap de destination,
+   >   `TJ-8`). Raison : toucher le segment fin d'une porte collée à un PJ
+   >   échouait ou sélectionnait le pion à la place ; le toucher direct de porte est retiré côté
+   >   joueurs.
+   > - **Bouton de liaison** (22/11/2026, demande du mainteneur, `TJ-1`) — bouton dessiné sur le
+   >   Canvas au-dessus du brouillard, au-dessus de tout PJ manipulable à pied posé sur une
+   >   extrémité franchissable par les joueurs (absent dès qu'un pion est sélectionné, pendant une
+   >   animation de déplacement, et si le pion est monté — `TJ-8`). Raison : rendre le franchissement d'étage
+   >   explicite et distinct de la sélection, en remplaçant le re-tap de la case du pion.
+   > - **Bouton d'annulation du mouvement du tour** (22/11/2026, demande du mainteneur, `TJ-7`) —
+   >   bouton de 44 × 44 px en haut à droite (`top: 12px`, `right: 116px`, à gauche de l'aide et du
+   >   plein écran), présent dans le DOM **uniquement** lorsque le tour actif désigne un PJ
+   >   manipulable de la tablette ayant parcouru au moins une case (`spentCells > 0`), et qui
+   >   disparaît dès l'annulation. Raison : permettre de reprendre un mouvement interrompu (par
+   >   exemple pour ouvrir une porte) ou de revenir à la case de départ du tour sans mobiliser le
+   >   MJ.
    >
    > Toute autre exception se demande. Elle ne se décide pas.
 3. **Ne jamais afficher un pion dans une zone explorée mais hors vision courante.** Cela

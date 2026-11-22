@@ -1,6 +1,7 @@
 // @ts-check
 
 import { movementRulesFor, bondZoneFor } from '../state/selection.js';
+import { getTurn } from '../state/store.js';
 import { createMovePlan, extendMovePlan, movePlanPreview, removeLastMoveStep, validateMovePlan, ranStartIndex } from '../state/movePlan.js';
 import { getPresenceList, PRESENCE_STALE_AFTER_MS, subscribePresence } from '../state/presence.js';
 import { computeReachable } from '../movement/reachable.js';
@@ -91,7 +92,7 @@ export class MovePlanningController {
   /** @param {Token} token @param {Level} level */
   start(token, level) {
     this.cancel();
-    const rules = movementRulesFor(token, level);
+    const rules = movementRulesFor(token, level, spentCellsFor(token));
     this.plan = createMovePlan(token, level, rules);
     this.rulesSignature = signatureFor(token, level, rules);
     this.onChange();
@@ -105,7 +106,7 @@ export class MovePlanningController {
     }
     const plan = this.plan;
     if (!plan) return { ok: false, reason: 'aucune préparation active' };
-    const rules = movementRulesFor(token, level);
+    const rules = movementRulesFor(token, level, spentCellsFor(token));
     const result = extendMovePlan(plan, destination, rules);
     if (!result.plan) return { ok: false, reason: result.reason };
     this.plan = result.plan;
@@ -123,7 +124,7 @@ export class MovePlanningController {
       this.start(token, level);
       return;
     }
-    this.plan = removeLastMoveStep(plan, movementRulesFor(token, level));
+    this.plan = removeLastMoveStep(plan, movementRulesFor(token, level, spentCellsFor(token)));
     this.publish();
     this.onChange();
   }
@@ -145,13 +146,16 @@ export class MovePlanningController {
    * si la mutation locale a été acceptée.
    * @param {Token} token
    * @param {Level} level
-   * @param {(path:Cell[],destination:Cell)=>boolean} commit
+   * @param {(path:Cell[],destination:Cell,cost:number)=>boolean} commit `cost` est le coût
+   *   revalidé du trajet, en cases : l'appelant n'a pas à le recalculer, et surtout pas à
+   *   réimplanter la boucle de `movementStepCost` — deux calculs du même coût finiraient par
+   *   diverger (même leçon que `input/portalHit.js`).
    * @returns {{ok:boolean,reason:string|null}}
    */
   validate(token, level, commit) {
     const plan = this.plan;
     if (!plan || plan.status !== 'ready') return { ok: false, reason: 'aucune préparation validable' };
-    const check = validateMovePlan(plan, token, level, movementRulesFor(token, level));
+    const check = validateMovePlan(plan, token, level, movementRulesFor(token, level, spentCellsFor(token)));
     if (!check.valid) {
       this.invalidate(check.reason || 'le trajet n’est plus valide');
       return { ok: false, reason: check.reason };
@@ -160,7 +164,7 @@ export class MovePlanningController {
     this.plan = { ...plan, status: /** @type {'validating'} */ ('validating') };
     this.onChange();
     let committed = false;
-    try { committed = commit(plan.path.map((cell) => ({ ...cell })), { ...destination }); }
+    try { committed = commit(plan.path.map((cell) => ({ ...cell })), { ...destination }, check.cost); }
     catch { committed = false; }
     if (!committed) {
       this.plan = { ...plan, status: /** @type {'ready'} */ ('ready') };
@@ -191,7 +195,7 @@ export class MovePlanningController {
       this.invalidate('ce personnage ne peut plus être déplacé');
       return;
     }
-    const rules = movementRulesFor(token, level);
+    const rules = movementRulesFor(token, level, spentCellsFor(token));
     if (token.cell.a !== plan.start.a || token.cell.b !== plan.start.b) {
       this.invalidate('la position du personnage a changé');
       return;
@@ -199,7 +203,7 @@ export class MovePlanningController {
     const signature = signatureFor(token, level, rules);
     if (signature === this.rulesSignature) return;
     this.rulesSignature = signature;
-    if (Math.abs(rules.budget - plan.budget) > 1e-9) {
+    if (Math.abs(rules.budget - plan.budget) > 1e-9 || Math.abs(rules.walkBudget - plan.walkBudget) > 1e-9) {
       this.invalidate('la capacité de déplacement a changé');
       return;
     }
@@ -299,6 +303,16 @@ export class MovePlanningController {
 }
 
 /**
+ * Cases déjà parcourues dans le tour courant pour ce pion (0 hors tour ou pour un autre pion).
+ * @param {Token} token
+ * @returns {number}
+ */
+function spentCellsFor(token) {
+  const turn = getTurn();
+  return turn && turn.tokenId === token.id ? turn.spentCells : 0;
+}
+
+/**
  * Coût au-delà duquel la zone passe en Course : ce qui reste de la Marche depuis la fin du trajet
  * préparé, ou la Marche entière sans préparation. Commun aux deux vues.
  * @param {import('../state/movePlan.js').MovePlan|null} plan
@@ -308,7 +322,7 @@ export class MovePlanningController {
  */
 export function walkLimitFor(plan, token, level) {
   if (plan) return Math.max(0, plan.walkBudget - plan.cost);
-  return token ? movementRulesFor(token, level).walkBudget : undefined;
+  return token ? movementRulesFor(token, level, spentCellsFor(token)).walkBudget : undefined;
 }
 
 /**
@@ -320,7 +334,7 @@ export function walkLimitFor(plan, token, level) {
 export function ranStartResolver(tokens, level) {
   return (preview) => {
     const token = tokens.find((item) => item.id === preview.tokenId);
-    return token ? ranStartIndex(preview.path, movementRulesFor(token, level)) : -1;
+    return token ? ranStartIndex(preview.path, movementRulesFor(token, level, spentCellsFor(token))) : -1;
   };
 }
 
@@ -335,7 +349,7 @@ function signatureFor(token, level, rules) {
     token.id, token.levelId, token.cell.a, token.cell.b, token.sizeCells,
     token.speedCells, token.runCells ?? null, token.mounted === true, token.hidden === true, token.locked === true,
     token.playerMovable !== false, level.id, level.widthCells, level.heightCells, rules.grid.type,
-    rules.budget, Array.from(rules.blockedEdges).sort(), Array.from(rules.terrainCost.entries()).sort(),
+    rules.budget, rules.walkBudget, Array.from(rules.blockedEdges).sort(), Array.from(rules.terrainCost.entries()).sort(),
   ]);
 }
 
@@ -353,7 +367,9 @@ let bondCache = null;
  */
 export function bondZoneForDisplay(plan, token, level) {
   if (plan || !token || !Number.isFinite(token.bondCells)) return undefined;
-  const signature = signatureFor(token, level, movementRulesFor(token, level)) + `|${token.bondCells}`;
-  if (bondCache?.signature !== signature) bondCache = { signature, zone: bondZoneFor(token, level) };
+  const signature = signatureFor(token, level, movementRulesFor(token, level, spentCellsFor(token))) + `|${token.bondCells}`;
+  if (bondCache?.signature !== signature) {
+    bondCache = { signature, zone: bondZoneFor(token, level, spentCellsFor(token)) };
+  }
   return bondCache.zone ?? undefined;
 }

@@ -233,7 +233,7 @@ test.describe('Gestes sur tablette pendant un trajet', () => {
       const p = await pointEcran(page, 200, 200);
       await page.touchscreen.tap(p.x, p.y);
       await expect.poll(textes).toContain(lie ? 'Demander au MJ de vous faire descendre de cheval' : 'Descendre de cheval');
-      expect(await textes()).not.toContain('Retaper pour prendre l’escalier');
+      expect(await textes()).not.toContain('Prendre l’escalier');
       await page.touchscreen.tap(p.x, p.y);
       expect(await etat(page)).toMatchObject({ token: { levelId: 'rdc', mounted: true } });
 
@@ -247,8 +247,32 @@ test.describe('Gestes sur tablette pendant un trajet', () => {
       } else {
         await bouton.tap();
       }
-      await expect.poll(textes).toContain('Retaper pour prendre l’escalier');
-      await page.touchscreen.tap(p.x, p.y);
+      // Amendé le 22/11/2026 (décision 1, CA1–CA4, CA11) : descendu de cheval et hors préparation
+      // de mouvement (désélectionné), le bouton « Prendre l’escalier » apparaît et son tap franchit.
+      const horsZone = await pointEcran(page, 600, 400);
+      await page.touchscreen.tap(horsZone.x, horsZone.y);
+      await expect.poll(textes).toContain('Prendre l’escalier');
+      const rectBouton = await page.evaluate(async () => {
+        const [store, gridMod, linksMod] = await Promise.all([
+          import('../js/state/store.js'),
+          import('../js/grid/index.js'),
+          import('../js/render/layers/links.js'),
+        ]);
+        const app = /** @type {any} */ (window).__RPG_APP__;
+        const { campaign, activeLevel } = store.getState();
+        if (!campaign || !activeLevel) return null;
+        const token = campaign.tokens.find((t) => t.id === 'hero');
+        if (!token) return null;
+        return linksMod.boutonLiaison(gridMod.gridFor(activeLevel), activeLevel, campaign.links, token, {
+          zoom: app.camera.zoom,
+          turn: store.getTurn(),
+          camera: app.camera,
+          insetTop: document.getElementById('player-level-tabs')?.offsetHeight ?? 0,
+        })?.rect ?? null;
+      });
+      if (!rectBouton) throw new Error('Bouton de liaison attendu après descente de cheval');
+      const pb = await pointEcran(page, rectBouton.x + rectBouton.width / 2, rectBouton.y + rectBouton.height / 2);
+      await page.touchscreen.tap(pb.x, pb.y);
       await expect.poll(() => etat(page)).toMatchObject({ token: { levelId: 'et1', mounted: false } });
     });
   }

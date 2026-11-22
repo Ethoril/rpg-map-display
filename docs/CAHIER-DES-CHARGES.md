@@ -357,6 +357,10 @@ MJ. Les PNJ ont un état Visible / Masqué (préparation d'embuscades).
   pour l'identité et les caractéristiques ; Map Display garde position, étage, élévation, caché,
   lumière et verrou. Monté, un pion lié n'a **pas** le ×2 du §5.3bis : l'outil MJ envoie déjà la
   portée de la monture.
+  **Amendement du 22/11/2026 (tour de jeu, `TJ-5`)** : lorsqu'un tour actif (`mj.turn` →
+  `turn.select`) est en cours en session liée, seul le PJ dont c'est le tour est manipulable sur
+  la tablette ; les autres PJ liés s'ouvrent en consultation lecture seule (§5.3bis). Un PJ sans
+  `link` n'est jamais bridé par le tour, et la vue MJ ignore ce bridage.
 
 ### 5.3bis Modèle de déplacement — style jeu de plateau
 
@@ -404,6 +408,41 @@ sélectionner.
 >   étage ne s'ouvre pas, et l'encart se ferme dès qu'il cesse d'être vu ; il ne se rouvre pas seul.
 > - La consultation est un état **local** de la tablette, jamais publié ni persisté.
 
+> **Amendement du 22/11/2026 — Tour de jeu, boutons contextuels et annulation (`TJ-1` à `TJ-7`)**
+> (demande du mainteneur après la séance réelle du 21/11/2026).
+>
+> - **Bouton de liaison (`TJ-1`)** : un bouton dessiné au-dessus de tout PJ manipulable posé sur
+>   une extrémité franchissable par les joueurs (hors liaison `gmOnly`, hors entrée B d'un sens
+>   unique, hors pion monté) porte le libellé de la liaison (« Prendre l'escalier », « Passer la
+>   trappe », …). Son tap déclenche `link.traverse`. Retaper la case du pion ne franchit plus de
+>   liaison côté joueurs (la vue MJ conserve son re-tap). Un pion monté n'a pas de bouton : la
+>   mention non tapable « Descendre de cheval » (ou « Demander au MJ de vous faire descendre de
+>   cheval ») reste affichée.
+> - **Bouton de porte (`TJ-2` à `TJ-5`)** : tout PJ visible adjacent à une porte non
+>   verrouillée fait apparaître un bouton carré de 44 px écran (« Ouvrir » / « Fermer ») posé sur
+>   la case **de l'autre côté** du segment, dans le rang `feedback` (au-dessus du brouillard,
+>   visible même si l'autre côté n'est pas exploré). Deux PJ de part et d'autre fusionnent en un
+>   seul bouton déporté d'un demi-bouton. Hors tour actif, le bouton reste affiché **grisé** et
+>   sans effet. Toucher directement la porte ne la bascule plus côté joueurs ; la vue MJ conserve
+>   son toucher direct (`findHitPortal`).
+> - **Silence dès la sélection (`TJ-8`)** : aucun bouton de porte ni de liaison n'est
+>   dessiné ni cliquable pendant une préparation de mouvement ou une animation de déplacement.
+> - **Budget cumulé du tour (`TJ-6`)** : les déplacements marchés (`reportMove`, tablette comme
+>   préparation MJ) retranchent les cases parcourues du budget total **et** du palier de Marche
+>   (plancher 0), permettant d'interrompre un trajet pour ouvrir une porte puis de reprendre avec
+>   le reste du mouvement. Le compteur repart à 0 au changement de tour ; le glisser libre du MJ
+>   ne consomme rien. L'état du tour est un état de session non persisté.
+> - **Couronne de Bond (`TJ-9`)** : le palier Bond (Charge, Saut, Sprint) recule des cases déjà
+>   parcourues dans le tour, comme le budget et la Marche — l'anneau hachuré démarre donc là où la
+>   zone s'arrête, et disparaît quand le mouvement est entièrement consommé.
+> - **Bouton d'annulation du mouvement du tour (`TJ-7`)** : bouton 44 × 44 px en haut à droite
+>   (`top: 12px`, `right: 116px`, voisin de l'aide de jeu et du plein écran), présent dans le DOM
+>   uniquement lorsque le tour actif désigne un PJ manipulable de la tablette avec au moins une
+>   case parcourue (`spentCells > 0`). Il replace le pion sur sa case et son étage de début de tour
+>   (sans basculer d'écran, refusé sans publication si la case de départ est occupée), remet
+>   `spentCells` à 0, publie `turn.undo` et disparaît. Le brouillard exploré ne régresse jamais et
+>   une porte ouverte pendant le tour reste ouverte.
+
 **Vue MJ (souris) — le même parcours par clics est disponible ; drag conservé**, sans contrainte d'atteignabilité pour le glisser, avec seuil de
 ~150 ms pour distinguer tap et drag. Le MJ garde ainsi le placement libre hors grille
 quand il en a besoin.
@@ -433,7 +472,7 @@ Décision du mainteneur. Un pion **monté** (`token.mounted === true`, §5.3) :
   la règle, le plus court passerait par une porte ouverte que la zone avait refusée, et le
   brouillard se révélerait derrière elle (§5.4, révélation le long du chemin) ;
 - ne prend **aucune liaison** depuis la tablette (§5.2) : on descend de cheval pour changer
-  d'étage. Retaper sa case posée sur une liaison est refusé, avec le retour « refusé » ;
+  d'étage. Aucun bouton de liaison n'est proposé tant qu'il est monté (amendement du 22/11/2026) ;
 - comme toute restriction de déplacement, rien de cela ne contraint le **MJ**, dont le glisser
   reste libre.
 
@@ -914,6 +953,19 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `light.place` | **MJ seul** | ponctuel — `{ levelId, light }`, idempotent par identifiant, voir l amendement C-2 |
 | `light.move` | **MJ seul** | ponctuel — `{ levelId, lightId, at }`, position **absolue**, émis par le glisser depuis la tranche 3 (11/09/2026), voir l amendement C-2 |
 | `light.delete` | **MJ seul** | ponctuel — `{ levelId, lightId }`, voir l amendement C-2 |
+| `turn.select` | **MJ seul** | ponctuel — `{ tokenId: string\|null, spentCells?: number }`, état de session non persisté, voir l'amendement du 22/11/2026 |
+| `turn.undo` | **joueurs** | ponctuel — `{ tokenId: string }`, sans case de départ (le MJ relit la sienne), voir l'amendement du 22/11/2026 |
+
+> **Amendement du 22/11/2026 — Tour de jeu (`turn.select` et `turn.undo`, `TJ-5` à `TJ-7`).** Le
+> tour actif reçu de l'outil MJ (`mj.turn`) reste **non persisté** (absent de l'instantané
+> Firestore), mais est republié vers la tablette par `turn.select { tokenId, spentCells? }` au
+> changement de tour, après chaque déplacement marché (`reportMove`), après une annulation et à
+> l'arrivée d'une présence joueurs. Le même `tokenId` ne remet jamais `spentCells` à zéro.
+> `turn.undo { tokenId }` annule le mouvement cumulé du tour courant : il ne transmet pas la case
+> de départ, chaque poste contrôlant l'occupation de sa propre case de départ mémorisée
+> (`findMoveConflict`) avant de replacer le pion (case et étage, sans basculer d'écran) et de
+> remettre `spentCells` à 0. Malformé ou sur un pion inconnu, les deux événements sont refusés
+> bruyamment (`console.error`) ; leur rejeu est inoffensif.
 
 > **Amendement C-16 (02/10/2026) — changer de pavage ne touche jamais à la carte.** `level.grid` porte, en plus de `{ levelId, grid }`, les dimensions `widthCells` et `heightCells` recalculées par le MJ depuis l'image au pas de la nouvelle grille, la hauteur arrondie au-dessus pour que la grille couvre toute l'image. Les deux champs sont **optionnels** : un `level.grid` qui ne les porte pas (couleur, opacité, visibilité) laisse les dimensions intactes. Quand les dimensions changent, le MJ range en réserve, par autant de `token.reserve` distincts, les pions que la nouvelle grille ne contient plus. Le brouillard de l'étage est réinitialisé. Arbitrage : C-16 de `QUESTIONS-EN-ATTENTE.md`. ⚠ **Complété par D-11 (02/10/2026)** : quand le **pavage** change, chaque pion, extrémité d'escalier et case de coût de terrain passe sur la case de la nouvelle grille qui contient le centre de l'ancienne ; le réseau hexagonal est décalé d'un quart de case par rapport à la géométrie, qui se lit toujours en carré (`CONVENTIONS.md`). La conversion est **déterministe** : chaque poste l'applique lui-même à la réception de `level.grid`, depuis son propre état, comme le rangement en réserve — aucun événement supplémentaire.
 

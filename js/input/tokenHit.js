@@ -1,6 +1,7 @@
 // @ts-check
 
 import { TOKEN_HIT_MARGIN_SCREEN_PX, TOKEN_HIT_MAX_CELL_RATIO } from '../core/constants.js';
+import { isLinkedToken } from '../core/schema.js';
 
 /**
  * Calcul de la distance d'un point au RECTANGLE d'un pion en unités carte.
@@ -49,9 +50,10 @@ export function exactTokenAtCell(activeLevel, cell, tokens, options = {}) {
 }
 
 /**
- * Un pion que le joueur peut manipuler lui-même : un PJ, non interdit, non verrouillé.
+ * Un pion que le joueur peut manipuler lui-même : un PJ, non interdit, non verrouillé, et
+ * autorisé par le tour actif en session liée (un pion sans `link` n'est jamais bridé par le tour).
  *
- * Les trois conditions sont défensives et cumulatives — les PNJ restent réservés au MJ même si
+ * Les conditions sont défensives et cumulatives — les PNJ restent réservés au MJ même si
  * une donnée incohérente les marque `playerMovable`.
  *
  * ⚠ Cette notion est celle de la **vue joueurs**, et d'elle seule. Le MJ manipule les PNJ comme
@@ -59,10 +61,17 @@ export function exactTokenAtCell(activeLevel, cell, tokens, options = {}) {
  * ça que `findHitToken` reçoit un prédicat en paramètre et n'en câble aucun.
  *
  * @param {import('../core/types.js').Token} token
+ * @param {{ tokenId: string }|null} [turn] Tour actif (session liée) ; absent ou `null` = aucun bridage
  * @returns {boolean}
  */
-export function isPlayerManipulableToken(token) {
-  return token.kind === 'pc' && token.playerMovable !== false && !token.locked;
+export function isPlayerManipulableToken(token, turn = null) {
+  if (!(token.kind === 'pc' && token.playerMovable !== false && !token.locked)) {
+    return false;
+  }
+  if (!turn || !isLinkedToken(token)) {
+    return true;
+  }
+  return token.id === turn.tokenId;
 }
 
 /**

@@ -23,6 +23,34 @@ const state = (page) => page.evaluate(async () => {
 });
 /** @param {import('@playwright/test').Page} page */
 const tapLink = (page) => page.evaluate(() => /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({ type: 'tap', mapPos: { x: 200, y: 200 }, screenPos: { x: 0, y: 0 } }));
+/**
+ * Tape le bouton de liaison du pion côté joueurs (décision 1 du 22/11/2026, CA1–CA3).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} [tokenId]
+ */
+const tapLinkButton = (page, tokenId = 'hero') => page.evaluate(async (id) => {
+  const [store, gridMod, linksMod] = await Promise.all([
+    import('../js/state/store.js'),
+    import('../js/grid/index.js'),
+    import('../js/render/layers/links.js'),
+  ]);
+  const app = /** @type {any} */ (window).__RPG_APP__;
+  const { campaign, activeLevel } = store.getState();
+  const token = campaign?.tokens.find((t) => t.id === id);
+  if (!campaign || !activeLevel || !token) throw new Error(`Pion "${id}" introuvable`);
+  const btn = linksMod.boutonLiaison(gridMod.gridFor(activeLevel), activeLevel, campaign.links ?? [], token, {
+    zoom: app.camera.zoom,
+    turn: store.getTurn(),
+    camera: app.camera,
+    insetTop: document.getElementById('player-level-tabs')?.offsetHeight ?? 0,
+  });
+  if (!btn) throw new Error(`Bouton de liaison absent pour "${id}"`);
+  app.pointerInput.emit({
+    type: 'tap',
+    mapPos: { x: btn.rect.x + btn.rect.width / 2, y: btn.rect.y + btn.rect.height / 2 },
+    screenPos: { x: 0, y: 0 },
+  });
+}, tokenId);
 
 test('R3-03/UX-10 — téléportation, découplage des deux vues et fog restauré sur trois étages', async ({ browser }) => {
   const context = await browser.newContext();
@@ -36,9 +64,9 @@ test('R3-03/UX-10 — téléportation, découplage des deux vues et fog restaur�
   // Le fog est bien indexé par étage : le MJ produit un masque pour le RDC.
   await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('rdc')), { timeout: 8000 }).not.toBeNull();
 
-  // Deux taps : sélectionner le pion puis franchir exactement l'escalier.
+  // Franchir l'escalier par le bouton de liaison (décision 1 du 22/11/2026).
   await waitForPlayerVision(player);
-  await tapLink(player); await tapLink(player);
+  await tapLinkButton(player);
 
   // ⭐ UX-10 : le pion monte, **aucun écran ne bouge**. Ce test asseyait l'inverse jusqu'au
   // 18/08/2026 — « Le MJ suit le pion » — et c'est précisément le couplage qu'on a coupé : la
@@ -63,9 +91,9 @@ test('R3-03/UX-10 — téléportation, découplage des deux vues et fog restaur�
   await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1' });
   expect(await state(gm), 'le choix de la table ne doit pas déplacer le MJ').toMatchObject({ activeLevelId: 'rdc' });
 
-  // Le pion redescend : là encore, aucun écran ne suit.
+  // Le pion redescend par le bouton de liaison : là encore, aucun écran ne suit.
   await waitForPlayerVision(player);
-  await tapLink(player); await tapLink(player);
+  await tapLinkButton(player);
   await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ activeLevelId: 'et1', token: { levelId: 'rdc' } });
   await expect.poll(() => state(gm), { timeout: 8000 }).toMatchObject({ activeLevelId: 'rdc', token: { levelId: 'rdc' } });
 
@@ -113,7 +141,10 @@ const encreInvite = (page) => page.evaluate(() => {
   return n / (res * res);
 });
 
-test('R3-03 — l’escalier sous le pion sélectionné invite au second tap', async ({ browser }) => {
+test('R3-03 — l’escalier sous un PJ visible affiche son bouton de liaison et disparaît au franchissement', async ({ browser }) => {
+  // Amendé le 22/11/2026 (décision 1, CA1–CA3) : le bouton de liaison s'affiche directement
+  // au-dessus de tout PJ manipulable posé sur une extrémité franchissable (sans sélection préalable),
+  // et son tap franchit la liaison.
   const context = await browser.newContext();
   const sessionId = `journey-invite-${Date.now()}`;
   const gm = await context.newPage();
@@ -143,15 +174,11 @@ test('R3-03 — l’escalier sous le pion sélectionné invite au second tap', a
   expect(zoom, 'zoom hors du domaine de validité de la sonde').toBeGreaterThan(0.2);
   expect(zoom, 'zoom hors du domaine de validité de la sonde').toBeLessThan(2);
 
-  // Pion non sélectionné : rien au-dessus de la case.
-  expect(await encreInvite(player)).toBeLessThanOrEqual(2);
-
-  // Un tap sélectionne le pion, déjà posé sur l'escalier : l'invite s'allume.
-  await tapLink(player);
+  // Pion visible posé sur l'escalier : le bouton de liaison est immédiatement peint au-dessus.
   await expect.poll(() => encreInvite(player), { timeout: 8000 }).toBeGreaterThan(40);
 
-  // Et elle disparaît avec le franchissement, qui emporte la sélection.
-  await tapLink(player);
+  // Et il disparaît avec le franchissement, déclenché par son tap.
+  await tapLinkButton(player);
   await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({ token: { levelId: 'et1' } });
   await expect.poll(() => encreInvite(player), { timeout: 8000 }).toBeLessThanOrEqual(2);
 
@@ -182,9 +209,26 @@ test('R3-03 — le MJ bride le pion pendant qu’il est sélectionné : l’invi
     await waitForPlayerVision(player);
     await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSessionFog('rdc')), { timeout: 8000 }).not.toBeNull();
 
-    // Le joueur sélectionne son pion, posé sur l'escalier : l'invite s'allume.
-    await tapLink(player);
+    // Pion visible posé sur l'escalier (hors préparation) : le bouton de liaison est allumé.
     await expect.poll(() => encreInvite(player), { timeout: 8000 }).toBeGreaterThan(40);
+    const rectAvant = await player.evaluate(async () => {
+      const [store, gridMod, linksMod] = await Promise.all([
+        import('../js/state/store.js'),
+        import('../js/grid/index.js'),
+        import('../js/render/layers/links.js'),
+      ]);
+      const app = /** @type {any} */ (window).__RPG_APP__;
+      const { campaign, activeLevel } = store.getState();
+      const token = campaign?.tokens.find((t) => t.id === 'hero');
+      if (!campaign || !activeLevel || !token) return null;
+      return linksMod.boutonLiaison(gridMod.gridFor(activeLevel), activeLevel, campaign.links ?? [], token, {
+        zoom: app.camera.zoom,
+        turn: store.getTurn(),
+        camera: app.camera,
+        insetTop: document.getElementById('player-level-tabs')?.offsetHeight ?? 0,
+      })?.rect ?? null;
+    });
+    if (!rectAvant) throw new Error('Rectangle du bouton de liaison attendu avant bridage');
 
     // Le MJ bride le pion. L'événement est celui que publie réellement son panneau.
     await player.evaluate(async (drapeau) => {
@@ -197,11 +241,16 @@ test('R3-03 — le MJ bride le pion pendant qu’il est sélectionné : l’invi
       });
     }, interdit);
 
-    // L'invite s'éteint…
+    // Le bouton s'éteint…
     await expect.poll(() => encreInvite(player), { timeout: 8000 }).toBeLessThanOrEqual(2);
-    // …et le tap refuse aussi. Les deux doivent se taire ensemble : une seule des deux moitiés
-    // ferait soit une promesse morte, soit un franchissement invisible.
-    await tapLink(player);
+    // …et taper son ancien rectangle refuse aussi.
+    await player.evaluate((r) => {
+      /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+        type: 'tap',
+        mapPos: { x: r.x + r.width / 2, y: r.y + r.height / 2 },
+        screenPos: { x: 0, y: 0 },
+      });
+    }, rectAvant);
     await player.waitForTimeout(200);
     expect(await state(player), `pion « ${interdit} » : le franchissement doit être refusé`).toMatchObject({
       token: { levelId: 'rdc' },
@@ -242,9 +291,9 @@ test('R3-03 — une campagne chargée avec deux PJ empilés se normalise : le se
   expect(etatChargement.surLePlateau).toEqual(['hero']);
   expect(etatChargement.enReserve).toEqual(['zzz-second']);
 
-  // Le survivant se sélectionne et franchit l'escalier comme n'importe quel pion seul sur sa case.
+  // Le survivant franchit l'escalier par le bouton de liaison comme n'importe quel pion seul sur sa case.
   await setPlayerTestVision(player);
-  await tapLink(player); await tapLink(player);
+  await tapLinkButton(player);
   await expect.poll(() => state(player), { timeout: 8000 }).toMatchObject({
     token: { levelId: 'et1', cell: { a: 2, b: 2 } },
   });

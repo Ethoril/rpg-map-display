@@ -247,7 +247,7 @@ Après l'animation, le rendu durable est le même pour toutes les causes : pion 
 
 L'outil MJ envoie aussi `mj.engagements { pairs }`, à chaque changement et à chaque instantané, même avec `pairs: []` quand il n'y a aucun engagement, pour que la carte efface les traits périmés. Map Display les affiche en traits fins **sur l'écran MJ seulement**, jamais sur la tablette.
 
-L'outil MJ envoie aussi `mj.turn { ref }` (révision du 21/11/2026) : la `ref` du pion du participant actif, `null` hors tour ou si l'actif n'est pas dans la scène. Il part à chaque changement de tour et **toujours** dans l'instantané. Map Display cerne ce pion d'un halo **sur l'écran MJ seulement**, jamais sur la tablette ; une monture fusionnée (§8.1) se trouve par `rider.ref`. Le tour n'est ni persisté ni republié.
+L'outil MJ envoie aussi `mj.turn { ref }` (révision du 21/11/2026) : la `ref` du pion du participant actif, `null` hors tour ou si l'actif n'est pas dans la scène. Il part à chaque changement de tour et **toujours** dans l'instantané. Map Display cerne ce pion d'un halo **sur l'écran MJ seulement**, jamais sur la tablette ; une monture fusionnée (§8.1) se trouve par `rider.ref`. Le tour n'est pas persisté, **republié vers la tablette** (`turn.select`, révision du 22/11/2026 — **à reporter dans la copie du dépôt outil MJ**).
 
 ## 11. Amendements de Map Display couverts par ce contrat
 

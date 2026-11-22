@@ -1,7 +1,6 @@
 // @ts-check
 
 import { PointerInput } from '../../input/pointer.js';
-import { findHitPortal } from '../../input/portalHit.js';
 import { gridFor } from '../../grid/index.js';
 import { cellKey } from '../../core/cellKey.js';
 import * as store from '../../state/store.js';
@@ -12,6 +11,49 @@ import {
   exactTokenAtCell,
   isPlayerManipulableToken,
 } from '../../input/tokenHit.js';
+import { boutonsPorte } from '../../render/layers/portals.js';
+import { boutonLiaison } from '../../render/layers/links.js';
+import { TOKEN_MOVE_STEP_MS } from '../../render/layers/tokens.js';
+
+/**
+ * Teste si un point en unités carte se trouve dans un rectangle en unités carte.
+ * @param {{ x: number, y: number }} pt
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @returns {boolean}
+ */
+function pointInRect(pt, rect) {
+  return (
+    pt.x >= rect.x &&
+    pt.x <= rect.x + rect.width &&
+    pt.y >= rect.y &&
+    pt.y <= rect.y + rect.height
+  );
+}
+
+/**
+ * Indique si une animation de déplacement court actuellement sur cet étage (CA11).
+ * @param {readonly Token[]} tokens
+ * @param {string} levelId
+ * @param {number} now
+ * @returns {boolean}
+ */
+function isAnyTokenMoveAnimating(tokens, levelId, now) {
+  for (const token of tokens) {
+    if (token.levelId !== levelId || !token.move || !Number.isFinite(token.move.startedAt)) continue;
+    const path = Array.isArray(token.move.path) && token.move.path.length >= 2
+      ? token.move.path
+      : token.move.from && token.move.to
+        ? [token.move.from, token.move.to]
+        : null;
+    if (!path || path.length < 2) continue;
+    const last = path[path.length - 1];
+    if (last.a !== token.cell.a || last.b !== token.cell.b) continue;
+    if (now - token.move.startedAt < (path.length - 1) * TOKEN_MOVE_STEP_MS) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** @typedef {import('../../core/types.js').Cell} Cell */
 /** @typedef {import('../../core/types.js').Token} Token */
@@ -33,6 +75,7 @@ import {
  * @property {MovePlanningApi} [movePlanning] Contrôleur injecté par la vue applicative.
  * @property {(token: Token, level: import('../../core/types.js').Level) => boolean} [isTokenVisible]
  * @property {(token: Token|null) => void} [onInspectToken] Ouvre ou ferme la consultation locale.
+ * @property {() => number} [getInsetTop] Hauteur de la barre d'onglets d'étages pour le calage du bouton de liaison.
  */
 
 /** @typedef {import('../../app/movePlanning.js').MovePlanningController} MovePlanningApi */
@@ -50,6 +93,7 @@ export function bootstrapPlayerView(options) {
   const movePlanning = options.movePlanning;
   const isTokenVisible = options.isTokenVisible ?? ((token) => !token.hidden);
   const onInspectToken = options.onInspectToken ?? (() => {});
+  const getInsetTop = options.getInsetTop ?? (() => 0);
   /** @type {Cell|null} */
   let cancelledAtCell = null;
 
@@ -123,58 +167,72 @@ export function bootstrapPlayerView(options) {
     onInspectToken(null);
 
     const grid = gridFor(activeLevel);
-    const targetCell = grid.cellFromPoint(intention.mapPos);
-    if (!targetCell) {
-      if (movePlanning?.getPlan()?.steps.length) movePlanning.cancel();
-      else store.selectToken(null);
-      return;
-    }
-
+    const turn = store.getTurn();
     const filter = /** @param {Token} token */ (token) => isTokenVisible(token, activeLevel);
-    const tappedHit = findHitToken(
-      grid,
-      activeLevel,
-      intention.mapPos,
-      camera.zoom,
-      campaign.tokens,
-      { filter, deprioritize: (t) => !isPlayerManipulableToken(t) }
-    );
-    const tappedToken = tappedHit ? tappedHit.token : null;
+    // Une préparation commence dès la sélection du pion (zone affichée) : masquer les boutons dès
+    // ce stade évite qu'un bouton « Fermer » ou « Prendre l'escalier » n'intercepte le tap de la
+    // case juste derrière une porte ouverte ou juste au-dessus d'un escalier (CA1, CA11).
+    const hasPreparation = Boolean(selectedToken || movePlanning?.getPlan());
+    const animatingMove = isAnyTokenMoveAnimating(campaign.tokens, activeLevel.id, Date.now());
 
-    const tappedMovablePc = tappedToken && isPlayerManipulableToken(tappedToken) ? tappedToken : null;
-
-    // Le pion qui occupe **exactement** la case touchée, marge exclue. Il sert deux fois : à
-    // borner la retombée vers la porte juste en dessous, et à décider de la destination d'un
-    // déplacement plus bas.
-    const exactTappedToken = exactTokenAtCell(activeLevel, targetCell, campaign.tokens, {
-      filter,
-      grid,
-    });
-
-    // Arbitrage n°1 (brief distance) : le plus proche gagne, dans une seule et même unité —
-    // la CARTE, parce que c'est elle qui porte la géométrie ; l'écran n'est qu'une fenêtre posée
-    // dessus, et sa fraction de case varie avec le zoom (brief O §5a le disait déjà : à la vue
-    // « carte entière », 24 px d'écran couvrent presque une case entière en unités carte). Un
-    // pion touché en plein (`tappedHit.dist === 0`) est de fait toujours strictement plus proche
-    // qu'aucune porte à portée, donc la protection du chantier O — un pion sous le doigt bloque
-    // la porte derrière lui — en découle SANS cas particulier à écrire ici.
-    const hitPortal = findHitPortal(grid, activeLevel, intention.mapPos, camera.zoom);
-    const portalIsCloser =
-      hitPortal && (!tappedHit || hitPortal.dist < tappedHit.dist - 1e-6);
-    if (portalIsCloser) {
-      cancelledAtCell = null;
-      const portal = hitPortal.portal;
-      /** @type {'open'|'closed'|null} */
-      let targetState = null;
-      if (portal.state === 'closed') {
-        targetState = 'open';
-      } else if (portal.state === 'open') {
-        targetState = 'closed';
+    // Boutons de liaison et de porte testés AVANT l'arbitrage pion/case, uniquement hors
+    // préparation de mouvement et hors animation (décisions 1, 2, 3, 4, 5 du 22/11/2026 ; CA1–CA12).
+    if (!hasPreparation && !animatingMove) {
+      const visibleTokens = campaign.tokens.filter((t) => t.levelId === activeLevel.id && filter(t));
+      const fullCamera =
+        'screenWidth' in camera && 'screenHeight' in camera
+          ? /** @type {import('../../render/camera.js').Camera} */ (camera)
+          : undefined;
+      const links = campaign.links ?? [];
+      for (const token of visibleTokens) {
+        const linkButton = boutonLiaison(grid, activeLevel, links, token, {
+          zoom: camera.zoom,
+          turn,
+          camera: fullCamera,
+          insetTop: getInsetTop(),
+        });
+        if (linkButton && pointInRect(intention.mapPos, linkButton.rect)) {
+          cancelledAtCell = null;
+          let destination;
+          try {
+            destination = movePlanning
+              ? movePlanning.withSuppressedReconcile(() => store.traverseLink(token.id, linkButton.linkId))
+              : store.traverseLink(token.id, linkButton.linkId);
+          } catch {
+            onDestinationRejected(token.cell, 'refused');
+            return;
+          }
+          movePlanning?.cancel();
+          transport?.publish({
+            type: 'link.traverse',
+            payload: { tokenId: token.id, linkId: linkButton.linkId, destination },
+            at: Date.now(),
+            by: 'players',
+          });
+          return;
+        }
       }
-      if (targetState) {
-        store.setPortalState(activeLevel.id, portal.id, targetState);
-        if (transport) {
-          transport.publish({
+
+      const doorButtons = boutonsPorte(grid, activeLevel, visibleTokens, {
+        zoom: camera.zoom,
+        turn,
+      });
+      const hitDoorButton = doorButtons.find((btn) => pointInRect(intention.mapPos, btn.rect));
+      if (hitDoorButton) {
+        cancelledAtCell = null;
+        if (!hitDoorButton.enabled) {
+          // CA10 : bouton grisé hors tour, sans effet.
+          return;
+        }
+        const portal = activeLevel.portals.find((p) => p.id === hitDoorButton.portalId);
+        if (!portal) return;
+        /** @type {'open'|'closed'|null} */
+        let targetState = null;
+        if (portal.state === 'closed') targetState = 'open';
+        else if (portal.state === 'open') targetState = 'closed';
+        if (targetState) {
+          store.setPortalState(activeLevel.id, portal.id, targetState);
+          transport?.publish({
             type: 'portal.toggle',
             payload: {
               levelId: activeLevel.id,
@@ -185,9 +243,35 @@ export function bootstrapPlayerView(options) {
             by: 'players',
           });
         }
+        return;
       }
+    }
+
+    const targetCell = grid.cellFromPoint(intention.mapPos);
+    if (!targetCell) {
+      if (movePlanning?.getPlan()?.steps.length) movePlanning.cancel();
+      else store.selectToken(null);
       return;
     }
+
+    const tappedHit = findHitToken(
+      grid,
+      activeLevel,
+      intention.mapPos,
+      camera.zoom,
+      campaign.tokens,
+      { filter, deprioritize: (t) => !isPlayerManipulableToken(t, turn) }
+    );
+    const tappedToken = tappedHit ? tappedHit.token : null;
+
+    const tappedMovablePc = tappedToken && isPlayerManipulableToken(tappedToken, turn) ? tappedToken : null;
+
+    // Le pion qui occupe **exactement** la case touchée, marge exclue : sert à décider de la
+    // destination d'un déplacement plus bas.
+    const exactTappedToken = exactTokenAtCell(activeLevel, targetCell, campaign.tokens, {
+      filter,
+      grid,
+    });
 
     if (!selectedToken) {
       store.selectToken(tappedMovablePc ? tappedMovablePc.id : null);
@@ -212,7 +296,7 @@ export function bootstrapPlayerView(options) {
     // sur une case vide voisine d'un autre pion doit déplacer le pion sélectionné, pas annuler la
     // sélection — donc l'occupation de la case cible se lit à l'appartenance exacte.
     const exactMovablePc =
-      exactTappedToken && isPlayerManipulableToken(exactTappedToken) ? exactTappedToken : null;
+      exactTappedToken && isPlayerManipulableToken(exactTappedToken, turn) ? exactTappedToken : null;
 
     // ⚠ Depuis C-6 (10/09/2026, `docs/QUESTIONS-EN-ATTENTE.md`), l'empilement de pions est
     // impossible : `exactTappedToken` ne peut donc plus désigner un AUTRE PJ que celui déjà
@@ -228,54 +312,9 @@ export function bootstrapPlayerView(options) {
       return;
     }
 
-    // ── Lot 3, S-03 : franchir une liaison ────────────────────────────────────────────────
-    //
-    // Le geste est délibérément en **deux temps** : amener le pion sur l'escalier, puis retaper
-    // sa case pour monter. Un franchissement en un seul tap ferait changer d'étage à chaque fois
-    // qu'on vise l'escalier pour s'y poster, et la table verrait l'autre étage sans l'avoir
-    // demandé. Retaper sa propre case ne servait à rien jusqu'ici : le geste était libre.
-    //
-    // ⛔ Ce bloc doit rester AVANT le refus « case occupée » ci-dessous, et il y était après le
-    // 16 août 2026 seulement. Avant C-6 (10/09/2026), le MJ pouvait poser un PNJ — ou un pion
-    // 2×2 — sur la case où se tenait déjà un PJ, et `exactTokenAtCell` rendait alors le PREMIER
-    // pion du tableau : si c'était le PNJ, le tap partait en « case occupée » puis désélectionnait,
-    // alors que le joueur avait simplement retapé sa propre case, ouvrant une boucle sans issue
-    // arbitrée par l'ordre du tableau. Depuis C-6, un PNJ ne peut plus être posé sur la case d'un
-    // PJ — `moveTokenToCell`/`addToken` le refusent — donc `exactTappedToken` ne peut plus être
-    // que le pion déjà sélectionné ici. L'ordre reste correct à garder : taper la case où l'on
-    // est déjà n'est jamais un déplacement vers une case occupée — la question ne s'y pose pas.
+    // Décision 1 du 22/11/2026 (CA3) : retaper la case du pion sélectionné ne franchit plus de
+    // liaison — seul le bouton de liaison le fait.
     if (targetCell.a === selectedToken.cell.a && targetCell.b === selectedToken.cell.b) {
-      const liaison = store.findLinkAtCell(activeLevel.id, targetCell);
-      // Chantier C-9 : monté, on ne prend aucune liaison depuis la tablette — on descend de
-      // cheval pour changer d'étage. Le MJ, lui, reste libre (glisser, sélecteur d'étage).
-      if (liaison && selectedToken.mounted === true) {
-        onDestinationRejected(targetCell, 'refused');
-        return;
-      }
-      if (
-        liaison &&
-        selectedToken.kind === 'pc' &&
-        !selectedToken.locked &&
-        !selectedToken.hidden &&
-        selectedToken.playerMovable !== false
-      ) {
-        let destination;
-        try {
-          destination = movePlanning
-            ? movePlanning.withSuppressedReconcile(() => store.traverseLink(selectedToken.id, liaison.link.id))
-            : store.traverseLink(selectedToken.id, liaison.link.id);
-        } catch {
-          onDestinationRejected(targetCell, 'refused');
-          return;
-        }
-        movePlanning?.cancel();
-        transport?.publish({
-          type: 'link.traverse',
-          payload: { tokenId: selectedToken.id, linkId: liaison.link.id, destination },
-          at: Date.now(),
-          by: 'players',
-        });
-      }
       return;
     }
 
@@ -287,9 +326,7 @@ export function bootstrapPlayerView(options) {
 
     if (
       selectedToken.hidden ||
-      selectedToken.kind !== 'pc' ||
-      selectedToken.locked ||
-      selectedToken.playerMovable === false
+      !isPlayerManipulableToken(selectedToken, turn)
     ) {
       onDestinationRejected(targetCell, 'refused');
       movePlanning?.cancel();
@@ -302,7 +339,15 @@ export function bootstrapPlayerView(options) {
     if (endpoint && endpoint.a === targetCell.a && endpoint.b === targetCell.b) {
       const latestToken = store.getCampaign()?.tokens.find((item) => item.id === selectedToken.id);
       if (!latestToken) return;
-      const validation = movePlanning?.validate(latestToken, activeLevel, (path, destination) => {
+      // ⭐ Coût retenu pour décompter le mouvement du tour LOCALEMENT, sans attendre le
+      // `turn.select` que le MJ republie après son `reportMove`. Sans ce décompte, la tablette
+      // proposait le budget ENTIER pendant tout l'aller-retour réseau — relevé entre 336 ms et
+      // 2,4 s en séance le 7 août 2026 — et trois taps rapides suffisaient à rejouer un second
+      // trajet complet dans le même tour. Le décompte local est sans danger de double compte :
+      // `turn.select` porte une valeur ABSOLUE et `setTurn` ne fait jamais redescendre le
+      // compteur du même pion.
+      let coutValide = 0;
+      const validation = movePlanning?.validate(latestToken, activeLevel, (path, destination, cost) => {
         if (store.findMoveConflict(latestToken.id, destination)) {
           onDestinationRejected(destination, 'occupied');
           return false;
@@ -322,10 +367,15 @@ export function bootstrapPlayerView(options) {
           at: startedAt,
           by: 'players',
         });
+        coutValide = cost;
         store.selectToken(null);
         return true;
       });
       if (!validation?.ok) onDestinationRejected(targetCell, 'refused');
+      // ⛔ Après `validate`, jamais dedans : pendant le `commit` la préparation est en statut
+      // `validating`, et notifier les abonnés à ce moment-là ferait réentrer `reconcile` sur un
+      // plan en cours de validation.
+      else if (coutValide > 0) store.addTurnSpent(latestToken.id, coutValide);
       return;
     }
     const candidatePlan = currentPlan ?? movePlanning?.start(selectedToken, activeLevel);
@@ -354,7 +404,7 @@ export function bootstrapPlayerView(options) {
       const hit = findHitToken(gridFor(activeLevel), activeLevel, mapPos, camera.zoom, campaign.tokens, {
         filter: (token) => isTokenVisible(token, activeLevel),
       });
-      if (!hit || isPlayerManipulableToken(hit.token)) return;
+      if (!hit || isPlayerManipulableToken(hit.token, store.getTurn())) return;
       onInspectToken(hit.token);
       return () => onInspectToken(null);
     },

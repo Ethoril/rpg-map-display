@@ -60,7 +60,7 @@ import { cellKey } from '../core/cellKey.js';
 import { isVisionSource, createToken } from '../core/schema.js';
 import { startMjLink, MJ_LINK_PING_MS } from './mjLink.js';
 import * as store from '../state/store.js';
-import { getPresenceList, listOtherGmClients } from '../state/presence.js';
+import { getPresenceList, listOtherGmClients, subscribePresence } from '../state/presence.js';
 
 /** @typedef {import('../transport/Transport.js').Transport} Transport */
 /** @typedef {import('../core/types.js').MapPoint} MapPoint */
@@ -1138,10 +1138,43 @@ export async function bootstrapGMApp(options = {}) {
   // Lu AVANT tout abonnement : la restauration ci-dessous notifie les abonnés.
   const etageMemorise = lireEtageMemorise();
 
+  const publishCurrentTurn = () => {
+    const turn = store.getTurn();
+    transport?.publish({
+      type: 'turn.select',
+      payload: turn ? { tokenId: turn.tokenId, spentCells: turn.spentCells } : { tokenId: null },
+      at: Date.now(),
+      by: 'gm',
+    });
+  };
+
+  // À l'arrivée d'une présence joueurs, le MJ republie le tour courant (non persisté dans
+  // l'instantané Firestore), pour qu'une tablette rechargée en cours de tour retrouve son état.
+  const knownPlayerClientIds = new Set(
+    getPresenceList().filter((client) => client.role === 'players').map((client) => client.clientId)
+  );
+  const unsubscribePlayerPresence = subscribePresence(() => {
+    const players = getPresenceList().filter((client) => client.role === 'players');
+    let arrived = false;
+    for (const client of players) {
+      if (!knownPlayerClientIds.has(client.clientId)) arrived = true;
+    }
+    knownPlayerClientIds.clear();
+    for (const client of players) knownPlayerClientIds.add(client.clientId);
+    if (arrived && store.getTurn()) {
+      publishCurrentTurn();
+    }
+  });
+
+  let lastTurnSignature = '';
   const unsubscribeStore = store.subscribe((change) => {
     const moveState = store.getState();
     movePlanning.clearIfLevelDiffers(moveState.activeLevelId || '');
-    if (!change?.session) movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel);
+    const turn = store.getTurn();
+    const turnSignature = turn ? `${turn.tokenId}:${turn.spentCells}` : '';
+    const turnChanged = turnSignature !== lastTurnSignature;
+    lastTurnSignature = turnSignature;
+    if (!change?.session || turnChanged) movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel);
     memoriserEtage(store.getActiveLevelId());
     syncVision();
     requestRender();
@@ -1230,6 +1263,7 @@ export async function bootstrapGMApp(options = {}) {
           if (!png) continue;
           transport?.publish({ type: 'fog.update', payload: { levelId: level.id, png }, at: Date.now(), by: 'gm' });
         }
+        if (store.getTurn()) publishCurrentTurn();
         return;
       }
 
@@ -1314,6 +1348,9 @@ export async function bootstrapGMApp(options = {}) {
 
       // ⛔ Pas d'`applyingRemote` ici (A4) : la mutation reçue doit être écrite par le MJ.
       const mute = applyNetworkEvent(event);
+      if (mute && event.type === 'turn.undo') {
+        publishCurrentTurn();
+      }
       if (!event.recovered && event.type === 'token.move' && event.by === 'players' && payload.tokenId && !payload.refus && Array.isArray(payload.path)) {
         reportMove(payload.tokenId, payload.path);
       }
@@ -2417,6 +2454,7 @@ export async function bootstrapGMApp(options = {}) {
     videoBackdrop.detach();
     frameProbe.stop();
     unsubscribeStore();
+    unsubscribePlayerPresence();
     unsubscribeEvents?.();
     if (mjLinkHeartbeat !== null) clearInterval(mjLinkHeartbeat);
     mjLink?.close();

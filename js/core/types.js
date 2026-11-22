@@ -369,6 +369,15 @@
  */
 
 /**
+ * État du tour actif (session liée, non persisté).
+ * @typedef {Object} Turn
+ * @property {string} tokenId
+ * @property {Cell} startCell
+ * @property {string} startLevelId
+ * @property {number} spentCells
+ */
+
+/**
  * @typedef {{channel: 'rtdb'|'firestore'|'mj-link', operation: string, failedAt: number, recoveredAt?: number}} SyncIncident
  */
 
