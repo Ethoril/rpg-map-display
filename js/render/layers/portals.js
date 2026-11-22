@@ -384,14 +384,24 @@ export class PortalsLayer {
       if (!button.enabled) {
         ctx.globalAlpha = 0.55;
       }
-      traceRoundedRect(ctx, button.rect, px(8));
-      ctx.fillStyle = button.enabled ? 'rgba(15, 23, 42, 0.9)' : 'rgba(51, 65, 85, 0.85)';
+      traceRoundedRect(ctx, button.rect, px(6));
+      // Thème du chantier C-10 (`css/gm.css`) : brun sombre et laiton, polices système.
+      // ⭐ **Un seul accent**, comme la vue MJ : pas de vert « ouvrir » contre un orange
+      // « fermer ». Le libellé porte déjà le sens, et deux couleurs d'action auraient fait du
+      // laiton la troisième — l'accent ne veut plus rien dire quand il y en a trois.
+      ctx.fillStyle = 'rgba(32, 27, 23, 0.94)';
       ctx.fill();
-      ctx.strokeStyle = !button.enabled ? '#94a3b8' : isOpen ? '#f59e0b' : '#22c55e';
-      ctx.lineWidth = px(button.enabled ? 2 : 1.5);
+      // Double trait : un contour sombre d'abord, pour que le bouton se détache d'un fond de
+      // carte qui peut être clair comme sombre, puis le liseré de laiton par-dessus. Sans le
+      // premier, le laiton disparaît sur un parquet clair.
+      ctx.strokeStyle = 'rgba(18, 15, 13, 0.9)';
+      ctx.lineWidth = px(3.5);
+      ctx.stroke();
+      ctx.strokeStyle = button.enabled ? '#d9a84e' : '#6b5c4a';
+      ctx.lineWidth = px(button.enabled ? 1.6 : 1.2);
       ctx.stroke();
 
-      ctx.fillStyle = button.enabled ? '#ffffff' : '#cbd5e1';
+      ctx.fillStyle = button.enabled ? '#ece4d6' : '#958978';
       ctx.fillText(
         label,
         button.rect.x + button.rect.width / 2,

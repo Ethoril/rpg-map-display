@@ -314,17 +314,33 @@ export class LinksLayer {
     const px = (/** @type {number} */ screenPx) => screenPx / zoom;
 
     ctx.save();
-    traceRoundedRect(ctx, button.rect, px(10));
-    ctx.fillStyle = 'rgba(29, 78, 216, 0.92)';
+    traceRoundedRect(ctx, button.rect, px(6));
+    // Thème du chantier C-10 (`css/gm.css`) : brun sombre, liseré de laiton, texte parchemin —
+    // même famille que les boutons de porte, dont il se distingue par sa taille et par le laiton
+    // VIF de son liseré (`--gm-laiton-vif`), qui marque l'action principale.
+    //
+    // ⛔ **Pas de laiton en aplat avec texte sombre**, essayé puis écarté le 22/11/2026 : trois
+    // sondes de pixels (`encreInvite` de `multiLevelJourney.spec.mjs`, `brightPixelsInRect` de
+    // `tourDeJeu.spec.mjs`) comptent l'encre CLAIRE peinte au-dessus de la case pour prouver que
+    // le bouton existe. Un aplat de laiton (217, 168, 78) à texte sombre ne passe aucun de leurs
+    // seuils, et les assouplir pour coller à un choix de couleur, c'est la fabrique à faux verts
+    // de ce dépôt. Le texte clair reste donc clair. ⭐ Si l'aplat se révélait nécessaire à la
+    // lisibilité sur la TV, c'est la SONDE qu'il faudrait rendre indifférente à la palette, en
+    // comptant l'écart au fond plutôt que la clarté — pas l'assertion qu'il faudrait baisser.
+    ctx.fillStyle = 'rgba(32, 27, 23, 0.94)';
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
+    // Contour sombre d'abord : sur un parquet clair, le laiton seul se perdrait.
+    ctx.strokeStyle = 'rgba(18, 15, 13, 0.9)';
+    ctx.lineWidth = px(4);
+    ctx.stroke();
+    ctx.strokeStyle = '#ecc777';
     ctx.lineWidth = px(2);
     ctx.stroke();
 
-    ctx.font = `600 ${px(14)}px system-ui, sans-serif`;
+    ctx.font = `650 ${px(14)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#ece4d6';
     ctx.fillText(
       button.label,
       button.rect.x + button.rect.width / 2,
