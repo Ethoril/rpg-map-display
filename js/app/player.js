@@ -1072,10 +1072,15 @@ export async function bootstrapPlayerApp(options = {}) {
   turnUndoButton.style.alignItems = 'center';
   turnUndoButton.style.justifyContent = 'center';
   turnUndoButton.style.padding = '0';
-  turnUndoButton.style.border = '0';
-  turnUndoButton.style.borderRadius = '8px';
-  turnUndoButton.style.background = 'rgba(0, 0, 0, 0.45)';
-  turnUndoButton.style.color = '#ffffff';
+  // Thème du chantier C-10 (`css/gm.css`) : brun sombre, liseré de laiton, texte parchemin.
+  // ⛔ `border-box` explicite : avec le `border-box` par défaut (`content-box`), le liseré d'un
+  // pixel porterait la boîte à 46 px et la cible tactile de 44 px annoncée au CdC serait fausse —
+  // l'e2e mesure cette boîte.
+  turnUndoButton.style.boxSizing = 'border-box';
+  turnUndoButton.style.border = '1px solid rgba(217, 168, 78, 0.55)';
+  turnUndoButton.style.borderRadius = '6px';
+  turnUndoButton.style.background = 'rgba(32, 27, 23, 0.74)';
+  turnUndoButton.style.color = '#ece4d6';
   turnUndoButton.style.opacity = '0.4';
   turnUndoButton.style.transition = 'opacity 0.2s ease';
   turnUndoButton.style.cursor = 'pointer';

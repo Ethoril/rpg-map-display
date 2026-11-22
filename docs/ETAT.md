@@ -1978,8 +1978,24 @@ d'acceptation du §11.
 > que la borne haute de l'anneau, si bien qu'un budget laissé non reculé la satisfaisait encore.
 > Les deux bornes sont désormais tenues. Douze mutations, douze rouges.
 >
+> **Esthétique reprise le 22/11/2026**, sur retour du mainteneur (« les boutons ne sont pas dans
+> l'esthétique warhammer ») : les trois boutons passent au thème C-10 de `css/gm.css` — brun
+> sombre `rgba(32, 27, 23, …)`, liseré de **laiton** (`#d9a84e`, `#ecc777` pour l'action
+> principale), texte parchemin `#ece4d6`, rayon de 6 px. Un contour sombre précède le laiton pour
+> que le bouton se détache d'un fond de carte clair. ⭐ **Un seul accent**, comme la vue MJ : le
+> vert « ouvrir » contre l'orange « fermer » disparaît, le libellé porte déjà le sens.
+>
+> ⛔ **Le laiton en aplat à texte sombre a été essayé puis écarté** : trois sondes de pixels
+> (`encreInvite` de `multiLevelJourney.spec.mjs`, `brightPixelsInRect` de `tourDeJeu.spec.mjs`)
+> comptent l'encre **claire** peinte au-dessus de la case pour prouver que le bouton existe, et un
+> aplat à texte sombre ne passe aucun de leurs seuils. Assouplir trois assertions pour coller à un
+> choix de couleur, c'est la fabrique à faux verts de ce dépôt. Si l'aplat se révélait nécessaire à
+> la lisibilité sur la TV, c'est la **sonde** qu'il faudrait rendre indifférente à la palette — en
+> comptant l'écart au fond plutôt que la clarté.
+>
 > ⏳ **À éprouver à la table** : lisibilité et portée tactile des boutons de porte (44 px) et de
-> liaison au cadrage réel de la Tab S9 FE ; voisinage du bouton d'annulation à gauche de l'aide de
+> liaison au cadrage réel de la Tab S9 FE — **le libellé « Ouvrir » est à 11 px écran**, c'est le
+> point le plus douteux depuis le canapé ; voisinage du bouton d'annulation à gauche de l'aide de
 > jeu ; et surtout le **coût de `TJ-8`** — pour ouvrir une porte il faut n'avoir rien de
 > sélectionné, et après être descendu de cheval il faut taper ailleurs avant que le bouton
 > d'escalier n'apparaisse.
