@@ -289,7 +289,7 @@ export function parseEngagements(payload) {
  * @param {number} version version du contrat attendue
  * @returns {MjLinkOperation[]}
  */
-export function planMjMessage(campaign, message, version = 1) {
+export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
   if (!message || message.from !== 'outil-mj' || message.v !== version) return [];
   const payload = message.payload || {};
   switch (message.type) {
@@ -579,7 +579,7 @@ export const MJ_LINK_ECHO_MS = LIAISON_CARTE.echoMs;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, engagements: () => [string, string][], activeTurn: () => string|null }|null}
+ * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, reportTurnReset: (tokenId: string) => boolean, engagements: () => [string, string][], activeTurn: () => string|null }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -829,6 +829,18 @@ export function startMjLink(options) {
       if (!isLinkedToken(token) || !token.link) return false;
       if (ranStartIndex(path, rules) < 0) return false;
       send('map.ran', { ref: token.link.ref });
+      return true;
+    },
+    /**
+     * Annulation du mouvement du tour d'un pion : prévient l'outil MJ (`map.turnReset`, contrat
+     * §10, version 2) pour qu'il rende l'Action du Tour. Pion lié seulement ; à appeler une fois
+     * par annulation effectivement appliquée.
+     * @param {string} tokenId @returns {boolean} true si `map.turnReset` est parti
+     */
+    reportTurnReset(tokenId) {
+      const token = options.store.getCampaign()?.tokens.find((t) => t.id === tokenId);
+      if (!token || !isLinkedToken(token) || !token.link) return false;
+      send('map.turnReset', { ref: token.link.ref });
       return true;
     },
     /**

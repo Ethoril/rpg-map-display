@@ -1984,6 +1984,19 @@ d'acceptation du §11.
 > sélectionné, et après être descendu de cheval il faut taper ailleurs avant que le bouton
 > d'escalier n'apparaisse.
 
+> ### ⏳ Lot C1 — `map.turnReset`, liaison version 2 — codé le 22/11/2026, **non publié**
+>
+> Décision du MJ (22/11) : l'annulation du mouvement du tour remonte à l'outil MJ. L'écran MJ
+> (`gm.js`, au traitement de `turn.undo` appliqué, jamais sur un événement rejoué) émet **un seul**
+> `map.turnReset { ref }` sur `wfrp-map-link` par annulation, pour un pion **lié** seulement
+> (`mjLink.reportTurnReset`). Le contrat et `js/core/donnees-communes.js` sont recopiés octet pour
+> octet de l'outil MJ (commit du contrat `76cf28f5`) : la liaison passe à la **version 2** des deux
+> côtés. ⚠ Version 2 d'un seul côté = liaison coupée (« version différente ») : à publier avec
+> l'outil MJ, le même jour. Le cas `ref: null` ambigu (§3.1) est laissé tel quel.
+> Test : `tests/tourDeJeu.test.mjs` (émission, pion non lié, pion inconnu), vu rouge en retirant
+> l'émission. ⛔ Le branchement dans `gm.js` n'est couvert par aucun test automatique.
+> ⏳ **À éprouver à la table** avec l'outil MJ connecté : annuler après une Course, l'Action du Tour doit être rendue.
+
 > ### ✅ Chantier C-10 — refonte de la vue MJ, livrée le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur : la vue MJ était « fonctionnelle mais inesthétique et peu pratique ».

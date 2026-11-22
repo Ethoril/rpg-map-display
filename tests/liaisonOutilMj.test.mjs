@@ -10,7 +10,7 @@ import { movementRulesFor } from '../js/state/selection.js';
  * @param {string} type
  * @param {any} payload
  */
-const msg = (type, payload) => ({ v: 1, type, seq: 1, at: 0, from: 'outil-mj', payload });
+const msg = (type, payload) => ({ v: 2, type, seq: 1, at: 0, from: 'outil-mj', payload });
 const link = { source: /** @type {'outil-mj'} */ ('outil-mj'), ref: 'p:g1' };
 const level = createLevel({ id: 'rdc', widthCells: 12, heightCells: 12 });
 /** @param {any} token */
@@ -75,7 +75,7 @@ test('mjLink : PNJ inconnu en réserve, PJ inconnu en attente de liaison, PJ jam
   assert.equal('imageUrl' in add.token, false, 'imageUrl nulle : rien n’est écrit');
   assert.deepEqual(planMjMessage(campaign, msg('token.state', { ...gob, ref: 'pj:c9', kind: 'pc' })).map((o) => o.op), ['awaitBinding']);
   assert.deepEqual(planMjMessage(campaign, msg('token.remove', { ref: 'pj:c9' })), []);
-  assert.deepEqual(planMjMessage(campaign, { ...msg('token.add', gob), v: 2 }), [], 'autre version ignorée');
+  assert.deepEqual(planMjMessage(campaign, { ...msg('token.add', gob), v: 1 }), [], 'autre version ignorée');
   assert.deepEqual(planMjMessage(campaign, { ...msg('token.add', gob), from: 'map' }), [], 'ses propres messages ignorés');
 });
 

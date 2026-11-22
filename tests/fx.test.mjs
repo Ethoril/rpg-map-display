@@ -15,7 +15,7 @@ const link = { source: /** @type {'outil-mj'} */ ('outil-mj'), ref: 'p:g1' };
 const token = (patch = {}) => ({ ...createToken({ id: 'g1', levelId: 'rdc', cell: { a: 3, b: 4 } }), link, ...patch });
 /** @param {any[]} tokens */
 const campaignOf = (tokens) => createCampaign({ levels: [level], tokens });
-const msg = (/** @type {string} */ type, /** @type {any} */ payload) => ({ v: 1, type, seq: 1, at: 0, from: 'outil-mj', payload });
+const msg = (/** @type {string} */ type, /** @type {any} */ payload) => ({ v: 2, type, seq: 1, at: 0, from: 'outil-mj', payload });
 
 /** Grille factice : case de 100 px. */
 const grid = /** @type {any} */ ({

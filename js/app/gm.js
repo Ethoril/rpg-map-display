@@ -1087,6 +1087,8 @@ export async function bootstrapGMApp(options = {}) {
   let generationCampagne = 0;
   /** Pose `map.ran` quand un pion lié finit un déplacement au-delà de sa Marche (L6) ; câblé avec la liaison. */
   let reportMove = (/** @type {string} */ _tokenId, /** @type {import('../core/types.js').Cell[]} */ _path) => {};
+  /** Pose `map.turnReset` quand le mouvement du tour d'un pion lié est annulé ; câblé avec la liaison. */
+  let reportTurnReset = (/** @type {string} */ _tokenId) => {};
   const snapshotSaver = createSnapshotSaver({
     capture: () => {
       // Une campagne pas encore chargée ne s'écrit jamais : elle écraserait la vraie.
@@ -1350,6 +1352,8 @@ export async function bootstrapGMApp(options = {}) {
       const mute = applyNetworkEvent(event);
       if (mute && event.type === 'turn.undo') {
         publishCurrentTurn();
+        // Contrat §10 (v2) : l'outil MJ rend l'Action du Tour. Pas pour un événement rejoué.
+        if (!event.recovered && payload.tokenId) reportTurnReset(payload.tokenId);
       }
       if (!event.recovered && event.type === 'token.move' && event.by === 'players' && payload.tokenId && !payload.refus && Array.isArray(payload.path)) {
         reportMove(payload.tokenId, payload.path);
@@ -1466,6 +1470,7 @@ export async function bootstrapGMApp(options = {}) {
   });
   const mjLinkHeartbeat = mjLink ? setInterval(mjLink.tick, MJ_LINK_PING_MS) : null;
   if (mjLink) reportMove = (tokenId, path) => { mjLink.reportMove(tokenId, path); };
+  if (mjLink) reportTurnReset = (tokenId) => { mjLink.reportTurnReset(tokenId); };
   if (mjLink) {
     engagementPairs = () => mjLink.engagements();
     activeTurnRef = () => mjLink.activeTurn();

@@ -420,7 +420,7 @@ const orAutour = (page, a, b) => page.evaluate(([ca, cb, px]) => {
 /** Message de l'outil MJ, par le vrai canal (même origine). @param {import('@playwright/test').Page} page @param {any} payload */
 const envoyerTour = (page, payload) => page.evaluate((p) => {
   const canal = new BroadcastChannel('wfrp-map-link');
-  canal.postMessage({ v: 1, type: 'mj.turn', seq: Date.now(), at: Date.now(), from: 'outil-mj', payload: p });
+  canal.postMessage({ v: 2, type: 'mj.turn', seq: Date.now(), at: Date.now(), from: 'outil-mj', payload: p });
   canal.close();
 }, payload);
 

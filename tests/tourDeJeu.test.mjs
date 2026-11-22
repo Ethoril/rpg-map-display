@@ -375,6 +375,42 @@ test('reportMove incrémente spentCells et publie turn.select ; le glisser MJ ne
   }
 });
 
+test('reportTurnReset : un seul map.turnReset { ref } par annulation, rien pour un pion non lié ou inconnu', () => {
+  const { rdc, pjA } = loadTwoLevelCampaign();
+  store.loadCampaign(createCampaign({
+    levels: [rdc],
+    tokens: [pjA, createToken({ id: 'libre', levelId: 'rdc', cell: { a: 8, b: 2 }, speedCells: 4 })],
+  }));
+  /** @type {any[]} */
+  const sent = [];
+  class FakeChannel {
+    /** @param {any} m */ postMessage(m) { sent.push(m); }
+    close() {}
+  }
+  const lien = startMjLink({
+    store,
+    publish() {},
+    createToken,
+    activeLevelId: () => store.getActiveLevelId(),
+    sessionId: 'sess-reset',
+    Channel: /** @type {any} */ (FakeChannel),
+  });
+  assert.ok(lien);
+  try {
+    const resets = () => sent.filter((m) => m.type === 'map.turnReset');
+    assert.equal(lien.reportTurnReset('libre'), false, 'pion non lié');
+    assert.equal(lien.reportTurnReset('inconnu'), false, 'pion inconnu');
+    assert.equal(resets().length, 0);
+    assert.equal(lien.reportTurnReset('pj-a'), true);
+    assert.equal(resets().length, 1, 'un seul message');
+    assert.deepEqual(resets()[0].payload, { ref: 'pj:a' });
+    assert.equal(resets()[0].from, 'map');
+    assert.equal(resets()[0].v, MJ_LINK_VERSION);
+  } finally {
+    lien.close();
+  }
+});
+
 // ── T7 : boutons de porte — géométrie pure et rendu (carré et hexagonal) ─────────────────────
 
 /**
