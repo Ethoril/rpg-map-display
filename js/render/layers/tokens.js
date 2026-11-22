@@ -332,9 +332,13 @@ export class TokensLayer {
       if (aucuneVisionPubliee) continue;
 
       if (isPlayerView && maskAlpha && options.activeLevelWidthCells && options.activeLevelHeightCells) {
-        if (!isCellVisibleInMask(token.cell, maskAlpha, options.activeLevelWidthCells, options.activeLevelHeightCells, grid.type, grid.maskLatticeShift())) {
-          continue;
-        }
+        // Décision du MJ du 22/11/2026 : un grand pion est vu dès qu'UNE case de son emprise l'est.
+        const widthCells = options.activeLevelWidthCells;
+        const heightCells = options.activeLevelHeightCells;
+        const shift = grid.maskLatticeShift();
+        const vu = grid.cellsOccupied(token.cell, token.sizeCells || 1)
+          .some((c) => isCellVisibleInMask(c, maskAlpha, widthCells, heightCells, grid.type, shift));
+        if (!vu) continue;
       }
 
       let position = tokenPosition(token, now);

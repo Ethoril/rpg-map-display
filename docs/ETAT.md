@@ -1920,6 +1920,32 @@ depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jo
 ⚠ **« Complet » ne veut pas dire « fini »** : ce qui est complet, c'est la liste des critères
 d'acceptation du §11.
 
+> ### ⚠ Retour R9 (recette du 22/11/2026) — « un adversaire qui finit dans la lumière d'une torche n'est pas détecté » : reproduit, correctif EN ATTENTE d'une décision du MJ
+>
+> **Reproduit** en e2e (`tests/torcheAdversaire.spec.mjs`, torche posée par le panneau MJ, ennemi
+> Moyen, étage en nuit, sans mur, ennemi non caché, déplacement par `token.move`) : un ennemi à
+> 2 cases d'une torche de portée 6 est vu, **à 4 cases il ne l'est pas** — ni avec la torche du
+> panneau, ni avec une torche déjà portée (liaison outil / sans liaison, même chemin). Pistes
+> écartées : 1 (`emitsLight` arrive), 2 (ligne de vue), 4 (le masque est bien republié, la case
+> change), 5 (non caché). Piste 3 distincte, traitée plus bas.
+>
+> **Cause** : le masque publié est `(ligne de vue × alpha du champ lumineux)` lu à `>= 128`
+> (`js/vision/fog.js` `composeVisibleMask`, ~l. 577-590 puis `isCellVisibleInMask`, ~l. 482). Le champ est un
+> dégradé **linéaire** (`js/vision/lightField.js`, centre = intensité, bord = 0), donc seule la
+> **moitié** de la portée est « éclairée » pour la détection (3 cases pour une torche de 6), alors
+> que le halo dessiné est en couleur pleine jusqu'à 75 % (`LIGHT_COLOR_VISION_GAIN`,
+> `js/core/constants.js`). Aucun document normatif ne fixe le seuil d'« éclairé ».
+>
+> ⛔ **Rien n'est corrigé** : choisir le seuil (moitié, trois quarts, bord de portée) change la règle
+> du jeu pour toutes les lumières, torches de pion et lampes de carte. **Décision à prendre par le
+> MJ** : à quelle fraction de la portée un adversaire doit-il être vu ? Le cas R9 est en
+> `test.fixme` (4 cases) avec son témoin vert (2 cases) ; à lever le jour du correctif.
+>
+> ✅ **Décision du MJ du 22/11/2026, grands pions** : un pion de taille 2 ou plus est visible des
+> joueurs dès qu'**une case de son emprise** est vue et éclairée, et non plus seulement son
+> ancrage (`TokensLayer.render`, `visibleALaTable` de `js/app/player.js`). Test 4 de
+> `tests/tokensLayerMask.test.mjs` réécrit ; mutation (retour à l'ancrage seul) vue rouge.
+>
 > ### ✅ Chantier Tour de jeu, portes et liaisons côté joueurs — livré le 22/11/2026 (hors §11)
 >
 > Demande du mainteneur après la séance réelle du 21/11/2026, arbitrée en sept décisions (`TJ-1` à

@@ -192,7 +192,7 @@ test('3. Échantillonnage au centre du bloc de case (a+0.5)*8, (b+0.5)*8', () =>
   assert.equal(isCellVisibleInMask({ a: 2, b: 4 }, maskAlpha, widthCells, heightCells), false);
 });
 
-test('4. Pion grand format (sizeCells > 1) : visibilité décidée par sa case d\'ancrage token.cell', () => {
+test('4. Pion grand format (sizeCells > 1) : vu dès qu\'UNE case de son emprise l\'est (décision du MJ, 22/11/2026)', () => {
   const level = createLevel({ id: 'lvl1', widthCells: 10, heightCells: 10 });
   const grid = new SquareGrid(level);
   const layer = new TokensLayer();
@@ -212,6 +212,25 @@ test('4. Pion grand format (sizeCells > 1) : visibilité décidée par sa case d
   visCanvas.maskAlpha = maskAlpha;
 
   const targetCtxObj = createInstrumentedCanvas(500, 500);
+
+  // Décision du MJ du 22/11/2026 (retour R9) : seule une case de l'emprise, même éloignée de
+  // l'ancrage, suffit ; une case hors emprise ne suffit pas (case (5, 5), emprise = 2..4).
+  const voir = (/** @type {number} */ a, /** @type {number} */ b) => {
+    maskAlpha[Math.floor((b + 0.5) * 8) * 80 + Math.floor((a + 0.5) * 8)] = 255;
+  };
+  const rendreGrand = () => layer.render(/** @type {any} */ (createInstrumentedCanvas(500, 500).ctx), grid, [bigToken], null, {
+    role: 'players',
+    activeLevelId: 'lvl1',
+    activeLevelWidthCells: 10,
+    activeLevelHeightCells: 10,
+    visibleCanvas: visCanvas,
+  }).renderedTokenIds.includes('t-big');
+  assert.equal(rendreGrand(), false, 'aucune case vue');
+  voir(5, 5);
+  assert.equal(rendreGrand(), false, 'une case hors emprise ne suffit pas');
+  voir(4, 4);
+  assert.equal(rendreGrand(), true, 'la case (4,4), à l\'autre bout de l\'emprise, suffit');
+  maskAlpha.fill(0);
 
   // Cas A : case d'ancrage (2, 2) pas dans la vision -> non dessiné
   const resA = layer.render(/** @type {any} */ (targetCtxObj.ctx), grid, [bigToken], null, {

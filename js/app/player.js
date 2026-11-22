@@ -68,14 +68,16 @@ const ICON_TURN_UNDO =
  */
 function visibleALaTable(token, activeLevel, maskAlpha) {
   if (!token || token.levelId !== activeLevel.id || token.hidden || !maskAlpha) return false;
-  return isCellVisibleInMask(
-    token.cell,
+  const grid = gridFor(activeLevel);
+  // Décision du MJ du 22/11/2026 : une case de l'emprise suffit (comme dans `TokensLayer`).
+  return grid.cellsOccupied(token.cell, token.sizeCells || 1).some((c) => isCellVisibleInMask(
+    c,
     maskAlpha,
     activeLevel.widthCells,
     activeLevel.heightCells,
     activeLevel.grid?.type === 'hex' ? 'hex' : 'square',
-    gridFor(activeLevel).maskLatticeShift()
-  );
+    grid.maskLatticeShift()
+  ));
 }
 
 /**
