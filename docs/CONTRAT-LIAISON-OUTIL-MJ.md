@@ -1,12 +1,13 @@
 # Contrat de liaison Outil MJ Warhammer ↔ RPG Map Display
 
-Version du contrat : **2** (22/11/2026 ; version 1 du 04/11/2026). Statut : version 1 implémentée et publiée des deux côtés (06/11/2026) ; version 2 à publier des deux côtés le même jour.
+Version du contrat : **3** (23/11/2026 ; version 2 du 22/11/2026, version 1 du 04/11/2026). Statut : version 1 implémentée et publiée des deux côtés (06/11/2026) ; versions 2 et 3 à publier des deux côtés le même jour.
 Révision du 08/11/2026 : précisions au §10 (remise à zéro des pions posés à chaque instantané, liste d'engagements vide). Elle décrit un comportement existant, sans rien changer aux messages : la version du protocole (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = 1) ne bouge pas.
 Révision du 11/11/2026 : `campaignName` retiré de `map.hello` (§2.3). Aucun côté ne l'a jamais envoyé ni lu : le texte rejoint le comportement existant, la version du protocole ne bouge pas.
 Révision du 16/11/2026 : l'image d'un PJ choisie dans l'outil MJ part vers la carte comme celle d'un PNJ (`imageUrl` non nul dans `token.state`) ; sans image choisie, `imageUrl: null` et la carte garde la sienne (§6). Changement compatible : la version du protocole ne bouge pas.
 Révision du 21/11/2026 : nouveau message `mj.turn { ref }`, le participant actif, que la carte cerne **sur l'écran MJ seulement** (§10). Ajout compatible : une carte qui ne le connaît pas l'ignore, un jeu qui ne fournit pas le tour ne l'envoie pas ; la version du protocole ne bouge pas.
 Révision du 13/11/2026 : `imageUrl` (et `rider.imageUrl`) admet aussi un chemin relatif sous `maps/tokens/` (bibliothèque d'images de Map Display) ; nouveau champ `formImageUrl` de `token.state` (§4, §6). Ajouts compatibles, comme `color` et `deathCause` : la version du protocole ne bouge pas.
 Révision du 22/11/2026 : nouveau message carte → outil `map.turnReset { ref }`, émis à chaque annulation du mouvement du tour ; l'outil MJ rend l'Action du Tour dépensée par une Course signalée et remet à zéro le déplacement du Tour (§10). **Changement de protocole** : la version passe à **2** (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = `LIAISON_CARTE.version` = 2, §2.3) ; aucun autre message ni champ ne change.
+Révision du 23/11/2026 : **point d'impact** d'un sort de zone choisi d'un clic sur l'écran MJ de la carte : nouveaux messages outil → carte `mj.impactQuery { queryId, label, radiusCells, casterRef }` et `mj.impactCancel { queryId }`, carte → outil `map.impact { queryId, levelId, cell, refs }` ou `map.impact { queryId, cancelled: true }` (§10.1). **Changement de protocole** : la version passe à **3** (`LIAISON_CARTE.version` = 3, §2.3) ; aucun autre message ni champ ne change.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -48,7 +49,7 @@ La tablette n'écoute jamais le canal. Elle reçoit tout par le transport Fireba
 ### 2.2 Enveloppe
 
 ```js
-{ v: 2, type: 'token.state', seq: 42, at: 1730700000000, from: 'outil-mj' | 'map', payload: {…} }
+{ v: 3, type: 'token.state', seq: 42, at: 1730700000000, from: 'outil-mj' | 'map', payload: {…} }
 ```
 
 - `seq` croît de 1 à chaque message, pour chaque émetteur.
@@ -65,7 +66,7 @@ Le MJ est le seul utilisateur. **L'onglet gm.html ouvert fait foi.**
 3. Les deux côtés affichent un indicateur « carte connectée » ou « outil MJ connecté ». Un battement toutes les 5 s (`*.ping`) détecte la fermeture de l'autre onglet. Après 15 s sans battement, l'indicateur passe à « déconnecté ». Un onglet caché voit ses minuteries ralenties par le navigateur (une par minute après 5 min) : chaque côté **répond au battement reçu par le sien** s'il n'a pas battu depuis 4 s. L'onglet visible entretient ainsi la liaison, sans boucle (amendement du 05/11, constaté en recette).
    - Si la carte reçoit un message alors qu'aucune campagne n'est chargée, elle réémet `map.hello` dès qu'une campagne l'est, pour recevoir l'instantané (amendement du 05/11).
 4. Rien n'est rejoué à la reconnexion, sauf l'état. Les effets manqués sont perdus, et c'est voulu.
-5. **Version.** La version de la liaison est **2** depuis la révision du 22/11/2026 (`LIAISON_CARTE.version`, donnée commune recopiée dans les deux dépôts). La version 2 ajoute au protocole de la version 1 un seul message, `map.turnReset { ref }` (§10) ; tout le reste est inchangé. Chaque côté écrit sa version dans le champ `v` de chaque enveloppe, `map.hello` et `mj.hello` compris, et ignore un message d'une autre version : l'indicateur passe à « versions de liaison différentes » et rien n'est échangé. L'outil MJ et la carte se publient donc ensemble.
+5. **Version.** La version de la liaison est **3** depuis la révision du 23/11/2026 (`LIAISON_CARTE.version`, donnée commune recopiée dans les deux dépôts). La version 2 (22/11/2026) a ajouté au protocole de la version 1 un seul message, `map.turnReset { ref }` (§10) ; la version 3 ajoute le point d'impact : `mj.impactQuery`, `mj.impactCancel` et `map.impact` (§10.1) ; tout le reste est inchangé. Chaque côté écrit sa version dans le champ `v` de chaque enveloppe, `map.hello` et `mj.hello` compris, et ignore un message d'une autre version : l'indicateur passe à « versions de liaison différentes » et rien n'est échangé. L'outil MJ et la carte se publient donc ensemble.
 
 ## 3. Identité et liaison
 
@@ -252,6 +253,18 @@ L'outil MJ envoie aussi `mj.engagements { pairs }`, à chaque changement et à c
 
 L'outil MJ envoie aussi `mj.turn { ref }` (révision du 21/11/2026) : la `ref` du pion du participant actif, `null` hors tour ou si l'actif n'est pas dans la scène. Il part à chaque changement de tour et **toujours** dans l'instantané. Map Display cerne ce pion d'un halo **sur l'écran MJ seulement**, jamais sur la tablette ; une monture fusionnée (§8.1) se trouve par `rider.ref`. Le tour n'est pas persisté, **republié vers la tablette** (`turn.select`, révision du 22/11/2026 — **à reporter dans la copie du dépôt outil MJ**).
 
+### 10.1 Point d'impact d'un sort de zone (version 3, révision du 23/11/2026)
+
+Le MJ lance un sort de zone dans l'outil MJ et désigne son point d'impact d'un clic sur une case de la carte, vide ou non. La carte renvoie la case et les pions liés pris dans le rayon ; l'outil MJ les précoche comme cibles et le MJ peut en décocher.
+
+| Message | Sens | Payload | Effet |
+|---|---|---|---|
+| `mj.impactQuery` | outil → carte | `{ queryId, label, radiusCells, casterRef }` : `queryId` texte ou nombre, unique par demande ; `label` court (nom du sort, 40 caractères au plus) ; `radiusCells` nombre ≥ 0, rayon en cases selon l'échelle des sorts (§4 : 1 m = 1 case), surpuissance comprise ; `casterRef` `ref` du lanceur ou `null` | L'écran MJ passe en mode « point d'impact » : bandeau « Point d'impact : `label` · rayon N cases — clique une case ; Échap annule », aperçu du cercle sous le pointeur. Étage : celui du lanceur s'il est posé (`casterRef`, monture fusionnée par `rider.ref`), sinon l'étage affiché. Une nouvelle demande remplace la précédente, qui reçoit `map.impact { queryId, cancelled: true }`. La tablette n'en voit rien. |
+| `map.impact` | carte → outil | Clic : `{ queryId, levelId, cell, refs }` ; `cell` est la case cliquée dans les coordonnées entières de la carte, **opaque pour l'outil MJ** (il ne l'interprète pas) ; `refs` liste sans doublon des `ref` des pions liés de cet étage dont l'emprise a au moins une case à une distance ≤ `radiusCells` de la case cliquée (géométrie du §14 D4, comme `map.distance`), pions cachés et morts compris ; une monture fusionnée donne sa `ref` et `rider.ref`. Abandon (Échap, ou demande remplacée) : `{ queryId, cancelled: true }`. Une seule réponse par demande, toujours émise par l'onglet gm.html | L'outil MJ ignore un `queryId` qu'il n'attend plus. Sinon il précoche comme cibles du sort les participants **actifs** de la rencontre dont la `ref` figure dans `refs` (les autres `ref` sont ignorées), garde tout décochable, et note le point d'impact ; `refs: []` = sort sur une case sans personne. `cancelled` : l'outil MJ revient au choix manuel des cibles. |
+| `mj.impactCancel` | outil → carte | `{ queryId }` | L'outil MJ n'attend plus (panneau du sort fermé, autre sort, résolution effacée) : la carte quitte le mode « point d'impact » sans répondre. Sans effet si `queryId` n'est pas la demande en cours. |
+
+Après le clic, la carte laisse au point d'impact un **gabarit cercle ordinaire** (calque `templates`), centré sur la case, du rayon demandé, visible des joueurs ; le MJ l'efface comme tout gabarit. Rien n'est persisté par la liaison, rien n'est rejoué, rien ne passe dans l'instantané : à la déconnexion, une demande en cours est perdue des deux côtés, l'outil MJ revient au choix manuel et la carte quitte le mode. Un pion non lié n'est jamais dans `refs`.
+
 ## 11. Amendements de Map Display couverts par ce contrat
 
 1. **Manifeste** (`ARCHITECTURE.md` §1) :
@@ -274,6 +287,7 @@ L'outil MJ envoie aussi `mj.turn { ref }` (révision du 21/11/2026) : la `ref` d
 7. **Événements réseau** (CdC §7) : republication vers la tablette des états liés et des effets éphémères, et fusion et séparation des pions de monture.
 8. **Verrous d'interface** : sur un pion lié, les contrôles des champs détenus par l'outil MJ sont grisés, sur le panneau MJ comme sur la tablette.
 9. **Pose armée** du cavalier au démontage, et contrôle d'adjacence à la remonte.
+10. **Point d'impact** (version 3, révision du 23/11/2026, §10.1) : mode « point d'impact » de l'écran MJ (bandeau, aperçu du cercle, clic sur une case, Échap), réponse `map.impact`, gabarit cercle laissé au point d'impact ; les fichiers neufs qu'il exige (module, tests) entrent au manifeste.
 
 ## 12. Changements côté outil MJ
 
@@ -287,7 +301,8 @@ L'outil MJ envoie aussi `mj.turn { ref }` (révision du 21/11/2026) : la `ref` d
   - indicateur « posé » et liste « à poser » ;
   - suggestions d'engagement ;
   - distance préremplie ;
-  - liste des PJ (`mj.roster`) pour la liaison durable.
+  - liste des PJ (`mj.roster`) pour la liaison durable ;
+  - point d'impact d'un sort de zone choisi sur la carte (§10.1, version 3).
 
 ## 13. Ordre de construction
 
