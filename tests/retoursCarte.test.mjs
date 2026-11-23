@@ -24,7 +24,7 @@ const pion = (id, ref, camp, a, b, patch = {}) => ({
 const scene = (tokens, reserve = []) => ({ ...createCampaign({ levels: [level, cave, hexLevel], tokens }), reserve });
 
 /** @param {string} type @param {any} payload */
-const msg = (type, payload) => ({ v: 2, type, seq: 1, at: 0, from: 'outil-mj', payload });
+const msg = (type, payload) => ({ v: 3, type, seq: 1, at: 0, from: 'outil-mj', payload });
 
 class FakeChannel {
   /** @type {FakeChannel|null} */ static last = null;

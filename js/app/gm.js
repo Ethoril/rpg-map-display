@@ -137,6 +137,46 @@ export async function bootstrapGMApp(options = {}) {
   let engagementPairs = () => /** @type {[string, string][]} */ ([]);
   /** Participant actif de l'outil MJ (`mj.turn`, contrat §10) — ⛔ vue MJ seule. */
   let activeTurnRef = () => /** @type {string|null} */ (null);
+  /**
+   * Point d'impact en attente du clic du MJ (contrat §10.1, `mjLink.impact`) — ⛔ vue MJ seule.
+   * @type {() => { queryId: string|number, label: string, radiusCells: number, levelId: string }|null}
+   */
+  let pendingImpact = () => null;
+  /** Remet à jour le bandeau du mode « point d'impact » (étage affiché changé). */
+  let refreshImpactBanner = () => {};
+  let impactTemplateCounter = 0;
+  /**
+   * Case sous le pointeur en mode « point d'impact » (contrat §10.1), pour l'aperçu du cercle.
+   * `null` hors du mode ou hors de la carte.
+   * @type {import('../core/types.js').Cell|null}
+   */
+  let impactHoverCell = null;
+  /**
+   * Cercle d'un point d'impact : forme cercle des gabarits ordinaires, centré sur la case, du rayon
+   * demandé. Un rayon 0 (« la case seule ») se dessine en disque inscrit dans la case, le schéma
+   * des gabarits refusant un rayon nul.
+   * @param {import('../grid/GridAdapter.js').GridAdapter} grid
+   * @param {string} levelId @param {import('../core/types.js').Cell} cell @param {number} radiusCells
+   */
+  const impactCircle = (grid, levelId, cell, radiusCells) => ({
+    levelId,
+    shape: /** @type {const} */ ('circle'),
+    origin: grid.cellCenter(cell),
+    radiusCells: radiusCells > 0 ? radiusCells : 0.5,
+    directionDeg: 0,
+    color: '#ef4444',
+  });
+  /**
+   * Aperçu du cercle sous le pointeur, en mode « point d'impact » sur l'étage de la demande :
+   * ⛔ vue MJ seule, jamais dans le store ni publié.
+   * @param {import('../grid/GridAdapter.js').GridAdapter} grid @param {string} levelId
+   * @returns {import('../core/types.js').Template[]}
+   */
+  const impactPreview = (grid, levelId) => {
+    const query = pendingImpact();
+    if (!query || !impactHoverCell || query.levelId !== levelId || gmPanel?.getActiveToolName?.() !== 'impact-pick') return [];
+    return [{ ...impactCircle(grid, levelId, impactHoverCell, query.radiusCells), id: 'impact-preview', visibleToPlayers: false }];
+  };
   /** @type {{ levelId: string, start: import('../core/types.js').MapPoint, end: import('../core/types.js').MapPoint|null, distance: number }|null} */
   let currentMeasure = null;
   const tokensLayer = new TokensLayer({ invalidate: requestRender });
@@ -845,7 +885,7 @@ export async function bootstrapGMApp(options = {}) {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         templatesLayer.render(
           stage.context, grid, activeLevel,
-          withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), false, camera.zoom,
+          [...withTemplatePreview(state.campaign?.templates ?? [], templateDragPreview), ...impactPreview(grid, activeLevel.id)], false, camera.zoom,
           gmPanel?.templateTools?.getSelectedTemplateId?.() ?? null
         );
         layerDurations.templates = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
@@ -1179,6 +1219,8 @@ export async function bootstrapGMApp(options = {}) {
     lastTurnSignature = turnSignature;
     if (!change?.session || turnChanged) movePlanning.reconcile(moveState.selectedToken, moveState.activeLevel);
     memoriserEtage(store.getActiveLevelId());
+    // Étage affiché changé pendant une demande de point d'impact : le bandeau le dit.
+    refreshImpactBanner();
     syncVision();
     requestRender();
     // Un masque de session n'est pas dans l'instantané : rien à réécrire dans Firestore (C2).
@@ -1450,6 +1492,21 @@ export async function bootstrapGMApp(options = {}) {
   // même origine. Ouverte après le chargement de la campagne, pour que l'instantané reçu trouve
   // les pions liés déjà là.
   let liaisonConnectee = false;
+  /**
+   * Bandeau du mode « point d'impact ». La case se vise sur l'étage de la demande (celui du
+   * lanceur posé) : si le MJ en regarde un autre, le bandeau le lui dit — l'écran ne bascule pas
+   * de lui-même.
+   * @param {{ label: string, radiusCells: number, levelId: string }} query
+   */
+  const impactBanner = (query) => {
+    const n = query.radiusCells;
+    const active = store.getActiveLevelId();
+    const ailleurs = active !== query.levelId ? store.getCampaign()?.levels.find((l) => l.id === query.levelId) : null;
+    return {
+      text: `Point d’impact : ${query.label} · rayon ${String(n).replace('.', ',')} case${n > 1 ? 's' : ''} —`,
+      hint: ailleurs ? `affiche l’étage « ${ailleurs.name} » pour viser ; Échap annule` : 'clique une case ; Échap annule',
+    };
+  };
   const mjLink = startMjLink({
     store,
     publish: (type, payload) => transport?.publish({ type, payload, at: Date.now(), by: 'gm' }),
@@ -1476,6 +1533,25 @@ export async function bootstrapGMApp(options = {}) {
     engagementPairs = () => mjLink.engagements();
     activeTurnRef = () => mjLink.activeTurn();
     mjLink.subscribe(() => requestRender());
+    // Point d'impact d'un sort de zone (contrat §10.1) : une demande arme le mode de l'écran MJ,
+    // sa fin (répondue, annulée, perdue) le quitte. Quitter le mode autrement (Échap, autre outil)
+    // est un abandon : `cancelImpact` l'envoie, et ne fait rien si la demande est déjà close.
+    /** @param {{ label: string, radiusCells: number, levelId: string }} query */
+    const armImpact = (query) => gmPanel?.armImpactPick({ ...impactBanner(query), onLeave: () => { mjLink.cancelImpact(); } });
+    pendingImpact = () => mjLink.impact();
+    refreshImpactBanner = () => {
+      const query = mjLink.impact();
+      if (query && gmPanel?.getActiveToolName?.() === 'impact-pick') armImpact(query);
+    };
+    mjLink.subscribeImpact((query) => {
+      impactHoverCell = null;
+      if (query) {
+        armImpact(query);
+      } else if (gmPanel?.getActiveToolName?.() === 'impact-pick') {
+        gmPanel.disarmActiveTool();
+      }
+      requestRender();
+    });
   }
 
   /**
@@ -1760,6 +1836,27 @@ export async function bootstrapGMApp(options = {}) {
       const activeLevel = state.activeLevel;
       const activeToolName = gmPanel?.getActiveToolName?.() ?? 'none';
       if (activeToolName !== 'none') cancelledMoveAt = null;
+
+      if (activeToolName === 'impact-pick') {
+        // Point d'impact (contrat §10.1) : la case cliquée, vide ou non, sur l'étage de la demande.
+        // Un clic sur un autre étage ne répond pas : le bandeau dit lequel afficher.
+        const query = pendingImpact();
+        if (!query || query.levelId !== activeLevel.id) return;
+        const grid = gridFor(activeLevel);
+        const cell = grid.cellFromPoint(intention.mapPos);
+        const answer = cell ? mjLink?.answerImpact(cell) ?? null : null;
+        if (!cell || !answer) return;
+        /** @type {import('../core/types.js').Template} */
+        const template = {
+          ...impactCircle(grid, answer.levelId, cell, answer.radiusCells),
+          id: `template-impact-${Date.now()}-${++impactTemplateCounter}`,
+          visibleToPlayers: true,
+        };
+        store.placeTemplate(template);
+        transport?.publish({ type: 'template.place', payload: { template }, at: Date.now(), by: 'gm' });
+        requestRender();
+        return;
+      }
 
       if (activeToolName === 'ping') {
         // Affichage local immédiat, sans attendre l'aller-retour réseau : le MJ doit voir que son
@@ -2436,6 +2533,24 @@ export async function bootstrapGMApp(options = {}) {
     document.addEventListener('keydown', onKeyDown);
   }
 
+  /**
+   * Survol en mode « point d'impact » (contrat §10.1) : la case sous le pointeur nourrit l'aperçu
+   * du cercle. Aucun autre mode ne lit ce survol.
+   * @param {PointerEvent} e
+   */
+  const onImpactHover = (e) => {
+    if (gmPanel?.getActiveToolName?.() !== 'impact-pick') return;
+    const level = store.getActiveLevel();
+    if (!level) return;
+    const rect = canvas.getBoundingClientRect();
+    const mapPos = camera.screenToMap({ screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
+    const cell = gridFor(level).cellFromPoint(mapPos);
+    if (cell?.a === impactHoverCell?.a && cell?.b === impactHoverCell?.b) return;
+    impactHoverCell = cell;
+    requestRender();
+  };
+  canvas.addEventListener('pointermove', onImpactHover);
+
   const onResize = () => {
     stage.resize();
     camera.setViewport(stage.width, stage.height);
@@ -2454,6 +2569,7 @@ export async function bootstrapGMApp(options = {}) {
       document.removeEventListener('visibilitychange', onVisibilityRestored);
     }
     pointerInput.detach();
+    canvas.removeEventListener('pointermove', onImpactHover);
     // Sans ceci, le flux vidéo survit à la destruction de la vue : Chromium continue de
     // décoder tant que l'élément existe avec une source. Toutes les autres ressources de
     // cette fonction sont libérées ici ; celle-ci est la plus coûteuse.

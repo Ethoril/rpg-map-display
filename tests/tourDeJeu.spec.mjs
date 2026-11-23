@@ -204,7 +204,7 @@ const envoyerTour = (gmPage, ref) =>
   gmPage.evaluate((r) => {
     const canal = new BroadcastChannel('wfrp-map-link');
     canal.postMessage({
-      v: 2,
+      v: 3,
       type: 'mj.turn',
       seq: Date.now(),
       at: Date.now(),

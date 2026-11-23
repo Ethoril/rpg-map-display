@@ -2048,6 +2048,23 @@ d'acceptation du §11.
 > l'émission. ⛔ Le branchement dans `gm.js` n'est couvert par aucun test automatique.
 > ⏳ **À éprouver à la table** avec l'outil MJ connecté : annuler après une Course, l'Action du Tour doit être rendue.
 
+> ### ⏳ Lot C4 — point d'impact d'un sort de zone, liaison version 3 — codé le 23/11/2026, **non publié**
+>
+> Retour R16 du MJ (« cibler une case, pas un combattant ») : contrat §10.1, révision du 23/11,
+> recopié avec `donnees-communes.js` (`version: 3`). `mj.impactQuery` arme l'outil `impact-pick` de
+> l'écran MJ (`panel.armImpactPick`) : bandeau « Point d’impact : <label> · rayon N cases — clique
+> une case ; Échap annule », aperçu du cercle sous le pointeur (vue MJ seule), outil en cours
+> désarmé. Le clic envoie **un seul** `map.impact { queryId, levelId, cell, refs }` (`impactRefs`,
+> `js/app/mjLink.js` : `distanceBetweenFootprints`, même géométrie que `map.distance`) et laisse un
+> gabarit cercle ordinaire visible des joueurs. Quitter le mode autrement (Échap, autre outil,
+> palette, « Ranger ») = `cancelled` ; demande remplacée = `cancelled` ; `mj.impactCancel` et la
+> déconnexion = sortie sans réponse. Étage : celui du lanceur posé, sinon l'étage affiché ; si le
+> MJ en regarde un autre, le bandeau le dit et le clic ne répond pas (l'écran ne bascule pas).
+> Rayon 0 : gabarit de 0,5 case (le schéma refuse un rayon nul). Tests : `tests/liaisonOutilMj.test.mjs`
+> (7) et `tests/pointImpact.spec.mjs` (2) ; 20 mutations de l'effet, toutes vues rouges.
+> ⚠ Version 3 d'un seul côté = liaison coupée : à publier avec l'outil MJ (lot G4), le même jour.
+> ⏳ **À éprouver à la table** : un sort de zone lancé dans l'outil, la case visée sur la carte.
+
 > ### ✅ Chantier C-10 — refonte de la vue MJ, livrée le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur : la vue MJ était « fonctionnelle mais inesthétique et peu pratique ».

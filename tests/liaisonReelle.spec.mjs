@@ -235,7 +235,7 @@ test('liaison réelle : un instantané vide retire les anciens traits d’engage
       w.__auditDropEmpty = false;
       const count = w.__auditSnapshotCount || 0;
       const channel = new BroadcastChannel('wfrp-map-link');
-      channel.postMessage({ v: 2, type: 'map.hello', from: 'map', payload: {} });
+      channel.postMessage({ v: 3, type: 'map.hello', from: 'map', payload: {} });
       channel.close();
       return count;
     });

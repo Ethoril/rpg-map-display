@@ -76,7 +76,7 @@ function naturalImageSize(url) {
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, armRiderPose: (tokenId: string, around: { levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }) => void, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, destroy: () => void}}
+ * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, armRiderPose: (tokenId: string, around: { levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }) => void, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, armImpactPick: (banner: { text: string, hint: string, onLeave: () => void }) => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -615,6 +615,7 @@ export function createGMPanel(container, options = {}) {
     measure: 'Mesure',
     'light-place': 'Poser une lampe',
     'light-delete': 'Ôter une lampe',
+    'impact-pick': 'Point d’impact',
   };
 
   /**
@@ -678,8 +679,18 @@ export function createGMPanel(container, options = {}) {
   );
   const tabPanes = /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.gm-tab-pane'));
 
-  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete'} */
+  /** @type {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete'|'impact-pick'} */
   let activeToolName = 'none';
+
+  /**
+   * Mode « point d'impact » (contrat de liaison §10.1) : armé par la liaison, pas par un bouton.
+   * Son bandeau dit le sort et le rayon ; `onLeave` est appelé quand l'outil quitte ce mode, quelle
+   * qu'en soit la cause (clic répondu, Échap, autre outil, palette) — la liaison décide s'il reste
+   * une réponse d'abandon à envoyer.
+   *
+   * @type {{ text: string, hint: string, onLeave: () => void }|null}
+   */
+  let impactPick = null;
 
   /**
    * Pion généré, en attente de la case où le MJ va taper (UX-08).
@@ -744,8 +755,9 @@ export function createGMPanel(container, options = {}) {
   function updateActiveToolBanner() {
     const armed = activeToolName !== 'none';
     canvasContainer.classList.toggle('gm-armed', armed);
-    if (activeToolText) activeToolText.textContent = armed ? TOOL_LABELS[activeToolName] || activeToolName : '';
-    if (activeToolHint) activeToolHint.textContent = TOOL_HINTS[activeToolName] ?? '';
+    const impact = activeToolName === 'impact-pick' ? impactPick : null;
+    if (activeToolText) activeToolText.textContent = impact ? impact.text : armed ? TOOL_LABELS[activeToolName] || activeToolName : '';
+    if (activeToolHint) activeToolHint.textContent = impact ? impact.hint : TOOL_HINTS[activeToolName] ?? '';
   }
 
   disarmActiveToolBtn?.addEventListener('click', () => {
@@ -793,7 +805,7 @@ export function createGMPanel(container, options = {}) {
    */
   let settingActiveTool = false;
 
-  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete'} toolName */
+  /** @param {'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete'|'impact-pick'} toolName */
   function setActiveTool(toolName) {
     if (activeToolName === toolName) return;
 
@@ -836,6 +848,13 @@ export function createGMPanel(container, options = {}) {
     // et une image que le MJ ne relierait plus à rien.
     if (prevTool === 'token-place' && toolName !== 'token-place') {
       clearPendingToken();
+    }
+    // Point d'impact (contrat §10.1) : quitter le mode, c'est clore la demande. `onLeave` après la
+    // remise à zéro, pour qu'un rappel qui réarme une nouvelle demande ne soit pas effacé ici.
+    if (prevTool === 'impact-pick' && toolName !== 'impact-pick') {
+      const leave = impactPick?.onLeave;
+      impactPick = null;
+      leave?.();
     }
 
     if (toolName === 'none') {
@@ -2766,6 +2785,20 @@ export function createGMPanel(container, options = {}) {
     getActiveToolName,
     setActiveTool,
     disarmActiveTool,
+    /**
+     * Arme le mode « point d'impact » (contrat de liaison §10.1), ou met à jour son bandeau s'il
+     * l'est déjà (demande remplacée, étage affiché changé). Désarme l'outil en cours comme tout
+     * changement d'outil, et ferme la palette, qui masquerait le bandeau.
+     * @param {{ text: string, hint: string, onLeave: () => void }} banner
+     */
+    armImpactPick(banner) {
+      if (activeToolName !== 'impact-pick') {
+        showPalette(null);
+        setActiveTool('impact-pick');
+      }
+      impactPick = banner;
+      updateActiveToolBanner();
+    },
     destroy: () => {
       listeners.abort();
       unsubscribeStore();

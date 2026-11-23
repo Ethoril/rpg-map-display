@@ -56,8 +56,24 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
  *   | { op: 'awaitBinding', ref: string, label: string }
  *   | { op: 'fx', tokenId: string, hidden: boolean, fx: NonNullable<ReturnType<typeof parseFx>> }
  *   | { op: 'merge', riderTokenId: string, mountTokenId: string }
- *   | { op: 'split', riderTokenId: string, mountTokenId: string }} MjLinkOperation
+ *   | { op: 'split', riderTokenId: string, mountTokenId: string }
+ *   | { op: 'impactQuery', query: ImpactQuery }
+ *   | { op: 'impactCancel', queryId: string|number }} MjLinkOperation
  */
+
+/**
+ * Demande de point d'impact d'un sort de zone (`mj.impactQuery`, contrat §10.1, version 3).
+ * `casterLevelId` : étage du lanceur s'il est posé, sinon `null` (l'écran MJ prend l'étage affiché).
+ * @typedef {{ queryId: string|number, label: string, radiusCells: number, casterRef: string|null, casterLevelId: string|null }} ImpactQuery
+ */
+
+/**
+ * Demande de point d'impact en cours, l'étage résolu.
+ * @typedef {{ queryId: string|number, label: string, radiusCells: number, levelId: string }} PendingImpact
+ */
+
+/** Longueur maximale du `label` d'un `mj.impactQuery` (contrat §10.1). */
+export const IMPACT_LABEL_MAX = 40;
 
 /** Champs que l'outil MJ écrit sur un pion lié (contrat §1). */
 const OWNED_KEYS = /** @type {const} */ ([
@@ -269,6 +285,60 @@ export function answerDistanceQuery(campaign, payload) {
   return { queryId, cells: distanceBetweenFootprints(level, from, to) };
 }
 
+/** @param {unknown} queryId @returns {queryId is string|number} */
+const isQueryId = (queryId) => typeof queryId === 'string' || (typeof queryId === 'number' && Number.isFinite(queryId));
+
+/**
+ * Lecture d'un `mj.impactQuery` (contrat §10.1) : `queryId` texte ou nombre, `radiusCells` nombre
+ * ≥ 0, `label` borné à 40 caractères, `casterRef` ou `null`. L'étage du lanceur est celui de son
+ * pion posé, monture fusionnée comprise (`rider.ref`), comme pour `answerDistanceQuery`.
+ *
+ * @param {Campaign} campaign
+ * @param {any} payload
+ * @returns {ImpactQuery|null}
+ */
+export function parseImpactQuery(campaign, payload) {
+  const { queryId, label, radiusCells, casterRef } = payload ?? {};
+  if (!isQueryId(queryId) || typeof radiusCells !== 'number' || !Number.isFinite(radiusCells) || radiusCells < 0) return null;
+  const ref = typeof casterRef === 'string' && casterRef ? casterRef : null;
+  const caster = ref ? campaign.tokens.find((t) => isLinkedToken(t) && (t.link?.ref === ref || t.rider?.ref === ref)) : null;
+  return {
+    queryId,
+    label: (typeof label === 'string' ? label : '').slice(0, IMPACT_LABEL_MAX),
+    radiusCells,
+    casterRef: ref,
+    casterLevelId: caster ? caster.levelId : null,
+  };
+}
+
+/**
+ * `refs` d'un point d'impact (contrat §10.1, `map.impact`) : les pions liés posés sur l'étage dont
+ * l'emprise a au moins une case à une `grid.distance` ≤ `radiusCells` de la case visée — même
+ * géométrie que `map.distance` (§14 D4 : octile en carré, hexagonale en hexagone). Cachés et morts
+ * compris ; une monture fusionnée donne sa `ref` et `rider.ref`. Sans doublon, dans l'ordre du
+ * plateau. Un pion non lié n'y est jamais.
+ *
+ * @param {Campaign} campaign
+ * @param {string} levelId
+ * @param {import('../core/types.js').Cell} cell
+ * @param {number} radiusCells
+ * @returns {string[]}
+ */
+export function impactRefs(campaign, levelId, cell, radiusCells) {
+  const level = campaign.levels.find((l) => l.id === levelId);
+  if (!level) return [];
+  /** @type {Set<string>} */
+  const refs = new Set();
+  const target = { cell: { a: cell.a, b: cell.b }, sizeCells: 1 };
+  for (const token of campaign.tokens) {
+    if (!isLinkedToken(token) || !token.link || token.levelId !== levelId) continue;
+    if (distanceBetweenFootprints(level, target, token) > radiusCells) continue;
+    refs.add(token.link.ref);
+    if (token.rider?.ref) refs.add(token.rider.ref);
+  }
+  return [...refs];
+}
+
 /**
  * Paires `mj.engagements` valides : deux `ref` textuels distincts.
  * @param {any} payload @returns {[string, string][]}
@@ -318,6 +388,12 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
       const split = planSplit(campaign, findLinkedToken(campaign, payload.riderRef), payload.mountRef);
       return split ? [split] : [];
     }
+    case 'mj.impactQuery': {
+      const query = parseImpactQuery(campaign, payload);
+      return query ? [{ op: 'impactQuery', query }] : [];
+    }
+    case 'mj.impactCancel':
+      return isQueryId(payload.queryId) ? [{ op: 'impactCancel', queryId: payload.queryId }] : [];
     case 'mj.snapshot': {
       /** @type {MjTokenState[]} */
       const tokens = Array.isArray(payload.tokens) ? payload.tokens : [];
@@ -365,6 +441,7 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
  *   newTokenId: () => string,
  *   trace: { levelId: string, cell: { a: number, b: number } },
  *   onRiderToPlace?: (riderTokenId: string, around: { levelId: string, cell: { a: number, b: number }, sizeCells: number }) => void,
+ *   onImpact?: (op: Extract<MjLinkOperation, { op: 'impactQuery'|'impactCancel' }>) => void,
  * }} deps
  * @returns {{ awaiting: { ref: string, label: string }[] }}
  */
@@ -419,6 +496,11 @@ export function executeMjOperations(ops, deps) {
         break;
       case 'split':
         splitMount(op, deps);
+        break;
+      case 'impactQuery':
+      case 'impactCancel':
+        // Point d'impact (contrat §10.1) : rien dans la campagne, la demande vit dans la liaison.
+        deps.onImpact?.(op);
         break;
     }
   }
@@ -579,7 +661,9 @@ export const MJ_LINK_ECHO_MS = LIAISON_CARTE.echoMs;
  *   Channel?: typeof BroadcastChannel,
  *   now?: () => number,
  * }} options
- * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, reportTurnReset: (tokenId: string) => boolean, engagements: () => [string, string][], activeTurn: () => string|null }|null}
+ * @returns {{ tick: () => void, close: () => void, status: () => { status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[] }, subscribe: (listener: () => void) => () => void, roster: () => { ref: string, label: string }[], bind: (tokenId: string, ref: string|null) => void, reportMove: (tokenId: string, path: import('../core/types.js').Cell[]) => boolean, reportTurnReset: (tokenId: string) => boolean, engagements: () => [string, string][], activeTurn: () => string|null,
+ *   impact: () => PendingImpact|null, subscribeImpact: (listener: (query: PendingImpact|null) => void) => () => void,
+ *   answerImpact: (cell: import('../core/types.js').Cell) => (PendingImpact & { cell: import('../core/types.js').Cell, refs: string[] })|null, cancelImpact: () => boolean }|null}
  */
 export function startMjLink(options) {
   const Channel = options.Channel ?? globalThis.BroadcastChannel;
@@ -618,6 +702,40 @@ export function startMjLink(options) {
   /** @type {string|null} */
   let positionsSignature = null;
   let counter = 0;
+  /**
+   * Point d'impact demandé par l'outil MJ (contrat §10.1), en attente du clic du MJ. Une seule
+   * réponse par demande : la répondre ou l'abandonner la remet à `null`. Ni persistée, ni rejouée,
+   * perdue à la déconnexion.
+   * @type {PendingImpact|null}
+   */
+  let pendingImpact = null;
+  /** @type {Set<(query: PendingImpact|null) => void>} */
+  const impactListeners = new Set();
+  const emitImpact = () => {
+    const query = pendingImpact ? { ...pendingImpact } : null;
+    for (const listener of impactListeners) listener(query);
+  };
+  /** La demande en cours est perdue (déconnexion) : l'écran MJ quitte le mode, rien n'est envoyé. */
+  const dropImpact = () => {
+    if (!pendingImpact) return;
+    pendingImpact = null;
+    emitImpact();
+  };
+  /** @param {Extract<MjLinkOperation, { op: 'impactQuery'|'impactCancel' }>} op */
+  const onImpactOperation = (op) => {
+    if (op.op === 'impactCancel') {
+      if (pendingImpact?.queryId !== op.queryId) return;
+      pendingImpact = null;
+      emitImpact();
+      return;
+    }
+    // Une nouvelle demande remplace la précédente, qui reçoit sa réponse d'abandon.
+    if (pendingImpact) send('map.impact', { queryId: pendingImpact.queryId, cancelled: true });
+    const campaign = options.store.getCampaign();
+    const levelId = op.query.casterLevelId ?? options.activeLevelId() ?? campaign?.levels[0]?.id ?? '';
+    pendingImpact = { queryId: op.query.queryId, label: op.query.label, radiusCells: op.query.radiusCells, levelId };
+    emitImpact();
+  };
   const awaitingList = () => [...awaiting].map(([ref, label]) => ({ ref, label }));
   /** @type {Set<() => void>} */
   const listeners = new Set();
@@ -697,6 +815,7 @@ export function startMjLink(options) {
     if (resumed && status === 'connected') {
       activeTurn = null;
       syncTurn();
+      dropImpact();
       setStatus('disconnected');
     }
     lastSeen = receivedAt;
@@ -754,6 +873,7 @@ export function startMjLink(options) {
         newTokenId: () => `lie-${now().toString(36)}-${++counter}`,
         trace: { levelId, cell: { a: 0, b: 0 } },
         onRiderToPlace: options.onRiderToPlace,
+        onImpact: onImpactOperation,
       });
       let changed = false;
       for (const { ref, label } of refs) {
@@ -784,8 +904,48 @@ export function startMjLink(options) {
       if (status === 'connected' && lastSeen !== null && now() - lastSeen > MJ_LINK_TIMEOUT_MS) {
         activeTurn = null;
         syncTurn();
+        dropImpact();
         setStatus('disconnected');
       }
+    },
+    /** Point d'impact en attente du clic du MJ (contrat §10.1), ou `null`. */
+    impact: () => (pendingImpact ? { ...pendingImpact } : null),
+    /**
+     * Prévient l'écran MJ à chaque changement de la demande : une demande à viser, ou `null` quand
+     * il n'y en a plus (répondue, abandonnée, annulée par l'outil MJ ou perdue à la déconnexion).
+     * @param {(query: PendingImpact|null) => void} listener @returns {() => void}
+     */
+    subscribeImpact(listener) {
+      impactListeners.add(listener);
+      return () => impactListeners.delete(listener);
+    },
+    /**
+     * Clic du MJ sur une case de l'étage de la demande : `map.impact { queryId, levelId, cell, refs }`,
+     * une seule fois. Rend la réponse (et le rayon, pour le gabarit), ou `null` sans demande en cours.
+     * @param {import('../core/types.js').Cell} cell
+     */
+    answerImpact(cell) {
+      const campaign = options.store.getCampaign();
+      if (!pendingImpact || !campaign) return null;
+      const query = pendingImpact;
+      const target = { a: cell.a, b: cell.b };
+      const refs = impactRefs(campaign, query.levelId, target, query.radiusCells);
+      pendingImpact = null;
+      send('map.impact', { queryId: query.queryId, levelId: query.levelId, cell: target, refs });
+      emitImpact();
+      return { ...query, cell: target, refs };
+    },
+    /**
+     * Abandon par le MJ (Échap, autre outil) : `map.impact { queryId, cancelled: true }`, une seule
+     * fois. @returns {boolean} true si une réponse est partie
+     */
+    cancelImpact() {
+      if (!pendingImpact) return false;
+      const { queryId } = pendingImpact;
+      pendingImpact = null;
+      send('map.impact', { queryId, cancelled: true });
+      emitImpact();
+      return true;
     },
     close() {
       unsubscribe();

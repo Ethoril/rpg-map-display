@@ -117,7 +117,7 @@ class FakeChannel {
   /** @param {any} data */ deliver(data) { this.onmessage?.({ data }); }
 }
 /** @param {string} type @param {any} payload */
-const mj = (type, payload) => ({ v: 2, type, seq: 1, at: 0, from: 'outil-mj', payload });
+const mj = (type, payload) => ({ v: 3, type, seq: 1, at: 0, from: 'outil-mj', payload });
 
 test('Pion actif : mj.turn retenu pour l’écran MJ, abonnés prévenus, oublié à la déconnexion', () => {
   storeModule.loadCampaign(campagneAEscalier());

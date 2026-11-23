@@ -10,7 +10,7 @@ import { movementRulesFor } from '../js/state/selection.js';
  * @param {string} type
  * @param {any} payload
  */
-const msg = (type, payload) => ({ v: 2, type, seq: 1, at: 0, from: 'outil-mj', payload });
+const msg = (type, payload) => ({ v: 3, type, seq: 1, at: 0, from: 'outil-mj', payload });
 const link = { source: /** @type {'outil-mj'} */ ('outil-mj'), ref: 'p:g1' };
 const level = createLevel({ id: 'rdc', widthCells: 12, heightCells: 12 });
 /** @param {any} token */
@@ -912,4 +912,129 @@ test('mjLink : après fusion puis séparation, le cavalier est DESSINÉ sur sa c
   const centre = { x: rects[0].x + rects[0].w / 2, y: rects[0].y + rects[0].h / 2 };
   assert.ok(Math.hypot(centre.x - attendu.x, centre.y - attendu.y) < 1e-6,
     `dessiné en (${centre.x.toFixed(0)}, ${centre.y.toFixed(0)}), sa case est en (${attendu.x.toFixed(0)}, ${attendu.y.toFixed(0)})`);
+});
+
+// --- Point d'impact d'un sort de zone (contrat §10.1, version 3, révision du 23/11/2026) ---
+
+/**
+ * Campagne de deux étages pour `impactRefs` : `rdc` 12 × 12 (carré ou hexagone) et `haut`.
+ * @param {any[]} tokens
+ * @param {'square'|'hex'} [type]
+ */
+const impactCampaign = (tokens, type = 'square') => createCampaign({
+  levels: [
+    createLevel({ id: 'rdc', widthCells: 12, heightCells: 12, ...(type === 'hex' ? { grid: /** @type {any} */ ({ type: 'hex', offsetX: 0, offsetY: 0 }) } : {}) }),
+    createLevel({ id: 'haut', widthCells: 12, heightCells: 12 }),
+  ],
+  tokens,
+});
+/** @param {string} id @param {string} ref @param {{ a: number, b: number }} cell @param {object} [patch] */
+const lie = (id, ref, cell, patch = {}) => ({ ...createToken({ id, levelId: 'rdc', cell }), link: { source: /** @type {const} */ ('outil-mj'), ref }, ...patch });
+
+test('impactRefs : case vide → aucune ref ; rayon 0 → la case seule', async () => {
+  const { impactRefs } = await import('../js/app/mjLink.js');
+  const camp = impactCampaign([lie('g1', 'p:g1', { a: 6, b: 5 })]);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 2, b: 2 }, 2), []);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 6, b: 5 }, 0), ['p:g1'], 'rayon 0 : le pion sur la case');
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 5, b: 5 }, 0), [], 'rayon 0 : la case voisine n’y est pas');
+});
+
+test('impactRefs : coût octile en carré — juste dans le rayon, juste dehors', async () => {
+  const { impactRefs } = await import('../js/app/mjLink.js');
+  // Depuis (2,2) : (5,2) à 3 ; (4,4) à 2 diagonales = 3 ; (5,3) à 2 + 1,5 = 3,5 ; (6,2) à 4.
+  const camp = impactCampaign([
+    lie('a', 'p:a', { a: 5, b: 2 }), lie('b', 'p:b', { a: 4, b: 4 }), lie('c', 'p:c', { a: 5, b: 3 }), lie('d', 'p:d', { a: 6, b: 2 }),
+  ]);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 2, b: 2 }, 3), ['p:a', 'p:b']);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 2, b: 2 }, 3.5), ['p:a', 'p:b', 'p:c']);
+});
+
+test('impactRefs : grille hexagonale — distance hexagonale de l’étage', async () => {
+  const { impactRefs } = await import('../js/app/mjLink.js');
+  const { gridFor } = await import('../js/grid/index.js');
+  const camp = impactCampaign([lie('a', 'p:a', { a: 5, b: 4 }), lie('b', 'p:b', { a: 8, b: 4 })], 'hex');
+  const grid = gridFor(camp.levels[0]);
+  assert.equal(grid.distance({ a: 5, b: 2 }, { a: 5, b: 4 }), 2);
+  assert.ok(grid.distance({ a: 5, b: 2 }, { a: 8, b: 4 }) > 2);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 5, b: 2 }, 2), ['p:a']);
+});
+
+test('impactRefs : grand pion pris par une seule case de son emprise', async () => {
+  const { impactRefs } = await import('../js/app/mjLink.js');
+  // Ogre 2×2 en (4,4) : emprise (4..5, 4..5). Depuis (2,4), sa case la plus proche (4,4) est à 2.
+  const camp = impactCampaign([lie('ogre', 'p:ogre', { a: 4, b: 4 }, { sizeCells: 2 })]);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 2, b: 4 }, 2), ['p:ogre']);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 1, b: 4 }, 2), []);
+  assert.deepEqual(impactRefs(camp, 'rdc', { a: 7, b: 5 }, 2), ['p:ogre'], 'par la case (5,5) de l’emprise');
+});
+
+test('impactRefs : autre étage et pion non lié exclus ; cachés et morts inclus ; monture fusionnée sans doublon', async () => {
+  const { impactRefs } = await import('../js/app/mjLink.js');
+  const rider = { ref: 'p:cheval', label: 'Cheval', imageUrl: null, hp: null, health: 'unharmed', markers: [], markerLevels: {} };
+  const camp = impactCampaign([
+    lie('haut', 'p:haut', { a: 3, b: 3 }, { levelId: 'haut' }),
+    createToken({ id: 'libre', levelId: 'rdc', cell: { a: 3, b: 3 } }),
+    lie('cache', 'p:cache', { a: 3, b: 4 }, { hidden: true }),
+    lie('mort', 'p:mort', { a: 4, b: 3 }, { dead: true }),
+    lie('cav', 'pj:cav', { a: 2, b: 3 }, { mounted: true, rider }),
+    lie('cav2', 'pj:cav', { a: 2, b: 2 }),
+  ]);
+  const refs = impactRefs(camp, 'rdc', { a: 3, b: 3 }, 1);
+  assert.deepEqual([...refs].sort(), ['p:cache', 'p:cheval', 'p:mort', 'pj:cav']);
+  assert.equal(new Set(refs).size, refs.length, 'sans doublon');
+  assert.deepEqual(impactRefs(camp, 'haut', { a: 3, b: 3 }, 1), ['p:haut']);
+});
+
+test('planMjMessage : mj.impactQuery et mj.impactCancel acceptés en version 3, ignorés en version 2', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const camp = impactCampaign([lie('cav', 'pj:cav', { a: 2, b: 3 }, { levelId: 'haut' })]);
+  const query = { queryId: 'q1', label: 'Boule de feu', radiusCells: 3, casterRef: 'pj:cav' };
+  assert.deepEqual(planMjMessage(camp, msg('mj.impactQuery', query)), [
+    { op: 'impactQuery', query: { queryId: 'q1', label: 'Boule de feu', radiusCells: 3, casterRef: 'pj:cav', casterLevelId: 'haut' } },
+  ]);
+  assert.deepEqual(planMjMessage(camp, msg('mj.impactQuery', { ...query, queryId: 7, casterRef: null })), [
+    { op: 'impactQuery', query: { queryId: 7, label: 'Boule de feu', radiusCells: 3, casterRef: null, casterLevelId: null } },
+  ], 'sans lanceur posé : l’écran MJ prend l’étage affiché');
+  assert.deepEqual(planMjMessage(camp, msg('mj.impactCancel', { queryId: 'q1' })), [{ op: 'impactCancel', queryId: 'q1' }]);
+  assert.deepEqual(planMjMessage(camp, { ...msg('mj.impactQuery', query), v: 2 }), [], 'version 2 ignorée');
+  assert.deepEqual(planMjMessage(camp, { ...msg('mj.impactCancel', { queryId: 'q1' }), v: 2 }), [], 'version 2 ignorée');
+  assert.deepEqual(planMjMessage(camp, msg('mj.impactQuery', { ...query, radiusCells: -1 })), [], 'rayon négatif refusé');
+  assert.deepEqual(planMjMessage(camp, msg('mj.impactQuery', { ...query, queryId: undefined })), [], 'queryId requis');
+  const long = planMjMessage(camp, msg('mj.impactQuery', { ...query, label: 'x'.repeat(60) }));
+  assert.equal(/** @type {any} */ (long[0]).query.label.length, 40, 'label borné à 40 caractères');
+});
+
+test('mjLink : canal — une demande, une seule réponse ; remplacée → cancelled ; mj.impactCancel → rien', async () => {
+  const camp = impactCampaign([lie('g1', 'p:g1', { a: 4, b: 3 }), lie('cav', 'pj:cav', { a: 2, b: 3 })]);
+  const { link, channel } = await openLink({ campaign: () => camp });
+  /** @type {any[]} */ const armed = [];
+  link.subscribeImpact((/** @type {any} */ q) => armed.push(q));
+  const impacts = () => FakeChannel.sent.filter((m) => m.type === 'map.impact').map((m) => m.payload);
+
+  channel.deliver(msg('mj.impactQuery', { queryId: 'q1', label: 'Boule de feu', radiusCells: 1, casterRef: 'pj:cav' }));
+  assert.equal(link.impact()?.queryId, 'q1');
+  assert.equal(link.impact()?.levelId, 'rdc');
+  assert.deepEqual(armed.map((q) => q?.queryId ?? null), ['q1']);
+  const answer = link.answerImpact({ a: 3, b: 3 });
+  assert.deepEqual(answer?.refs, ['p:g1', 'pj:cav']);
+  assert.deepEqual(impacts(), [{ queryId: 'q1', levelId: 'rdc', cell: { a: 3, b: 3 }, refs: ['p:g1', 'pj:cav'] }]);
+  assert.equal(link.answerImpact({ a: 3, b: 3 }), null, 'une seule réponse par demande');
+  assert.equal(link.cancelImpact(), false);
+  assert.equal(impacts().length, 1);
+
+  channel.deliver(msg('mj.impactQuery', { queryId: 'q2', label: 'A', radiusCells: 1, casterRef: null }));
+  channel.deliver(msg('mj.impactQuery', { queryId: 'q3', label: 'B', radiusCells: 2, casterRef: null }));
+  assert.deepEqual(impacts().slice(1), [{ queryId: 'q2', cancelled: true }], 'la demande remplacée est annulée');
+  channel.deliver(msg('mj.impactCancel', { queryId: 'q2' }));
+  assert.equal(link.impact()?.queryId, 'q3', 'impactCancel d’une autre demande : sans effet');
+  channel.deliver(msg('mj.impactCancel', { queryId: 'q3' }));
+  assert.equal(link.impact(), null);
+  assert.equal(armed.at(-1), null, 'l’écran MJ quitte le mode');
+  assert.equal(impacts().length, 2, 'mj.impactCancel : aucune réponse');
+
+  channel.deliver(msg('mj.impactQuery', { queryId: 'q4', label: 'C', radiusCells: 0, casterRef: null }));
+  assert.equal(link.cancelImpact(), true);
+  assert.deepEqual(impacts().at(-1), { queryId: 'q4', cancelled: true });
+  assert.equal(link.cancelImpact(), false, 'une seule réponse');
+  assert.equal(impacts().length, 3);
 });

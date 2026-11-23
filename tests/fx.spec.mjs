@@ -61,7 +61,7 @@ for (const hidden of [false, true]) {
     await outil.goto('/gm.html?session=emetteur-fx');
     await outil.evaluate(() => {
       const canal = new BroadcastChannel('wfrp-map-link');
-      canal.postMessage({ v: 2, type: 'fx.death', seq: 1, at: Date.now(), from: 'outil-mj', payload: { ref: 'p:gob', cause: 'fire' } });
+      canal.postMessage({ v: 3, type: 'fx.death', seq: 1, at: Date.now(), from: 'outil-mj', payload: { ref: 'p:gob', cause: 'fire' } });
     });
 
     // Feu en deux couches : brûlure au sol en multiply, flammes en screen.
