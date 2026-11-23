@@ -137,10 +137,23 @@ function createMockCanvas(width, height) {
 
     fill() {
       const style = this.fillStyle;
-      if (!style || !style.__gradient) throw new Error('Le mock n’attend un fill() qu’avec un dégradé.');
+      // R9 (23/11/2026) : `reachCanvas` reçoit le polygone rempli en PLEIN (couleur rgba, pas de
+      // dégradé) ; le champ et le halo, eux, restent des dégradés.
+      const plein = !style || !style.__gradient;
+      if (plein && typeof style !== 'string') throw new Error('Le mock attend un dégradé ou une couleur rgba().');
       if (path.length < 3) return;
       const mode = this.globalCompositeOperation;
       journal.push({ op: 'fill', mode, sommets: path.length });
+
+      if (plein) {
+        const { couleur, alpha } = lireRgba(style);
+        for (let ligne = 0; ligne < height; ligne++) {
+          for (let col = 0; col < width; col++) {
+            if (dansLePolygone({ x: col + 0.5, y: ligne + 0.5 }, path)) fusionner((ligne * width + col) * 4, couleur, alpha, mode);
+          }
+        }
+        return;
+      }
 
       const debut = lireRgba(style.stops[0].texte);
       // Interpolation LINÉAIRE PAR MORCEAUX entre arrêts successifs — le halo en pose cinq
@@ -203,7 +216,7 @@ function fabrique() {
     crees.push(mock);
     return mock.canvas;
   };
-  return { createCanvas, ctxDe: () => crees[0].ctx, haloDe: () => crees[1].ctx };
+  return { createCanvas, ctxDe: () => crees[0].ctx, haloDe: () => crees[1].ctx, porteeDe: () => crees[2].ctx };
 }
 
 const GRID_SCALE = 100;
@@ -270,6 +283,23 @@ test('1. Une source éclaire, et son centre est plus clair que son bord', () => 
   assert.ok(centre.red > 200, `centre attendu lumineux, obtenu ${centre.red}`);
   assert.ok(milieu.red > 0 && milieu.red < centre.red, `mi-rayon attendu intermédiaire, obtenu ${milieu.red}`);
   assert.equal(dehors.red, 0, 'au-delà de la portée, aucune lumière');
+});
+
+test('R9. ⭐ Le canvas de PORTÉE est plein jusqu\'au bord du rayon, le champ dessiné reste un dégradé (décision du MJ, 23/11/2026)', () => {
+  const { createCanvas, ctxDe, porteeDe } = fabrique();
+  const champ = new LightField(10, 10, createCanvas);
+  // Un mur vertical à droite (x = 48 px de masque) : la portée est occluse comme le champ.
+  const mur = { p1: { x: 600, y: 0 }, p2: { x: 600, y: 1000 } };
+  champ.compose(
+    [{ center: { x: 500, y: 500 }, radiusPx: 300, intensity: 1, color: '#ffffff' }],
+    { ambientLevel: 0, segments: [mur], mapOrigin: ORIGIN, gridScaleX: GRID_SCALE, gridScaleY: GRID_SCALE }
+  );
+  // Rayon = 24 px de masque autour de (40, 40). Côté gauche, sans mur : (40 - 22, 40) à 92 % du rayon.
+  const prochedubord = { x: 18, y: 40 };
+  assert.ok(pixelAu(ctxDe(), prochedubord.x, prochedubord.y).alpha < 128, 'le champ DESSINÉ reste un dégradé : pâle près du bord');
+  assert.equal(pixelAu(porteeDe(), prochedubord.x, prochedubord.y).alpha, 255, 'la portée est PLEINE jusqu\'au bord');
+  assert.equal(pixelAu(porteeDe(), 40 - 28, 40).alpha, 0, 'au-delà du rayon, rien');
+  assert.equal(pixelAu(porteeDe(), 60, 40).alpha, 0, 'derrière le mur, rien : la portée est occluse comme le champ');
 });
 
 test('2. ⭐ L’OCCLUSION : un mur ampute le champ, et c’est le sweep qui le fait', () => {
