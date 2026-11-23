@@ -305,6 +305,17 @@ export class LightLayer {
     return this._field?.canvas ?? null;
   }
 
+  /**
+   * Le canvas de PORTÉE : la zone éclairée pour la DÉTECTION, à la résolution du masque — `null`
+   * s'il n'existe pas encore. Chaque lumière y couvre toute sa portée en plein (décision du MJ du
+   * 23/11/2026, R9), là où `getFieldCanvas` porte le dégradé dessiné. Même repli que lui sur `null`.
+   *
+   * @returns {any}
+   */
+  getReachCanvas() {
+    return this._field?.reachCanvas ?? null;
+  }
+
   /** Force le recalcul au prochain passage. */
   invalidate() {
     this._signature = '';

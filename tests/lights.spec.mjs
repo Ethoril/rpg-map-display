@@ -381,7 +381,7 @@ test('R… ⭐ VU SANS LUMIÈRE : la portée nocturne d’un PJ sort en gris, un
       visibleFog.composeVisible({
         losPolygons: fogLayer.getLosPolygons(),
         nearPolygons: fogLayer.getNearPolygons(),
-        litCanvas: lightLayer.getFieldCanvas(),
+        litCanvas: lightLayer.getReachCanvas(),
         mapOrigin: origin0,
         gridScaleX,
 
@@ -513,7 +513,7 @@ test('R… ⭐ SEUIL DE COULEUR : à MI-RAYON d’un halo, la couleur est déjà
       visibleFog.composeVisible({
         losPolygons: fogLayer.getLosPolygons(),
         nearPolygons: fogLayer.getNearPolygons(),
-        litCanvas: lightLayer.getFieldCanvas(),
+        litCanvas: lightLayer.getReachCanvas(),
         mapOrigin: origin0,
         gridScaleX,
 

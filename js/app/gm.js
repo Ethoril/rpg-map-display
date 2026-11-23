@@ -410,13 +410,14 @@ export async function bootstrapGMApp(options = {}) {
     //
     //     visible = (ligne de vue ∩ éclairé)  ∪  (ce que le PJ voit dans le noir)
     //
-    // ⚠ `getFieldCanvas()` rend `null` au tout premier passage. `composeVisibleMask` se
+    // ⚠ `getReachCanvas()` rend `null` au tout premier passage. `composeVisibleMask` se
     // replie alors sur la ligne de vue ENTIÈRE : mieux vaut le comportement d'avant le
     // chantier qu'un écran noir en pleine séance.
     const entreesVision = {
       losPolygons: fogLayer.getLosPolygons(),
       nearPolygons: fogLayer.getNearPolygons(),
-      litCanvas: lumiere.getFieldCanvas(),
+      // R9 (23/11/2026) : la détection lit la PORTÉE pleine, pas le dégradé dessiné.
+      litCanvas: lumiere.getReachCanvas(),
       mapOrigin: origin0,
       gridScaleX,
       gridScaleY,

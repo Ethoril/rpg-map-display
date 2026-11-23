@@ -84,47 +84,57 @@ const deplacerEnnemi = (/** @type {import('@playwright/test').Page} */ gm, /** @
     });
   }, cell);
 
+
 /**
- * ⚠ R9 REPRODUIT, correctif EN ATTENTE d'une décision du MJ (voir docs/ETAT.md, « Suite produit »).
- * Le masque publié = (ligne de vue × alpha du champ lumineux) lu à `>= 128` : le champ est un
- * dégradé LINÉAIRE (centre = intensité, bord de portée = 0), donc seule la MOITIÉ de la portée
- * compte comme « éclairée » pour la détection (3 cases pour une torche de 6), alors que le halo
- * dessiné reste en couleur pleine jusqu'à 75 % (`LIGHT_COLOR_VISION_GAIN`, constants.js). Un ennemi
- * à 4 cases d'une torche de 6, dans le halo visible du MJ, n'est pas dessiné aux joueurs.
- * Le témoin (2 cases) passe ; le cas R9 (4 cases) est en `fixme` : le seuil d'« éclairé » n'est
- * fixé par aucun document normatif, le choisir est une décision de règle du jeu.
+ * R9 (retour de recette du 22/11/2026), CORRIGÉ le 23/11/2026 sur décision du MJ : une lumière
+ * éclaire sur TOUTE sa portée, donc un ennemi est vu jusqu'au bord du rayon (torche de 6 cases :
+ * détection à 6 cases), pour toutes les lumières. Avant : le masque lisait
+ * (ligne de vue × alpha du dégradé linéaire du champ) à >= 128, soit la moitié de la portée.
+ * Le PJ est en (2, 3) ; la torche porte 6. Cas : près, mi-portée (échouait), bord exact (vu),
+ * juste au-delà (non vu).
  */
 const CAS = [
-  { nom: 'à 2 cases (témoin, passe)', cell: { a: 4, b: 3 }, attendu: test },
-  { nom: 'à 4 cases, dans le halo (R9)', cell: { a: 6, b: 3 }, attendu: test.fixme },
+  { nom: 'à 2 cases', cell: { a: 4, b: 3 }, vu: true },
+  { nom: 'à 4 cases, dans le halo (échouait)', cell: { a: 6, b: 3 }, vu: true },
+  { nom: 'au bord exact de la portée (6 cases)', cell: { a: 8, b: 3 }, vu: true },
+  { nom: 'juste au-delà de la portée (7 cases)', cell: { a: 9, b: 3 }, vu: false },
 ];
 
+/** @param {import('@playwright/test').Page} player @param {boolean} vu */
+async function verifierCote(player, vu) {
+  if (vu) {
+    await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).toContain('orc');
+  } else {
+    await new Promise((r) => setTimeout(r, 1500)); // laisse le masque se republier
+    expect(await dessinesPourLesJoueurs(player)).not.toContain('orc');
+  }
+}
+
 for (const cas of CAS) {
-cas.attendu(`R9 — torche posée par le panneau MJ : l'ennemi Moyen ${cas.nom} est visible des joueurs`, async ({ browser }) => {
-  const { context, gm, player } = await ouvrir(browser, [pj(), ennemi()], 'pj1');
-  await gm.click('.gm-tab-btn[data-tab="token-maker"]');
-  await gm.click('#gm-token-group-vision summary');
-  await gm.check('#token-edit-torch');
-  await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken()?.emitsLight?.range)).toBe(6);
+  test(`R9 — torche posée par le panneau MJ : l'ennemi Moyen ${cas.nom} ${cas.vu ? 'est vu' : "n'est pas vu"} des joueurs`, async ({ browser }) => {
+    const { context, gm, player } = await ouvrir(browser, [pj(), ennemi()], 'pj1');
+    await gm.click('.gm-tab-btn[data-tab="token-maker"]');
+    await gm.click('#gm-token-group-vision summary');
+    await gm.check('#token-edit-torch');
+    await expect.poll(() => gm.evaluate(async () => (await import('../js/state/store.js')).getSelectedToken()?.emitsLight?.range)).toBe(6);
 
-  // Hors de la zone éclairée (9 cases du PJ, torche de 6) : invisible — garde contre un test creux.
-  await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).not.toBeNull();
-  expect(await dessinesPourLesJoueurs(player)).not.toContain('orc');
+    // Loin de la torche (9 cases) : invisible — garde contre un test creux.
+    await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).not.toBeNull();
+    expect(await dessinesPourLesJoueurs(player)).not.toContain('orc');
 
-  // Il finit son mouvement dans la zone éclairée, en ligne de vue, sans obstacle (le PJ est en (2, 3)).
-  await deplacerEnnemi(gm, cas.cell);
-  await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getState().campaign?.tokens.find((t) => t.id === 'orc')?.cell?.a)).toBe(cas.cell.a);
-  await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).toContain('orc');
-  await context.close();
-});
+    await deplacerEnnemi(gm, cas.cell);
+    await expect.poll(() => player.evaluate(async () => (await import('../js/state/store.js')).getState().campaign?.tokens.find((t) => t.id === 'orc')?.cell?.a)).toBe(cas.cell.a);
+    await verifierCote(player, cas.vu);
+    await context.close();
+  });
 
-cas.attendu(`R9 — torche déjà portée à l'ouverture (liaison outil / sans liaison) : même résultat, ${cas.nom}`, async ({ browser }) => {
-  const torche = { range: 6, intensity: 1, color: '#ffcc66' };
-  const { context, gm, player } = await ouvrir(browser, [pj({ emitsLight: torche }), ennemi()], 'orc');
-  await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).not.toBeNull();
-  expect(await dessinesPourLesJoueurs(player)).not.toContain('orc');
-  await deplacerEnnemi(gm, cas.cell);
-  await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).toContain('orc');
-  await context.close();
-});
+  test(`R9 — torche déjà portée à l'ouverture (liaison outil / sans liaison) : ${cas.nom} ${cas.vu ? 'vu' : 'non vu'}`, async ({ browser }) => {
+    const torche = { range: 6, intensity: 1, color: '#ffcc66' };
+    const { context, gm, player } = await ouvrir(browser, [pj({ emitsLight: torche }), ennemi()], 'orc');
+    await expect.poll(() => dessinesPourLesJoueurs(player), { timeout: 8000 }).not.toBeNull();
+    expect(await dessinesPourLesJoueurs(player)).not.toContain('orc');
+    await deplacerEnnemi(gm, cas.cell);
+    await verifierCote(player, cas.vu);
+    await context.close();
+  });
 }

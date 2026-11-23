@@ -1920,7 +1920,18 @@ depuis le 13/08. R2-03 (A-1) a été refait sur la vraie vue joueurs le même jo
 ⚠ **« Complet » ne veut pas dire « fini »** : ce qui est complet, c'est la liste des critères
 d'acceptation du §11.
 
-> ### ⚠ Retour R9 (recette du 22/11/2026) — « un adversaire qui finit dans la lumière d'une torche n'est pas détecté » : reproduit, correctif EN ATTENTE d'une décision du MJ
+> ### ⚠ Retour R9 (recette du 22/11/2026) — « un adversaire qui finit dans la lumière d'une torche n'est pas détecté »  : reproduit puis CORRIGÉ le 23/11/2026
+>
+> ✅ **Décision du MJ du 23/11/2026** : un ennemi est vu **sur toute la portée** d'une lumière, jusqu'au
+> bord du rayon (une torche de 6 cases détecte à 6 cases), pour toutes les lumières — torches de pion
+> et lampes de carte (« une lumière éclaire sur sa portée »). **Correctif** : `LightField` compose
+> un troisième canvas, `reachCanvas` (`js/vision/lightField.js`), le même polygone d'occlusion rempli
+> en plein (+ liseré de 1 px de masque, pour qu'une case au bord exact soit lue éclairée) et
+> l'ambiante ; `LightLayer.getReachCanvas()` l'expose et `syncVisionForLevel` (`js/app/gm.js`) le
+> passe à `composeVisibleMask` à la place du dégradé. Le champ dessiné (désaturation, plancher,
+> halo) est **inchangé**. Tests : `tests/torcheAdversaire.spec.mjs` (2, 4, 6 cases vus, 7 cases non
+> vu, torche du panneau et torche déjà portée) ; mutation (retour à `getFieldCanvas`, seuil de la
+> moitié) vue rouge sur les cas 4 et 6 cases. Le texte qui suit est le constat d'avant correctif.
 >
 > **Reproduit** en e2e (`tests/torcheAdversaire.spec.mjs`, torche posée par le panneau MJ, ennemi
 > Moyen, étage en nuit, sans mur, ennemi non caché, déplacement par `token.move`) : un ennemi à
@@ -1936,10 +1947,8 @@ d'acceptation du §11.
 > que le halo dessiné est en couleur pleine jusqu'à 75 % (`LIGHT_COLOR_VISION_GAIN`,
 > `js/core/constants.js`). Aucun document normatif ne fixe le seuil d'« éclairé ».
 >
-> ⛔ **Rien n'est corrigé** : choisir le seuil (moitié, trois quarts, bord de portée) change la règle
-> du jeu pour toutes les lumières, torches de pion et lampes de carte. **Décision à prendre par le
-> MJ** : à quelle fraction de la portée un adversaire doit-il être vu ? Le cas R9 est en
-> `test.fixme` (4 cases) avec son témoin vert (2 cases) ; à lever le jour du correctif.
+> (Le seuil d'« éclairé » était une décision de règle du jeu, demandée au MJ le 22/11 et tranchée le
+> 23/11 : voir ci-dessus. Le `test.fixme` est levé.)
 >
 > ✅ **Décision du MJ du 22/11/2026, grands pions** : un pion de taille 2 ou plus est visible des
 > joueurs dès qu'**une case de son emprise** est vue et éclairée, et non plus seulement son

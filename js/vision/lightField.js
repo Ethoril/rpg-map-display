@@ -129,6 +129,24 @@ export class LightField {
       this.glowCanvas = null;
     }
     this.glowCtx = this.glowCanvas?.getContext?.('2d') ?? this.glowCanvas?._ctx ?? null;
+
+    // ⭐ Le canvas de PORTÉE, troisième canvas de même taille — décision du MJ du 23/11/2026
+    // (retour R9) : « une lumière éclaire sur toute sa portée », donc un ennemi y est vu jusqu'au
+    // bord du rayon, quel que soit le dégradé dessiné. Le champ (`this.canvas`) est un dégradé
+    // linéaire que le masque lit à `>= 128` : il ne comptait « éclairé » que la moitié de la portée.
+    // Ce canvas-ci porte le MÊME polygone d'occlusion rempli en PLEIN, plus l'ambiante : c'est lui
+    // que la vision intersecte avec la ligne de vue. ⛔ Il ne sert qu'à la détection : le rendu
+    // (désaturation, plancher, halo) continue de lire `this.canvas` et `this.glowCanvas`.
+    if (typeof createCanvas === 'function') {
+      this.reachCanvas = createCanvas(this.maskWidth, this.maskHeight);
+    } else if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      this.reachCanvas = document.createElement('canvas');
+      this.reachCanvas.width = this.maskWidth;
+      this.reachCanvas.height = this.maskHeight;
+    } else {
+      this.reachCanvas = null;
+    }
+    this.reachCtx = this.reachCanvas?.getContext?.('2d') ?? this.reachCanvas?._ctx ?? null;
     /** @type {number} Sources peintes dans le halo à la dernière composition — à 0,
      *  `LightLayer.render` saute toute passe de halo. */
     this.glowCount = 0;
@@ -156,6 +174,7 @@ export class LightField {
   clear() {
     if (this.ctx) this.ctx.clearRect(0, 0, this.maskWidth, this.maskHeight);
     if (this.glowCtx) this.glowCtx.clearRect(0, 0, this.maskWidth, this.maskHeight);
+    if (this.reachCtx) this.reachCtx.clearRect(0, 0, this.maskWidth, this.maskHeight);
     this.paintedCount = 0;
     this.glowCount = 0;
     this._touch();
@@ -218,6 +237,16 @@ export class LightField {
       ctx.fillRect(0, 0, this.maskWidth, this.maskHeight);
     }
 
+    // Le canvas de portée repart de l'ambiante, puis reçoit chaque polygone en plein.
+    const reachCtx = this.reachCtx;
+    if (reachCtx) {
+      reachCtx.clearRect(0, 0, this.maskWidth, this.maskHeight);
+      if (ambiante > 0) {
+        reachCtx.fillStyle = `rgba(255, 255, 255, ${ambiante})`;
+        reachCtx.fillRect(0, 0, this.maskWidth, this.maskHeight);
+      }
+    }
+
     // Le halo repart de zéro à chaque composition, et l'ambiante n'y entre jamais.
     const glowCtx = this.glowCtx;
     if (glowCtx) glowCtx.clearRect(0, 0, this.maskWidth, this.maskHeight);
@@ -273,6 +302,18 @@ export class LightField {
       tracer(ctx);
       ctx.fill();
       peintes++;
+
+      // Portée pleine, jusqu'au bord du rayon. Le liseré de 2 px de masque (1 px au-delà du bord)
+      // garantit qu'une case dont le centre est EXACTEMENT à la portée est lue comme éclairée : le
+      // pixel échantillonné est celui qui suit le centre, donc juste hors du polygone sans lui.
+      if (reachCtx) {
+        reachCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+        reachCtx.strokeStyle = 'rgba(255, 255, 255, 1)';
+        reachCtx.lineWidth = 2;
+        tracer(reachCtx);
+        reachCtx.fill();
+        if (typeof reachCtx.stroke === 'function') reachCtx.stroke();
+      }
 
       // ⭐ Le halo remplit le MÊME polygone : l'occlusion lui vient gratuitement, sans second
       // sweep. Son profil n'est pas le dégradé linéaire du champ mais une décroissance
