@@ -300,6 +300,8 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   ├─ tourDeJeu.test.mjs         [Tour de jeu] état de tour, budget retranché, bridage manipulation, réducteurs turn.*, boutons de porte et liaison
 │   ├─ tourDeJeu.spec.mjs         [Tour de jeu] scénarios e2e portes par bouton, liaisons par bouton, mouvement interrompu, annulation du tour et brouillard cumulatif
 │   ├─ pointImpact.spec.mjs       [Liaison v3] point d'impact d'un sort de zone (contrat de liaison §10.1, amendement n° 10) : bandeau, aperçu, map.impact, abandons
+│   ├─ memoireCases.test.mjs      [Liaison v3] mémoire des cases (contrat de liaison §7, amendement n° 11) : retrait, repose, case prise, étage supprimé, borne, PJ, monture, enregistrement et schéma
+│   ├─ memoireCases.spec.mjs      [Liaison v3] mémoire des cases : fin de rencontre puis annulation, avec et sans rechargement de la page MJ, tablette cohérente
 │                                      *.test.mjs → node:test (logique pure)
 │                                      *.spec.mjs → Playwright (navigateur, vrai Canvas)
 │                                      mountStage.mjs, mountTransport.mjs → sondes chargées

@@ -21,6 +21,7 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
 
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
+/** @typedef {import('../core/types.js').LinkedPlace} LinkedPlace */
 
 /**
  * État d'un pion lié tel que l'outil MJ l'envoie (contrat §4).
@@ -49,10 +50,12 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
  */
 
 /**
- * @typedef {{ op: 'reserveAdd', ref: string, token: Record<string, any> }
+ * `place` d'un `reserveAdd` : la case retenue du même `ref` (mémoire des cases, contrat §7), où le
+ * poser ; celui d'un `remove` : la case à retenir, pour un pion qui quitte le plateau.
+ * @typedef {{ op: 'reserveAdd', ref: string, token: Record<string, any>, place?: LinkedPlace }
  *   | { op: 'update', tokenId: string, patch: Record<string, any> }
  *   | { op: 'mounted', tokenId: string, mounted: boolean }
- *   | { op: 'remove', tokenId: string, where: 'board'|'reserve' }
+ *   | { op: 'remove', tokenId: string, where: 'board'|'reserve', place?: LinkedPlace }
  *   | { op: 'awaitBinding', ref: string, label: string }
  *   | { op: 'fx', tokenId: string, hidden: boolean, fx: NonNullable<ReturnType<typeof parseFx>> }
  *   | { op: 'merge', riderTokenId: string, mountTokenId: string }
@@ -140,6 +143,21 @@ function changedOnly(token, patch) {
 }
 
 /**
+ * Retrait d'un pion lié non PJ (contrat §7). Un pion du plateau retient sa place (étage, case, caché
+ * ou non) pour que `token.add` du même `ref` la lui rende ; un pion de la réserve n'est nulle part,
+ * il ne retient rien.
+ *
+ * @param {Token} token
+ * @param {'board'|'reserve'} where
+ * @returns {MjLinkOperation}
+ */
+function removeOperation(token, where) {
+  const ref = token.link?.ref;
+  if (where !== 'board' || !ref) return { op: 'remove', tokenId: token.id, where };
+  return { op: 'remove', tokenId: token.id, where, place: { ref, levelId: token.levelId, cell: { a: token.cell.a, b: token.cell.b }, hidden: token.hidden === true } };
+}
+
+/**
  * Opérations d'un état de pion (`token.add`, `token.state`, ou ligne d'un instantané).
  *
  * @param {Campaign} campaign
@@ -155,7 +173,9 @@ export function planTokenState(campaign, state) {
     if (bondCells !== null) fields.bondCells = bondCells;
     if (deathCause) fields.deathCause = deathCause;
     if (formImageUrl) fields.formImageUrl = formImageUrl;
-    return [{ op: 'reserveAdd', ref: state.ref, token: { ...fields, ...(rider ? { rider } : {}), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true } }];
+    // Mémoire des cases (contrat §7) : un `ref` retiré plus tôt revient là où il était, si la pose le permet.
+    const place = (campaign.removedLinkedPlaces ?? []).find((p) => p.ref === state.ref);
+    return [{ op: 'reserveAdd', ref: state.ref, token: { ...fields, ...(rider ? { rider } : {}), link: { source: 'outil-mj', ref: state.ref }, mounted: state.mounted === true }, ...(place ? { place } : {}) }];
   }
   /** @type {MjLinkOperation[]} */
   const ops = [];
@@ -370,7 +390,7 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
       // Un PJ ne se retire jamais (contrat §7) ; l'outil MJ ne l'envoie pas, la carte le garantit aussi.
       if (typeof payload.ref !== 'string' || payload.ref.startsWith('pj:')) return [];
       const found = findLinkedToken(campaign, payload.ref);
-      return found ? [{ op: 'remove', tokenId: found.token.id, where: found.where }] : [];
+      return found ? [removeOperation(found.token, found.where)] : [];
     }
     case 'fx.wound':
     case 'fx.death': {
@@ -404,7 +424,7 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
         const list = where === 'board' ? campaign.tokens : campaign.reserve || [];
         for (const token of list) {
           const ref = token.link?.ref;
-          if (isLinkedToken(token) && ref && !ref.startsWith('pj:') && !refs.has(ref)) ops.push({ op: 'remove', tokenId: token.id, where });
+          if (isLinkedToken(token) && ref && !ref.startsWith('pj:') && !refs.has(ref)) ops.push(removeOperation(token, where));
         }
       }
       return ops;
@@ -431,8 +451,9 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
  * @param {{
  *   store: { addTokenToReserve: Function, updateToken: Function, updateReserveToken: Function,
  *            setTokenMounted: Function, removeToken: Function, removeFromReserve: Function,
+ *            rememberLinkedPlace: (place: LinkedPlace) => void, forgetLinkedPlace: (ref: string) => boolean,
  *            reserveToken?: (tokenId: string) => boolean,
- *            placeTokenFromReserve?: (tokenId: string, levelId: string, cell: { a: number, b: number }) => boolean,
+ *            placeTokenFromReserve?: (tokenId: string, levelId: string, cell: { a: number, b: number }, latest?: Token|null) => boolean,
  *            moveTokenToCell?: (tokenId: string, cell: { a: number, b: number }, moveData?: any) => void,
  *            getCampaign: () => Campaign|null },
  *   publish: (type: string, payload: any) => void,
@@ -457,6 +478,7 @@ export function executeMjOperations(ops, deps) {
         const { link, mounted, ...fields } = op.token;
         const token = { ...deps.createToken({ ...fields, id: deps.newTokenId(), levelId: deps.trace.levelId, cell: deps.trace.cell, mounted }), link };
         store.addTokenToReserve(token);
+        if (op.place) restoreRememberedPlace(deps, token, op.place);
         break;
       }
       case 'update':
@@ -478,6 +500,7 @@ export function executeMjOperations(ops, deps) {
       case 'remove':
         if (op.where === 'board') {
           store.removeToken(op.tokenId);
+          if (op.place) store.rememberLinkedPlace(op.place);
           publish('token.delete', { tokenId: op.tokenId });
         } else {
           store.removeFromReserve(op.tokenId);
@@ -505,6 +528,29 @@ export function executeMjOperations(ops, deps) {
     }
   }
   return { awaiting };
+}
+
+/**
+ * Mémoire des cases (contrat §7, révision du 24/11/2026) : un pion lié qui revient avec le `ref` d'un
+ * pion retiré est posé sur sa case d'avant, caché ou non comme il l'était, et publié par `token.add`.
+ * L'étage supprimé ou la case prise (règles de pose de la carte : `placeTokenFromReserve`) le laissent
+ * en réserve, comme avant. Dans les deux cas la place est oubliée : le pion est de nouveau connu de la
+ * carte, et une place plus ancienne que lui ne doit pas le déplacer plus tard dans le dos du MJ.
+ *
+ * @param {Parameters<typeof executeMjOperations>[1]} deps
+ * @param {Token} token pion fraîchement rangé en réserve
+ * @param {LinkedPlace} place
+ */
+function restoreRememberedPlace(deps, token, place) {
+  const { store, publish } = deps;
+  store.forgetLinkedPlace(place.ref);
+  try {
+    if (!store.placeTokenFromReserve?.(token.id, place.levelId, place.cell, { ...token, hidden: place.hidden })) return;
+  } catch {
+    return; // étage disparu, case hors carte ou occupée : le pion attend en réserve
+  }
+  const posed = store.getCampaign()?.tokens.find((t) => t.id === token.id);
+  if (posed) publish('token.add', { token: posed });
 }
 
 /**

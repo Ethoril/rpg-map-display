@@ -17,6 +17,7 @@ import {
 import { gridFor } from '../grid/index.js';
 import { numberLibraryCopy } from '../import/tokenCatalog.js';
 import { cellKey, parseCellKey } from '../core/cellKey.js';
+import { LINKED_PLACES_MAX } from '../core/constants.js';
 
 /** @typedef {import('../core/types.js').Campaign} Campaign */
 /** @typedef {import('../core/types.js').Level} Level */
@@ -2112,6 +2113,47 @@ export function removeFromReserve(tokenId) {
   const candidate = structuredClone(campaign);
   candidate.reserve?.splice(index, 1);
   assertValidCampaign(candidate, `Retrait de la réserve du pion "${tokenId}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+  return true;
+}
+
+/**
+ * Retient la place d'un pion lié retiré (mémoire des cases, contrat de liaison §7, révision du
+ * 24/11/2026). Une place par `ref` : la nouvelle remplace l'ancienne et passe en dernier ; pleine
+ * (`LINKED_PLACES_MAX`), la plus ancienne sort. Locale au MJ : rien n'est publié.
+ *
+ * @param {import('../core/types.js').LinkedPlace} place
+ * @returns {void}
+ */
+export function rememberLinkedPlace(place) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  const candidate = structuredClone(campaign);
+  const places = (candidate.removedLinkedPlaces ?? []).filter((p) => p.ref !== place.ref);
+  places.push({ ref: place.ref, levelId: place.levelId, cell: { a: place.cell.a, b: place.cell.b }, hidden: place.hidden === true });
+  candidate.removedLinkedPlaces = places.slice(-LINKED_PLACES_MAX);
+  assertValidCampaign(candidate, `Mémoire de la case du pion lié "${place.ref}"`);
+  replaceCampaign(candidate);
+  notifySubscribers();
+}
+
+/**
+ * Efface la place retenue d'un `ref`. Rejeu inoffensif : sans place pour ce `ref`, rien ne change,
+ * et surtout le champ n'est pas créé sur une campagne qui n'en a pas.
+ *
+ * @param {string} ref
+ * @returns {boolean} true si une place a été effacée
+ */
+export function forgetLinkedPlace(ref) {
+  if (!campaign) {
+    throw new Error('Aucune campagne chargée');
+  }
+  if (!(campaign.removedLinkedPlaces ?? []).some((p) => p.ref === ref)) return false;
+  const candidate = structuredClone(campaign);
+  candidate.removedLinkedPlaces = (candidate.removedLinkedPlaces ?? []).filter((p) => p.ref !== ref);
+  assertValidCampaign(candidate, `Oubli de la case du pion lié "${ref}"`);
   replaceCampaign(candidate);
   notifySubscribers();
   return true;

@@ -2065,6 +2065,32 @@ d'acceptation du §11.
 > ⚠ Version 3 d'un seul côté = liaison coupée : à publier avec l'outil MJ (lot G4), le même jour.
 > ⏳ **À éprouver à la table** : un sort de zone lancé dans l'outil, la case visée sur la carte.
 
+> ### ⏳ Lot C5 — la carte se souvient de la case des pions retirés — codé le 24/11/2026 sur `carte-c5`, **non poussé**
+>
+> Recette du 24/11 : « Terminer le combat » puis annuler (ou « Recommencer ») renvoyait les pions non PJ
+> par `token.add`, tous dans la réserve (« À poser » de 4 à 26) : leur placement était perdu. Décision
+> du MJ : **la carte se souvient** (contrat §7, révision du 24/11, amendement n° 11). Aucun message ni
+> champ de la liaison ne change, la version reste **3**.
+> - `token.remove` (et la clôture par `mj.snapshot`) d'un pion lié non PJ **du plateau** retient
+>   `{ ref, levelId, cell, hidden }` dans `Campaign.removedLinkedPlaces` (`store.rememberLinkedPlace`).
+>   Un pion déjà en réserve ne retient rien. Une place par `ref`, la plus ancienne sort à 200
+>   (`LINKED_PLACES_MAX`, `constants.js`).
+> - `token.add` du même `ref` repose le pion sur cette case, caché comme il l'était, par la pose de la
+>   réserve (`placeTokenFromReserve` : case occupée ou étage supprimé → il reste en réserve) puis publie
+>   `token.add`. La place est **effacée dans les deux cas** (choix non écrit au contrat : une place
+>   restée après un échec déplacerait le pion plus tard, dans le dos du MJ).
+> - Une monture fusionnée retirée avec son cavalier : le cavalier reprend la case du pion fusionné ;
+>   la monture, jamais posée, revient en réserve et la fusion suit les messages habituels (§8).
+> - Campagne : champ facultatif validé par `validateCampaign` (refs `pj:` refusés, cases entières, sans
+>   doublon, ≤ 200) ; une campagne ancienne ne l'a pas, se lit comme vide et **n'est pas réécrite**.
+> - Tests : `tests/memoireCases.test.mjs` (17) et `tests/memoireCases.spec.mjs` (2, dont un rechargement
+>   de la page MJ entre le retrait et l'ajout) ; 9 mutations de l'effet, toutes vues rouges.
+> - ⚠ **Non couvert** : l'instantané Firestore v3 (`FirebaseTransport`) n'écrit ni la réserve ni ce
+>   champ — une reprise depuis Firestore seul, sans `localStorage` du poste, perdrait la mémoire comme
+>   elle perd déjà la réserve. À trancher avec le mainteneur (règles Firestore à étendre).
+> - ⏳ **À éprouver à la table** avec l'outil MJ connecté : poser des pions, « Terminer le combat »,
+>   annuler ; puis la même chose avec un rechargement de la carte entre les deux.
+
 > ### ✅ Chantier C-10 — refonte de la vue MJ, livrée le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur : la vue MJ était « fonctionnelle mais inesthétique et peu pratique ».

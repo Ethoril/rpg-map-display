@@ -760,3 +760,11 @@ export const TOKEN_BORDER_PALETTE = Object.freeze([
 
 /** Bordure d'un pion neuf : la première de la palette. */
 export const TOKEN_BORDER_DEFAULT = TOKEN_BORDER_PALETTE[0].color;
+
+/**
+ * Nombre de places retenues par `Campaign.removedLinkedPlaces` (contrat de liaison §7, révision du
+ * 24/11/2026) : la case des pions liés retirés par `token.remove`, pour les reposer s'ils reviennent
+ * avec le même `ref`. Pleine, l'entrée la plus ancienne sort. 200 couvre plusieurs rencontres de
+ * vingt-cinq pions sans que la campagne enregistrée ne grossisse sans limite.
+ */
+export const LINKED_PLACES_MAX = 200;

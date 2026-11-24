@@ -86,9 +86,11 @@ test('mjLink : pion lié trouvé → patch des seuls champs changés, bascule mo
   const campaign = createCampaign({ levels: [level], tokens: [g1, pj] });
   const ops = planMjMessage(campaign, msg('token.state', { ref: 'p:g1', label: 'Gobelin 2', hp: { current: 3, max: 8 }, speedCells: 4, mounted: true }));
   assert.deepEqual(ops, [{ op: 'update', tokenId: 'g1', patch: { hp: { current: 3, max: 8 } } }, { op: 'mounted', tokenId: 'g1', mounted: true }]);
-  assert.deepEqual(planMjMessage(campaign, msg('token.remove', { ref: 'p:g1' })), [{ op: 'remove', tokenId: 'g1', where: 'board' }]);
+  // Mémoire des cases (contrat §7, révision du 24/11) : le retrait d'un pion du plateau emporte sa place.
+  const place = { ref: 'p:g1', levelId: 'rdc', cell: { a: 2, b: 2 }, hidden: false };
+  assert.deepEqual(planMjMessage(campaign, msg('token.remove', { ref: 'p:g1' })), [{ op: 'remove', tokenId: 'g1', where: 'board', place }]);
   const snap = planMjMessage(campaign, msg('mj.snapshot', { tokens: [{ ref: 'pj:c9', label: 'Ulrika' }] }));
-  assert.deepEqual(snap, [{ op: 'update', tokenId: 'u', patch: { label: 'Ulrika' } }, { op: 'remove', tokenId: 'g1', where: 'board' }]);
+  assert.deepEqual(snap, [{ op: 'update', tokenId: 'u', patch: { label: 'Ulrika' } }, { op: 'remove', tokenId: 'g1', where: 'board', place }]);
 });
 
 test('mjLink : bondCells (Bond) conservé, absent = état d’avant, invalide ignoré', async () => {

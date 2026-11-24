@@ -288,8 +288,22 @@
  *
  *   Optionnel dans le typedef, et il doit le rester : les campagnes enregistrées avant UX-14 ne
  *   le portent pas, et leur absence vaut réserve vide.
+ * @property {LinkedPlace[]} [removedLinkedPlaces] Mémoire des cases (contrat de liaison §7, révision du
+ *   24/11/2026) : la place des pions liés non PJ retirés par `token.remove`, la plus ancienne d'abord,
+ *   au plus `LINKED_PLACES_MAX`. Un `token.add` du même `ref` y reprend sa case, puis l'entrée s'efface.
+ *   Absente d'une campagne ancienne, où elle vaut vide : le chargement ne l'ajoute pas.
  * @property {Template[]} templates
  * @property {CampaignSettings} settings
+ */
+
+/**
+ * Place retenue d'un pion lié retiré (`Campaign.removedLinkedPlaces`) : une case de l'étage `levelId`.
+ *
+ * @typedef {Object} LinkedPlace
+ * @property {string} ref Identité de l'outil MJ (`link.ref`), jamais `pj:…`
+ * @property {string} levelId
+ * @property {Cell} cell
+ * @property {boolean} hidden Le pion était caché
  */
 
 /**

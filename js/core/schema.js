@@ -40,7 +40,7 @@ export function identifiantAleatoire() {
  * @typedef {import('./types.js').Token} Token
  */
 
-import { STATUS_MARKER_IDS, HEALTH_STATE_IDS, VISION_MAX_RANGE_CELLS } from './constants.js';
+import { STATUS_MARKER_IDS, HEALTH_STATE_IDS, VISION_MAX_RANGE_CELLS, LINKED_PLACES_MAX } from './constants.js';
 
 /** @typedef {import('./constants.js').StatusMarker} StatusMarker */
 
@@ -1125,6 +1125,35 @@ export function validateCampaign(campaign) {
           }
         });
       }
+    }
+  }
+
+  // Mémoire des cases (contrat de liaison §7, révision du 24/11/2026) : facultative, absente d'une
+  // campagne ancienne. L'étage n'est pas contrôlé — il a pu être supprimé depuis, et c'est justement
+  // ce que la repose vérifie. Un PJ n'y figure jamais : il n'est jamais retiré.
+  if (campaign.removedLinkedPlaces !== undefined) {
+    const places = campaign.removedLinkedPlaces;
+    if (!Array.isArray(places)) {
+      errors.push('removedLinkedPlaces doit être un tableau');
+    } else {
+      if (places.length > LINKED_PLACES_MAX) {
+        errors.push(`removedLinkedPlaces : ${LINKED_PLACES_MAX} entrées au plus`);
+      }
+      const refs = new Set();
+      places.forEach((/** @type {any} */ place, /** @type {number} */ index) => {
+        const ok = place && typeof place === 'object' &&
+          typeof place.ref === 'string' && place.ref !== '' && !place.ref.startsWith('pj:') &&
+          typeof place.levelId === 'string' && place.levelId !== '' &&
+          place.cell && Number.isInteger(place.cell.a) && Number.isInteger(place.cell.b) &&
+          typeof place.hidden === 'boolean';
+        if (!ok) {
+          errors.push(`removedLinkedPlaces[${index}] invalide`);
+        } else if (refs.has(place.ref)) {
+          errors.push(`removedLinkedPlaces[${index}] : ref "${place.ref}" en double`);
+        } else {
+          refs.add(place.ref);
+        }
+      });
     }
   }
 
