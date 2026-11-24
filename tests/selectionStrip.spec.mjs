@@ -390,3 +390,68 @@ test('C-9 bande : jamais ouverte EN SÉLECTION pour un PNJ, même sélectionné 
   await expect(page.locator(BANDE)).toBeHidden();
   await expect(page.locator(`${BANDE} .player-selection-mount`)).toHaveCount(0);
 });
+
+test('Portrait agrandi au toucher (24/11/2026) : aperçu en grand à gauche de la bande, refermé au toucher ou avec la bande, sans rien publier', async ({
+  page,
+}) => {
+  // PNG 1 × 1 embarqué : aucune image du pool `maps/`, que le mainteneur peut vider.
+  const IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const snap = instantane();
+  snap.campaign.tokens[0].imageUrl = IMAGE;
+  await installBrowserTransport(page, `portrait-agrandi-${Date.now()}`, snap);
+  await page.goto('/player.html');
+  await waitForApp(page);
+  await setPlayerTestVision(page);
+
+  await taper(page, 4, 4);
+  await expect(page.locator(BANDE)).toBeVisible();
+  const portrait = page.locator(`${BANDE} .player-selection-portrait`);
+  const apercu = page.locator('.player-selection-zoom');
+  await expect(apercu).toBeHidden();
+  const avant = (await publies(page)).length;
+
+  // 1. Toucher le portrait ouvre l'aperçu : la même image, en grand, à gauche de la bande.
+  await portrait.click();
+  await expect(apercu).toBeVisible();
+  await expect(apercu.locator('img')).toHaveAttribute('src', IMAGE);
+  const boite = await apercu.boundingBox();
+  const bande = await page.locator(BANDE).boundingBox();
+  if (!boite || !bande) throw new Error('rectangles absents');
+  expect(boite.width).toBeGreaterThanOrEqual(300);
+  expect(boite.height).toBeGreaterThanOrEqual(300);
+  expect(boite.x + boite.width).toBeLessThanOrEqual(bande.x);
+  // L'image est réellement peinte à la taille de l'aperçu, pas seulement le cadre.
+  const peinte = await apercu.locator('img').boundingBox();
+  expect(peinte?.width ?? 0).toBeGreaterThanOrEqual(boite.width - 8);
+
+  // 2. Toucher l'aperçu le referme ; la sélection tient, rien n'est parti sur le canal.
+  await apercu.click();
+  await expect(apercu).toBeHidden();
+  expect(await selection(page)).toBe('pj');
+
+  // 3. Un second toucher du portrait referme l'aperçu qu'il a ouvert.
+  await portrait.click();
+  await expect(apercu).toBeVisible();
+  await portrait.click();
+  await expect(apercu).toBeHidden();
+
+  // 4. L'aperçu s'en va avec la bande.
+  await portrait.click();
+  await expect(apercu).toBeVisible();
+  await taper(page, 11, 9);
+  await expect.poll(() => selection(page)).toBe(null);
+  await expect(page.locator(BANDE)).toBeHidden();
+  await expect(apercu).toBeHidden();
+
+  expect((await publies(page)).slice(avant).map((e) => e.type)).not.toContain('token.move');
+  expect((await publies(page)).slice(avant).map((e) => e.type)).not.toContain('token.mounted');
+});
+
+test('Portrait agrandi : un pion sans image n’a pas d’aperçu, ses initiales ne sont pas tapables', async ({ page }) => {
+  await ouvrir(page, 'sans-image');
+  await taper(page, 4, 4);
+  const portrait = page.locator(`${BANDE} .player-selection-portrait`);
+  await expect(portrait).toHaveText('P');
+  expect(await portrait.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+  await expect(page.locator('.player-selection-zoom')).toBeHidden();
+});

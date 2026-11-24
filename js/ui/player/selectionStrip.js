@@ -52,6 +52,15 @@ const formatDistance = new Intl.NumberFormat('fr-FR');
  * La bande est un élément DOM **frère** du canvas, et `PointerInput` n'écoute que le canvas : un
  * appui ici ne désélectionne pas, ne déplace rien et ne fait pas défiler la carte.
  *
+ * ## Le portrait s'agrandit au toucher (24/11/2026, décision du mainteneur)
+ *
+ * Un portrait de 300 px dans la bande cachait un quart de la carte, et les appuis qui tombaient
+ * dessus ne l'atteignaient plus. Le portrait reste donc modeste dans la bande, et le toucher ouvre
+ * un **aperçu** en grand à gauche de la bande : un overlay transitoire, refermé par un second
+ * toucher (sur l'aperçu ou le portrait), par un changement de pion ou d'image, ou avec la bande.
+ * Il ne publie rien et ne touche ni à la sélection ni à la consultation. Comme la bulle, c'est un
+ * frère de la bande, et non un enfant.
+ *
  * ## ⚠ La bulle de nom vit HORS de la bande
  *
  * La bande défile verticalement (`overflow-y: auto`) au-delà de cinq ou six états, et un conteneur
@@ -77,6 +86,45 @@ export function createSelectionStrip(container, options) {
 
   /** @type {ReturnType<typeof setTimeout>|null} */
   let minuterieBulle = null;
+
+  const apercu = document.createElement('button');
+  apercu.type = 'button';
+  apercu.className = 'player-selection-zoom';
+  // `hidden` et non `display: none` : fermé, l'aperçu ne compte pas comme une commande (zéro UI).
+  apercu.hidden = true;
+  const apercuImage = document.createElement('img');
+  apercuImage.alt = '';
+  apercu.appendChild(apercuImage);
+  (container.parentElement ?? document.body).appendChild(apercu);
+  /** Pion et image de l'aperçu ouvert ; `null` quand il est fermé. */
+  /** @type {{tokenId: string, image: string}|null} */
+  let apercuOuvert = null;
+
+  function fermerApercu() {
+    apercuOuvert = null;
+    apercu.hidden = true;
+    apercu.classList.remove('is-dead');
+    apercuImage.removeAttribute('src');
+  }
+
+  /**
+   * Ouvre l'aperçu à gauche de la bande, centré sur elle verticalement.
+   * @param {Token} token
+   * @param {string} image
+   */
+  function ouvrirApercu(token, image) {
+    masquerBulle();
+    const rect = container.getBoundingClientRect();
+    apercuImage.src = image;
+    apercu.classList.toggle('is-dead', token.dead === true);
+    apercu.setAttribute('aria-label', `Fermer le portrait de ${token.label || 'ce pion'}`);
+    apercu.style.right = `${window.innerWidth - rect.left + 8}px`;
+    apercu.style.top = `${rect.top + rect.height / 2}px`;
+    apercu.hidden = false;
+    apercuOuvert = { tokenId: token.id, image };
+  }
+
+  apercu.addEventListener('click', fermerApercu, { signal: listeners.signal });
 
   function masquerBulle() {
     if (minuterieBulle !== null) clearTimeout(minuterieBulle);
@@ -188,6 +236,24 @@ export function createSelectionStrip(container, options) {
       img.src = image;
       img.alt = '';
       portrait.appendChild(img);
+      portrait.classList.add('is-zoomable');
+      portrait.setAttribute('role', 'button');
+      portrait.tabIndex = 0;
+      portrait.setAttribute('aria-label', `Agrandir le portrait de ${token.label || 'ce pion'}`);
+      const basculer = () => {
+        if (apercuOuvert) fermerApercu();
+        else ouvrirApercu(token, image);
+      };
+      portrait.addEventListener('click', basculer, { signal: listeners.signal });
+      portrait.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          basculer();
+        },
+        { signal: listeners.signal }
+      );
     } else {
       portrait.style.background = (token.camp && CAMP_FILL[token.camp]) || '#555d68';
       portrait.textContent = campInitials(token.label);
@@ -227,6 +293,7 @@ export function createSelectionStrip(container, options) {
       delete container.dataset.signature;
       delete container.dataset.mode;
       masquerBulle();
+      fermerApercu();
       return;
     }
     container.style.display = 'flex';
@@ -237,6 +304,7 @@ export function createSelectionStrip(container, options) {
     const lie = isLinkedToken(token);
     const image = displayImageUrl(token).trim();
     const vie = vitalite(token);
+    if (apercuOuvert && (apercuOuvert.tokenId !== token.id || apercuOuvert.image !== image)) fermerApercu();
     const cases = consulte && selectionne ? options.getInspectionDistance?.(selectionne, consulte) : null;
     const nomReference = selectionne?.label || 'ton personnage';
     const reference = /^[aeiouy]/i.test(nomReference.normalize('NFD')) ? `d’${nomReference}` : `de ${nomReference}`;
@@ -264,7 +332,9 @@ export function createSelectionStrip(container, options) {
     destroy: () => {
       listeners.abort();
       masquerBulle();
+      fermerApercu();
       bulle.remove();
+      apercu.remove();
       container.replaceChildren();
     },
   };
