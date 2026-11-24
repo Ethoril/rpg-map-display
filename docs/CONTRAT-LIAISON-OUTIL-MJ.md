@@ -8,6 +8,7 @@ Révision du 21/11/2026 : nouveau message `mj.turn { ref }`, le participant acti
 Révision du 13/11/2026 : `imageUrl` (et `rider.imageUrl`) admet aussi un chemin relatif sous `maps/tokens/` (bibliothèque d'images de Map Display) ; nouveau champ `formImageUrl` de `token.state` (§4, §6). Ajouts compatibles, comme `color` et `deathCause` : la version du protocole ne bouge pas.
 Révision du 22/11/2026 : nouveau message carte → outil `map.turnReset { ref }`, émis à chaque annulation du mouvement du tour ; l'outil MJ rend l'Action du Tour dépensée par une Course signalée et remet à zéro le déplacement du Tour (§10). **Changement de protocole** : la version passe à **2** (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = `LIAISON_CARTE.version` = 2, §2.3) ; aucun autre message ni champ ne change.
 Révision du 23/11/2026 : **point d'impact** d'un sort de zone choisi d'un clic sur l'écran MJ de la carte : nouveaux messages outil → carte `mj.impactQuery { queryId, label, radiusCells, casterRef }` et `mj.impactCancel { queryId }`, carte → outil `map.impact { queryId, levelId, cell, refs }` ou `map.impact { queryId, cancelled: true }` (§10.1). **Changement de protocole** : la version passe à **3** (`LIAISON_CARTE.version` = 3, §2.3) ; aucun autre message ni champ ne change.
+Révision du 24/11/2026 : la carte **se souvient** de la case d'un pion lié retiré par `token.remove` et l'y repose s'il revient par `token.add` avec le même `ref` (§7). Comportement de la carte seule : aucun message ni champ ne change, la version du protocole reste **3**.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -176,6 +177,8 @@ Les états de talents, de sorts ou d'origine maison, ainsi que « Blessé », **
 
 L'outil MJ déduit ce cycle de vie de ses instantanés successifs (`js/core/map-link.js`) : un `ref` qui apparaît part en `token.add`, un `ref` qui change en `token.state`, un `ref` non PJ qui disparaît en `token.remove`. Un `ref` PJ (`pj:…`) n'est jamais retiré.
 
+**Mémoire des cases (révision du 24/11/2026).** Quand un pion lié non PJ est retiré (`token.remove`, fin de rencontre, participant retiré), la carte retient sa dernière place : étage, case et pion caché ou non. Si un `token.add` arrive plus tard avec le même `ref` (annulation de la fin de combat dans l'outil MJ, combat recommencé, participant remis en jeu), le pion est reposé à cette place au lieu d'aller dans la réserve, à condition que l'étage existe encore et que la case soit libre selon les règles de pose de la carte ; sinon il va dans la réserve, comme avant. La mémoire est enregistrée avec la campagne (elle survit à un rechargement) et bornée ; un `ref` reposé en est effacé. Les PJ ne sont jamais retirés, donc jamais concernés. Une monture fusionnée retirée avec son cavalier reprend la case du pion du cavalier ; la fusion suit ensuite les messages habituels (§8).
+
 ## 8. Montures
 
 Sur la carte, la paire cavalier-monture s'affiche **en un seul pion** quand le cavalier est monté, et en **deux pions** quand il est à pied. C'est le même contrat que `mountedStateForMap` (`js/core/mounts.js`).
@@ -288,6 +291,7 @@ Après le clic, la carte laisse au point d'impact un **gabarit cercle ordinaire*
 8. **Verrous d'interface** : sur un pion lié, les contrôles des champs détenus par l'outil MJ sont grisés, sur le panneau MJ comme sur la tablette.
 9. **Pose armée** du cavalier au démontage, et contrôle d'adjacence à la remonte.
 10. **Point d'impact** (version 3, révision du 23/11/2026, §10.1) : mode « point d'impact » de l'écran MJ (bandeau, aperçu du cercle, clic sur une case, Échap), réponse `map.impact`, gabarit cercle laissé au point d'impact ; les fichiers neufs qu'il exige (module, tests) entrent au manifeste.
+11. **Mémoire des cases** (révision du 24/11/2026, §7) : la carte retient la place d'un pion lié retiré et l'y repose s'il revient avec le même `ref` ; champ de campagne et fichiers neufs éventuels au manifeste.
 
 ## 12. Changements côté outil MJ
 
