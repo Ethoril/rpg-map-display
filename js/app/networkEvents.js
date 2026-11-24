@@ -23,6 +23,29 @@ function rememberLinkTraverseEventId(eventId) {
 }
 
 /**
+ * `turn.select` reçu avant l'arrivée de son pion (pion posé depuis la réserve pendant son Tour : le
+ * MJ publie le Tour, déclenché par la mutation du store, avant le `token.add` de la pose).
+ * @type {{ tokenId: string, spentCells: number } | null}
+ */
+let tourEnAttente = null;
+
+/**
+ * Applique le `turn.select` retenu si `tokenId` est le pion qu'il attendait : le Tour démarre alors
+ * sur la case de pose, comme chez le MJ.
+ * @param {string} tokenId
+ */
+function appliquerTourEnAttente(tokenId) {
+  if (!tourEnAttente || tourEnAttente.tokenId !== tokenId) return;
+  const { spentCells } = tourEnAttente;
+  tourEnAttente = null;
+  try {
+    store.setTurn(tokenId, spentCells);
+  } catch (err) {
+    console.error(`Événement "turn.select" refusé : ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Applique un événement réseau au store de façon idempotente.
  * Firebase reste entièrement hors de ce module.
  *
@@ -318,12 +341,14 @@ export function applyNetworkEvent(event) {
         try {
           // Le pion posé est celui du `token.add` : la copie de réserve de ce poste peut dater du
           // rangement (pion lié changé entre-temps par l'outil MJ, contrat de liaison §8).
-          return store.placeTokenFromReserve(
+          const placed = store.placeTokenFromReserve(
             payload.token.id,
             payload.token.levelId,
             payload.token.cell,
             payload.token
           );
+          if (placed) appliquerTourEnAttente(payload.token.id);
+          return placed;
         } catch (err) {
           console.error(
             `Événement "token.add" refusé (pion en réserve) : ${
@@ -335,6 +360,7 @@ export function applyNetworkEvent(event) {
       }
 
       store.addToken(payload.token);
+      appliquerTourEnAttente(payload.token.id);
       return true;
     }
     case 'token.move': {
@@ -834,14 +860,20 @@ export function applyNetworkEvent(event) {
         return false;
       }
       if (payload.tokenId === null) {
+        tourEnAttente = null;
         if (store.getTurn() === null) return false;
         store.setTurn(null);
         return true;
       }
       if (!campaign?.tokens.some((token) => token.id === payload.tokenId)) {
+        // Pion posé PENDANT son Tour : le MJ publie `turn.select` (déclenché par la mutation du
+        // store) avant le `token.add` de la pose. On le retient jusqu'à l'arrivée du pion, dont la
+        // case de pose devient la case de départ du Tour, la même que chez le MJ.
+        tourEnAttente = { tokenId: payload.tokenId, spentCells: payload.spentCells ?? 0 };
         console.error(`Événement "turn.select" refusé : pion inconnu "${payload.tokenId}"`);
         return false;
       }
+      tourEnAttente = null;
       const current = store.getTurn();
       const spent = payload.spentCells;
       if (current && current.tokenId === payload.tokenId && (spent === undefined || spent <= current.spentCells)) {

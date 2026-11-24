@@ -1074,3 +1074,64 @@ test('le bouton d’annulation disparaît tant qu’une image partagée est affi
   await expect(page.locator('#image-share-overlay')).toHaveCount(0);
   await expect(undoBtn).toHaveCount(1);
 });
+
+test('7 — pion posé depuis la réserve PENDANT son Tour : annuler ramène les deux vues à la case de pose, un seul map.turnReset', async ({
+  browser,
+}) => {
+  const snap = snapshotCouloir({ doorState: 'open', ambientLevel: 1, tokens: [pj('ally', { a: 1, b: 2 })] });
+  /** @type {any} */ (snap.campaign).reserve = [
+    pj('hero', { a: 0, b: 0 }, { speedCells: 4, runCells: 8, link: { source: 'outil-mj', ref: 'pj:hero' } }),
+  ];
+  const { context, gm, player, erreurs } = await monterSession(browser, `tj-pose-pendant-tour-${Date.now()}`, snap);
+
+  // Sonde des retours vers l'outil MJ (le canal est le vrai `wfrp-map-link`).
+  await gm.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.__retours = [];
+    w.__sonde = new BroadcastChannel('wfrp-map-link');
+    w.__sonde.onmessage = (/** @type {MessageEvent} */ e) => {
+      if (e.data?.from !== 'outil-mj') w.__retours.push(e.data);
+    };
+  });
+
+  // 1. Le Tour démarre alors que le pion est encore en réserve.
+  await envoyerTour(gm, 'pj:hero');
+  await gm.waitForTimeout(150);
+  expect((await tokenAndTurn(gm, 'hero')).turn).toBeNull();
+
+  // 2. Le MJ le pose en (2,4).
+  await gm.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    // Même ordre que le panneau MJ : la mutation du store (qui déclenche `turn.select` via la
+    // liaison) précède la publication de `token.add`.
+    store.placeTokenFromReserve('hero', 'rdc', { a: 2, b: 4 });
+    const token = store.getCampaign()?.tokens.find((t) => t.id === 'hero');
+    /** @type {any} */ (window).__RPG_APP__.transport.publish({ type: 'token.add', payload: { token }, at: Date.now(), by: 'gm' });
+  });
+  await expect
+    .poll(async () => ({ gm: (await tokenAndTurn(gm, 'hero')).turn?.startCell, pl: (await tokenAndTurn(player, 'hero')).turn?.startCell }), { timeout: 5000 })
+    .toEqual({ gm: { a: 2, b: 4 }, pl: { a: 2, b: 4 } });
+
+  // 3. Le joueur le déplace en (4,4).
+  await tapCell(player, 2, 4);
+  await tapCell(player, 4, 4);
+  await tapCell(player, 4, 4);
+  await expect
+    .poll(() => tokenAndTurn(player, 'hero'), { timeout: 8000 })
+    .toMatchObject({ token: { levelId: 'rdc', cell: { a: 4, b: 4 } }, turn: { spentCells: 2 } });
+  await waitForMoveIdle(player);
+
+  // 4. Il annule.
+  await player.locator('#player-turn-undo-btn').click();
+
+  for (const [nom, page] of /** @type {const} */ ([['joueurs', player], ['MJ', gm]])) {
+    await expect
+      .poll(() => tokenAndTurn(page, 'hero'), { message: `vue ${nom}`, timeout: 8000 })
+      .toMatchObject({ token: { levelId: 'rdc', cell: { a: 2, b: 4 } }, turn: { tokenId: 'hero', spentCells: 0 } });
+  }
+  const resets = await gm.evaluate(() => /** @type {any} */ (window).__retours.filter((/** @type {any} */ m) => m.type === 'map.turnReset'));
+  expect(resets).toHaveLength(1);
+  expect(resets[0].payload).toEqual({ ref: 'pj:hero' });
+  expect(erreurs).toEqual([]);
+  await context.close();
+});

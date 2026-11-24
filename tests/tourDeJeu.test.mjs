@@ -263,6 +263,44 @@ test('réducteur turn.select : payload malformé ou pion inconnu refusé bruyamm
   }
 });
 
+test('turn.select reçu AVANT le token.add de la pose : le Tour démarre sur la case de pose, et l’annulation y revient', () => {
+  const rdc = createLevel({ id: 'rdc', name: 'RDC', widthCells: 12, heightCells: 10 });
+  const reserve = makeLinkedPc({ id: 'pj-r', levelId: 'rdc', cell: { a: 0, b: 0 } });
+  store.loadCampaign(createCampaign({ levels: [rdc], tokens: [], reserve: [reserve] }));
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    // Ordre réel du MJ : la mutation du store déclenche `turn.select`, puis `token.add` est publié.
+    assert.equal(applyNetworkEvent({ type: 'turn.select', payload: { tokenId: 'pj-r', spentCells: 0 }, at: Date.now(), by: 'gm' }), false);
+    assert.equal(store.getTurn(), null);
+    const pose = { ...reserve, cell: { a: 3, b: 4 } };
+    assert.equal(applyNetworkEvent({ type: 'token.add', payload: { token: pose }, at: Date.now(), by: 'gm' }), true);
+    assert.deepEqual(store.getTurn()?.startCell, { a: 3, b: 4 });
+    assert.equal(store.getTurn()?.tokenId, 'pj-r');
+    store.moveTokenToCell('pj-r', { a: 5, b: 4 });
+    store.undoTurnMove('pj-r');
+    assert.deepEqual(store.getCampaign()?.tokens.find((t) => t.id === 'pj-r')?.cell, { a: 3, b: 4 });
+  } finally {
+    console.error = origError;
+  }
+});
+
+test('turn.select retenu : un autre turn.select ou la fin de tour l’abandonne, un autre pion ne le déclenche pas', () => {
+  const rdc = createLevel({ id: 'rdc', name: 'RDC', widthCells: 12, heightCells: 10 });
+  const r = makeLinkedPc({ id: 'pj-r', levelId: 'rdc', cell: { a: 0, b: 0 } });
+  store.loadCampaign(createCampaign({ levels: [rdc], tokens: [], reserve: [r] }));
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    applyNetworkEvent({ type: 'turn.select', payload: { tokenId: 'pj-r' }, at: Date.now(), by: 'gm' });
+    applyNetworkEvent({ type: 'turn.select', payload: { tokenId: null }, at: Date.now(), by: 'gm' });
+    applyNetworkEvent({ type: 'token.add', payload: { token: { ...r, cell: { a: 1, b: 1 } } }, at: Date.now(), by: 'gm' });
+    assert.equal(store.getTurn(), null, 'fin de tour reçue entre-temps : rien à démarrer');
+  } finally {
+    console.error = origError;
+  }
+});
+
 test('réducteur turn.undo : payload malformé/inconnu refusé bruyamment, relit sa case de départ, rejeu inoffensif', () => {
   loadTwoLevelCampaign();
   /** @type {string[]} */

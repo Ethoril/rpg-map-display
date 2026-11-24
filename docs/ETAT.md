@@ -2091,6 +2091,22 @@ d'acceptation du §11.
 > - ⏳ **À éprouver à la table** avec l'outil MJ connecté : poser des pions, « Terminer le combat »,
 >   annuler ; puis la même chose avec un rechargement de la carte entre les deux.
 
+> ### ⏳ Correctif C5bis — pion posé PENDANT son Tour : annuler divergeait entre les deux vues — 24/11/2026, `carte-c5`, **non poussé**
+>
+> Recette du 24/11 (ligne c5) : Tour démarré sur un pion encore en réserve, le MJ le pose, le joueur le
+> déplace puis annule → le MJ revenait à la case de pose, la tablette restait à l'arrivée.
+> - **Cause** (piste « ordre d'arrivée » confirmée) : la mutation du store par la pose notifie
+>   `syncTurn` (`mjLink.js`) de façon synchrone, donc `turn.select` part **avant** le `token.add` de la
+>   pose. La tablette refusait `turn.select` (« pion inconnu »), restait sans Tour, et `turn.undo` y
+>   échouait (« Aucun tour actif ») : seul le MJ remettait le pion. Pistes écartées : `setTurn` lit bien
+>   la case de pose côté MJ ; `undoTurnMove` est correct des deux côtés dès qu'un Tour existe.
+> - **Correctif** (`networkEvents.js`, tablette seulement) : un `turn.select` pour un pion inconnu est
+>   retenu (toujours journalisé) et appliqué à l'arrivée de ce pion (`token.add`, y compris par la
+>   réserve) : la case de pose devient la case de départ, comme chez le MJ. Un `turn.select` ou une fin
+>   de Tour ultérieurs l'abandonnent. Cas nominal inchangé ; aucun message ni champ ne change.
+> - Tests : `tests/tourDeJeu.spec.mjs` n° 7 et deux unitaires dans `tests/tourDeJeu.test.mjs`, rouges
+>   sous mutation. ⏳ **À éprouver à la table** avec l'outil MJ réel.
+
 > ### ✅ Chantier C-10 — refonte de la vue MJ, livrée le 01/10/2026 (hors §11)
 >
 > Demande du mainteneur : la vue MJ était « fonctionnelle mais inesthétique et peu pratique ».
