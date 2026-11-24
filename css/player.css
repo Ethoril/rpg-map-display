@@ -194,24 +194,24 @@ canvas {
 }
 
 /* Encart du pion, en tête de bande (combat du 21/11/2026) : portrait, nom, vitalité. Le même en
-   sélection et en consultation ; en consultation, la bande n'a aucun bouton. Jamais tapable.
-   Le portrait est CARRÉ et grand : les images de pions sont des carrés de 1024 px, c'est sur la
-   carte seulement qu'elles sont détourées en rond ; ici les joueurs voient l'image entière. */
+   sélection et en consultation ; en consultation, la bande n'a aucun bouton. Seul le portrait est
+   tapable : il ouvre l'aperçu en grand (24/11/2026). Le portrait est CARRÉ : les images de pions
+   sont des carrés de 1024 px, détourées en rond sur la carte seulement. */
 .player-selection-card {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  width: 308px;
+  width: 148px;
   font-family: system-ui, sans-serif;
   pointer-events: none;
 }
 
 .player-selection-portrait {
   box-sizing: border-box;
-  width: 300px;
-  height: 300px;
+  width: 140px;
+  height: 140px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -220,7 +220,15 @@ canvas {
   border-radius: 8px;
   color: #ffffff;
   font-weight: 700;
-  font-size: 4.5rem;
+  font-size: 2.4rem;
+}
+
+/* Seul élément tapable de l'encart : le portrait d'un pion qui a une image ouvre l'aperçu. */
+.player-selection-portrait.is-zoomable {
+  pointer-events: auto;
+  cursor: zoom-in;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .player-selection-portrait img {
@@ -307,6 +315,39 @@ canvas {
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 4px;
   pointer-events: none;
+}
+
+/* Aperçu du portrait en grand, à gauche de la bande (24/11/2026). Frère de la bande, positionné
+   par le script ; un toucher le referme. Sous le partage d'image (9000). */
+.player-selection-zoom {
+  position: fixed;
+  z-index: 7;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  width: min(80vh, calc(100vw - 220px));
+  height: min(80vh, calc(100vw - 220px));
+  padding: 0;
+  overflow: hidden;
+  background: #000000;
+  border: 2px solid #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+  cursor: zoom-out;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.player-selection-zoom img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.player-selection-zoom.is-dead img {
+  filter: grayscale(1);
+  opacity: 0.7;
 }
 
 /* ── Partage d'image (C-13) ─────────────────────────────────────────────────────────────────

@@ -362,6 +362,10 @@ violation constitue une **régression fonctionnelle** même si le code fonctionn
    >   referme. La vitalité d'un PNJ est son état à trois crans, jamais ses PV. Pendant une
    >   sélection, un appui maintenu sur un adversaire visible affiche aussi la distance depuis
    >   le PJ. Le relâchement rend l'encart au PJ et conserve le trajet.
+   >   **Amendement du 24/11/2026** (décision du mainteneur) : le portrait, carré, est tapable
+   >   quand le pion a une image — il ouvre un **aperçu en grand** à gauche de la bande, overlay
+   >   transitoire refermé au toucher, au changement de pion ou avec la bande ; rien de publié.
+   >   Détail au CdC §5.3bis.
    > - **Recul d’une étape** (21/11/2026) — une commande jouxte l’étape précédente, seulement
    >   pendant la préparation locale. Les cases restent des cibles de déplacement.
    > - **Aide de jeu** (21/11/2026, validée par le MJ) — bouton permanent de 44 × 44 px près du

@@ -407,6 +407,16 @@ sélectionner.
 > - ⛔ **Seulement ce que la table voit** : un pion caché, hors de la vision publiée ou sur un autre
 >   étage ne s'ouvre pas, et l'encart se ferme dès qu'il cesse d'être vu ; il ne se rouvre pas seul.
 > - La consultation est un état **local** de la tablette, jamais publié ni persisté.
+>
+> **Amendement du 24/11/2026 — le portrait s'agrandit au toucher** (décision du mainteneur : « les
+> joueurs doivent pouvoir avoir une plus grosse version de l'image »). Le portrait de l'encart est
+> **carré** (140 px) : les images de pions sont carrées, seul le rendu sur la carte les détoure en
+> rond. Un portrait de 300 px dans la bande a été essayé puis écarté : il cachait un quart de la
+> carte, et les appuis qui tombaient dessus ne l'atteignaient plus. Toucher le portrait d'un pion
+> qui a une image ouvre donc un **aperçu en grand** à gauche de la bande, overlay transitoire
+> refermé par un second toucher, par un changement de pion ou d'image, ou avec la bande. Il ne
+> publie rien et ne change ni la sélection ni la consultation ; en consultation, il reste le seul
+> élément tapable de la bande. Un pion sans image (initiales) n'a pas d'aperçu.
 
 > **Amendement du 22/11/2026 — Tour de jeu, boutons contextuels et annulation (`TJ-1` à `TJ-7`)**
 > (demande du mainteneur après la séance réelle du 21/11/2026).
