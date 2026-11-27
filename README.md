@@ -79,11 +79,15 @@ Pour un export UVTT :
 node scripts/import-uvtt.mjs chemin/vers/carte.uvtt
 ```
 
-Pour rendre ensuite cette carte publique, il faut documenter son auteur, sa provenance, sa
-licence ou son autorisation de diffusion, ajouter ses fichiers à la liste blanche de
-`scripts/build-site.mjs`, conserver son entrée de catalogue dans le paquet construit et compléter
-`attributions.html`. Tant que ces étapes ne sont pas faites, `pnpm run build:site` publie des
-catalogues de cartes et de portraits vides.
+Pour rendre ensuite cette carte publique, il reste à documenter son auteur, sa provenance, sa
+licence ou son autorisation de diffusion, et à compléter `attributions.html`.
+
+⚠ Il n'y a **plus de liste blanche par carte** dans `scripts/build-site.mjs`, et
+`pnpm run build:site` publie donc le catalogue préparé **en entier** — le mainteneur se porte garant
+des droits de diffusion depuis le 11/08/2026, décision inscrite dans le script lui-même. La phrase
+« catalogues de cartes et de portraits vides » qui figurait ici était donc périmée (audit du
+26/11/2026, H-13) : un diagnostic lancé dessus cherchait des ressources manquantes qui ne
+manquaient pas.
 
 ## Créer un pion
 

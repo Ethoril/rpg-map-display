@@ -1779,3 +1779,180 @@ autorisation, et la licence des cartes reste le domaine du mainteneur.
 
 **La couronne de Bond (Charge, Saut, Sprint) recule des cases déjà parcourues**, comme le budget et la Marche. Sans cela l'anneau hachuré partait toujours du budget entier alors que la zone s'arrêtait à `budget − n` : il restait un trou entre les deux, et l'anneau promettait des cases que le budget refusait. Mouvement entièrement consommé : plus d'anneau.
 
+
+---
+
+## H. Défauts relevés par l'audit externe du 26 novembre 2026
+
+> **Source.** `docs/Rapport-audit-RPG-Map-Display-2026-11-26.pdf`, rendu par un modèle tiers
+> (« astra ») sur le commit `12c0732` de `main`, en lecture seule et sans modifier le dépôt.
+> ⚠ **Audit inachevé** : le mainteneur l'a soumis en l'état. Deux documents l'accompagnent, hors
+> dépôt à l'origine et déposés dans `docs/` : la passation
+> (`RPG-Map-Display-Passation-2026-11-26.txt`) et une étude de conception
+> (`RPG-Map-Display-Combats-et-lisibilite-2026-11-26.pdf`), **non dépouillée ici**.
+>
+> ⭐ **Les treize constats ont été revérifiés un par un contre le code de `12c0732`**, dans un arbre
+> jetable, avant d'être consignés. Deux sont **reproduits par script**, les autres confirmés par
+> lecture du code ou par le calcul. ⛔ Aucun n'a été pris en défaut — c'est le premier audit externe
+> de ce dépôt dans ce cas ; celui du 18/08 annonçait deux défauts pour un seul réel.
+>
+> ⚠ **Ce ne sont pas des dettes dormantes** (section E, dont le chapeau dit « aucune n'est un défaut
+> actif »). Ce sont des **défauts actifs**. Ce qui attend le mainteneur n'est donc pas « est-ce
+> vrai », c'est **l'ordre de correction** et les trois points marqués ⚖, qui demandent un arbitrage
+> produit avant d'être codés.
+
+### Les treize constats
+
+| # | Défaut | Vérifié par | Où | Correctif |
+|---|---|---|---|---|
+| H-1 | ⛔ **La réserve du MJ et la mémoire des cases ne survivent pas à l'aller-retour Firestore v3.** Le document parent écrit dix champs (`schemaVersion`, `revision`, `campaignId`, `name`, `links`, `settings`, `levelIds`, `tokenIds`, `activeLevelId`, `selectedTokenId`) et le document `state/current` deux (`revision`, `templates`). Ni `campaign.reserve` ni `campaign.removedLinkedPlaces` n'y figurent, et la relecture reconstruit la campagne par **liste explicite de champs**, donc sans eux. Au démarrage en ligne, l'instantané serveur prime et s'enregistre localement : la réserve préparée est perdue, et avec elle la mémoire des cases livrée le 24/11 (`63a6a9e`) | **script** — aller-retour `split`→`join` : un garde en réserve et une place retenue avant, **les deux absents** après | `js/transport/FirebaseTransport.js:709` (écriture), `:903` (relecture) | Porter les deux champs dans `state/current`, avec un test d'aller-retour. ⚠ Une campagne écrite avant le correctif ne les a pas : les lire **absents = vides**, jamais les refuser — même règle que `removedLinkedPlaces` au schéma |
+| H-2 | ⛔ **Remplacer une carte efface le brouillard du mauvais étage.** `onClearFog()` est appelé **après** l'`await` de publication, et `clearFog()` relit `getActiveLevelId()` **au moment de l'appel** au lieu de l'`activeLevelId` capturé avant. Si le MJ change d'étage pendant la confirmation réseau, A garde son exploration périmée et B perd la sienne. Le message de succès ne dit rien | lecture | `js/ui/gm/importPanel.js:620` → `js/ui/gm/fogTools.js:237` | Remettre à zéro le brouillard de A **dès le remplacement local**, en passant son identifiant explicitement. Le commentaire du site dit déjà l'intention (« le brouillard doit suivre l'état d'ici ») ; c'est le placement qui la trahit |
+| H-3 | ⛔ **« Ajouter comme étage » écrase un étage déjà joué.** En mode `add`, `store.addLevel(level)` est appelé par étage **sans aucune garde d'identifiant**, alors qu'`addLevel` remplace en place à identifiant égal. Les scènes préparées ont un identifiant fixe : rajouter « Les Armes du Templier » (2 étages, 24 et 21 portes) rejoue les deux étages à neuf, portes refermées, campagne toujours à deux étages. Le chemin d'aperçu UVTT, lui, a cette garde depuis l'audit du 22/09 (A6). **Et l'application est partielle** : la boucle mute le store avant toute publication, donc un étage refusé par `assertValidCampaign` laisse le précédent posé en local, annonce un échec, et n'envoie rien à la table | lecture | `js/ui/gm/sceneLibrary.js:112` ; garde absente, cf. `js/ui/gm/importPanel.js:288` qui l'a | ⚖ Annoncer les doublons **avant** de muter, valider tout le lot d'abord, et réserver le remplacement à un choix explicite. Voir ⚖ A ci-dessous |
+| H-4 | ⛔ **Un effet de blessure ou de mort révèle un PNJ hors de vue.** `shouldPlayFx` ne regarde que le drapeau `hidden` posé à la main par le MJ — **jamais la visibilité réelle** du pion pour la table. Dans une pièce explorée mais sans vision courante, la couche des pions masque correctement le PNJ ; l'effet, lui, se dessine à sa position | lecture | `js/render/layers/fx.js:211` | ⚖ Appliquer à l'effet la règle de visibilité du pion. Voir ⚖ B ci-dessous pour la trace persistante |
+| H-5 | ⛔ **Un pion monté au zoom minimum interrompt l'image en cours.** L'anneau intérieur du cavalier a pour rayon `largeurCase/2 − 9/zoom`, négatif dès que `zoom < 18/largeurCase`. ⭐ **Le zoom minimum vaut exactement 0,10** (`camera.js:25`) : pour une carte à 140 px/case le seuil est 0,1286, donc la borne basse du zoom est **dans** la zone de panne, pas à côté. `ctx.ellipse` lève alors `IndexSizeError` — la spécification l'impose sur un rayon négatif — et le rendu s'arrête | calcul (70 − 15 = 55 ; 55 − 45 = 10 ; 10 − 30 = **−20**) | `js/render/layers/tokens.js:503` | Borner le rayon et, sous une taille minimale, dessiner une silhouette simplifiée. Tester **les deux extrêmes** de zoom, pas seulement le repos |
+| H-6 | ⛔ **Une blessure peut apparaître sur la mauvaise case.** L'ancre d'un effet est calculée au premier rendu **avec la grille de l'étage affiché**, alors que le pion visé peut être sur un autre étage. L'ancre est ensuite figée. Reçue pendant que A (100 px/case) est à l'écran, une blessure sur la case (2, 2) de B (140 px/case) s'ancre en (250, 250) ; elle se dessine là après bascule sur B, au lieu de (350, 350) | **script** — valeurs reproduites au pixel | `js/render/layers/fx.js:337` | Garder l'étage et la **case** de la cible, et ne calculer la position qu'avec la grille de cet étage-là |
+| H-7 | ⛔ **Le guide enseigne deux gestes abolis le 22/11.** L'aide de jeu apprend « sélectionne ton pion sur l'escalier, puis retouche sa case pour franchir » et « touche directement le seuil de la porte » — or TJ-2 a supprimé le toucher direct de porte côté joueurs et TJ-1 remplacé le re-tap par un bouton, **absents dès qu'un pion est sélectionné** (TJ-8). ⚠ Le guide simule son propre plateau : ses tests valident donc sa version périmée, et restent verts | lecture | `js/ui/player/gameHelp.js:1343`, `:1559`, `:1585`, `:2476`, `:2528` | Faire jouer au guide **la même interaction** que le plateau, puis exiger un geste identique dans les deux parcours. ⛔ C'est le guide qui a tort : TJ-1, TJ-2 et TJ-8 sont tranchés |
+| H-8 | **Un champ refusé continue d'afficher la valeur saisie.** `applyTokenPatch` rappelle bien l'interface à l'état du store après un refus, mais la remise à jour est gardée par `if (document.activeElement !== control)` — garde légitime contre l'écrasement d'une frappe en cours. Sur **Entrée**, `change` part alors que le champ a encore le focus : la remise est sautée, et la fiche montre 4 pendant que le jeu tient 1. Même mécanisme pour un nom remplacé par une espace | lecture pour **Entrée** ; ⚠ la variante **Tab** du rapport n'est pas confirmée par lecture (elle dépend de l'ordre focus/`change` du navigateur) et demande une reproduction | `js/ui/gm/panel.js:1995`, la garde ; `:2027`, l'intention écrite juste au-dessus | Rétablir la valeur enregistrée **à côté de l'explication**, ou lever la garde pour le seul champ qui vient d'être refusé |
+| H-9 | **Après F5, le bon étage peut s'ouvrir avec le cadrage du précédent.** Le cadrage est enregistré sous `rpg_camera_<session>`, **sans identifiant d'étage**, et `fitActiveLevel` saute son recadrage une fois au retour (`restoredCamera`). Un grand étage quitté, un étage 6 × 6 au retour : le pan et le zoom du premier s'appliquent au second, qui peut sortir du champ. Aucun bornage ne rattrape | lecture | `js/app/gm.js:1030` (relecture), `:729` (saut du recadrage) | Associer le cadrage à la campagne, à l'étage **et** à la vue, puis recadrer si ces informations ne correspondent plus. Voir ⚖ C ci-dessous |
+| H-10 | **« Emmener la table » annonce un succès après un échec.** `onShowLevel` appelle `transport?.publish(...)` **sans attendre le résultat**, et `publish` ne rejette jamais (E-9) : le `try/catch` du composant ne rattrape rien et « publié : Cave » s'affiche quoi qu'il arrive. ⛔ C'est exactement la règle E-9 que le reste du dépôt applique — « chargé et publié » ne doit jamais s'afficher si rien n'est parti | lecture | `js/ui/gm/panel.js:2572` ; statut posé en `js/ui/gm/levelSelector.js:99` | Afficher « Envoi… », puis le résultat réel de l'envoi. ⭐ Le long commentaire du site a raison sur le fond (ne pas prétendre savoir ce que la table montre) : il ne couvre pas le fait de dire « publié » quand rien n'est publié |
+| H-11 | ⛔ **Le refus de destination n'est jamais dessiné pendant une animation.** `animationActive ||= moveZoneLayer.renderDestinationFeedback(...)` : `||=` court-circuite, donc la fonction **n'est pas appelée du tout** quand une couche précédente s'anime — et un refus arrive précisément là. ⚠ **Sur les deux vues**, pas seulement la tablette. Le rapport rangeait ce point en encadré, comme un confort à fiabiliser ; c'en est un défaut à part entière | lecture | `js/app/player.js:735` et `js/app/gm.js:870` — les **deux seuls** sites où l'appel est l'opérande droite d'un `||=` | Calculer le rendu, **puis** accumuler. ⚠ Distinguer aussi « occupée » de « refusée » par la forme, pour que la réponse se lise de loin |
+| H-12 | **La grille hexagonale est le premier candidat à mesurer.** Sur 65 × 71 cases, `renderGrid` parcourt 4 615 hexagones, soit **27 690 sommets et 55 380 appels trigonométriques par image**, hors écran compris ; la grille carrée équivalente trace **138 segments**. ⛔ Ce n'est **pas** un défaut : c'est un comptage d'opérations, et l'interdiction n°14 tient — aucun verdict de performance sans la tablette. Le rendu est à la demande, donc le coût n'est payé qu'au redessin | calcul, code lu | `js/grid/HexGrid.js:407` contre `js/grid/SquareGrid.js:300` | Essayer un tracé réutilisable par étage, puis un découpage au champ visible. **Mesurer avant d'optimiser** — relève de la section A |
+| H-13 | **Le README annonce deux catalogues publiés vides.** Il dit que `pnpm run build:site` publie des catalogues de cartes et de portraits vides tant que la liste blanche par carte n'est pas complétée. ⛔ **Cette liste blanche n'existe plus** (`build-site.mjs:68` : « Le catalogue préparé part en entier »), et le paquet construit sur cette version contient **12 entrées de cartes et 21 de pions**. Un diagnostic lancé sur cette phrase chercherait des ressources manquantes qui ne manquent pas | comptage sur les deux catalogues | `README.md:84`, et la docstring restée périmée en `scripts/build-site.mjs:234` | Rayer la phrase et la docstring. Documentation seulement |
+
+### Les trois points qui demandent un arbitrage
+
+> #### ✅ A — TRANCHÉ le 26/11/2026 : refuser et le dire (H-3)
+>
+> Le correctif technique était clair : valider tout le lot avant de muter quoi que ce soit. Restait
+> ce qu'on **propose au MJ** quand un identifiant d'étage existe déjà. Trois options lui ont été
+> soumises — refuser, offrir conserver/dupliquer/remplacer par collision, ou dupliquer d'office.
+>
+> **Décision : refuser, sans rien muter, et nommer l'étage déjà présent**, en renvoyant vers
+> « Remplacer l'étage courant » (onglet Image). ⭐ C'est déjà, mot pour mot, ce que fait le chemin
+> d'aperçu UVTT depuis l'audit du 22/09 (A6) : une seule porte d'entrée, un seul comportement.
+> ⛔ « Dupliquer » est écarté : il supposerait un identifiant dérivé stable, que le dépôt ne sait
+> fabriquer nulle part aujourd'hui.
+
+> #### ✅ B — TRANCHÉ le 26/11/2026 : la trace suit la vision, à chaque image (H-4)
+>
+> Appliquer la visibilité du pion à l'effet règle la gerbe, qui dure moins d'une seconde. La
+> **tache de sang persiste 90 s** (`FX_STAIN_FADE_MS`), d'où la question.
+>
+> **Décision : l'effet et sa tache ne sont dessinés que sur les cases actuellement visibles**, le
+> test étant refait **à chaque image** et non une seule fois à la réception. Invisible au moment du
+> coup, la tache apparaît donc si les joueurs éclairent la pièce dans les 90 s — entrer dans une
+> salle où il y a du sang est une information de jeu, pas une fuite. ⭐ Aucun mécanisme nouveau :
+> c'est `isCellVisibleInMask`, déjà la règle de la couche des pions.
+>
+> ⚠ **Ne pas croire que déplacer le calque suffit.** `fx` est **déjà rangé sous le fog** dans
+> `js/render/stage.js`, avec un commentaire qui dit exactement cette intention. Ce qui a changé,
+> c'est D-12 (03/10/2026) : l'exploré non éclairé **montre son décor**, donc le voile n'y est plus
+> opaque et l'effet transparaît. Le filtre doit être dans la couche, pas dans l'ordre des calques.
+
+> #### ✅ C — TRANCHÉ le 26/11/2026 : recadrer seulement si l'étage diffère (H-9)
+>
+> Recadrer d'office sur le nouvel étage est le comportement le plus simple, mais c'est un écran
+> qui bouge tout seul. La règle 4 — « rien ne se déplace dans le dos de personne » — vise les
+> déplacements **provoqués par un tiers** ; ici il s'agit du retour d'un F5 sur son propre poste,
+> où le cadrage précédent ne veut plus rien dire.
+>
+> **Décision : enregistrer le cadrage avec la campagne, l'étage et la vue.** Au retour sur le même
+> étage, rien ne bouge ; sur un autre, `fitActiveLevel` reprend son travail normal. L'écran ne se
+> déplace donc tout seul que lorsque le cadrage mémorisé ne désigne plus rien.
+
+> #### État de la porte au moment de l'audit
+>
+> `pnpm run test:unit` relancé sur `12c0732` le 26/11 : **881 tests, 878 verts, 0 rouge,
+> 3 ignorés**. Le rapport annonce 875 réussis ; l'écart de trois est `realUvtt.test.mjs`, qui
+> s'auto-ignore sur le poste Windows, `fixtures/real/` étant gitignoré. ⛔ Aucun de ces treize
+> défauts n'est couvert par un test aujourd'hui — c'est la mesure la plus parlante du lot.
+
+### Addendum du 26/11/2026 — ce que la planification a trouvé en plus
+
+> Le plan de correction a été établi par un orchestrateur externe (Antigravity, orchestrateur neon)
+> sur ce même commit, puis **revérifié site par site**. Il a relevé quatre écarts que le tableau
+> ci-dessus ne portait pas. Les quatre sont confirmés dans le code.
+
+| # | Ce qui s'ajoute | Vérifié | Où |
+|---|---|---|---|
+| **H-14** | ⛔ **Jumeau de H-2 dans le changement de pavage.** `updateGridTypeFromUI` appelle `fogTools?.clearFog()` **après** son `await transport.publish(...)`, sans identifiant d'étage, sous un commentaire qui dit la même intention qu'en H-2 (« le brouillard suit l'état d'ici, publié ou non »). Même défaut, même cause, autre porte d'entrée | lecture | `js/ui/gm/panel.js:1405` |
+| **H-2 est plus large que décrit** | Corriger `importPanel.js` ne suffit pas : **quatre maillons** doivent porter l'identifiant d'étage. `panel.js:1053` ne le passe pas à `clearFog`, `fogTools.js:244` ne le passe pas à `scheduleFogPublish`, et le rappel de `gm.js:1631` **relit `store.getActiveLevel()`** quoi qu'on lui donne. Un correctif au seul premier site publierait encore le `fog.update` sur le mauvais étage | lecture | `js/ui/gm/importPanel.js:620`, `js/ui/gm/panel.js:1053`, `js/ui/gm/fogTools.js:244`, `js/app/gm.js:1631` |
+| **H-3 cache une seconde divergence** | En mode « ajouter », la boucle de publication parcourt **`sceneData.levels`** — le JSON brut relu du fichier — alors que le store a reçu `normalizedData.levels`. Le MJ et la table ne reçoivent donc pas le même objet : tout ce que `normalizeCampaign` corrige (couleurs héritées, champs manquants) part normalisé d'un côté et brut de l'autre | lecture | `js/ui/gm/sceneLibrary.js:146` |
+| **H-7 porte sur trois fiches, pas deux** | `STAIRS_PROMPT = 'Retaper pour prendre l'escalier'` est aussi employé par la **fiche 8** (« Monter ou descendre de cheval », lignes 2694 et 2767), qui apprend à retaper la case d'Ariane **en la gardant sélectionnée** — contraire à TJ-1 et à TJ-8 | lecture | `js/ui/player/gameHelp.js:87`, `:2694`, `:2767` |
+| **H-5 déborde du cavalier** | `imageRadius` lui-même (`largeurCase/2 − 1,5/zoom`) devient négatif au zoom minimum dès que la carte descend **sous 30 px/case**, pion monté ou non. Et `_drawRiderMedallion` pose un `lineWidth` de 3/zoom, soit 30 px carte à 0,10, sur un médaillon de rayon 29,4 | calcul | `js/render/layers/tokens.js:417`, `:676` |
+
+> #### ⛔ Un point qui reste au mainteneur, et à lui seul
+>
+> Le README porte une **seconde** mention périmée, lignes 146 à 148 : « les cartes et portraits
+> présents dans le dépôt ne portent pas de provenance ou d'autorisation de diffusion vérifiable ;
+> ils sont donc exclus du paquet GitHub Pages ». Or `scripts/build-site.mjs:73` pose
+> `DIFFUSION_ASSUMEE_PAR_LE_MAINTENEUR = true` et publie tout.
+>
+> ⚠ Ce n'est pas la même chose que H-13. H-13 est une phrase sur un mécanisme disparu. Celle-ci
+> énonce une **position sur les droits des cartes**, que le code contredit. ⛔ La licence des cartes
+> est le domaine du mainteneur : aucun modèle ne réécrit ce paragraphe. Il est sorti du lot de
+> correction documentaire et attend son mot.
+
+> #### Décisions de planification prises sans le déranger
+>
+> L'orchestrateur a soulevé cinq points ; aucun ne demandait son arbitrage, et ils sont réglés ici
+> pour que les briefs soient complets :
+>
+> - **Formes du retour de destination** (H-11) : la silhouette pour la case occupée et la croix
+>   pour le refus, contour clair doublé de sombre — c'est la proposition de la page 4 du rapport.
+> - **« Emmener la table » sans transport** (H-10) : afficher « Mode local — aucune table
+>   connectée », et ne pas désactiver le bouton : jouer hors ligne est un usage légitime.
+> - **Le jumeau H-14** est corrigé dans le même lot que H-2 : même cause, et les séparer rouvrirait
+>   la seconde porte aussitôt la première fermée.
+> - **La fiche 8 entre dans le lot H-7**, pour la même raison.
+> - **Un seul cadrage par vue** (H-9), comparé au couple campagne + étage au retour — pas un
+>   dictionnaire de cadrages par étage, que la décision C n'appelle pas.
+
+### Second addendum du 27/11/2026 — ce que l'étude de conception change au plan
+
+> L'étude de conception annexée (`docs/RPG-Map-Display-Combats-et-lisibilite-2026-11-26.pdf`) a été
+> dépouillée dans une autre session et quatre arbitrages ont été rendus dessus. Ses conclusions ont
+> été **revérifiées ici site par site** : les huit affirmations de structure qu'elle avance sont
+> exactes. Deux d'entre elles touchent directement le plan de correction.
+
+#### H-15 — ⛔ L'événement `fx` circule sur le réseau sans exister au cahier des charges
+
+`fx` est dans `LIVE_ONLY_EVENTS` (`js/transport/FirebaseTransport.js:48`), publié par
+`js/app/mjLink.js:515` et consommé par les deux vues. Il est spécifié au **§9 du contrat de
+liaison**. Mais `docs/CAHIER-DES-CHARGES.md` ne le mentionne **nulle part** — zéro occurrence,
+alors que son §7 est la liste normative des événements réseau du projet.
+
+⚠ **Ce n'est pas qu'une omission d'archiviste.** Le mainteneur a demandé le 27/11 d'ouvrir
+l'arbitrage sur un **événement d'attaque** (auteur, cible, issue à montrer). On ne peut pas
+ajouter une entrée à une liste qui ne contient pas déjà celle d'à côté : le §7 doit d'abord
+accueillir `fx`, sinon le nouvel événement y serait le seul effet nommé et la liste mentirait
+dans l'autre sens.
+
+**Correctif :** inscrire `fx` au §7 avec sa charge utile réelle (`{ tokenId, kind, … }`), en
+renvoyant au §9 du contrat pour le détail. Documentation seule, aucun code.
+
+#### H-11 remonte en tête de file, et ce n'est pas négociable
+
+Le refus de destination n'est pas dessiné pendant qu'un calque s'anime. **Aujourd'hui seuls les
+déplacements animent** : la fenêtre aveugle est étroite. Chaque effet visuel ajouté — et l'étude en
+propose cinq — lève le même drapeau et l'élargit d'autant. ⛔ H-11 se corrige donc **avant** toute
+animation nouvelle, et il quitte la dernière vague pour rejoindre la première.
+
+#### Deux contraintes à écrire dans les briefs, plutôt qu'à rattraper plus tard
+
+- **Le filtre de visibilité de H-4 doit accepter plusieurs pions dès sa conception.** L'arbitrage
+  du 27/11 sur les projectiles — « aucun effet quand l'auteur n'est pas vu » — porte sur un trajet
+  à deux extrémités : un trait dont l'arrivée tombe en clair donnerait la direction d'un ennemi non
+  vu. ⚠ C'est une fuite, pas un acte explicite comme le ping. Le garde actuel ne regarde qu'un
+  pion ; le construire à un seul aujourd'hui obligerait à le rouvrir demain.
+- **`ARCHITECTURE.md:176` déclare `fx.js` « effets de blessure et de mort ».** Tout effet d'attaque
+  ou de projectile change cette ligne du manifeste, et le manifeste est fermé : l'amendement se
+  demande, il ne s'improvise pas.
+
+#### Ce qui n'entre PAS dans le chantier de correction
+
+L'ombre permanente sous les pions (arbitrage n° 3) change l'allure de **tous** les pions sur les
+**trois** écrans. ⛔ `shadowBlur` n'existe nulle part dans le dépôt : c'est une convention neuve,
+pas un correctif. Elle relève d'un chantier d'esthétique à éprouver à la table, pas de la
+réparation de treize défauts. Même rangement pour le vocabulaire visuel (arbitrage n° 1) et la
+piste d'ambiance.

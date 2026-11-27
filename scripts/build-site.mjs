@@ -231,10 +231,12 @@ function writeJson(relative, value) {
 }
 
 /**
- * Construit l'artefact Pages depuis la liste blanche. Les cartes et portraits dont la
- * provenance n'est pas documentée ne sont volontairement pas copiés : voir
- * attributions.html. Les catalogues vides maintiennent le runtime fonctionnel sans
- * exposer une URL vers un asset non autorisé.
+ * Construit l'artefact Pages depuis le manifeste de site.
+ *
+ * ⚠ Cette docstring décrivait une liste blanche par carte et des catalogues publiés vides :
+ * les deux ont disparu avec `DIFFUSION_ASSUMEE_PAR_LE_MAINTENEUR` (11/08/2026, voir le
+ * commentaire de cette constante ci-dessus). Le catalogue préparé part en entier. Périmée
+ * relevée par l'audit du 26/11/2026 (H-13), au même titre que la phrase du README.
  *
  * @returns {string[]} chemins relatifs écrits, triés
  */

@@ -947,6 +947,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `vision.request` | tablette | ponctuel — **sans payload** depuis l'amendement C-8 |
 | `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
 | `ping` | **MJ et joueurs** (amendé le 04/10/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
+| `fx` | **MJ seul** | ponctuel, **éphémère** — `{ tokenId, kind: 'wound', hpLost, maxHp }` ou `{ tokenId, kind: 'death', cause }`. Hors du réducteur, **jamais rejoué, jamais persisté**, et **non émis pour un pion caché**. Détail des causes et des cas au §9 de `docs/CONTRAT-LIAISON-OUTIL-MJ.md` |
 | `ambient.set` | MJ | throttlé |
 | ~~`handout.show` / `handout.hide`~~ | — | **retirés par C-13** : le partage d'image n'est pas un événement, c'est le nœud d'état `session/{sid}/sharedImage` (§5.8, §6). Un ancien `handout.*` reçu est ignoré comme tout type inconnu |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
@@ -965,6 +966,17 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `light.delete` | **MJ seul** | ponctuel — `{ levelId, lightId }`, voir l amendement C-2 |
 | `turn.select` | **MJ seul** | ponctuel — `{ tokenId: string\|null, spentCells?: number }`, état de session non persisté, voir l'amendement du 22/11/2026 |
 | `turn.undo` | **joueurs** | ponctuel — `{ tokenId: string }`, sans case de départ (le MJ relit la sienne), voir l'amendement du 22/11/2026 |
+
+> **Régularisation du 27/11/2026 — `fx` figurait dans le code et dans le contrat, pas ici.**
+> L'événement d'effet circule depuis le lot L4 (05/11/2026) : il est dans `LIVE_ONLY_EVENTS`
+> (`js/transport/FirebaseTransport.js`), publié par `js/app/mjLink.js` et consommé par les deux
+> vues, et il est spécifié au §9 du contrat de liaison. Mais ce §7 — la liste **normative** des
+> événements réseau du projet — ne le mentionnait nulle part. Omission relevée par l'audit externe
+> du 26/11/2026 (H-15), corrigée ci-dessus sans rien changer au comportement.
+>
+> ⚠ Ce n'était pas qu'une omission d'archiviste : un **événement d'attaque** est à l'arbitrage, et
+> on ne peut pas ajouter une entrée à une liste qui ne contient pas déjà celle d'à cöté — le nouvel
+> événement y serait le seul effet nommé, et la liste mentirait dans l'autre sens.
 
 > **Amendement du 22/11/2026 — Tour de jeu (`turn.select` et `turn.undo`, `TJ-5` à `TJ-7`).** Le
 > tour actif reçu de l'outil MJ (`mj.turn`) reste **non persisté** (absent de l'instantané
