@@ -108,6 +108,20 @@ export async function createSceneLibrary(container, options = {}) {
       if (mode === 'load') {
         store.loadCampaign(normalizedData);
       } else {
+        // ⛔ « Ajouter comme étage » ne remplace JAMAIS un étage existant (arbitrage du
+        // 26/11/2026) : `addLevel` écraserait en place à identifiant égal, et la boucle
+        // poserait sinon le lot partiellement. Tout le lot est donc contrôlé AVANT la
+        // première mutation — refus = campagne inchangée, comme l'aperçu UVTT
+        // (`importPanel.js`).
+        const niveauxExistants = store.getCampaign()?.levels ?? [];
+        for (const level of normalizedData.levels) {
+          const existant = niveauxExistants.find((l) => l.id === level.id);
+          if (existant) {
+            throw new Error(
+              `un étage « ${existant.name || existant.id} » porte déjà l'identifiant "${level.id}" : l'ajout ne le remplace pas. Pour changer sa carte, sélectionnez-le puis « Remplacer l'étage courant » (onglet Image).`
+            );
+          }
+        }
         for (const level of normalizedData.levels) {
           store.addLevel(level);
         }
@@ -143,7 +157,12 @@ export async function createSceneLibrary(container, options = {}) {
             by: 'gm',
           });
         } else {
-          for (const level of sceneData.levels) {
+          // ⛔ `normalizedData.levels`, PAS `sceneData.levels`. `normalizeCampaign` rend un
+          // `structuredClone` (`schema.js:126`) : publier le JSON brut relu du fichier envoyait à la
+          // table un étage que la normalisation n'avait pas touché — intensités de lumière hors
+          // bornes, `light.on` absent, couleurs non résolues — pendant que le MJ posait le normalisé.
+          // Deux écrans qui n'éclairent pas la même pièce (audit du 26/11/2026, addendum à H-3).
+          for (const level of normalizedData.levels) {
             const etage = await transport.publish({
               type: 'level.add',
               payload: { level },
