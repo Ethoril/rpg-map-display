@@ -1956,3 +1956,44 @@ L'ombre permanente sous les pions (arbitrage n° 3) change l'allure de **tous** 
 pas un correctif. Elle relève d'un chantier d'esthétique à éprouver à la table, pas de la
 réparation de treize défauts. Même rangement pour le vocabulaire visuel (arbitrage n° 1) et la
 piste d'ambiance.
+
+### ⏳ EN ATTENTE — l'événement d'attaque : son nom et sa charge utile
+
+> Demandé par le mainteneur le 27/11/2026. ⛔ **Rien n'est écrit au §7 du cahier des charges ni au
+> §9 du contrat de liaison tant qu'il n'a pas tranché** : un nom d'événement réseau est exactement
+> le cas où l'autonomie s'arrête. Ce qui suit est une proposition, pas une décision.
+>
+> ⭐ Le préalable est levé : `fx` est désormais inscrit au §7 (régularisation du 27/11, H-15). On
+> peut donc ajouter une entrée à côté d'une liste qui ne mentait plus par omission.
+
+#### Ce que le besoin impose, et qui n'est pas discutable
+
+- **Aucune règle de jeu ne circule.** La vue joueurs ne connaît ni toucher, ni défense, ni dégâts
+  calculés : l'outil MJ résout, la carte montre. C'est la frontière du contrat de liaison depuis le
+  lot L4, et l'événement d'attaque ne la déplace pas.
+- **Deux extrémités, donc deux visibilités.** L'arbitrage du 27/11 sur les projectiles dit
+  « aucun effet quand l'auteur n'est pas vu ». Un trait dont l'arrivée tombe en clair donnerait la
+  direction d'un ennemi non vu : c'est une fuite, pas un acte explicite comme le ping. Le filtre de
+  H-4 a été construit pour accepter plusieurs parties exactement pour cela (`target.parts`), et il
+  exige aujourd'hui que **toutes** soient vues. ⚠ Cette règle du « toutes » est provisoire : c'est
+  la lecture conservatrice, pas un arbitrage.
+- **Éphémère, jamais rejoué, jamais persisté.** Comme `fx` : dans `LIVE_ONLY_EVENTS`, hors du
+  réducteur, absent de l'instantané.
+
+#### La proposition
+
+| Point | Proposition | Pourquoi |
+|---|---|---|
+| **Nom** | `attack` | ⚖ **À trancher.** `fx.attack` serait cohérent avec `fx.wound` / `fx.death` du §9 *côté outil MJ*, mais sur le réseau ces deux-là deviennent un seul `fx` : un second nom en `fx.*` sur le réseau n'existerait pas. `attack` reste donc le candidat, à côté de `fx` et de `ping`. |
+| **Charge utile** | `{ from: Cell, to: Cell, levelId: string, outcome: 'hit'\|'miss'\|'critical', damage?: number }` | Des coordonnées de **cellule**, jamais de pixels (règle 3 et CONVENTIONS §4). `levelId` parce qu'un effet n'a de sens que sur son étage, leçon de H-6. |
+| **`outcome`** | trois valeurs seulement | ⚖ **À trancher.** « touché / raté / critique » est ce que la table doit lire de loin. Un échec critique, une parade, une esquive ? Chaque valeur ajoutée est un dessin de plus à concevoir et à éprouver à la table. |
+| **`damage`** | optionnel | Le MJ décide s'il le montre. Absent, la carte ne chiffre rien. |
+| **Visibilité** | `from` **et** `to` doivent être vues | La conséquence directe de l'arbitrage du 27/11, et le mécanisme existe déjà. |
+| **Version du protocole** | **inchangée, version 3** | ⭐ Un événement AJOUTÉ que l'ancien récepteur ignore ne casse rien : il tombe dans la branche par défaut, exactement comme `turn.select` ajouté le 22/11 sans changer la version. ⛔ Ce serait une version 4 si une charge utile existante changeait de forme. |
+
+#### ⛔ Ce que cela entraîne ailleurs, et qui doit être demandé
+
+`docs/ARCHITECTURE.md:176` déclare `js/render/layers/fx.js` « effets de blessure et de mort ». Tout
+effet d'attaque ou de projectile change cette ligne du **manifeste fermé** : l'amendement se
+demande, il ne s'improvise pas. Et le §9 du contrat de liaison est partagé avec l'outil MJ : son
+amendement doit passer par le mainteneur, pas de dépôt à dépôt.
