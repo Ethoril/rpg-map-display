@@ -726,6 +726,11 @@ export function splitSnapshotForFirestoreV3(snapshot, sessionId, revision = Date
   const state = {
     revision,
     templates: campaign.templates ?? [],
+    // H-1 : la réserve et la mémoire des cases vivent dans `state`, comme les gabarits — le
+    // parent reste léger. Un pion de réserve est un pion : il perd son `move` transitoire ici,
+    // exactement comme ceux du plateau, pour ne pas ressusciter en mouvement à la relecture.
+    reserve: (campaign.reserve ?? []).map((/** @type {any} */ { move: _animation, ...token }) => token),
+    removedLinkedPlaces: campaign.removedLinkedPlaces ?? [],
   };
 
   const documents = [
@@ -910,6 +915,11 @@ export function joinSnapshotFromFirestoreV3(parent, levels, tokens, state) {
       levels: expected.map((/** @type {any} */ id) => byId.get(id)),
       tokens: expectedTokens.map((/** @type {any} */ id) => tokensById.get(id)),
       templates: state?.templates ?? [],
+      // H-1 : relues depuis `state` quand elles portent du contenu. Un `state/current` écrit avant
+      // ce correctif ne les porte pas, et une liste vide ne devient pas une clé : l'absence vaut
+      // liste vide, la relecture reste identique à l'instantané d'origine et jamais invalide.
+      ...(Array.isArray(state?.reserve) && state.reserve.length > 0 ? { reserve: state.reserve } : {}),
+      ...(Array.isArray(state?.removedLinkedPlaces) && state.removedLinkedPlaces.length > 0 ? { removedLinkedPlaces: state.removedLinkedPlaces } : {}),
     },
     activeLevelId: parent.activeLevelId ?? null,
     selectedTokenId: parent.selectedTokenId ?? null,
