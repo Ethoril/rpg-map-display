@@ -22,6 +22,9 @@ import {
   validateCampaign,
 } from '../js/core/schema.js';
 import { edgeKey, cellKey } from '../js/core/cellKey.js';
+import { SquareGrid } from '../js/grid/SquareGrid.js';
+import { TokensLayer } from '../js/render/layers/tokens.js';
+import { Camera } from '../js/render/camera.js';
 import { computeBlockedEdges } from '../js/import/blockedEdges.js';
 import { movementRulesFor } from '../js/state/selection.js';
 import {
@@ -447,4 +450,151 @@ test('C-9 icône : assets/icons/mounted.svg ne peint que du blanc, hors du dossi
   assert.ok(whiteRefs > 0);
   assert.equal(MOUNTED_ICON_URL, 'assets/icons/mounted.svg');
   assert.equal(existsSync(fileURLToPath(new URL('../assets/icons/status/mounted.svg', import.meta.url))), false);
+});
+
+// ── H-5 : un pion monté au zoom minimum ne doit pas interrompre l'image ────────────────────
+//
+// Défaut relevé par l'audit du 26/11/2026. L'anneau intérieur du cavalier a pour rayon
+// `largeurCase/2 − 9/zoom` : `imageRadius` retire déjà `TOKEN_BORDER_SCREEN_PX/(2·zoom)`, puis
+// l'anneau sombre `1,5·ringWidth` et l'anneau clair `1·ringWidth` de plus. Il devient NÉGATIF dès
+// que `zoom < 18/largeurCase`.
+//
+// ⭐ Le zoom minimum de la caméra vaut 0,10 : pour une carte à 140 px/case le seuil est 0,1286, donc
+// la borne basse du zoom est DANS la zone de panne, pas à côté. `ctx.ellipse` lève alors
+// `IndexSizeError` — la spécification l'impose sur un rayon négatif — et le rendu s'arrête net.
+//
+// ⛔ Le faux contexte ci-dessous LÈVE sur un rayon négatif, exactement comme le vrai. Un faux
+// contexte permissif rendrait ce test vert sur la panne réelle.
+
+/** @returns {{ ctx: any, rayons: number[] }} Contexte 2D minimal, fidèle sur les rayons négatifs. */
+function contexteQuiLeveSurRayonNegatif() {
+  /** @type {number[]} */
+  const rayons = [];
+  /** @param {number} r @param {string} methode */
+  const verifier = (r, methode) => {
+    rayons.push(r);
+    if (!(r >= 0)) {
+      // Le vrai CanvasRenderingContext2D lève ceci ; le rendu de l'image s'arrête alors.
+      const erreur = new Error(`IndexSizeError: ${methode} avec un rayon négatif (${r})`);
+      erreur.name = 'IndexSizeError';
+      throw erreur;
+    }
+  };
+  // ⛔ Une `clip()` sur un chemin VIDE ne lève rien et découpe TOUT : le pion disparaît en
+  // silence. C'est l'autre moitié de H-5, et elle ne se voit pas à 140 px/case. On la compte.
+  let operationsDuChemin = 0;
+  let clipsVides = 0;
+  const ctx = {
+    canvas: /** @type {any} */ (null),
+    globalAlpha: 1, fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '',
+    textBaseline: '', shadowBlur: 0, shadowColor: '', filter: '', globalCompositeOperation: '',
+    get clipsVides() { return clipsVides; },
+    save: () => {}, restore: () => {}, closePath: () => {},
+    beginPath: () => { operationsDuChemin = 0; },
+    clip: () => { if (operationsDuChemin === 0) clipsVides += 1; },
+    moveTo: () => { operationsDuChemin += 1; }, lineTo: () => { operationsDuChemin += 1; },
+    fill: () => {}, stroke: () => {},
+    fillRect: () => {}, strokeRect: () => {}, fillText: () => {}, strokeText: () => {},
+    drawImage: () => {}, translate: () => {}, rotate: () => {}, scale: () => {},
+    setTransform: () => {}, resetTransform: () => {}, setLineDash: () => {},
+    createLinearGradient: () => ({ addColorStop: () => {} }),
+    createRadialGradient: () => ({ addColorStop: () => {} }),
+    measureText: () => ({ width: 10 }),
+    getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    /** @param {number} _x @param {number} _y @param {number} rx @param {number} ry */
+    ellipse: (_x, _y, rx, ry) => { operationsDuChemin += 1; verifier(rx, 'ellipse'); verifier(ry, 'ellipse'); },
+    /** @param {number} _x @param {number} _y @param {number} r */
+    arc: (_x, _y, r) => { operationsDuChemin += 1; verifier(r, 'arc'); },
+    /** @param {number} _x @param {number} _y @param {number} r */
+    arcTo: (_x, _y, r) => { verifier(r, 'arcTo'); },
+    roundRect: () => {},
+  };
+  ctx.canvas = { width: 1200, height: 900, getContext: () => ctx };
+  return { ctx, rayons };
+}
+
+/**
+ * @param {any} token @param {number} zoom @param {number} [pxPerCell]
+ * @returns {{ rayons: number[], dessines: string[], clipsVides: number }}
+ */
+function rendreAuZoom(token, zoom, pxPerCell = 140) {
+  const level = createLevel({ id: 'h5', widthCells: 10, heightCells: 10, pxPerCell });
+  const grid = new SquareGrid(level);
+  const layer = new TokensLayer();
+  const { ctx, rayons } = contexteQuiLeveSurRayonNegatif();
+  const res = layer.render(ctx, grid, [token], null, {
+    role: 'gm', activeLevelId: 'h5', activeLevelWidthCells: 10, activeLevelHeightCells: 10, zoom,
+  });
+  return { rayons, dessines: res.renderedTokenIds, clipsVides: ctx.clipsVides };
+}
+
+/** @param {boolean} monte @returns {any} */
+function pionH5(monte) {
+  return createToken({
+    id: 'h5-pion', levelId: 'h5', cell: { a: 2, b: 2 }, sizeCells: 1, label: 'Cavalier',
+    mounted: monte,
+    ...(monte ? { rider: { ref: 'p:h5', label: 'Cavalier', imageUrl: null, hp: null, health: 'unharmed', markers: [], markerLevels: {} } } : {}),
+  });
+}
+
+test('H-5 — un pion monté se dessine au zoom MINIMUM de la caméra sans interrompre l’image', () => {
+  // Le seuil se lit dans la caméra, pas en dur : si le plancher de zoom bouge, le test suit.
+  const zoomMinimum = new Camera(1200, 900).minZoom;
+  assert.ok(zoomMinimum > 0 && zoomMinimum < 1, `plancher de zoom inattendu : ${zoomMinimum}`);
+  // ⚠ Et il faut que ce plancher soit bien DANS la zone de panne, sinon le test ne prouve rien :
+  // 140/2 − 9/zoom < 0 ⇔ zoom < 18/140.
+  assert.ok(zoomMinimum < 18 / 140, 'le plancher de zoom est sorti de la zone de panne : revoir ce test');
+
+  const { rayons, dessines } = rendreAuZoom(pionH5(true), zoomMinimum);
+  assert.deepEqual(dessines, ['h5-pion'], 'le pion monté doit être dessiné au zoom minimum');
+  const negatifs = rayons.filter((r) => !(r >= 0));
+  assert.deepEqual(negatifs, [], `rayons négatifs passés au contexte 2D : ${negatifs.join(', ')}`);
+});
+
+test('H-5 — aucun rayon négatif à AUCUN zoom entre le plancher et le plafond de la caméra', () => {
+  const camera = new Camera(1200, 900);
+  // Les deux extrêmes, et quelques pas au travers : l'audit demande les deux bouts, pas le repos.
+  for (const zoom of [camera.minZoom, 0.11, 0.1286, 0.13, 0.25, 0.5, 1, 2, camera.maxZoom]) {
+    for (const monte of [true, false]) {
+      const { rayons, dessines } = rendreAuZoom(pionH5(monte), zoom);
+      assert.deepEqual(dessines, ['h5-pion'], `zoom ${zoom}, monté=${monte} : pion non dessiné`);
+      assert.deepEqual(
+        rayons.filter((r) => !(r >= 0)),
+        [],
+        `zoom ${zoom}, monté=${monte} : rayon négatif passé au contexte 2D`
+      );
+    }
+  }
+});
+
+test('H-5 — le cavalier reste distinguable au zoom de repos : borner n’est pas effacer', () => {
+  // ⛔ Anti-triche. Supprimer les deux anneaux du cavalier ferait passer les deux tests ci-dessus
+  // au vert tout en détruisant le contrat §8.1. À zoom 1, un pion monté doit donc passer
+  // STRICTEMENT plus de rayons au contexte qu'un pion à pied — ce sont ses deux anneaux.
+  const monte = rendreAuZoom(pionH5(true), 1).rayons.length;
+  const aPied = rendreAuZoom(pionH5(false), 1).rayons.length;
+  assert.ok(
+    monte >= aPied + 2,
+    `au zoom 1, le pion monté ne dessine plus ses anneaux : ${monte} rayons contre ${aPied} à pied`
+  );
+});
+
+test('H-5 — sur une carte à petite échelle, le pion ne disparaît pas derrière une découpe vide', () => {
+  // ⛔ L'autre moitié de H-5, invisible à 140 px/case. `imageRadius = largeurCase/2 − 1,5/zoom`
+  // devient lui aussi négatif quand `largeurCase ≤ 3/zoom` : à 20 px/case et au plancher de zoom,
+  // 10 − 15 = −5. Sauter l'`ellipse` sans sauter le `clip()` qui suit laisse un chemin VIDE, et
+  // une découpe sur chemin vide masque tout ce qui vient après — le pion s'efface sans une erreur.
+  // Borner le rayon, comme le demande l'audit, est la seule issue qui dessine quelque chose.
+  const camera = new Camera(1200, 900);
+  for (const pxPerCell of [20, 30, 50, 140]) {
+    for (const zoom of [camera.minZoom, 0.2, 1, camera.maxZoom]) {
+      for (const monte of [true, false]) {
+        const { rayons, dessines, clipsVides } = rendreAuZoom(pionH5(monte), zoom, pxPerCell);
+        const cas = `${pxPerCell} px/case, zoom ${zoom}, monté=${monte}`;
+        assert.deepEqual(dessines, ['h5-pion'], `${cas} : pion non dessiné`);
+        assert.deepEqual(rayons.filter((r) => !(r >= 0)), [], `${cas} : rayon négatif`);
+        assert.equal(clipsVides, 0, `${cas} : découpe sur chemin vide — le pion est effacé`);
+      }
+    }
+  }
 });
