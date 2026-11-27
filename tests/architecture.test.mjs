@@ -381,3 +381,42 @@ test('11. La géométrie d’étage se lit en carré : jamais par la lecture de 
     assert.ok(!argumentGeometrique.test(codeDe(rel)), `géométrie lue par la grille dans ${rel}`);
   }
 });
+
+test('H-11 : aucun appel en opérande DROITE d’un `||=` ou d’un `&&=` — il serait court-circuité', () => {
+  // ⛔ H-11, audit du 26/11/2026. `animationActive ||= moveZoneLayer.renderDestinationFeedback(…)`
+  // ne court-circuitait pas seulement l'accumulation : il court-circuitait **l'appel**. La fonction
+  // n'était donc pas exécutée du tout dès qu'une couche dessinée avant avait levé le drapeau — et
+  // un refus de destination arrive précisément pendant que le pion refusé revient en animant. Sur
+  // un retour de cinq cases (800 ms) le retour expirait au bout de ses 650 ms sans avoir été
+  // dessiné une seule image.
+  //
+  // ⚠ C'est la DEUXIÈME fois que l'accumulation de `animationActive` casse le rendu : la couche des
+  // pions l'avait d'abord écrasée par affectation (voir `tests/portalIndicator.spec.mjs`, où un
+  // compteur d'images l'a attrapée). Ce test ferme la classe entière plutôt qu'un troisième cas :
+  // on calcule d'abord dans une variable, on accumule ensuite.
+  //
+  // ⭐ Un appel à droite d'un `??=` n'est pas visé : il n'est sauté que si la variable est déjà
+  // définie, ce qui est tout l'objet de l'opérateur (initialisation paresseuse).
+  const allJs = [...getAllJsFiles(jsDir), ...getAllJsFiles(path.join(rootDir, 'scripts'))];
+  /** @type {string[]} */
+  const fautes = [];
+  for (const file of allJs) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, index) => {
+      // On ignore les lignes de commentaire : ce test parle du code, et il se cite lui-même.
+      const code = line.replace(/^\s*(\/\/|\*|\/\*).*$/, '');
+      if (/(\|\||&&)=\s*[A-Za-z_$][A-Za-z0-9_$.?]*\s*\(/.test(code)) {
+        fautes.push(`${toRelativeJsPath(file)}:${index + 1} — ${line.trim()}`);
+      }
+    });
+  }
+  assert.deepEqual(
+    fautes,
+    [],
+    'un appel placé à droite d’un `||=` ou `&&=` n’est pas exécuté quand la variable est déjà '
+      + 'vraie (ou fausse) : affecter le résultat à une variable d’abord, accumuler ensuite.\n'
+      + fautes.join('\n')
+  );
+  // Et le relevé doit mordre : un scanner qui ne lirait aucun fichier rendrait le test vert à vide.
+  assert.ok(allJs.length > 50, `relevé des fichiers cassé : ${allJs.length} fichiers lus`);
+});

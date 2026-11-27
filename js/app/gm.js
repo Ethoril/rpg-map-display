@@ -867,10 +867,19 @@ export async function bootstrapGMApp(options = {}) {
           bondCells: bondZoneForDisplay(plan, state.selectedToken, activeLevel),
         }, camera.zoom);
         // Retour « case occupée » d'un pion lâché sur un voisin (B1), le même que la tablette.
-        animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
+        // ⛔ H-11 : calculer D'ABORD, accumuler ensuite. `||=` court-circuite, donc avec l'appel
+        // en opérande DROITE la fonction n'était pas appelée du tout dès qu'une couche
+        // précédente s'animait — et un refus de destination arrive précisément là, pendant que
+        // le pion refusé revient en animant. Le commentaire de la couche des pions annonçait le
+        // piège de l'affectation ; c'est la variante court-circuit qui a mordu.
+        //
+        // ⚠ Ce n'était pas qu'un retard : un retour de 5 cases dure 800 ms (`TOKEN_MOVE_STEP_MS`),
+        // plus que les 650 ms du retour, qui expirait donc sans avoir été dessiné une seule fois.
+        const refusDessine = moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
           now: Date.now(),
           zoom: camera.zoom,
         });
+        animationActive ||= refusDessine;
         layerDurations.moveZone = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lStart;
       },
       movePlan: () => {

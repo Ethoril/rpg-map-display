@@ -3,8 +3,13 @@
 /**
  * @typedef {import('../../core/types.js').Level} Level
  * @typedef {import('../../core/types.js').Token} Token
+ * @typedef {import('../../core/types.js').Cell} Cell
  * @typedef {import('../../grid/GridAdapter.js').GridAdapter} GridAdapter
  */
+
+// H-4 : le masque de vision, la MÊME source que la couche des pions. Seule dépendance de
+// cette couche, et elle ne lui fait rien lire de la campagne : un tableau d'alpha déjà calculé.
+import { getOrExtractMaskAlpha, isCellVisibleInMask } from '../../vision/fog.js';
 
 /**
  * Effets de blessure et de mort (docs/CONTRAT-LIAISON-OUTIL-MJ.md §9).
@@ -242,7 +247,15 @@ export function parseFx(kind, payload) {
  * @property {number} at              instant local de réception
  * @property {number} rotation        radians, tirée une fois
  * @property {boolean} reduced
- * @property {{ levelId: string, x: number, y: number, unit: number }|null} anchor  posée au premier rendu
+ * @property {{ levelId: string, parts: { cell: Cell, sizeCells: number }[] }|null} target
+ *   H-6 : la cible est **l'étage et les cases**, relevés au premier rendu — jamais une position
+ *   en pixels. La géométrie se recalcule à chaque image avec la grille de CET étage-là : une
+ *   ancre figée au premier rendu l'était avec la grille de l'étage *affiché*, qui peut être un
+ *   autre, et l'effet se dessinait ensuite à cette place fausse.
+ *
+ *   ⚠ `parts` est une LISTE dès maintenant, alors qu'un effet n'a aujourd'hui qu'une seule
+ *   partie (l'emprise du pion touché). L'arbitrage à venir sur les projectiles porte sur un
+ *   trajet à DEUX extrémités : un garde construit pour une seule case devrait être rouvert.
  */
 
 export class FxLayer {
@@ -285,7 +298,7 @@ export class FxLayer {
       at: context.now,
       rotation: reduced ? 0 : this.random() * Math.PI * 2,
       reduced,
-      anchor: null,
+      target: null,
     });
   }
 
@@ -315,6 +328,11 @@ export class FxLayer {
    *   tokens?: readonly Token[],
    *   now?: number,
    *   requestRender?: () => void,
+ *   role?: 'gm'|'players',
+ *   visibleCanvas?: { width: number, height: number, maskAlpha?: Uint8Array|null }|null,
+ *   activeLevelWidthCells?: number,
+ *   activeLevelHeightCells?: number,
+ *   visionPublished?: boolean,
    * }} [options]
    * @returns {{ drawn: boolean, animationActive: boolean }}
    */
@@ -328,20 +346,65 @@ export class FxLayer {
     this.active = this.active.filter((fx) => {
       const age = now - fx.at;
       if (age < 0) return false;
-      if (!fx.anchor) {
+      if (!fx.target) {
         const token = tokens.find((t) => t.id === fx.tokenId);
         // Pion absent au premier rendu : l'effet est perdu (jamais rejoué, contrat §2.2).
         if (!token || !token.cell) return age < 1000;
-        const sizeCells = Math.max(1, token.sizeCells || 1);
-        const bounds = grid.cellBounds({ cellX: token.cell.a, cellY: token.cell.b }, sizeCells);
-        fx.anchor = { levelId: token.levelId, x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, unit: bounds.width / sizeCells };
+        // H-6 : on ne retient que l'étage et la case. La case est bien FIGÉE — une tache de
+        // sang reste là où le coup a porté et ne suit pas le pion — mais sa traduction en
+        // pixels, non : elle dépend du pas de l'étage, et se refait donc à chaque image.
+        fx.target = {
+          levelId: token.levelId,
+          parts: [{ cell: { a: token.cell.a, b: token.cell.b }, sizeCells: Math.max(1, token.sizeCells || 1) }],
+        };
       }
       return fx.sprites.some((s) => age < spriteDuration(s));
     });
 
+    // H-4, arbitrage B du 26/11/2026 : l'effet ET sa tache ne sont dessinés que sur les cases
+    // ACTUELLEMENT visibles, et le test est refait à chaque image — invisible au moment du coup,
+    // la tache apparaît si les joueurs éclairent la pièce dans les 90 s de son fondu. Entrer
+    // dans une salle où il y a du sang est une information de jeu, pas une fuite.
+    //
+    // ⛔ Le filtre est DANS la couche, pas dans l'ordre des calques : `fx` est déjà rangé sous
+    // le fog, mais D-12 (03/10/2026) a rendu l'exploré non éclairé translucide — le voile n'y
+    // masque donc plus rien, et l'effet transparaissait.
+    //
+    // ⭐ Aucun mécanisme nouveau : `isCellVisibleInMask` sur l'emprise, exactement la règle de
+    // la couche des pions, décision du MJ du 22/11/2026 comprise (un grand pion est vu dès
+    // qu'UNE case de son emprise l'est). Et comme pour les pions, un appelant qui ne passe PAS
+    // de masque garde l'ancien comportement : l'écran MJ voit toujours l'effet (contrat §9).
+    const isPlayerView = options.role === 'players';
+    const largeurCases = options.activeLevelWidthCells;
+    const hauteurCases = options.activeLevelHeightCells;
+    const maskAlpha = isPlayerView && options.visibleCanvas && largeurCases && hauteurCases
+      ? getOrExtractMaskAlpha(options.visibleCanvas, largeurCases, hauteurCases)
+      : null;
+    const aucuneVisionPubliee = isPlayerView && options.visionPublished === false;
+    /** @param {{ cell: Cell, sizeCells: number }[]} parts */
+    const partiesVues = (parts) => {
+      if (aucuneVisionPubliee) return false;
+      if (!maskAlpha || !largeurCases || !hauteurCases) return true;
+      const shift = grid.maskLatticeShift();
+      // Chaque partie doit être vue : une seule extrémité en clair suffirait à donner la
+      // direction de l'autre. Chaque partie suit la règle des pions — vue dès qu'une case l'est.
+      return parts.every((part) => grid.cellsOccupied(part.cell, part.sizeCells)
+        .some((c) => isCellVisibleInMask(c, maskAlpha, largeurCases, hauteurCases, grid.type, shift)));
+    };
+
     for (const fx of this.active) {
-      const anchor = fx.anchor;
-      if (!anchor || anchor.levelId !== level.id) continue;
+      const target = fx.target;
+      if (!target || target.levelId !== level.id) continue;
+      if (!partiesVues(target.parts)) continue;
+      // H-6 : la géométrie se calcule ICI, avec la grille de l'étage affiché — qui est bien
+      // celui de la cible, le test ci-dessus venant de l'établir.
+      const tete = target.parts[0];
+      const bounds = grid.cellBounds({ cellX: tete.cell.a, cellY: tete.cell.b }, tete.sizeCells);
+      const anchor = {
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+        unit: bounds.width / tete.sizeCells,
+      };
       const age = now - fx.at;
       for (const s of fx.sprites) {
         const frame = spriteFrame(s, age);
