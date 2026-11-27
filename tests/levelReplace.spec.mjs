@@ -532,3 +532,168 @@ test('E-9 : un seul « token.reserve » perdu suffit à retirer l’annonce « p
   );
   expect(publies).toContain('level.replace');
 });
+
+// ── H-2, le scénario exact : le MJ change d'étage PENDANT la confirmation réseau ────────────
+//
+// ⛔ De bout en bout exprès. Les unitaires de `tests/fogTools.test.mjs` prouvent que `clearFog`
+// honore l'étage qu'on lui donne ; ils ne prouvent pas que les QUATRE maillons en amont le lui
+// donnent — `importPanel` l'appelant, `panel` le rappel, et surtout le rappel de `gm.js`, qui
+// relisait `store.getActiveLevel()` quoi qu'on lui passe. Un correctif partiel laisse les
+// unitaires verts et publie encore le `fog.update` sur le mauvais étage.
+//
+// La publication de `level.replace` est ralentie pour que la bascule d'étage tombe DANS la fenêtre
+// de l'`await`, comme chez le mainteneur : sans ce ralentissement la course n'est pas reproductible.
+
+/**
+ * Ralentit la publication d'un type d'événement, pour ouvrir une fenêtre déterministe.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} type
+ * @param {number} delaiMs
+ */
+async function ralentirLesPublications(page, type, delaiMs) {
+  await page.addInitScript(([t, d]) => {
+    const transport = /** @type {any} */ (window).__RPG_APP_OPTIONS__.transport;
+    const publierVraiment = transport.publish.bind(transport);
+    /** @param {any} event */
+    transport.publish = async (event) => {
+      if (event.type === t) await new Promise((r) => setTimeout(r, Number(d)));
+      return publierVraiment(event);
+    };
+  }, /** @type {const} */ ([type, delaiMs]));
+}
+
+/**
+ * Pour chaque étage, le nombre de cases révélées dans le DERNIER `fog.update` publié pour lui.
+ * ⛔ On lit le CONTENU et non la présence de l'événement : la bascule d'étage publie elle-même un
+ * `fog.update` légitime pour l'étage d'arrivée, et compter les événements ne distinguerait pas
+ * cette publication normale d'un masque écrasé.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {Record<string, {w: number, h: number}>} etages
+ */
+function casesRevelees(page, etages) {
+  return page.evaluate(async (dims) => {
+    const fog = await import('../js/vision/fog.js');
+    const publies = /** @type {any} */ (window).__RPG_TEST_WIRE__.published;
+    /** @type {Record<string, number>} */
+    const compte = {};
+    for (const [levelId, { w, h }] of Object.entries(dims)) {
+      const dernier = publies.filter((/** @type {any} */ e) => e.type === 'fog.update' && e.payload?.levelId === levelId).pop();
+      if (!dernier) { compte[levelId] = -1; continue; }
+      // ⚠ `decodeFogPng` rend un CANVAS, pas un tableau d'alpha : passer son résultat directement
+      // à `isCellVisibleInMask` rend « rien n'est vu » partout, et la sonde fausse ferme la question.
+      const alpha = fog.getOrExtractMaskAlpha(await fog.decodeFogPng(dernier.payload.png, w, h), w, h);
+      let n = 0;
+      for (let a = 0; a < w; a++) {
+        for (let b = 0; b < h; b++) if (fog.isCellVisibleInMask({ a, b }, alpha, w, h)) n++;
+      }
+      compte[levelId] = n;
+    }
+    return compte;
+  }, etages);
+}
+
+test('H-2 : remplacer la carte du RDC pendant que le MJ passe à l’Étage 1 n’efface que le brouillard du RDC', async ({ page }) => {
+  const sessionId = `h2-course-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, makeSnapshot());
+  await ralentirLesPublications(page, 'level.replace', 500);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  // Les DEUX étages sont explorés de bout en bout, PAR L'INTERFACE : il y a donc quelque chose à
+  // perdre des deux côtés, et une assertion peut distinguer celui qui perd son exploration de celui
+  // qui la garde.
+  //
+  // ⚠ Pré-remplir `store.setSessionFog` ne suffit PAS : le masque exploré du MJ vit dans la mémoire
+  // de `gm.js`, et celui d'un étage jamais visité y naît vierge. Un test qui se contente de la
+  // graine mesure « le masque n'a jamais été chargé » et non « il a été effacé » — il échouait
+  // alors même sur une version correcte. On passe donc par « Tout révéler », étage par étage.
+  // Les outils de brouillard vivent dans la palette, ouverte par le rail — pas dans un mode.
+  await page.click('#gm-rail-fog-tools');
+  for (const levelId of ['et1', 'rdc']) {
+    await page.evaluate(async (id) => {
+      const store = await import('../js/state/store.js');
+      store.selectLevel(id);
+    }, levelId);
+    await page.click('#fog-btn-reveal-all');
+    // Le throttle de `scheduleFogPublish` est d'1 Hz par étage : laisser partir la publication.
+    await page.waitForTimeout(1200);
+  }
+  // Le RDC est redevenu l'étage actif, celui que « Remplacer » va viser.
+  expect(await page.evaluate(async () => (await import('../js/state/store.js')).getActiveLevelId())).toBe('rdc');
+
+  await page.click('#gm-mode-prep');
+  await page.click('.gm-tab-btn[data-tab="import-image"]');
+  await page.locator('#image-url-input').fill('maps/minimal.webp');
+  await page.fill('#img-cells-wide', '10');
+  await page.fill('#img-cells-tall', '8');
+  await page.fill('#img-px-per-cell', '140');
+
+  // Le remplacement part… et le MJ change d'étage avant que le réseau ait répondu.
+  await page.locator('#btn-replace-image-import').click();
+  await page.waitForTimeout(150);
+  await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    store.selectLevel('et1');
+  });
+
+  await expect(page.locator('#image-status')).toContainText('Étage courant remplacé', { timeout: 10000 });
+  // Laisser le throttle de `scheduleFogPublish` rendre sa publication traînante (1 Hz par étage).
+  await page.waitForTimeout(1500);
+
+  const compte = await casesRevelees(page, { rdc: { w: 10, h: 8 }, et1: { w: 12, h: 10 } });
+
+  // 1. Le RDC, dont la carte vient d'être remplacée, perd son exploration périmée. C'est voulu.
+  expect(compte.rdc, 'le brouillard du RDC doit être remis à zéro : sa carte a changé').toBe(0);
+
+  // 2. ⛔ Le cœur du test : l'Étage 1, que le MJ regarde maintenant, garde la SIENNE. Sans le
+  //    correctif, `clearFog()` relisait l'étage actif et c'est lui qui était effacé — le RDC
+  //    gardant au passage une exploration qui ne correspondait plus à sa nouvelle carte.
+  expect(compte.et1, 'l’étage que le MJ regarde ne doit RIEN perdre').toBe(12 * 10);
+});
+
+test('H-14 : changer le pavage du RDC pendant que le MJ passe à l’Étage 1 n’efface que le brouillard du RDC', async ({ page }) => {
+  // ⛔ Jumeau de H-2 par l'autre porte. `updateGridTypeFromUI` appelait `fogTools?.clearFog()`
+  // APRÈS son `await transport.publish(...)` et sans identifiant, sous un commentaire qui disait
+  // la même intention qu'en H-2 (« le brouillard suit l'état d'ici, publié ou non »). Même défaut,
+  // même cause, autre chemin — et les corriger séparément rouvrait la seconde porte aussitôt la
+  // première fermée.
+  const sessionId = `h14-course-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, makeSnapshot());
+  await ralentirLesPublications(page, 'level.grid', 500);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.click('#gm-rail-fog-tools');
+  for (const levelId of ['et1', 'rdc']) {
+    await page.evaluate(async (id) => {
+      const store = await import('../js/state/store.js');
+      store.selectLevel(id);
+    }, levelId);
+    await page.click('#fog-btn-reveal-all');
+    await page.waitForTimeout(1200);
+  }
+  expect(await page.evaluate(async () => (await import('../js/state/store.js')).getActiveLevelId())).toBe('rdc');
+
+  // Le pavage du RDC passe en hexagonal… et le MJ change d'étage avant la réponse du réseau.
+  await page.click('#gm-mode-prep');
+  await page.click('.gm-tab-btn[data-tab="grid-settings"]');
+  await page.selectOption('#grid-type', 'hex');
+  await page.waitForTimeout(150);
+  await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    store.selectLevel('et1');
+  });
+  await page.waitForTimeout(2200);
+
+  // Le pavage du RDC a bien changé : sans cela le test porterait sur un geste sans effet.
+  expect(await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    return store.getCampaign()?.levels.find((l) => l.id === 'rdc')?.grid.type;
+  })).toBe('hex');
+
+  const compte = await casesRevelees(page, { rdc: { w: 10, h: 8 }, et1: { w: 12, h: 10 } });
+  expect(compte.rdc, 'le brouillard du RDC doit être remis à zéro : son pavage a changé').toBe(0);
+  expect(compte.et1, 'l’étage que le MJ regarde ne doit RIEN perdre').toBe(12 * 10);
+});

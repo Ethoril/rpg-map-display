@@ -4,7 +4,11 @@ import { test, expect } from '@playwright/test';
 
 import { buildSite } from '../scripts/build-site.mjs';
 
-const baseURL = 'http://127.0.0.1:4173/_site';
+// ⚠ Le même port que `playwright.config.mjs`, qui lit `PW_PORT` — la variable prévue par le dépôt
+// pour que deux worktrees ne se partagent pas le serveur du 4173. Codé en dur ici, ce test
+// échouait sur toute porte lancée sur un autre port, et passait sur le `_site` d'un AUTRE arbre de
+// travail quand un serveur traînait sur le 4173 : un faux vert, et le pire des deux.
+const baseURL = `http://127.0.0.1:${Number(process.env.PW_PORT ?? 4173)}/_site`;
 
 test.beforeAll(() => {
   buildSite();

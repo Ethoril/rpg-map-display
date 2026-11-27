@@ -333,3 +333,92 @@ test('E-11 : sur une grille CARREE, la projection est inchangee — les deux ech
     'et pas ses voisines eloignees'
   );
 });
+
+// ── H-2 et H-14 : remettre à zéro le brouillard du BON étage ────────────────────────────────
+//
+// Défaut relevé par l'audit du 26/11/2026. `onClearFog()` est appelé APRÈS l'`await` de
+// publication, et `clearFog()` relit `getActiveLevelId()` AU MOMENT DE L'APPEL au lieu de l'étage
+// capturé avant. Si le MJ change d'étage pendant la confirmation réseau, A garde son exploration
+// périmée et B perd la sienne — sans un mot, le message de succès ne disant rien.
+//
+// ⛔ Quatre maillons doivent porter l'identifiant, pas un seul : `importPanel.js` (l'appel),
+// `panel.js` (le rappel), `fogTools.js` (`clearFog` puis `scheduleFogPublish`) et le rappel de
+// `gm.js`, qui relit `store.getActiveLevel()` quoi qu'on lui donne. Un correctif au seul premier
+// site publierait encore le `fog.update` sur le mauvais étage. H-14 est le même défaut par la
+// porte du changement de pavage (`panel.js`, `updateGridTypeFromUI`).
+
+/** @param {ExploredFog} fog @returns {boolean} le masque est-il entièrement vide ? */
+function masqueVide(fog) {
+  const buf = fog.ctx?.pixels || fog.ctx?.getImageData(0, 0, fog.maskWidth, fog.maskHeight).data;
+  if (!buf) throw new Error('masque illisible');
+  for (let i = 3; i < buf.length; i += 4) if (buf[i] !== 0) return false;
+  return true;
+}
+
+test('H-2 — clearFog remet à zéro et publie l’étage DONNÉ, pas celui qui est actif à l’appel', async () => {
+  const fogMap = new Map([['level-1', createFog()], ['level-2', createFog()]]);
+  for (const fog of fogMap.values()) fog.revealAll();
+
+  let activeLevelId = 'level-1';
+  /** @type {unknown[]} */
+  const publies = [];
+  const fogTools = createFogTools(/** @type {any} */ (createMockElement()), {
+    getActiveLevelId: () => activeLevelId,
+    getExploredFog: (/** @type {string} */ id) => fogMap.get(id) || null,
+    scheduleFogPublish: (/** @type {unknown} */ levelId) => { publies.push(levelId); },
+    requestRender: () => {},
+  });
+
+  // Le scénario exact du défaut : le remplacement porte sur level-1, et le MJ a changé d'étage
+  // pendant la confirmation réseau.
+  activeLevelId = 'level-2';
+  await fogTools.clearFog('level-1');
+
+  assert.equal(masqueVide(/** @type {any} */ (fogMap.get('level-1'))), true,
+    'l’étage remplacé doit perdre son exploration périmée');
+  assert.equal(masqueVide(/** @type {any} */ (fogMap.get('level-2'))), false,
+    '⛔ l’étage que le MJ regarde maintenant ne doit RIEN perdre');
+  assert.deepEqual(publies, ['level-1'],
+    'le `fog.update` doit partir pour l’étage remis à zéro, sinon la table garde le mauvais masque');
+  assert.equal(fogTools.getUndoStackLength('level-1'), 0);
+});
+
+test('H-2 — sans argument, clearFog garde son comportement : l’étage actif', async () => {
+  // ⛔ Anti-triche : rendre l'identifiant obligatoire casserait les appelants qui n'en ont pas
+  // besoin, et « corriger » en exigeant un argument partout n'est pas la correction demandée.
+  const fogMap = new Map([['level-1', createFog()], ['level-2', createFog()]]);
+  for (const fog of fogMap.values()) fog.revealAll();
+  let activeLevelId = 'level-2';
+  /** @type {unknown[]} */
+  const publies = [];
+  const fogTools = createFogTools(/** @type {any} */ (createMockElement()), {
+    getActiveLevelId: () => activeLevelId,
+    getExploredFog: (/** @type {string} */ id) => fogMap.get(id) || null,
+    scheduleFogPublish: (/** @type {unknown} */ levelId) => { publies.push(levelId); },
+    requestRender: () => {},
+  });
+
+  await fogTools.clearFog();
+
+  assert.equal(masqueVide(/** @type {any} */ (fogMap.get('level-2'))), true, 'l’étage actif doit être remis à zéro');
+  assert.equal(masqueVide(/** @type {any} */ (fogMap.get('level-1'))), false, 'l’autre étage ne bouge pas');
+  assert.deepEqual(publies, ['level-2']);
+});
+
+test('H-2 — un étage inconnu ne publie rien et ne touche à aucun autre masque', async () => {
+  const fogMap = new Map([['level-1', createFog()]]);
+  fogMap.get('level-1')?.revealAll();
+  /** @type {unknown[]} */
+  const publies = [];
+  const fogTools = createFogTools(/** @type {any} */ (createMockElement()), {
+    getActiveLevelId: () => 'level-1',
+    getExploredFog: (/** @type {string} */ id) => fogMap.get(id) || null,
+    scheduleFogPublish: (/** @type {unknown} */ levelId) => { publies.push(levelId); },
+    requestRender: () => {},
+  });
+
+  await fogTools.clearFog('etage-fantome');
+
+  assert.deepEqual(publies, [], 'aucune publication pour un étage sans masque');
+  assert.equal(masqueVide(/** @type {any} */ (fogMap.get('level-1'))), false, 'et surtout : aucun repli sur l’étage actif');
+});

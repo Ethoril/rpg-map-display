@@ -9,7 +9,9 @@
  * @typedef {Object} FogToolsOptions
  * @property {() => string|null} getActiveLevelId Renvoie l'ID de l'étage actif
  * @property {(levelId: string) => ExploredFog|null} getExploredFog Renvoie l'instance ExploredFog d'un étage
- * @property {() => void} scheduleFogPublish Déclenche la publication du masque de l'étage courant
+ * @property {(levelId?: string|null, immediate?: boolean) => void} scheduleFogPublish Publie le
+ *   masque de l'étage DONNÉ — H-2 : sans identifiant, le rappel de `gm.js` relisait l'étage actif
+ *   au moment de l'appel, qui n'est pas forcément celui dont le masque vient de changer.
  * @property {() => void} requestRender Demande un rendu d'une frame Canvas
  * @property {(tool: 'none'|'reveal'|'hide') => void} [onToolChange] Callback lorsque l'outil actif change
  */
@@ -103,7 +105,7 @@ export function createFogTools(container, options) {
       const fog = getExploredFog(levelId);
       if (fog && previousPng) {
         await fog.importPng(previousPng);
-        scheduleFogPublish();
+        scheduleFogPublish(levelId);
         requestRender();
         updateUI();
       }
@@ -190,7 +192,7 @@ export function createFogTools(container, options) {
 
     await pushUndoState();
     fog.revealAll();
-    scheduleFogPublish();
+    scheduleFogPublish(levelId);
     requestRender();
   });
 
@@ -202,7 +204,7 @@ export function createFogTools(container, options) {
 
     await pushUndoState();
     fog.clear();
-    scheduleFogPublish();
+    scheduleFogPublish(levelId);
     requestRender();
   });
 
@@ -232,16 +234,23 @@ export function createFogTools(container, options) {
   /**
    * Efface le masque de brouillard de l'étage actif et publie la mise à zéro (UX-13).
    * Vide également la pile d'undo de cet étage sans y empiler d'état préalable.
+   *
+   * ⛔ H-2 : l'étage est un PARAMÈTRE. `onClearFog()` est appelé après l'`await` de publication,
+   * et relire `getActiveLevelId()` à ce moment-là efface le brouillard de l'étage que le MJ
+   * regarde MAINTENANT, en laissant son exploration périmée à celui qu'il vient de remplacer.
+   * Sans argument, le comportement d'avant : l'étage actif.
+   *
+   * @param {string|null} [levelId]
    */
-  async function clearFog() {
-    const levelId = getActiveLevelId();
-    if (!levelId) return;
-    const fog = getExploredFog(levelId);
+  async function clearFog(levelId = null) {
+    const cible = levelId ?? getActiveLevelId();
+    if (!cible) return;
+    const fog = getExploredFog(cible);
     if (!fog) return;
 
     fog.clear();
-    clearUndoStack(levelId);
-    scheduleFogPublish();
+    clearUndoStack(cible);
+    scheduleFogPublish(cible);
     requestRender();
   }
 

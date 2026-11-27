@@ -20,7 +20,7 @@ import * as store from '../../state/store.js';
  * @property {'uvtt'|'image'|'both'} [mode='both']
  * @property {Transport} [transport]
  * @property {(result: ReturnType<typeof parseUvtt>) => void} [onImportUvtt]
- * @property {() => void} [onClearFog]
+ * @property {(levelId?: string) => void} [onClearFog]
  */
 
 /**
@@ -617,7 +617,9 @@ export function createImportPanel(container, options = {}) {
 
         // Le remplacement local a eu lieu : le brouillard doit suivre l'état d'ici, que la
         // publication ait abouti ou non.
-        options.onClearFog?.();
+        // H-2 : l'étage est celui capturé AVANT les publications, pas celui qui est actif
+        // maintenant — le MJ a pu changer d'étage pendant la confirmation réseau.
+        options.onClearFog?.(activeLevelId);
 
         if (!resultat.ok) {
           const echec = document.createElement('strong');
