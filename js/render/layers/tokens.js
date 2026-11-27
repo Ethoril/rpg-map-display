@@ -414,7 +414,16 @@ export class TokensLayer {
     // cerclage ; sinon, ou tant que le cerclage n'est pas chargé, le disque simple.
     const medallion = this._medallionFor(token, width, zoom);
     const layout = medallion ? medallionLayout(medallion.frame, centerX, centerY, width) : null;
-    const imageRadius = layout ? layout.windowRadius : width / 2 - TOKEN_BORDER_SCREEN_PX / (2 * zoom);
+    // H-5 : le rayon est BORNÉ, jamais sauté. `width/2 − 1,5/zoom` devient négatif dès que
+    // `width ≤ 3/zoom` — à 20 px/case et au plancher de zoom, 10 − 15 = −5. Un `ctx.ellipse` sur
+    // rayon négatif lève `IndexSizeError` et arrête l'image ; mais sauter l'`ellipse` en laissant le
+    // `ctx.clip()` qui suit est pire encore, car une découpe sur chemin VIDE masque tout sans lever.
+    // Le plancher vaut un pixel à l'écran (`1/zoom` en coordonnées carte), sans jamais dépasser la
+    // demi-case : le pion ne gonfle donc pas hors de chez lui sur une carte à petite échelle.
+    const imageRadius = Math.max(
+      layout ? layout.windowRadius : width / 2 - TOKEN_BORDER_SCREEN_PX / (2 * zoom),
+      Math.min(width / 2, 1 / zoom)
+    );
 
     // 1. Découpe & Dessin de l'illustration (réduite à imageRadius)
     ctx.save();
@@ -495,16 +504,24 @@ export class TokensLayer {
     // du 05/11). Sur le médaillon, le filet sombre longe le bord de la fenêtre.
     if (mount) {
       const darkRadius = medallion ? imageRadius - ringWidth * 0.5 : imageRadius - ringWidth * 1.5;
-      ctx.beginPath();
-      ctx.ellipse(centerX, centerY, darkRadius, darkRadius, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.lineWidth = ringWidth;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(centerX, centerY, darkRadius - ringWidth, darkRadius - ringWidth, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.lineWidth = ringWidth;
-      ctx.stroke();
+      const innerRadius = darkRadius - ringWidth;
+      // Les deux anneaux forment une paire : tous deux, ou aucun. On statue sur le petit, le plus
+      // serré — s'il n'est plus strictement positif, le pion tient en quelques pixels à l'écran
+      // et rien ne distinguerait plus la monture du cavalier. On saute la paire plutôt que de
+      // borner un anneau (un seul anneau se lirait comme un pion à pied) : même logique de paliers
+      // que les badges d'état, qui disparaissent sous leur seuil au lieu d'être écrasés.
+      if (innerRadius > 0) {
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, darkRadius, darkRadius, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.lineWidth = ringWidth;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, innerRadius, innerRadius, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = ringWidth;
+        ctx.stroke();
+      }
     }
     // Cerclage du médaillon : une toile déjà teinte (ou grise), posée d'un seul drawImage.
     if (medallion && layout) {
