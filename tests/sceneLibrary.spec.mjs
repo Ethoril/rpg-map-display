@@ -414,3 +414,204 @@ test.describe('C-1 tranche B — vignettes et étages dans le panneau MJ', () =>
     expect(errors).toEqual([]);
   });
 });
+
+// ── H-3 : « Ajouter comme étage » ne doit jamais écraser un étage déjà joué ─────────────────
+//
+// Défaut relevé par l'audit du 26/11/2026. En mode `add`, la boucle appelle `store.addLevel(level)`
+// par étage SANS aucune garde d'identifiant, alors qu'`addLevel` remplace en place à identifiant
+// égal (`store.js:1033`). Les scènes préparées ont un identifiant fixe : rajouter une carte déjà
+// présente rejoue ses étages à neuf, portes refermées, sans un mot.
+//
+// ⭐ Arbitrage A du 26/11/2026 : **refuser, sans rien muter, et nommer l'étage déjà présent**, en
+// renvoyant vers « Remplacer l'étage courant » (onglet Image). C'est déjà, mot pour mot, ce que
+// fait le chemin d'aperçu UVTT depuis l'audit du 22/09 (`importPanel.js:288`).
+//
+// ⛔ Le second volet du défaut est l'application PARTIELLE : la boucle mute le store étage par
+// étage, donc un lot dont le deuxième étage est refusé laisse le premier posé. La scène
+// « Extension » ci-dessous porte exprès un identifiant déjà pris ET un identifiant neuf.
+
+/** Une porte fermée, pour avoir un état de jeu à perdre. */
+const PORTE_FERMEE = { id: 'porte-1', a: { cellX: 1, cellY: 1 }, b: { cellX: 1, cellY: 2 }, state: 'closed', freestanding: false };
+
+/** @param {string} id @param {string} nom @param {number} ordre */
+function etageScene(id, nom, ordre) {
+  return {
+    ...FAKE_SCENE.levels[0],
+    id, name: nom, order: ordre,
+    portals: [{ ...PORTE_FERMEE, id: `${id}-porte` }],
+  };
+}
+
+/** Scène « Carte minimale » : un seul étage, avec une porte. */
+const SCENE_PORTE = { ...FAKE_SCENE, levels: [etageScene('minimal-level', 'Carte minimale', 0)] };
+
+/** Scène « Extension » : un étage DÉJÀ PRIS puis un étage neuf, dans cet ordre. */
+const SCENE_EXTENSION = {
+  ...FAKE_SCENE,
+  campaignId: 'campaign-extension',
+  name: 'Extension',
+  levels: [etageScene('minimal-level', 'Carte minimale (version neuve)', 0), etageScene('etage-neuf', 'Étage neuf', 1)],
+};
+
+/** Scène « Extension » dont AUCUN identifiant n'est pris : le cas qui doit continuer de marcher. */
+const SCENE_DISJOINTE = {
+  ...FAKE_SCENE,
+  campaignId: 'campaign-disjointe',
+  name: 'Extension',
+  levels: [etageScene('etage-neuf', 'Étage neuf', 1), etageScene('etage-encore-neuf', 'Étage encore neuf', 2)],
+};
+
+/** Catalogue à deux entrées : la carte minimale, et une « Extension » servie à part. */
+const CATALOG_DEUX = {
+  ...FAKE_CATALOG,
+  maps: [
+    FAKE_CATALOG.maps[0],
+    {
+      ...FAKE_CATALOG.maps[0],
+      id: 'extension',
+      name: 'Extension',
+      sceneUrl: 'maps/generated/extension.scene.json',
+      levelCount: 2,
+    },
+  ],
+};
+
+/**
+ * Pose la carte minimale, puis OUVRE sa porte : un état de jeu que rien ne doit effacer.
+ *
+ * @param {import('@playwright/test').Page} page
+ */
+async function poserLaCarteEtOuvrirLaPorte(page) {
+  await page.click('.scene-card-load');
+  await expect(page.locator('.scene-library-status')).toContainText('chargée');
+  const ouverte = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    store.setPortalState('minimal-level', 'minimal-level-porte', 'open');
+    return store.getCampaign()?.levels.find((l) => l.id === 'minimal-level')?.portals[0]?.state;
+  });
+  expect(ouverte).toBe('open');
+}
+
+/**
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<{ ids: string[], porte: string|undefined, noms: string[] }>}
+ */
+function lireLesEtages(page) {
+  return page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const niveaux = store.getCampaign()?.levels ?? [];
+    return {
+      ids: niveaux.map((l) => l.id),
+      noms: niveaux.map((l) => l.name),
+      porte: niveaux.find((l) => l.id === 'minimal-level')?.portals[0]?.state,
+    };
+  });
+}
+
+test('H-3 — « Ajouter comme étage » refuse un identifiant déjà pris, le nomme, et ne mute RIEN', async ({ page }) => {
+  const errors = await setupWithCatalog(page, { catalog: CATALOG_DEUX, scene: SCENE_PORTE });
+  await page.route('**/maps/generated/extension.scene.json', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SCENE_EXTENSION) })
+  );
+
+  await poserLaCarteEtOuvrirLaPorte(page);
+
+  const carteExtension = page.locator('.scene-card', { hasText: 'Extension' });
+  await carteExtension.locator('.scene-card-add').click();
+
+  // 1. Le refus se dit, et il NOMME l'étage déjà présent — pas un message générique.
+  const statut = page.locator('.scene-library-status');
+  await expect(statut).toHaveClass(/gm-err/);
+  await expect(statut).toContainText('Carte minimale');
+  // 2. Et il renvoie vers la seule porte d'entrée légitime, comme le fait l'aperçu UVTT.
+  //    ⚠ L'apostrophe est libre : `importPanel.js` en met une droite, le reste du dépôt une
+  //    typographique. Le test porte sur le renvoi, pas sur ce choix de glyphe.
+  await expect(statut).toContainText(/Remplacer l['’]étage courant/);
+
+  // 3. ⛔ Le cœur du test : RIEN n'a bougé. Ni l'étage neuf posé au passage (application
+  // partielle), ni la porte ouverte (écrasement en place).
+  const apres = await lireLesEtages(page);
+  expect(apres.ids).toEqual(['minimal-level']);
+  expect(apres.noms).toEqual(['Carte minimale']);
+  expect(apres.porte).toBe('open');
+
+  expect(errors).toEqual([]);
+});
+
+test('H-3 — « Ajouter comme étage » pose bien un lot dont AUCUN identifiant n’est pris', async ({ page }) => {
+  // ⛔ Anti-triche : refuser tout ferait passer le test ci-dessus au vert en cassant la
+  // fonctionnalité. Le cas nominal — deux étages neufs — doit continuer de s'ajouter en entier.
+  const errors = await setupWithCatalog(page, { catalog: CATALOG_DEUX, scene: SCENE_PORTE });
+  await page.route('**/maps/generated/extension.scene.json', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SCENE_DISJOINTE) })
+  );
+
+  await poserLaCarteEtOuvrirLaPorte(page);
+
+  const carteExtension = page.locator('.scene-card', { hasText: 'Extension' });
+  await carteExtension.locator('.scene-card-add').click();
+
+  const statut = page.locator('.scene-library-status');
+  await expect(statut).not.toHaveClass(/gm-err/);
+
+  const apres = await lireLesEtages(page);
+  expect(apres.ids).toEqual(['minimal-level', 'etage-neuf', 'etage-encore-neuf']);
+  expect(apres.porte).toBe('open');
+
+  expect(errors).toEqual([]);
+});
+
+// ── H-3, seconde divergence : le MJ et la table ne recevaient pas le même étage ─────────────
+//
+// En mode « ajouter », la boucle de publication parcourait `sceneData.levels` — le JSON BRUT relu
+// du fichier — alors que le store avait reçu `normalizedData.levels`. Et `normalizeCampaign` rend
+// un `structuredClone` (`schema.js:126`) : les deux tableaux ne sont donc pas le même objet, et
+// tout ce que la normalisation corrige partait normalisé d'un côté, brut de l'autre.
+//
+// La sonde est une lumière hors bornes et sans `on` : `normalizeLevel` borne l'intensité à 1 et
+// pose `on: true` (amendement C-2). Un étage publié brut porte encore `intensity: 4` et pas de
+// `on` — deux écrans qui n'éclairent pas la même pièce.
+
+/** Scène « Extension » dont l'étage neuf porte une lumière que la normalisation doit corriger. */
+const SCENE_A_NORMALISER = {
+  ...FAKE_SCENE,
+  campaignId: 'campaign-a-normaliser',
+  name: 'Extension',
+  levels: [{
+    ...etageScene('etage-neuf', 'Étage neuf', 1),
+    lights: [{ id: 'torche', at: { cellX: 2, cellY: 2 }, range: 4, intensity: 4, color: '#ffaa00', shadows: false }],
+  }],
+};
+
+test('H-3 — l’étage publié à la table est le NORMALISÉ, le même que celui posé chez le MJ', async ({ page }) => {
+  const errors = await setupWithCatalog(page, { catalog: CATALOG_DEUX, scene: SCENE_PORTE, transport: 'ok' });
+  await page.route('**/maps/generated/extension.scene.json', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SCENE_A_NORMALISER) })
+  );
+
+  await poserLaCarteEtOuvrirLaPorte(page);
+  await page.locator('.scene-card', { hasText: 'Extension' }).locator('.scene-card-add').click();
+  await expect(page.locator('.scene-library-status')).not.toHaveClass(/gm-err/);
+
+  // Ce que le store a reçu, et ce qui est parti sur le réseau.
+  const { chezLeMj, versLaTable } = await page.evaluate(async () => {
+    const store = await import('../js/state/store.js');
+    const publies = /** @type {any} */ (window).__RPG_APP_OPTIONS__.transport.publies;
+    const ajout = publies.filter((/** @type {any} */ e) => e.type === 'level.add')
+      .find((/** @type {any} */ e) => e.payload?.level?.id === 'etage-neuf');
+    return {
+      chezLeMj: store.getCampaign()?.levels.find((l) => l.id === 'etage-neuf')?.lights?.[0] ?? null,
+      versLaTable: ajout?.payload?.level?.lights?.[0] ?? null,
+    };
+  });
+
+  // 1. Le MJ a bien l'étage normalisé : c'est l'état d'aujourd'hui, et il ne doit pas changer.
+  expect(chezLeMj).toMatchObject({ id: 'torche', intensity: 1, on: true });
+
+  // 2. ⛔ Et la table reçoit EXACTEMENT le même objet. Sans le correctif elle recevait
+  //    `intensity: 4` et aucun `on` : deux écrans qui n'éclairent pas la même pièce.
+  expect(versLaTable).not.toBeNull();
+  expect(versLaTable).toEqual(chezLeMj);
+
+  expect(errors).toEqual([]);
+});
