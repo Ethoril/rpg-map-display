@@ -278,8 +278,12 @@ lui donne. La frontière du §1 ne bouge pas.
   `fx.wound` et `fx.death` deviennent eux aussi un unique `fx` en sortant vers la tablette, et le
   réseau ne transporte jamais de `ref` de l'outil MJ. La carte résout les deux `ref` en cases avant
   de republier.
-- ⚠ **Rien n'émet ni ne consomme encore ce message** des deux côtés : l'entrée du CdC §7 est marquée
-  « non émise ». La spec est écrite, le code reste à faire.
+- ⚠ **Où en est le code (27/11/2026).** Map Display **consomme** `fx.attack` et **republie** l'événement
+  réseau `attack` du CdC §7 : les deux `ref` résolus en cases, étage commun exigé, rien si une
+  extrémité est cachée, message périmé ignoré comme `fx.wound`. ⛔ **Aucun rendu** : la tablette
+  ignore `attack` par sa branche par défaut, et le **vocabulaire visuel** des cinq issues reste à
+  arbitrer, donc à éprouver à la table (§11 point 12). ⛔ L'outil MJ, lui, **n'émet pas encore**
+  `fx.attack` : sa copie du contrat n'est pas répliquée, et la réplication passe par le mainteneur.
 
 ## 10. Retours de la carte vers l'outil MJ
 

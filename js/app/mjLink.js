@@ -22,6 +22,12 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
 /** @typedef {import('../core/types.js').Token} Token */
 /** @typedef {import('../core/types.js').Campaign} Campaign */
 /** @typedef {import('../core/types.js').LinkedPlace} LinkedPlace */
+/** @typedef {import('../core/types.js').Cell} Cell */
+/**
+ * Issue d'une attaque, arbitrée par l'outil MJ (contrat §9.3) : cinq issues, et non trois ;
+ * `fumble` n'en est pas une, il se lit comme un `miss` côté outil MJ.
+ * @typedef {'hit'|'miss'|'critical'|'parried'|'dodged'} AttackOutcome
+ */
 
 /**
  * État d'un pion lié tel que l'outil MJ l'envoie (contrat §4).
@@ -58,6 +64,7 @@ import { LIAISON_CARTE } from '../core/donnees-communes.js';
  *   | { op: 'remove', tokenId: string, where: 'board'|'reserve', place?: LinkedPlace }
  *   | { op: 'awaitBinding', ref: string, label: string }
  *   | { op: 'fx', tokenId: string, hidden: boolean, fx: NonNullable<ReturnType<typeof parseFx>> }
+ *   | { op: 'attack', from: Cell, to: Cell, levelId: string, outcome: AttackOutcome, hidden: boolean, damage?: number }
  *   | { op: 'merge', riderTokenId: string, mountTokenId: string }
  *   | { op: 'split', riderTokenId: string, mountTokenId: string }
  *   | { op: 'impactQuery', query: ImpactQuery }
@@ -370,6 +377,43 @@ export function parseEngagements(payload) {
     .map((/** @type {[string, string]} */ p) => /** @type {[string, string]} */ ([p[0], p[1]]));
 }
 
+/** Issues reconnues d'une attaque (contrat §9.3), sensibles à la casse. */
+const ATTACK_OUTCOMES = /** @type {const} */ (['hit', 'miss', 'critical', 'parried', 'dodged']);
+
+/**
+ * Opération d'une attaque (`fx.attack`, contrat §9.3) : les deux `ref` doivent désigner des pions
+ * liés **posés** sur le plateau (une monture fusionnée répond par le pion du cavalier,
+ * `rider.ref`), deux pions distincts sur le même étage. La carte ne republie que des **cases**,
+ * jamais de `ref` ni de pixels : `from` et `to` sont les cases des deux pions. `damage` n'est repris
+ * que s'il est un nombre fini strictement positif ; un chiffre aberrant est lâché sans refuser le
+ * coup. Toute autre malformation ne produit rien.
+ *
+ * @param {Campaign} campaign
+ * @param {any} payload
+ * @returns {MjLinkOperation[]}
+ */
+function planAttack(campaign, payload) {
+  if (!payload || typeof payload !== 'object') return [];
+  const { attackerRef, targetRef, outcome, damage } = payload;
+  if (!ATTACK_OUTCOMES.includes(outcome)) return [];
+  if (typeof attackerRef !== 'string' || !attackerRef || typeof targetRef !== 'string' || !targetRef) return [];
+  // Pions liés posés seulement : la réserve n'est pas sur le plateau (comme `fx.wound`).
+  const attacker = campaign.tokens.find((t) => isLinkedToken(t) && (t.link?.ref === attackerRef || t.rider?.ref === attackerRef));
+  const target = campaign.tokens.find((t) => isLinkedToken(t) && (t.link?.ref === targetRef || t.rider?.ref === targetRef));
+  if (!attacker || !target || attacker.id === target.id || attacker.levelId !== target.levelId) return [];
+  /** @type {Extract<MjLinkOperation, { op: 'attack' }>} */
+  const op = {
+    op: 'attack',
+    from: { a: attacker.cell.a, b: attacker.cell.b },
+    to: { a: target.cell.a, b: target.cell.b },
+    levelId: attacker.levelId,
+    outcome,
+    hidden: attacker.hidden === true || target.hidden === true,
+  };
+  if (typeof damage === 'number' && Number.isFinite(damage) && damage > 0) op.damage = damage;
+  return [op];
+}
+
 /**
  * Opérations d'un message de l'outil MJ. Un message inconnu, d'une autre version ou d'un autre
  * émetteur ne produit rien.
@@ -403,6 +447,10 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
         : null;
       return fx && token ? [{ op: 'fx', tokenId: token.id, hidden: token.hidden === true, fx }] : [];
     }
+    case 'fx.attack':
+      // Attaque (contrat §9.3) : effet éphémère, la carte résout les deux `ref` en cases avant de
+      // republier vers la tablette, qui ne recevra jamais de `ref` de l'outil MJ.
+      return planAttack(campaign, payload);
     case 'mount.split': {
       if (typeof payload.riderRef !== 'string') return [];
       const split = planSplit(campaign, findLinkedToken(campaign, payload.riderRef), payload.mountRef);
@@ -459,6 +507,7 @@ export function planMjMessage(campaign, message, version = MJ_LINK_VERSION) {
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
  *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
+ *   playAttack?: (op: Extract<MjLinkOperation, { op: 'attack' }>) => void,
  *   newTokenId: () => string,
  *   trace: { levelId: string, cell: { a: number, b: number } },
  *   onRiderToPlace?: (riderTokenId: string, around: { levelId: string, cell: { a: number, b: number }, sizeCells: number }) => void,
@@ -513,6 +562,15 @@ export function executeMjOperations(ops, deps) {
         // L'écran MJ joue toujours l'effet ; la tablette n'en reçoit aucun pour un pion caché.
         deps.playFx?.(op.fx, op.tokenId);
         if (!op.hidden) publish('fx', { tokenId: op.tokenId, ...op.fx });
+        break;
+      case 'attack':
+        // L'écran MJ joue toujours l'attaque (contrat §9) ; la tablette ne la reçoit que quand
+        // aucune des deux extrémités n'est cachée, sous forme de cases. Éphémère : rien dans le
+        // store, jamais persisté ni rejoué.
+        deps.playAttack?.(op);
+        if (!op.hidden) {
+          publish('attack', { from: op.from, to: op.to, levelId: op.levelId, outcome: op.outcome, ...(op.damage !== undefined ? { damage: op.damage } : {}) });
+        }
         break;
       case 'merge':
         mergeMount(op, deps);
@@ -700,6 +758,7 @@ export const MJ_LINK_ECHO_MS = LIAISON_CARTE.echoMs;
  *   publish: (type: string, payload: any) => void,
  *   createToken: (overrides: any) => Token,
  *   playFx?: (fx: NonNullable<ReturnType<typeof parseFx>>, tokenId: string) => void,
+ *   playAttack?: (op: Extract<MjLinkOperation, { op: 'attack' }>) => void,
  *   activeLevelId: () => string|null,
  *   sessionId: string,
  *   onStatus?: (status: 'connected'|'disconnected'|'version-mismatch', awaiting: { ref: string, label: string }[]) => void,
@@ -870,7 +929,7 @@ export function startMjLink(options) {
     // L'outil MJ (re)démarre ou renvoie son état : il ne sait plus ce qui est posé, on le lui redit.
     if (message.type === 'mj.hello' || message.type === 'mj.snapshot') announcedPlaced = new Map();
     if (message.type === 'mj.ping' && now() - lastPing > MJ_LINK_ECHO_MS) ping();
-    if ((message.type === 'fx.wound' || message.type === 'fx.death') && Number.isFinite(message.at) &&
+    if ((message.type === 'fx.wound' || message.type === 'fx.death' || message.type === 'fx.attack') && Number.isFinite(message.at) &&
         receivedAt - message.at > MJ_LINK_TIMEOUT_MS) return;
     if (message.type === 'mj.roster') {
       const characters = Array.isArray(message.payload?.characters) ? message.payload.characters : [];
@@ -916,6 +975,7 @@ export function startMjLink(options) {
         publish: options.publish,
         createToken: options.createToken,
         playFx: options.playFx,
+        playAttack: options.playAttack,
         newTokenId: () => `lie-${now().toString(36)}-${++counter}`,
         trace: { levelId, cell: { a: 0, b: 0 } },
         onRiderToPlace: options.onRiderToPlace,

@@ -1040,3 +1040,137 @@ test('mjLink : canal — une demande, une seule réponse ; remplacée → cancel
   assert.equal(link.cancelImpact(), false, 'une seule réponse');
   assert.equal(impacts().length, 3);
 });
+
+// ── Attaque (contrat §9.3, arbitrage du mainteneur du 27/11/2026) ──────────────────────────────
+//
+// `fx.attack { attackerRef, targetRef, outcome, damage? }` entre par la liaison et ressort vers la
+// tablette en `attack { from, to, levelId, outcome, damage? }` (CdC §7) : des CASES, jamais de `ref`
+// de l'outil MJ, jamais de pixels. Même transformation que `fx.wound` / `fx.death` → `fx`.
+
+const niveauHaut = createLevel({ id: 'haut', widthCells: 12, heightCells: 12 });
+/** @param {any[]} tokens */
+const campagneAttaque = (tokens) => createCampaign({ levels: [level, niveauHaut], tokens });
+const ATTACK_OUTCOMES = ['hit', 'miss', 'critical', 'parried', 'dodged'];
+
+test('fx.attack : deux ref posés sur le même étage → une op attack portant les deux cases', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const campaign = campagneAttaque([
+    lie('ulrika', 'pj:ulrika', { a: 2, b: 3 }),
+    lie('gobelin', 'p:g9', { a: 5, b: 3 }),
+  ]);
+  const attaque = (/** @type {any} */ payload) => planMjMessage(campaign, msg('fx.attack', payload));
+
+  assert.deepEqual(attaque({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'hit' }), [
+    { op: 'attack', from: { a: 2, b: 3 }, to: { a: 5, b: 3 }, levelId: 'rdc', outcome: 'hit', hidden: false },
+  ], 'from = la case de l’attaquant, to = celle de la cible');
+
+  // Les CINQ issues sont acceptées : la table doit voir pourquoi un coup n'a pas porté.
+  for (const outcome of ATTACK_OUTCOMES) {
+    const [op] = attaque({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome });
+    assert.equal(/** @type {any} */ (op)?.outcome, outcome, `issue ${outcome} acceptée`);
+  }
+
+  // `damage` est optionnel : absent, la carte ne chiffre rien — et le champ n'existe pas.
+  const [sansDegats] = attaque({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'hit' });
+  assert.ok(!('damage' in /** @type {any} */ (sansDegats)), 'pas de damage inventé');
+  const [avecDegats] = attaque({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'critical', damage: 7 });
+  assert.equal(/** @type {any} */ (avecDegats).damage, 7);
+
+  // ⛔ Un chiffre aberrant n'escamote PAS l'attaque : l'issue est ce qui compte, le nombre est un
+  // ornement. On le laisse tomber, on ne refuse pas le coup.
+  for (const damage of [0, -3, Number.NaN, '7', null]) {
+    const [op] = attaque({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'hit', damage });
+    assert.equal(/** @type {any} */ (op)?.op, 'attack', `damage ${String(damage)} : l’attaque reste montrée`);
+    assert.ok(!('damage' in /** @type {any} */ (op)), `damage ${String(damage)} : non chiffré`);
+  }
+});
+
+test('fx.attack : monture fusionnée — la ref de la monture désigne le pion du cavalier', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const campaign = campagneAttaque([
+    lie('cav', 'pj:c9', { a: 3, b: 2 }, { sizeCells: 2, mounted: true, rider: /** @type {any} */ ({ ref: 'p:m1', label: 'Destrier', imageUrl: null }) }),
+    lie('gobelin', 'p:g9', { a: 7, b: 2 }),
+  ]);
+  assert.deepEqual(planMjMessage(campaign, msg('fx.attack', { attackerRef: 'p:m1', targetRef: 'p:g9', outcome: 'hit' })), [
+    { op: 'attack', from: { a: 3, b: 2 }, to: { a: 7, b: 2 }, levelId: 'rdc', outcome: 'hit', hidden: false },
+  ]);
+});
+
+test('fx.attack : issue inconnue, ref inconnu, non posé, étages différents ou payload malformé ne produisent rien', async () => {
+  const { planMjMessage } = await import('../js/app/mjLink.js');
+  const enReserve = lie('reserve', 'p:res', { a: 0, b: 0 });
+  const campaign = {
+    ...campagneAttaque([
+      lie('ulrika', 'pj:ulrika', { a: 2, b: 3 }),
+      lie('gobelin', 'p:g9', { a: 5, b: 3 }),
+      lie('haut', 'p:haut', { a: 4, b: 4 }, { levelId: 'haut' }),
+      { ...createToken({ id: 'libre', levelId: 'rdc', cell: { a: 6, b: 6 } }) },
+    ]),
+    reserve: [enReserve],
+  };
+  const rien = (/** @type {any} */ payload, /** @type {string} */ pourquoi) =>
+    assert.deepEqual(planMjMessage(/** @type {any} */ (campaign), msg('fx.attack', payload)), [], pourquoi);
+
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'fumble' }, 'fumble n’est pas une issue : il se lit comme un miss, côté outil MJ');
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'HIT' }, 'issue sensible à la casse');
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'p:g9' }, 'issue absente');
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'p:inconnu', outcome: 'hit' }, 'cible inconnue');
+  rien({ attackerRef: 'p:inconnu', targetRef: 'p:g9', outcome: 'hit' }, 'attaquant inconnu');
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'p:res', outcome: 'hit' }, 'une cible en réserve n’est pas sur le plateau');
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'p:haut', outcome: 'hit' }, 'étages différents : un trajet n’a pas de sens');
+  rien({ attackerRef: 'pj:ulrika', targetRef: 'pj:ulrika', outcome: 'hit' }, 'attaquant et cible confondus');
+  rien({ attackerRef: 'pj:ulrika', outcome: 'hit' }, 'cible absente');
+  rien(null, 'payload absent');
+});
+
+test('fx.attack : une extrémité cachée ne part pas vers la tablette, l’écran MJ la joue quand même', async () => {
+  const { planMjMessage, executeMjOperations } = await import('../js/app/mjLink.js');
+  const storeModule = await import('../js/state/store.js');
+  /** @type {[string, any][]} */ const published = [];
+  /** @type {any[]} */ const joues = [];
+  const deps = {
+    store: storeModule,
+    publish: (/** @type {string} */ type, /** @type {any} */ payload) => { published.push([type, payload]); },
+    createToken,
+    newTokenId: () => 'x',
+    trace: { levelId: 'rdc', cell: { a: 0, b: 0 } },
+    playAttack: (/** @type {any} */ op) => joues.push(op),
+  };
+  const campaign = campagneAttaque([
+    lie('ulrika', 'pj:ulrika', { a: 2, b: 3 }),
+    lie('gobelin', 'p:g9', { a: 5, b: 3 }),
+    lie('embusque', 'p:emb', { a: 9, b: 3 }, { hidden: true }),
+  ]);
+  storeModule.loadCampaign(campaign);
+  const run = (/** @type {any} */ payload) => executeMjOperations(planMjMessage(campaign, msg('fx.attack', payload)), /** @type {any} */ (deps));
+
+  run({ attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'parried', damage: 0 });
+  assert.deepEqual(published, [['attack', { from: { a: 2, b: 3 }, to: { a: 5, b: 3 }, levelId: 'rdc', outcome: 'parried' }]],
+    'la tablette reçoit des cases, jamais de ref ; damage 0 n’est pas chiffré');
+  assert.equal(joues.length, 1, 'l’écran MJ joue l’attaque');
+
+  run({ attackerRef: 'p:emb', targetRef: 'p:g9', outcome: 'hit' });
+  assert.equal(published.length, 1, 'attaquant caché : rien ne part vers la tablette');
+  assert.equal(joues.length, 2, 'l’écran MJ voit toujours tout (contrat §9)');
+  run({ attackerRef: 'pj:ulrika', targetRef: 'p:emb', outcome: 'hit' });
+  assert.equal(published.length, 1, 'cible cachée : rien ne part vers la tablette');
+  assert.equal(joues.length, 3);
+
+  // Rien n'est persisté ni rejoué : une attaque ne laisse aucune trace dans la campagne.
+  assert.deepEqual(storeModule.getCampaign()?.tokens.map((t) => t.cell), campaign.tokens.map((t) => t.cell));
+});
+
+test('fx.attack : un message périmé est ignoré, comme fx.wound et fx.death', async () => {
+  const campaign = campagneAttaque([
+    lie('ulrika', 'pj:ulrika', { a: 2, b: 3 }),
+    lie('gobelin', 'p:g9', { a: 5, b: 3 }),
+  ]);
+  const { channel, published } = await openLink({ campaign: () => campaign });
+  const attaque = msg('fx.attack', { attackerRef: 'pj:ulrika', targetRef: 'p:g9', outcome: 'hit' });
+
+  channel.deliver(attaque);
+  assert.equal(published.filter(([type]) => type === 'attack').length, 1, 'message frais : republié');
+  // 30 s de retard : l'attaque a eu lieu il y a trop longtemps pour être montrée maintenant.
+  channel.deliver({ ...attaque, at: -30_000 });
+  assert.equal(published.filter(([type]) => type === 'attack').length, 1, 'message périmé : ignoré');
+});
