@@ -479,8 +479,19 @@ export async function bootstrapPlayerApp(options = {}) {
   };
 
   let restoredCamera = false;
+  // ⛔ H-9 : le cadrage mémorisé porte la CAMPAGNE, l'ÉTAGE et la VUE (décision C du
+  // 26/11/2026). Sans eux, le pan et le zoom d'un grand étage quitté s'appliquaient au petit
+  // étage du retour, qui pouvait sortir du champ — et aucun bornage ne rattrapait. La règle 4
+  // du projet vise les déplacements provoqués par un tiers ; ici c'est le retour d'un F5 sur
+  // son propre poste, où un cadrage qui ne désigne plus rien ne veut plus rien dire.
+  //
+  // ⚠ La clé porte la vue : `rpg_camera_<session>` était COMMUNE au MJ et à la table, qui
+  // s'écrasaient l'une l'autre dès qu'on ouvrait les deux sur la même machine.
+  const CAMERA_KEY = `rpg_camera_${sessionId}_players`;
+  /** @type {{x: number, y: number, zoom: number, campaignId?: string, levelId?: string}|null} */
+  let cadrageMemorise = null;
   try {
-    const saved = localStorage.getItem(`rpg_camera_${sessionId}`);
+    const saved = localStorage.getItem(CAMERA_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (
@@ -488,12 +499,16 @@ export async function bootstrapPlayerApp(options = {}) {
         typeof parsed.y === 'number' &&
         typeof parsed.zoom === 'number'
       ) {
+        // Appliqué tout de suite pour ne pas montrer une image au cadrage par défaut ; c'est
+        // `fitActiveLevel` qui tranchera, à la première image, s'il désigne encore l'étage.
         camera.setPan(parsed.x, parsed.y);
         camera.setZoom(parsed.zoom);
+        cadrageMemorise = parsed;
         restoredCamera = true;
       }
     }
   } catch {
+    cadrageMemorise = null;
     restoredCamera = false;
   }
 
@@ -508,9 +523,22 @@ export async function bootstrapPlayerApp(options = {}) {
   function fitActiveLevel(activeLevel) {
     if (!activeLevel || activeLevel.id === lastActiveLevelId) return;
     lastActiveLevelId = activeLevel.id;
+    // H-9 : on ne saute le recadrage que si le cadrage mémorisé désigne BIEN cette campagne
+    // et cet étage. Un cadrage d'avant ce correctif n'a pas d'estampille : il ne désigne rien,
+    // donc on recadre une fois, et la prochaine écriture l'estampillera.
     if (restoredCamera) {
       restoredCamera = false;
-      return;
+      const memo = cadrageMemorise;
+      cadrageMemorise = null;
+      if (
+        memo &&
+        memo.campaignId === store.getCampaign()?.campaignId &&
+        memo.levelId === activeLevel.id
+      ) {
+        camera.setPan(memo.x, memo.y);
+        camera.setZoom(memo.zoom);
+        return;
+      }
     }
     const grid = gridFor(activeLevel);
     // ⛔ `mapExtent()`, jamais le coin bas-droit — E-13 : `mapFromCellPoint` porte le décalage
@@ -1434,8 +1462,17 @@ export async function bootstrapPlayerApp(options = {}) {
   function persistCamera() {
     try {
       localStorage.setItem(
-        `rpg_camera_${sessionId}`,
-        JSON.stringify({ x: camera.x, y: camera.y, zoom: camera.zoom })
+        CAMERA_KEY,
+        JSON.stringify({
+          x: camera.x,
+          y: camera.y,
+          zoom: camera.zoom,
+          // H-9 : à quoi ce cadrage appartient. Relu au prochain démarrage pour savoir s'il
+          // désigne encore quelque chose.
+          campaignId: store.getCampaign()?.campaignId ?? null,
+          levelId: store.getActiveLevelId(),
+          view: 'players',
+        })
       );
     } catch {
       // Le rendu continue ; la caméra sera simplement réinitialisée au prochain chargement.

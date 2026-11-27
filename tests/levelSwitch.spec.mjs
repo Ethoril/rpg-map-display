@@ -865,3 +865,145 @@ test('UX-15 : sans transport connecté, « Emmener la table » reste actif et an
   await expect(status).not.toHaveClass(/gm-err/);
   await expect(showBtn).toBeEnabled();
 });
+
+// ── H-9 : le cadrage mémorisé désigne une campagne, un étage et une vue ────────────────────
+//
+// Le cadrage était enregistré sous `rpg_camera_<session>`, SANS identifiant d'étage, et
+// `fitActiveLevel` sautait son recadrage une fois au retour (`restoredCamera`). Un grand étage
+// quitté, un étage 6 × 6 au retour : le pan et le zoom du premier s'appliquaient au second, qui
+// pouvait sortir du champ. Aucun bornage ne rattrapait.
+//
+// ⭐ Décision C du 26/11/2026 : enregistrer le cadrage avec la campagne, l'étage ET la vue. Au
+// retour sur le même étage, rien ne bouge ; sur un autre, `fitActiveLevel` reprend son travail
+// normal. L'écran ne se déplace donc tout seul que lorsque le cadrage mémorisé ne désigne plus rien.
+//
+// ⛔ Un seul cadrage par vue, comparé au couple campagne + étage — pas un dictionnaire de cadrages
+// par étage, que la décision C n'appelle pas.
+
+/** @param {string} id @param {string} nom @param {number} cotes */
+const niveauCarre = (id, nom, cotes) => ({
+  ...niveau(id, nom),
+  widthCells: cotes,
+  heightCells: cotes,
+});
+
+/** Un grand étage et un petit, pour que deux cadrages ne puissent pas se confondre. */
+const SNAPSHOT_H9 = {
+  campaign: {
+    schemaVersion: 2,
+    campaignId: 'c-h9',
+    name: 'Cadrage H-9',
+    levels: [niveauCarre('grand', 'Grand étage', 30), niveauCarre('petit', 'Petit étage', 6)],
+    links: [],
+    tokens: [pion('pj', 'petit', 2, 2)],
+    templates: [],
+    settings: {},
+  },
+  activeLevelId: 'petit',
+  selectedTokenId: null,
+  activeHandout: null,
+};
+
+/**
+ * Le cadrage de la caméra MJ après chargement, et le recadrage attendu pour le petit étage.
+ * @param {import('@playwright/test').Page} page
+ */
+const cadrage = (page) => page.evaluate(() => {
+  const app = /** @type {any} */ (window).__RPG_APP__;
+  return { x: app.camera.x, y: app.camera.y, zoom: app.camera.zoom };
+});
+
+for (const { nom, memorise, attendu } of /** @type {const} */ ([
+  {
+    nom: 'le MÊME étage de la MÊME campagne : rien ne bouge',
+    memorise: { x: 111, y: 222, zoom: 0.8, campaignId: 'c-h9', levelId: 'petit', view: 'gm' },
+    attendu: 'conserve',
+  },
+  {
+    nom: 'un AUTRE étage : le recadrage reprend son travail',
+    memorise: { x: 2500, y: 2500, zoom: 1, campaignId: 'c-h9', levelId: 'grand', view: 'gm' },
+    attendu: 'recadre',
+  },
+  {
+    nom: 'une AUTRE campagne, même identifiant d’étage : le recadrage reprend son travail',
+    memorise: { x: 2500, y: 2500, zoom: 1, campaignId: 'autre-campagne', levelId: 'petit', view: 'gm' },
+    attendu: 'recadre',
+  },
+  {
+    nom: 'un cadrage d’AVANT le correctif, sans estampille : il ne désigne rien, donc on recadre',
+    memorise: { x: 2500, y: 2500, zoom: 1 },
+    attendu: 'recadre',
+  },
+])) {
+  test(`H-9 : cadrage mémorisé pour ${nom}`, async ({ page }) => {
+    const sessionId = `h9-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    await installBrowserTransport(page, sessionId, SNAPSHOT_H9);
+    await page.addInitScript(([sid, cadre]) => {
+      localStorage.setItem(`rpg_camera_${sid}_gm`, JSON.stringify(cadre));
+      // ⛔ Et l'ancienne clé commune aux deux vues, pour qu'un dépôt qui la porte encore ne
+      // puisse pas servir de porte de derrière.
+      localStorage.setItem(`rpg_camera_${sid}`, JSON.stringify(cadre));
+    }, /** @type {const} */ ([sessionId, memorise]));
+    await page.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(page);
+    // Laisser la première image passer : c'est elle qui recadre ou non.
+    await page.waitForTimeout(400);
+
+    const vu = await cadrage(page);
+    if (attendu === 'conserve') {
+      expect(vu, 'le cadrage du même étage doit être conservé tel quel').toMatchObject({
+        x: memorise.x, y: memorise.y, zoom: memorise.zoom,
+      });
+    } else {
+      // Recadrage du petit étage : 6 × 6 cases à 100 px, donc centre (300, 300).
+      expect(vu.x, 'le recadrage doit centrer le petit étage').toBe(300);
+      expect(vu.y, 'le recadrage doit centrer le petit étage').toBe(300);
+      expect(vu.zoom, 'et son zoom ne doit pas être celui du grand étage').not.toBe(memorise.zoom);
+    }
+  });
+}
+
+test('H-9 : les deux vues ne partagent plus une seule clé de cadrage', async ({ context }) => {
+  // ⛔ `rpg_camera_<session>` était la clé des DEUX vues : ouvertes sur la même machine, elles
+  // s'écrasaient l'une l'autre. « Un seul cadrage par vue » le dit (décision de planification du
+  // 26/11), et c'est aussi ce qui rend l'estampille `view` utile.
+  const sessionId = `h9-vues-${Date.now()}`;
+  const gm = await context.newPage();
+  const player = await context.newPage();
+  await Promise.all([
+    installBrowserTransport(gm, sessionId, SNAPSHOT_H9),
+    installBrowserTransport(player, sessionId, SNAPSHOT_H9),
+  ]);
+  await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
+  await Promise.all([waitForApp(gm), waitForApp(player)]);
+
+  // Le MJ cadre ailleurs que la table, et chacun écrit sa propre clé.
+  // ⚠ Les DEUX doivent bouger : `persistCamera` n'écrit que sur changement de cadrage, et une vue
+  // immobile ne laisse aucune clé — l'assertion porterait alors sur une absence, pas sur une
+  // séparation.
+  // ⛔ Et par un vrai GESTE : `persistCamera` n'est appelé que depuis les intentions `panBy` et
+  // `pinchZoom`. Poser la caméra à la main n'écrit rien, et le test mesurerait une absence.
+  const panner = (/** @type {import('@playwright/test').Page} */ p, /** @type {number} */ dx) =>
+    p.evaluate((d) => /** @type {any} */ (window).__RPG_APP__.pointerInput.emit({
+      type: 'panBy', deltaX: d, deltaY: d,
+    }), dx);
+  await panner(player, 40);
+  await panner(gm, 400);
+  await Promise.all([gm.waitForTimeout(500), player.waitForTimeout(500)]);
+
+  const cles = await gm.evaluate((sid) => {
+    const lire = (/** @type {string} */ k) => {
+      const v = localStorage.getItem(k);
+      return v ? JSON.parse(v) : null;
+    };
+    return { gm: lire(`rpg_camera_${sid}_gm`), joueurs: lire(`rpg_camera_${sid}_players`) };
+  }, sessionId);
+
+  expect(cles.gm, 'la vue MJ écrit sa propre clé, estampillée').toMatchObject({
+    campaignId: 'c-h9', levelId: 'petit', view: 'gm',
+  });
+  // La clé des joueurs est écrite par l'autre onglet, donc visible depuis celui-ci : elle existe
+  // et ne porte PAS le cadrage que le MJ vient de choisir.
+  expect(cles.joueurs?.view, 'la vue joueurs écrit la sienne').toBe('players');
+  expect(cles.joueurs?.x, 'et le cadrage du MJ ne doit pas l’écraser').not.toBe(cles.gm?.x);
+});
