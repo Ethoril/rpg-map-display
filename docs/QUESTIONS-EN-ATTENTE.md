@@ -1957,14 +1957,18 @@ pas un correctif. Elle relève d'un chantier d'esthétique à éprouver à la ta
 réparation de treize défauts. Même rangement pour le vocabulaire visuel (arbitrage n° 1) et la
 piste d'ambiance.
 
-### ⏳ EN ATTENTE — l'événement d'attaque : son nom et sa charge utile
+### ✅ TRANCHÉ le 27/11/2026 — l'événement d'attaque : `attack`, cinq issues
 
-> Demandé par le mainteneur le 27/11/2026. ⛔ **Rien n'est écrit au §7 du cahier des charges ni au
-> §9 du contrat de liaison tant qu'il n'a pas tranché** : un nom d'événement réseau est exactement
-> le cas où l'autonomie s'arrête. Ce qui suit est une proposition, pas une décision.
+> Demandé par le mainteneur le 27/11/2026, et tranché par lui le même jour : **`attack`**, avec
+> **cinq** issues. L'entrée est désormais au §7 du cahier des charges, marquée **non émise** —
+> aucun code ne la publie encore.
 >
-> ⭐ Le préalable est levé : `fx` est désormais inscrit au §7 (régularisation du 27/11, H-15). On
-> peut donc ajouter une entrée à côté d'une liste qui ne mentait plus par omission.
+> ⭐ Le préalable était `fx`, inscrit au §7 le même jour (H-15) : on pouvait donc ajouter une
+> entrée à côté d'une liste qui ne mentait plus par omission.
+>
+> ⛔ **Deux choses restent à demander avant qu'une ligne de code soit écrite**, et elles sont
+> listées en bas de cette question : l'amendement du §9 du contrat de liaison, partagé avec
+> l'outil MJ, et celui d'`ARCHITECTURE.md:176`, qui est le manifeste fermé.
 
 #### Ce que le besoin impose, et qui n'est pas discutable
 
@@ -1984,9 +1988,9 @@ piste d'ambiance.
 
 | Point | Proposition | Pourquoi |
 |---|---|---|
-| **Nom** | `attack` | ⚖ **À trancher.** `fx.attack` serait cohérent avec `fx.wound` / `fx.death` du §9 *côté outil MJ*, mais sur le réseau ces deux-là deviennent un seul `fx` : un second nom en `fx.*` sur le réseau n'existerait pas. `attack` reste donc le candidat, à côté de `fx` et de `ping`. |
-| **Charge utile** | `{ from: Cell, to: Cell, levelId: string, outcome: 'hit'\|'miss'\|'critical', damage?: number }` | Des coordonnées de **cellule**, jamais de pixels (règle 3 et CONVENTIONS §4). `levelId` parce qu'un effet n'a de sens que sur son étage, leçon de H-6. |
-| **`outcome`** | trois valeurs seulement | ⚖ **À trancher.** « touché / raté / critique » est ce que la table doit lire de loin. Un échec critique, une parade, une esquive ? Chaque valeur ajoutée est un dessin de plus à concevoir et à éprouver à la table. |
+| **Nom** | `attack` | ✅ **TRANCHÉ le 27/11/2026** par le mainteneur. `fx.attack` serait cohérent avec `fx.wound` / `fx.death` du §9 *côté outil MJ*, mais sur le réseau ces deux-là deviennent un seul `fx` : un second nom en `fx.*` sur le réseau n'existerait pas. `attack` reste donc le candidat, à côté de `fx` et de `ping`. |
+| **Charge utile** | `{ from: Cell, to: Cell, levelId: string, outcome: 'hit'\|'miss'\|'critical'\|'parried'\|'dodged', damage?: number }` | Des coordonnées de **cellule**, jamais de pixels (règle 3 et CONVENTIONS §4). `levelId` parce qu'un effet n'a de sens que sur son étage, leçon de H-6. |
+| **`outcome`** | **cinq** valeurs | ✅ **TRANCHÉ le 27/11/2026.** `hit`, `miss`, `critical`, `parried`, `dodged`. Le mainteneur a choisi de rendre la **défense visible** : la table voit POURQUOI le coup n'a pas porté, et pas seulement qu'il a manqué. ⚠ Il a retenu cette option en connaissant son prix, qui lui a été dit : cinq à six dessins à concevoir et à éprouver, et une frontière qui se rapproche d'une règle montrée plutôt que d'un simple effet. ⛔ L'échec critique (`fumble`) n'en fait **pas** partie : un coup qui se retourne contre son auteur se lira comme un `miss`, et l'outil MJ en garde le détail dans sa fiche. |
 | **`damage`** | optionnel | Le MJ décide s'il le montre. Absent, la carte ne chiffre rien. |
 | **Visibilité** | `from` **et** `to` doivent être vues | La conséquence directe de l'arbitrage du 27/11, et le mécanisme existe déjà. |
 | **Version du protocole** | **inchangée, version 3** | ⭐ Un événement AJOUTÉ que l'ancien récepteur ignore ne casse rien : il tombe dans la branche par défaut, exactement comme `turn.select` ajouté le 22/11 sans changer la version. ⛔ Ce serait une version 4 si une charge utile existante changeait de forme. |

@@ -948,6 +948,7 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `fog.reset` / `fog.paint` | MJ | non émis (réservés — `fog.update` porte le PNG complet, L-06) |
 | `ping` | **MJ et joueurs** (amendé le 04/10/2026, §5.5) | ponctuel — `{levelId, mapPos}` ; **pas d'horodatage d'émetteur exploité au rendu**, chaque poste anime depuis sa réception |
 | `fx` | **MJ seul** | ponctuel, **éphémère** — `{ tokenId, kind: 'wound', hpLost, maxHp }` ou `{ tokenId, kind: 'death', cause }`. Hors du réducteur, **jamais rejoué, jamais persisté**, et **non émis pour un pion caché**. Détail des causes et des cas au §9 de `docs/CONTRAT-LIAISON-OUTIL-MJ.md` |
+| `attack` | **MJ seul** | ponctuel, **éphémère** — `{ from: Cell, to: Cell, levelId, outcome: 'hit'\|'miss'\|'critical'\|'parried'\|'dodged', damage? }`. Hors du réducteur, **jamais rejoué, jamais persisté**, comme `fx`. ⛔ **Les DEUX extrémités doivent être vues**, sinon rien n'est dessiné : une arrivée en clair donnerait la direction d'un auteur non vu, et c'est une fuite, pas un acte explicite comme le `ping`. ⚠ **Non émis à ce jour** — spécifié par l'arbitrage du 27/11/2026, aucun code ne le publie encore |
 | `ambient.set` | MJ | throttlé |
 | ~~`handout.show` / `handout.hide`~~ | — | **retirés par C-13** : le partage d'image n'est pas un événement, c'est le nœud d'état `session/{sid}/sharedImage` (§5.8, §6). Un ancien `handout.*` reçu est ignoré comme tout type inconnu |
 | `template.place` / `remove` / `clear` | MJ | ponctuel |
@@ -966,6 +967,24 @@ réécrit par `saveSnapshot` à chaque mutation.
 | `light.delete` | **MJ seul** | ponctuel — `{ levelId, lightId }`, voir l amendement C-2 |
 | `turn.select` | **MJ seul** | ponctuel — `{ tokenId: string\|null, spentCells?: number }`, état de session non persisté, voir l'amendement du 22/11/2026 |
 | `turn.undo` | **joueurs** | ponctuel — `{ tokenId: string }`, sans case de départ (le MJ relit la sienne), voir l'amendement du 22/11/2026 |
+
+> **Arbitrage du 27/11/2026 — `attack`, et pourquoi la défense y est visible.** Le mainteneur a
+> demandé un événement d'attaque, puis tranché son nom et ses issues le même jour : `attack`, cinq
+> valeurs d'`outcome` (`hit`, `miss`, `critical`, `parried`, `dodged`). ⭐ Le choix de cinq plutôt
+> que trois est délibéré : la table doit voir **pourquoi** un coup n'a pas porté, pas seulement
+> qu'il a manqué. ⛔ Cela ne fait pas circuler de règle pour autant — la vue joueurs ne connaît ni
+> seuil, ni défense, ni dégâts calculés : l'outil MJ résout et la carte montre, et c'est toujours
+> la frontière du contrat de liaison.
+>
+> ⚠ `from` **et** `to` doivent être visibles pour que quoi que ce soit se dessine. Le mécanisme
+> existe déjà : le filtre de visibilité de la couche `fx` a été construit le même jour (H-4) pour
+> accepter une **liste** de parties, précisément parce qu'un trajet a deux extrémités.
+>
+> ⛔ **Rien n'émet ni ne consomme `attack` aujourd'hui.** Deux amendements restent à demander au
+> mainteneur avant le code : le §9 du contrat de liaison (partagé avec l'outil MJ, c'est lui qui
+> l'émettra) et `ARCHITECTURE.md:176`, qui déclare `fx.js` « effets de blessure et de mort » —
+> manifeste fermé. La version du protocole reste **3** : un événement ajouté que l'ancien récepteur
+> ignore ne casse rien, même cas que `turn.select` le 22/11.
 
 > **Régularisation du 27/11/2026 — `fx` figurait dans le code et dans le contrat, pas ici.**
 > L'événement d'effet circule depuis le lot L4 (05/11/2026) : il est dans `LIVE_ONLY_EVENTS`
