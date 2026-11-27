@@ -873,6 +873,95 @@ test.describe('T-22 — Panneau MJ & Import (Fin Lot 1a)', () => {
     ).toBe(1);
   });
 
+  test('Édition du pion MJ au clavier : un champ refusé sur Entrée ou Tab revient à la valeur du store sans écraser une frappe en cours', async ({
+    page,
+  }) => {
+    await setupGMView(page);
+    await page.click('.gm-tab-btn[data-tab="token-maker"]');
+
+    // Étage 40×30, pion 1×1 en (38, 28) : passer à 4×4 le sort des limites.
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      const schema = await import('../js/core/schema.js');
+      store.loadCampaign(
+        schema.createCampaign({
+          campaignId: 'c-edit-keys',
+          name: 'Campagne',
+          levels: [schema.createLevel({ id: 'l1', name: 'Niveau 1' })],
+          tokens: [
+            schema.createToken({ id: 't1', levelId: 'l1', cell: { a: 38, b: 28 }, label: 'Mage' }),
+          ],
+        })
+      );
+      store.setSelection('t1');
+    });
+
+    const sizeInput = page.locator('#token-edit-size-cells');
+    const labelInput = page.locator('#token-edit-label');
+    const status = page.locator('#token-edit-status');
+
+    // 1. Saisir 4 dans la taille puis presser Entrée (le champ garde le focus).
+    await sizeInput.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('4');
+    await page.keyboard.press('Enter');
+    await expect(sizeInput).toBeFocused();
+    await expect(status).toContainText('hors limites');
+    await expect(sizeInput).toHaveValue('1');
+
+    // 2. Même chose avec Tab : on relève aussi si `change` part avant ou après le déplacement du focus.
+    await page.evaluate(() => {
+      const el = /** @type {HTMLInputElement} */ (document.querySelector('#token-edit-size-cells'));
+      /** @type {any} */ (window).__tabChangeHadFocus = null;
+      el.addEventListener(
+        'change',
+        () => {
+          /** @type {any} */ (window).__tabChangeHadFocus = document.activeElement === el;
+        },
+        { once: true, capture: true }
+      );
+    });
+    await sizeInput.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('4');
+    await page.keyboard.press('Tab');
+    const tabHadFocus = await page.evaluate(() => /** @type {any} */ (window).__tabChangeHadFocus);
+    expect(typeof tabHadFocus).toBe('boolean');
+    await expect(status).toContainText('hors limites');
+    await expect(sizeInput).toHaveValue('1');
+
+    // 3. Nom remplacé par des espaces puis Entrée (puis Tab).
+    await labelInput.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('   ');
+    await page.keyboard.press('Enter');
+    await expect(labelInput).toBeFocused();
+    await expect(status).toContainText('ne peut pas être vide');
+    await expect(labelInput).toHaveValue('Mage');
+
+    await labelInput.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('   ');
+    await page.keyboard.press('Tab');
+    await expect(status).toContainText('ne peut pas être vide');
+    await expect(labelInput).toHaveValue('Mage');
+
+    // 4. Non-régression de la garde de focus : une mise à jour venue du store pendant que le MJ
+    //    tape dans un champ ne doit pas écraser sa frappe en cours.
+    await labelInput.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('EnCours');
+    await expect(labelInput).toBeFocused();
+
+    await page.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      store.updateToken('t1', { label: 'AutreNom', speedCells: 9 });
+    });
+
+    await expect(labelInput).toHaveValue('EnCours');
+    await expect(page.locator('#token-edit-speed-cells')).toHaveValue('9');
+  });
+
   test('C-11 — la bordure se choisit parmi seize pastilles, et une couleur hors palette n’est pas écrasée', async ({
     page,
   }) => {

@@ -1920,11 +1920,14 @@ export function createGMPanel(container, options = {}) {
     ...markerCheckboxes,
   ]);
 
-  function updateTokenEditUIFromStore() {
+  /**
+   * @param {HTMLElement|null} [champForce] Champ dont un refus autorise à lever la garde de focus
+   */
+  function updateTokenEditUIFromStore(champForce = null) {
     // ⚠ La barre de vitalité se rafraîchit ICI et nulle part ailleurs : elle lit le même pion
     // sélectionné que l'onglet, au même instant. Lui donner son propre abonnement au store
     // ouvrirait la porte à deux vues du même pion décalées d'une notification.
-    updateVitalsBar();
+    updateVitalsBar(champForce);
     const selectedToken = store.getSelectedToken();
     const disabled = !selectedToken;
     // La liste sans sélection, la fiche avec : jamais les deux à l'écran.
@@ -1957,12 +1960,20 @@ export function createGMPanel(container, options = {}) {
     }
 
     if (selectedToken.hp !== null && selectedToken.hp !== undefined) {
-      if (document.activeElement !== tokenHpCurrent) tokenHpCurrent.value = String(selectedToken.hp.current);
-      if (document.activeElement !== tokenHpMax) tokenHpMax.value = String(selectedToken.hp.max);
+      if (document.activeElement !== tokenHpCurrent || tokenHpCurrent === champForce) {
+        tokenHpCurrent.value = String(selectedToken.hp.current);
+      }
+      if (document.activeElement !== tokenHpMax || tokenHpMax === champForce) {
+        tokenHpMax.value = String(selectedToken.hp.max);
+      }
       tokenHpCurrent.disabled = lie;
     } else {
-      if (document.activeElement !== tokenHpCurrent) tokenHpCurrent.value = '';
-      if (document.activeElement !== tokenHpMax) tokenHpMax.value = '';
+      if (document.activeElement !== tokenHpCurrent || tokenHpCurrent === champForce) {
+        tokenHpCurrent.value = '';
+      }
+      if (document.activeElement !== tokenHpMax || tokenHpMax === champForce) {
+        tokenHpMax.value = '';
+      }
       tokenHpCurrent.disabled = true;
     }
 
@@ -1974,7 +1985,7 @@ export function createGMPanel(container, options = {}) {
       const currentHealth = selectedToken.health || 'unharmed';
       for (const radio of healthRadios) {
         radio.disabled = hpNull || lie;
-        if (document.activeElement !== radio) {
+        if (document.activeElement !== radio || radio === champForce) {
           radio.checked = !hpNull && radio.value === currentHealth;
         }
       }
@@ -1992,13 +2003,13 @@ export function createGMPanel(container, options = {}) {
       [tokenEditVisionDim, String(selectedToken.visionDim ?? 0)],
       [tokenEditTorchRange, String(selectedToken.emitsLight?.range ?? TOKEN_TORCH_DEFAULT.range)],
     ])) {
-      if (document.activeElement !== control) control.value = value;
+      if (document.activeElement !== control || control === champForce) control.value = value;
     }
     tokenEditBorderSwatches.refresh();
     tokenEditHidden.checked = Boolean(selectedToken.hidden);
     tokenEditPlayerMovable.checked = Boolean(selectedToken.playerMovable);
     tokenEditLocked.checked = Boolean(selectedToken.locked);
-    if (document.activeElement !== tokenEditTorch) {
+    if (document.activeElement !== tokenEditTorch || tokenEditTorch === champForce) {
       tokenEditTorch.checked = selectedToken.emitsLight != null;
     }
     // La portée n'a de sens que torche allumée : au-delà du désactivé général (aucun pion
@@ -2008,7 +2019,7 @@ export function createGMPanel(container, options = {}) {
 
     const activeMarkers = new Set(selectedToken.markers ?? []);
     for (const cb of markerCheckboxes) {
-      if (document.activeElement !== cb) {
+      if (document.activeElement !== cb || cb === champForce) {
         cb.checked = activeMarkers.has(/** @type {import('../../core/constants.js').StatusMarker} */ (cb.value));
       }
     }
@@ -2023,18 +2034,21 @@ export function createGMPanel(container, options = {}) {
    * refusée laisserait croire à un changement qui n'a pas eu lieu.
    *
    * @param {Partial<import('../../core/types.js').Token>} patch
+   * @param {HTMLElement|null} [champSource] Champ à l'origine du patch, forcé s'il est refusé
+   * @returns {boolean}
    */
-  function applyTokenPatch(patch) {
+  function applyTokenPatch(patch, champSource = null) {
     const selectedToken = store.getSelectedToken();
-    if (!selectedToken) return;
+    if (!selectedToken) return false;
 
     try {
       store.updateToken(selectedToken.id, patch);
     } catch (err) {
       tokenEditStatus.className = 'gm-status gm-err';
       tokenEditStatus.textContent = err instanceof Error ? err.message : String(err);
-      updateTokenEditUIFromStore();
-      return;
+      // Sur Entrée, le champ garde le focus : lever la garde pour lui seul évite d'afficher la valeur refusée.
+      updateTokenEditUIFromStore(champSource);
+      return false;
     }
 
     tokenEditStatus.className = 'gm-status gm-ok';
@@ -2046,6 +2060,7 @@ export function createGMPanel(container, options = {}) {
       at: Date.now(),
       by: 'gm',
     });
+    return true;
   }
 
   // `change` et non `input`, pour la raison déjà écrite au-dessus pour l'élévation : le CdC
@@ -2058,11 +2073,11 @@ export function createGMPanel(container, options = {}) {
       if (!value) {
         tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'Le nom ne peut pas être vide.';
-        updateTokenEditUIFromStore();
+        updateTokenEditUIFromStore(tokenEditLabel);
         return;
       }
       if (value === store.getSelectedToken()?.label) return;
-      applyTokenPatch({ label: value });
+      applyTokenPatch({ label: value }, tokenEditLabel);
     },
     { signal: listeners.signal }
   );
@@ -2075,15 +2090,16 @@ export function createGMPanel(container, options = {}) {
    * borner pareil — et c'est la valeur que six personnes lisent à l'écran.
    *
    * @param {string} saisie
-   * @returns {number|null} la valeur retenue, ou `null` si rien n'était applicable
+   * @param {HTMLElement|null} [champSource]
+   * @returns {number|null} la valeur retenue, ou `null` si rien n'était applicable ou si le patch a été refusé
    */
-  function applyHpCurrent(saisie) {
+  function applyHpCurrent(saisie, champSource = null) {
     const selectedToken = store.getSelectedToken();
     if (!selectedToken || selectedToken.hp === null || selectedToken.hp === undefined) return null;
     const raw = parseInt(saisie.trim(), 10);
     const current = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(raw, selectedToken.hp.max));
     if (current !== selectedToken.hp.current) {
-      applyTokenPatch({ hp: { current, max: selectedToken.hp.max } });
+      if (!applyTokenPatch({ hp: { current, max: selectedToken.hp.max } }, champSource)) return null;
     }
     return current;
   }
@@ -2095,18 +2111,19 @@ export function createGMPanel(container, options = {}) {
    * `health` ne se dérive JAMAIS de `hp` ni l'inverse (chantier Q, interdiction n°4).
    *
    * @param {'unharmed'|'wounded'|'critical'} health
+   * @param {HTMLElement|null} [champSource]
    */
-  function applyHealth(health) {
+  function applyHealth(health, champSource = null) {
     const selectedToken = store.getSelectedToken();
     if (!selectedToken || selectedToken.kind === 'pc' || selectedToken.hp === null) return;
     if (health === selectedToken.health) return;
-    applyTokenPatch({ health });
+    applyTokenPatch({ health }, champSource);
   }
 
   tokenHpCurrent.addEventListener(
     'change',
     () => {
-      const retenu = applyHpCurrent(tokenHpCurrent.value);
+      const retenu = applyHpCurrent(tokenHpCurrent.value, tokenHpCurrent);
       if (retenu !== null) tokenHpCurrent.value = String(retenu);
     },
     { signal: listeners.signal }
@@ -2120,7 +2137,7 @@ export function createGMPanel(container, options = {}) {
       const val = tokenHpMax.value.trim();
       if (val === '') {
         if (selectedToken.hp === null) return;
-        applyTokenPatch({ hp: null });
+        applyTokenPatch({ hp: null }, tokenHpMax);
         return;
       }
       const rawMax = parseInt(val, 10);
@@ -2130,7 +2147,7 @@ export function createGMPanel(container, options = {}) {
       const current = Math.max(0, Math.min(currentVal, max));
       tokenHpCurrent.value = String(current);
       if (selectedToken.hp && current === selectedToken.hp.current && max === selectedToken.hp.max) return;
-      applyTokenPatch({ hp: { current, max } });
+      applyTokenPatch({ hp: { current, max } }, tokenHpMax);
     },
     { signal: listeners.signal }
   );
@@ -2140,7 +2157,7 @@ export function createGMPanel(container, options = {}) {
       'change',
       () => {
         if (!radio.checked) return;
-        applyHealth(/** @type {'unharmed'|'wounded'|'critical'} */ (radio.value));
+        applyHealth(/** @type {'unharmed'|'wounded'|'critical'} */ (radio.value), radio);
       },
       { signal: listeners.signal }
     );
@@ -2167,8 +2184,10 @@ export function createGMPanel(container, options = {}) {
    * `document.activeElement` n'est pas cosmétique. Sans elle, une mise à jour venue du réseau —
    * ou notre propre notification — réécrirait le champ que le MJ est en train de remplir, au
    * caractère près.
+   *
+   * @param {HTMLElement|null} [champForce] Champ dont un refus autorise à lever la garde de focus
    */
-  function updateVitalsBar() {
+  function updateVitalsBar(champForce = null) {
     if (!vitalsBar) return;
     const pion = store.getSelectedToken();
     if (!pion) {
@@ -2195,7 +2214,7 @@ export function createGMPanel(container, options = {}) {
     }
 
     if (estPj && pv && vitalsHpCurrent && vitalsHpMax) {
-      if (document.activeElement !== vitalsHpCurrent) {
+      if (document.activeElement !== vitalsHpCurrent || vitalsHpCurrent === champForce) {
         vitalsHpCurrent.value = String(pv.current);
       }
       vitalsHpCurrent.max = String(pv.max);
@@ -2241,7 +2260,7 @@ export function createGMPanel(container, options = {}) {
   vitalsHpCurrent?.addEventListener(
     'change',
     () => {
-      const retenu = applyHpCurrent(vitalsHpCurrent.value);
+      const retenu = applyHpCurrent(vitalsHpCurrent.value, vitalsHpCurrent);
       if (retenu !== null) vitalsHpCurrent.value = String(retenu);
     },
     { signal: listeners.signal }
@@ -2286,7 +2305,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const kind = /** @type {'pc'|'npc'} */ (tokenEditKind.value === 'npc' ? 'npc' : 'pc');
       if (kind === store.getSelectedToken()?.kind) return;
-      applyTokenPatch({ kind });
+      applyTokenPatch({ kind }, tokenEditKind);
     },
     { signal: listeners.signal }
   );
@@ -2296,7 +2315,7 @@ export function createGMPanel(container, options = {}) {
     () => {
       const color = tokenEditBorderColor.value;
       if (color === store.getSelectedToken()?.borderColor) return;
-      applyTokenPatch({ borderColor: color });
+      applyTokenPatch({ borderColor: color }, tokenEditBorderColor);
     },
     { signal: listeners.signal }
   );
@@ -2308,11 +2327,11 @@ export function createGMPanel(container, options = {}) {
       if (!Number.isInteger(value) || value < 1) {
         tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La taille doit être un entier au moins égal à 1.';
-        updateTokenEditUIFromStore();
+        updateTokenEditUIFromStore(tokenEditSizeCells);
         return;
       }
       if (value === store.getSelectedToken()?.sizeCells) return;
-      applyTokenPatch({ sizeCells: value });
+      applyTokenPatch({ sizeCells: value }, tokenEditSizeCells);
     },
     { signal: listeners.signal }
   );
@@ -2324,30 +2343,30 @@ export function createGMPanel(container, options = {}) {
       if (!Number.isFinite(value) || value < 1) {
         tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La vitesse doit valoir au moins 1 case.';
-        updateTokenEditUIFromStore();
+        updateTokenEditUIFromStore(tokenEditSpeedCells);
         return;
       }
       if (value === store.getSelectedToken()?.speedCells) return;
-      applyTokenPatch({ speedCells: value });
+      applyTokenPatch({ speedCells: value }, tokenEditSpeedCells);
     },
     { signal: listeners.signal }
   );
 
   tokenEditHidden.addEventListener(
     'change',
-    () => applyTokenPatch({ hidden: tokenEditHidden.checked }),
+    () => applyTokenPatch({ hidden: tokenEditHidden.checked }, tokenEditHidden),
     { signal: listeners.signal }
   );
 
   tokenEditPlayerMovable.addEventListener(
     'change',
-    () => applyTokenPatch({ playerMovable: tokenEditPlayerMovable.checked }),
+    () => applyTokenPatch({ playerMovable: tokenEditPlayerMovable.checked }, tokenEditPlayerMovable),
     { signal: listeners.signal }
   );
 
   tokenEditLocked.addEventListener(
     'change',
-    () => applyTokenPatch({ locked: tokenEditLocked.checked }),
+    () => applyTokenPatch({ locked: tokenEditLocked.checked }, tokenEditLocked),
     { signal: listeners.signal }
   );
 
@@ -2358,11 +2377,11 @@ export function createGMPanel(container, options = {}) {
       if (!Number.isInteger(value) || value < 0 || value > 60) {
         tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = 'La vision dans le noir doit être un entier entre 0 et 60 cases.';
-        updateTokenEditUIFromStore();
+        updateTokenEditUIFromStore(tokenEditVisionDim);
         return;
       }
       if (value === store.getSelectedToken()?.visionDim) return;
-      applyTokenPatch({ visionDim: value });
+      applyTokenPatch({ visionDim: value }, tokenEditVisionDim);
     },
     { signal: listeners.signal }
   );
@@ -2381,9 +2400,9 @@ export function createGMPanel(container, options = {}) {
             intensity: TOKEN_TORCH_DEFAULT.intensity,
             color: TOKEN_TORCH_DEFAULT.color,
           },
-        });
+        }, tokenEditTorch);
       } else {
-        applyTokenPatch({ emitsLight: null });
+        applyTokenPatch({ emitsLight: null }, tokenEditTorch);
       }
     },
     { signal: listeners.signal }
@@ -2396,14 +2415,14 @@ export function createGMPanel(container, options = {}) {
       if (!Number.isInteger(value) || value < 1 || value > VISION_MAX_RANGE_CELLS) {
         tokenEditStatus.className = 'gm-status gm-err';
         tokenEditStatus.textContent = `La portée de la torche doit être un entier entre 1 et ${VISION_MAX_RANGE_CELLS} cases.`;
-        updateTokenEditUIFromStore();
+        updateTokenEditUIFromStore(tokenEditTorchRange);
         return;
       }
       const current = store.getSelectedToken()?.emitsLight;
       if (current && value === current.range) return;
       applyTokenPatch({
         emitsLight: { range: value, intensity: TOKEN_TORCH_DEFAULT.intensity, color: TOKEN_TORCH_DEFAULT.color },
-      });
+      }, tokenEditTorchRange);
     },
     { signal: listeners.signal }
   );
@@ -2418,7 +2437,7 @@ export function createGMPanel(container, options = {}) {
           .filter((checkbox) => checkbox.checked)
           .map((checkbox) => checkbox.value)
           .filter(isStatusMarker);
-        applyTokenPatch({ markers: selectedMarkers });
+        applyTokenPatch({ markers: selectedMarkers }, cb);
       },
       { signal: listeners.signal }
     );
@@ -2569,14 +2588,15 @@ export function createGMPanel(container, options = {}) {
         },
         // UX-15 : emmener la table sur l'étage actif du MJ, par le même chemin de publication
         // que les autres événements du panneau — aucun accès au transport dans le composant.
-        onShowLevel: (levelId) => {
-          transport?.publish({
-            type: 'level.show',
-            payload: { levelId },
-            at: Date.now(),
-            by: 'gm',
-          });
-        },
+        onShowLevel: (levelId) =>
+          transport
+            ? transport.publish({
+                type: 'level.show',
+                payload: { levelId },
+                at: Date.now(),
+                by: 'gm',
+              })
+            : null,
         // UX-16 : ce qui serait perdu, pour que la confirmation du composant le dise en nombre.
         getDeleteImpact: (levelId) => {
           const camp = store.getCampaign();
