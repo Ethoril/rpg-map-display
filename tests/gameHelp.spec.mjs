@@ -404,11 +404,18 @@ test('Cadrer et zoomer : pan, pincement 2 doigts et relâchement 2→1 par vrais
   }
 });
 
-test('Voir ou rejoindre un étage : onglets, escalier en deux temps, non-suivi automatique et renvoi monture', async ({ browser }) => {
+test('Voir ou rejoindre un étage : onglets, bouton d’escalier sans sélection, rejet du re-tap et renvoi monture', async ({ browser }) => {
   const { context, page, errors } = await openPlayer(browser);
   try {
     const guide = await openLessonFromToc(page, 'Voir ou rejoindre un étage');
     await expect(guide.locator('.player-help-step-group h3')).toHaveText(['Regarder un étage', 'Prendre l’escalier']);
+
+    // Démonstration étape 2 : bouton « Prendre l’escalier » sans l'ancien texte de re-tap
+    await guide.locator('button[data-example="2"]').click();
+    const linkBtn = guide.getByRole('button', { name: 'Prendre l’escalier' });
+    await expect(linkBtn).toBeVisible();
+    await expect(guide.locator('.player-help-prompt')).toBeHidden();
+    await expect(guide).not.toContainText('Retaper pour prendre l’escalier');
 
     await guide.getByRole('button', { name: 'À toi d’essayer' }).click();
     const tabRdc = guide.getByRole('tab', { name: 'Rez-de-chaussée' });
@@ -420,20 +427,57 @@ test('Voir ou rejoindre un étage : onglets, escalier en deux temps, non-suivi a
     await tabRdc.click();
     await expect(guide.locator('.player-help-pawn')).toBeVisible();
 
-    // Avancer jusqu'à l'escalier en deux taps puis resélectionner et franchir
+    // Avancer jusqu'à l'escalier en deux taps : aucun bouton d'escalier pendant la sélection (TJ-8)
     await guide.getByRole('button', { name: 'Ariane', exact: true }).click();
+    await expect(linkBtn).toBeHidden();
     const stairsBtn = guide.getByRole('button', { name: 'Escalier', exact: true });
     await stairsBtn.click();
     await expect(guide.locator('.player-help-prompt')).toHaveText('Retoucher ici pour déplacer');
+    await expect(linkBtn).toBeHidden();
     await stairsBtn.click();
 
+    // Arrivée sur l'escalier sans sélection active : le bouton « Prendre l’escalier » apparaît (TJ-1, TJ-8)
+    await expect(linkBtn).toBeVisible();
+    const linkBox = await linkBtn.boundingBox();
+    expect(linkBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    // Sélectionner Ariane sur l'escalier masque le bouton (TJ-8) et retaper sa case NE franchit PAS (TJ-1)
     await guide.getByRole('button', { name: 'Ariane sur l’escalier' }).click();
-    await expect(guide.locator('.player-help-prompt')).toHaveText('Retaper pour prendre l’escalier');
+    await expect(linkBtn).toBeHidden();
+    await expect(guide.locator('.player-help-prompt')).toBeHidden();
+
+    // ⛔ TJ-1, SECONDE ligne de défense. Le bouton est caché, mais il reste `enabled` : son
+    // gestionnaire est donc atteignable autrement que par un tap visible. Un clic dispatché dessus
+    // pendant la sélection ne doit rien franchir. ⚠ Sans cette assertion, retirer `selected` de la
+    // garde de `handleLinkButtonClick` laissait les treize tests verts : la visibilité était couverte,
+    // le refus du gestionnaire ne l'était pas, et un seul `paintPractice()` manquant aurait rouvert
+    // TJ-1 sans qu'aucun test ne bouge.
+    // ⚠ `getByRole` ne voit pas un bouton caché — l'attribut `hidden` le retire de l'arbre
+    // d'accessibilité. C'est bien l'élément du DOM qu'il faut atteindre ici, pas son rôle.
+    const linkBtnNode = guide.locator('.player-help-link-btn');
+    await expect(linkBtnNode).toBeEnabled();
+    await linkBtnNode.dispatchEvent('click');
+    await expect(guide.locator('.player-help-pawn')).toBeVisible();
+    await expect(tabRdc).toHaveAttribute('aria-selected', 'true');
+    await expect(guide.locator('[data-help-caption]')).not.toContainText('a pris l’escalier');
+
     await guide.getByRole('button', { name: 'Ariane sur l’escalier' }).click();
+    await expect(guide.locator('.player-help-pawn')).toBeVisible();
+    await expect(tabRdc).toHaveAttribute('aria-selected', 'true');
+    await tabEtage.click();
+    await expect(guide.locator('.player-help-pawn')).toBeHidden();
+    await tabRdc.click();
+    await expect(guide.locator('.player-help-pawn')).toBeVisible();
+
+    // Désélectionner Ariane sur une case vide fait réapparaître le bouton, qui la fait franchir
+    await guide.getByRole('button', { name: 'Case 1, 1' }).click();
+    await expect(linkBtn).toBeVisible();
+    await linkBtn.click();
 
     // La vue reste au rez-de-chaussée ; choisir l'onglet Étage retrouve Ariane
     await expect(tabRdc).toHaveAttribute('aria-selected', 'true');
     await expect(guide.locator('.player-help-pawn')).toBeHidden();
+    await expect(linkBtn).toBeHidden();
     await tabEtage.click();
     await expect(guide.locator('.player-help-pawn')).toBeVisible();
     await expect(guide.locator('[data-help-caption]')).toContainText('Bravo');
@@ -611,7 +655,7 @@ test('Montrer un point ou retrouver un ping : double tap CDP sans zoom, rejet ta
   }
 });
 
-test('Ouvrir ou fermer une porte : ouverture/fermeture, tap invalide sur pion et porte verrouillée', async ({ browser }) => {
+test('Ouvrir ou fermer une porte : bouton d’adjacence, seuil inactif, masquage sous sélection et porte verrouillée sans bouton', async ({ browser }) => {
   const { context, page, errors } = await openPlayer(browser);
   try {
     const guide = await openLessonFromToc(page, 'Ouvrir ou fermer une porte');
@@ -620,25 +664,102 @@ test('Ouvrir ou fermer une porte : ouverture/fermeture, tap invalide sur pion et
     const box = await canvas.boundingBox();
     if (!box) throw new Error('Canvas porte absent');
 
-    // Tap sur le pion (à gauche) : n'ouvre pas la porte
-    await page.mouse.click(box.x + box.width * 0.22, box.y + box.height * 0.5);
+    const cellScreen = Math.min(box.width / 7, box.height / 5) * 0.96;
+    /** @param {number} cx @param {number} cy */
+    const pt = (cx, cy) => ({
+      x: Math.round(box.x + box.width / 2 + (cx - 3.5) * cellScreen),
+      y: Math.round(box.y + box.height / 2 + (cy - 2.5) * cellScreen),
+    });
+
+    // Compte les pixels clairs/laiton peints dans la boîte 44×44 du bouton en (3, 2) (centre du canvas).
+    const buttonInkPixels = () =>
+      canvas.evaluate((el) => {
+        const c = /** @type {HTMLCanvasElement} */ (el);
+        const ctx = c.getContext('2d');
+        if (!ctx) return 0;
+        const scaleX = c.width / Math.max(1, c.clientWidth);
+        const scaleY = c.height / Math.max(1, c.clientHeight);
+        const halfW = Math.round(22 * scaleX);
+        const halfH = Math.round(22 * scaleY);
+        const x0 = Math.max(0, Math.round(c.width / 2) - halfW);
+        const y0 = Math.max(0, Math.round(c.height / 2) - halfH);
+        const data = ctx.getImageData(x0, y0, halfW * 2, halfH * 2).data;
+        let bright = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] > 160 && data[i + 1] > 130) bright++;
+        }
+        return bright;
+      });
+
+    const arianePt = pt(2.5, 2.5);
+    const thresholdPt = pt(3.0, 2.5);
+    const doorButtonPt = pt(3.5, 2.5);
+    const emptyCellPt = pt(0.5, 0.5);
+
+    // Sans sélection : Ariane est adjacente en (2, 2) et le bouton « Ouvrir » est peint en (3, 2)
+    await expect(canvas).toHaveAttribute('data-pawn-cell', '2,2');
     await expect(canvas).toHaveAttribute('data-portal-state', 'closed');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '1');
+    expect(await buttonInkPixels()).toBeGreaterThan(30);
 
-    // Tap sur le milieu du seuil (colonne 3 / 7 ≈ 43 %, milieu vertical 50 %)
-    const doorPt = { x: Math.round(box.x + box.width * (3 / 7)), y: Math.round(box.y + box.height * 0.5) };
-    await page.mouse.click(doorPt.x, doorPt.y);
+    // 1. Toucher directement le seuil de la porte NE l'ouvre PAS (TJ-2) ; le tap sur la bordure de la case d'Ariane la sélectionne comme sur le vrai plateau
+    await page.mouse.click(thresholdPt.x, thresholdPt.y);
+    await expect(canvas).toHaveAttribute('data-portal-state', 'closed');
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'true');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '0');
+    expect(await buttonInkPixels()).toBe(0);
+    await page.mouse.click(emptyCellPt.x, emptyCellPt.y);
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'false');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '1');
+
+    // 2. Sélectionner Ariane fait disparaître le bouton de porte (TJ-8), et cliquer son ancien emplacement n'ouvre pas
+    await page.mouse.click(arianePt.x, arianePt.y);
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'true');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '0');
+    expect(await buttonInkPixels()).toBe(0);
+    await page.mouse.click(doorButtonPt.x, doorButtonPt.y);
+    await expect(canvas).toHaveAttribute('data-portal-state', 'closed');
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'false');
+
+    // Désélectionnée : le bouton revient et ouvre la porte sans déplacer Ariane (TJ-2)
+    await expect(canvas).toHaveAttribute('data-door-buttons', '1');
+    expect(await buttonInkPixels()).toBeGreaterThan(30);
+    await page.mouse.click(doorButtonPt.x, doorButtonPt.y);
     await expect(canvas).toHaveAttribute('data-portal-state', 'open');
-    await expect(canvas).toHaveAttribute('data-pawn-cell', '1,2');
+    await expect(canvas).toHaveAttribute('data-pawn-cell', '2,2');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '1');
+    expect(await buttonInkPixels()).toBeGreaterThan(30);
 
-    // Retap pour refermer
-    await page.mouse.click(doorPt.x, doorPt.y);
+    // Même porte ouverte : sélectionner Ariane masque « Fermer » et cliquer son emplacement ne referme pas (TJ-8)
+    await page.mouse.click(arianePt.x, arianePt.y);
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'true');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '0');
+    expect(await buttonInkPixels()).toBe(0);
+    await page.mouse.click(doorButtonPt.x, doorButtonPt.y);
+    await expect(canvas).toHaveAttribute('data-portal-state', 'open');
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'false');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '1');
+
+    // Toucher le seuil porte ouverte ne la referme pas non plus (sélectionne Ariane) ; après désélection, le bouton « Fermer » la referme
+    await page.mouse.click(thresholdPt.x, thresholdPt.y);
+    await expect(canvas).toHaveAttribute('data-portal-state', 'open');
+    await page.mouse.click(emptyCellPt.x, emptyCellPt.y);
+    await expect(canvas).toHaveAttribute('data-ariane-selected', 'false');
+    await expect(canvas).toHaveAttribute('data-door-buttons', '1');
+    expect(await buttonInkPixels()).toBeGreaterThan(30);
+    await page.mouse.click(doorButtonPt.x, doorButtonPt.y);
     await expect(canvas).toHaveAttribute('data-portal-state', 'closed');
     await expect(guide.locator('[data-help-caption]')).toContainText('Parfait');
 
-    // Essai 2 : porte verrouillée reste verrouillée sans bouton de déverrouillage
+    // 3. Essai 2 : porte verrouillée -> AUCUN bouton (TJ-4), ni sur le canvas ni en aide clavier
     await guide.getByRole('button', { name: /Porte verrouillée/ }).click();
     await expect(canvas).toHaveAttribute('data-portal-state', 'locked');
-    await page.mouse.click(doorPt.x, doorPt.y);
+    await expect(canvas).toHaveAttribute('data-door-buttons', '0');
+    expect(await buttonInkPixels()).toBe(0);
+    await expect(guide.getByRole('button', { name: /Toucher le bouton de porte/ })).toHaveCount(0);
+    await page.mouse.click(doorButtonPt.x, doorButtonPt.y);
+    await expect(canvas).toHaveAttribute('data-portal-state', 'locked');
+    await page.mouse.click(thresholdPt.x, thresholdPt.y);
     await expect(canvas).toHaveAttribute('data-portal-state', 'locked');
     await expect(guide.locator('[data-help-caption]')).toContainText('demande au MJ', { ignoreCase: true });
     expect(errors).toEqual([]);
@@ -647,38 +768,72 @@ test('Ouvrir ou fermer une porte : ouverture/fermeture, tap invalide sur pion et
   }
 });
 
-test('Monter ou descendre de cheval : cavalier autonome et cavalier lié géré par le MJ', async ({ browser }) => {
+test('Monter ou descendre de cheval : cavalier autonome et lié MJ, désélection puis bouton d’escalier', async ({ browser }) => {
   const { context, page, errors } = await openPlayer(browser);
   try {
     const guide = await openLessonFromToc(page, 'Monter ou descendre de cheval');
     await expect(guide.locator('.player-help-step-group h3')).toHaveText(['Monture à la tablette', 'Monture gérée par le MJ']);
+
+    // Démonstration étape 3 : après descente par le MJ et sans sélection, bouton « Prendre l’escalier »
+    const linkBtn = guide.getByRole('button', { name: 'Prendre l’escalier' });
+    await guide.locator('button[data-example="3"]').click();
+    await expect(linkBtn).toBeVisible();
+    await expect(guide.locator('.player-help-strip')).toBeHidden();
+    await expect(guide).not.toContainText('Retaper pour prendre l’escalier');
 
     // Essai autonome
     await guide.getByRole('button', { name: 'À toi d’essayer' }).click();
     const mountBtn = guide.locator('.player-help-strip .player-selection-mount');
     await expect(mountBtn).toBeEnabled();
     await expect(mountBtn).toHaveAttribute('aria-label', 'Monter à cheval');
+    await expect(linkBtn).toBeHidden();
     await mountBtn.click();
     await expect(mountBtn).toHaveAttribute('aria-label', 'Descendre de cheval');
     await expect(guide.locator('.player-help-prompt')).toHaveText('Descendre de cheval');
+    await expect(linkBtn).toBeHidden();
 
-    // À cheval, taper l'escalier ne franchit pas
+    // À cheval, même désélectionnée, aucun bouton d'escalier n'apparaît ; retaper l'escalier ne franchit pas
     await guide.getByRole('button', { name: 'Ariane sur l’escalier' }).click();
     await expect(guide.locator('.player-help-pawn')).toBeVisible();
-
-    // Descendre puis franchir
-    await mountBtn.click();
-    await expect(guide.locator('.player-help-prompt')).toHaveText('Retaper pour prendre l’escalier');
+    await guide.getByRole('button', { name: 'Case 1, 1' }).click();
+    await expect(linkBtn).toBeHidden();
     await guide.getByRole('button', { name: 'Ariane sur l’escalier' }).click();
+    await expect(mountBtn).toBeVisible();
+
+    // Descendre : tant qu'Ariane reste sélectionnée, aucun bouton d'escalier (TJ-8) et le re-tap NE franchit PAS (TJ-1)
+    await mountBtn.click();
+    await expect(guide.locator('.player-help-prompt')).toBeHidden();
+    await expect(linkBtn).toBeHidden();
+    await guide.getByRole('button', { name: 'Ariane sur l’escalier' }).click();
+    await expect(guide.locator('.player-help-pawn')).toBeVisible();
+    await expect(linkBtn).toBeHidden();
+
+    // Désélectionner sur une case vide fait apparaître le bouton « Prendre l’escalier », qui franchit
+    await guide.getByRole('button', { name: 'Case 1, 1' }).click();
+    await expect(guide.locator('.player-help-strip')).toBeHidden();
+    await expect(linkBtn).toBeVisible();
+    await linkBtn.click();
+    await expect(guide.locator('.player-help-pawn')).toBeHidden();
     await expect(guide.locator('[data-help-caption]')).toContainText('Bravo');
 
     // Essai monture liée gérée par le MJ
     await guide.getByRole('button', { name: /monture gérée par le MJ/ }).click();
     await expect(mountBtn).toBeDisabled();
     await expect(guide.locator('.player-help-prompt')).toHaveText('Demander au MJ de vous faire descendre de cheval');
+    await expect(linkBtn).toBeHidden();
+
     await guide.getByRole('button', { name: 'Le MJ fait descendre le personnage' }).click();
-    await expect(guide.locator('.player-help-prompt')).toHaveText('Retaper pour prendre l’escalier');
+    // Ariane reste sélectionnée : bouton encore masqué et re-tap sans effet (TJ-1, TJ-8)
+    await expect(guide.locator('.player-help-prompt')).toBeHidden();
+    await expect(linkBtn).toBeHidden();
     await guide.getByRole('button', { name: 'Ariane sur l’escalier' }).click();
+    await expect(guide.locator('.player-help-pawn')).toBeVisible();
+
+    // Désélection puis franchissement par le bouton de liaison
+    await guide.getByRole('button', { name: 'Case 1, 1' }).click();
+    await expect(linkBtn).toBeVisible();
+    await linkBtn.click();
+    await expect(guide.locator('.player-help-pawn')).toBeHidden();
     await expect(guide.locator('[data-help-caption]')).toContainText('Bravo');
     expect(errors).toEqual([]);
   } finally {
@@ -989,7 +1144,7 @@ test('Partie en arrière-plan : isolement complet, poursuite des événements MJ
     // Ouvrir le guide et exercer plusieurs fiches
     const guide = await openLessonFromToc(player, 'Ouvrir ou fermer une porte');
     await guide.getByRole('button', { name: 'À toi d’essayer' }).click();
-    await guide.getByRole('button', { name: 'Aide clavier : Toucher la porte' }).click();
+    await guide.getByRole('button', { name: 'Aide clavier : Toucher le bouton de porte' }).click();
     await openLessonFromToc(player, 'Cadrer et zoomer');
     await guide.getByRole('button', { name: 'À toi d’essayer' }).click();
     await guide.getByRole('button', { name: 'Aide clavier : Glisser vers le puits' }).click();

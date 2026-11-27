@@ -20,12 +20,12 @@ import {
 } from '../../state/movePlan.js';
 import { Camera } from '../../render/camera.js';
 import { GridLayer } from '../../render/layers/gridLayer.js';
-import { PortalsLayer } from '../../render/layers/portals.js';
+import { PortalsLayer, boutonsPorte } from '../../render/layers/portals.js';
+import { boutonLiaison } from '../../render/layers/links.js';
 import { TemplatesLayer } from '../../render/layers/templates.js';
 import { PingsLayer } from '../../render/layers/pings.js';
 import { CAMP_FILL, campInitials } from '../../render/layers/tokens.js';
 import { PointerInput } from '../../input/pointer.js';
-import { findHitPortal } from '../../input/portalHit.js';
 import { findHitToken, isPlayerManipulableToken } from '../../input/tokenHit.js';
 import {
   findHitTemplate,
@@ -37,6 +37,7 @@ import {
 
 /** @typedef {import('../../core/types.js').Cell} Cell */
 /** @typedef {import('../../core/types.js').Level} Level */
+/** @typedef {import('../../core/types.js').Link} Link */
 /** @typedef {import('../../core/types.js').MapPoint} MapPoint */
 /** @typedef {import('../../core/types.js').Portal} Portal */
 /** @typedef {import('../../core/types.js').Template} Template */
@@ -84,7 +85,6 @@ import {
 const DEFAULT_STEP_MS = 1800;
 const CONFIRM_LABEL = 'Retoucher ici pour déplacer';
 const RUN_LABEL = 'Course : Action utilisée';
-const STAIRS_PROMPT = 'Retaper pour prendre l’escalier';
 const MOUNT_LOCAL_PROMPT = 'Descendre de cheval';
 const MOUNT_LINKED_PROMPT = 'Demander au MJ de vous faire descendre de cheval';
 
@@ -160,6 +160,21 @@ function formatInspectionDistance(cells, referenceName) {
  */
 function sameCell(first, second) {
   return Boolean(first && second && first.a === second.a && first.b === second.b);
+}
+
+/**
+ * Teste si un point carte se trouve dans un rectangle carte (aligné sur `bootstrap.js`).
+ * @param {MapPoint} pt
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @returns {boolean}
+ */
+function pointInRect(pt, rect) {
+  return (
+    pt.x >= rect.x &&
+    pt.x <= rect.x + rect.width &&
+    pt.y >= rect.y &&
+    pt.y <= rect.y + rect.height
+  );
 }
 
 /**
@@ -1340,7 +1355,7 @@ const LESSON_LEVELS = {
   steps: [
     { group: 'Regarder un étage', label: 'Regarder un étage', caption: 'Touche un onglet pour regarder un autre étage connu.' },
     { group: 'Prendre l’escalier', label: 'Aller jusqu’à l’escalier', caption: 'Amène ton personnage à pied sur la case de l’escalier.' },
-    { group: 'Prendre l’escalier', label: 'Franchir', caption: 'Sélectionne ton pion sur l’escalier, puis retouche sa case pour franchir.' },
+    { group: 'Prendre l’escalier', label: 'Franchir', caption: 'Sans pion sélectionné, touche le bouton « Prendre l’escalier » au-dessus de ton personnage.' },
     { group: 'Prendre l’escalier', label: 'Voir l’arrivée', caption: 'Choisis l’étage d’arrivée pour retrouver ton personnage.' },
   ],
   mount(ctx) {
@@ -1349,8 +1364,19 @@ const LESSON_LEVELS = {
     const ARRIVAL = { a: 4, b: 2 };
     const levelRdc = createLevel({ id: 'rdc', name: 'Rez-de-chaussée', widthCells: 7, heightCells: 5 });
     const ariane = createToken({ id: 'aide-etage-ariane', levelId: 'rdc', label: 'Ariane', cell: START, speedCells: 4 });
+    /** @type {Link} */
+    const stairsLink = {
+      id: 'aide-etage-escalier',
+      kind: 'stairs',
+      label: 'Escalier',
+      a: { levelId: 'rdc', at: { cellX: STAIRS.a, cellY: STAIRS.b } },
+      b: { levelId: 'etage', at: { cellX: ARRIVAL.a, cellY: ARRIVAL.b } },
+      bidirectional: true,
+      gmOnly: false,
+    };
     const rules = movementRulesFor(ariane, levelRdc);
     const basePlan = createMovePlan(ariane, levelRdc, rules);
+    const stairsPlan = createMovePlan({ ...ariane, cell: STAIRS }, levelRdc, rules);
     const toStairs = /** @type {MovePlan} */ (extendMovePlan(basePlan, STAIRS, rules).plan);
 
     const box = document.createElement('div');
@@ -1418,14 +1444,22 @@ const LESSON_LEVELS = {
 
     const prompt = document.createElement('span');
     prompt.className = 'player-help-prompt';
-    prompt.textContent = STAIRS_PROMPT;
+    prompt.textContent = CONFIRM_LABEL;
 
-    board.append(floorDecor, routeSvg, linkMarker, pawn, touch, prompt);
+    const linkBtn = document.createElement('button');
+    linkBtn.type = 'button';
+    linkBtn.className = 'player-help-link-btn';
+    linkBtn.hidden = true;
+    linkBtn.style.setProperty('--help-link-x', `${((STAIRS.a + 0.5) / 7) * 100}%`);
+    linkBtn.style.bottom = `calc(${((5 - STAIRS.b) / 5) * 100}% + 6px)`;
+    linkBtn.addEventListener('click', () => handleLinkButtonClick());
+
+    board.append(floorDecor, routeSvg, linkMarker, pawn, touch, prompt, linkBtn);
     box.append(tabs, board);
     ctx.stage.appendChild(box);
 
     ctx.setNote(
-      'Seuls les étages connus apparaissent dans la barre (elle est absente si un seul étage est connu). À cheval, descends d’abord :',
+      'Seuls les étages connus apparaissent dans la barre (elle est absente si un seul étage est connu). Le bouton d’escalier disparaît dès qu’un pion est sélectionné. À cheval, descends d’abord :',
       { label: 'Voir « Monter ou descendre de cheval »', lessonId: 'mount' }
     );
 
@@ -1464,11 +1498,13 @@ const LESSON_LEVELS = {
      *   view: 'rdc'|'etage',
      *   tokenFloor: 'rdc'|'etage',
      *   tokenAt: Cell,
+     *   selected?: boolean,
      *   route?: Cell[],
      *   showZone?: boolean,
      *   promptText?: string|null,
      *   touchCell?: Cell|null,
      *   ringTab?: 'rdc'|'etage'|null,
+     *   ringLinkBtn?: boolean,
      * }} st
      */
     function paint(st) {
@@ -1483,12 +1519,13 @@ const LESSON_LEVELS = {
       const route = st.route ?? [];
       const routeKeys = new Set(route.slice(1).map(cellKey));
       const arrival = planned?.steps.at(-1) ?? null;
+      const zonePlan = sameCell(st.tokenAt, STAIRS) ? stairsPlan : basePlan;
 
       for (const { cell, control } of cells) {
         const key = cellKey(cell);
         const isPawnHere = st.tokenFloor === st.view && sameCell(cell, st.tokenAt);
         control.disabled = !practicing || phase === 'done';
-        control.classList.toggle('is-reachable', Boolean(st.showZone) && basePlan.reachable.has(key));
+        control.classList.toggle('is-reachable', Boolean(st.showZone) && zonePlan.reachable.has(key));
         control.classList.toggle('is-route', routeKeys.has(key));
         control.classList.toggle('is-arrival', Boolean(arrival) && sameCell(cell, arrival));
         if (isPawnHere && sameCell(cell, STAIRS)) control.setAttribute('aria-label', 'Ariane sur l’escalier');
@@ -1511,18 +1548,33 @@ const LESSON_LEVELS = {
         prompt.style.setProperty('--help-prompt-x', `${((st.tokenAt.a + 0.5) / 7) * 100}%`);
         prompt.style.top = `${((st.tokenAt.b - 0.68) / 5) * 100}%`;
       }
+
+      // TJ-1 & TJ-8 : le bouton de liaison n'apparaît que sans sélection active et si `boutonLiaison` l'autorise.
+      const hasSelection = Boolean(st.selected) || route.length > 0;
+      const linkButton =
+        !hasSelection && st.view === 'rdc'
+          ? boutonLiaison(rules.grid, levelRdc, [stairsLink], {
+              ...ariane,
+              levelId: st.tokenFloor,
+              cell: st.tokenAt,
+            })
+          : null;
+      linkBtn.hidden = !linkButton;
+      linkBtn.disabled = !practicing || phase === 'done';
+      linkBtn.classList.toggle('is-ringed', Boolean(st.ringLinkBtn));
+      if (linkButton) linkBtn.textContent = linkButton.label;
     }
 
     function paintPractice() {
-      const showStairsPrompt = selected && pawnLevel === viewedLevel && sameCell(pawnCell, STAIRS);
       const showMovePrompt = Boolean(planned?.steps.length);
       paint({
         view: viewedLevel,
         tokenFloor: pawnLevel,
         tokenAt: pawnCell,
+        selected,
         route: planned?.path ?? [],
-        showZone: selected && !sameCell(pawnCell, STAIRS),
-        promptText: showStairsPrompt ? STAIRS_PROMPT : (showMovePrompt ? CONFIRM_LABEL : null),
+        showZone: selected && pawnLevel === viewedLevel,
+        promptText: showMovePrompt ? CONFIRM_LABEL : null,
       });
     }
 
@@ -1543,6 +1595,21 @@ const LESSON_LEVELS = {
       paintPractice();
     }
 
+    function handleLinkButtonClick() {
+      if (!practicing || phase !== 'traverse' || selected || planned) return;
+      if (viewedLevel !== 'rdc' || pawnLevel !== 'rdc' || !sameCell(pawnCell, STAIRS)) return;
+      const currentToken = { ...ariane, levelId: pawnLevel, cell: pawnCell };
+      if (!boutonLiaison(rules.grid, levelRdc, [stairsLink], currentToken)) return;
+      pawnLevel = 'etage';
+      pawnCell = ARRIVAL;
+      selected = false;
+      planned = null;
+      phase = 'seeArrival';
+      ctx.setCaption('Ariane a pris l’escalier. La vue reste au rez-de-chaussée : touche l’onglet “Étage”.');
+      paintPractice();
+      tabUpper.focus();
+    }
+
     /** @param {Cell} cell */
     function handleCellClick(cell) {
       if (!practicing || phase === 'done') return;
@@ -1556,22 +1623,28 @@ const LESSON_LEVELS = {
         if (sameCell(cell, pawnCell)) {
           selected = true;
           if (phase === 'moveToStairs') ctx.setCaption('Choisis la case de l’escalier (↕).');
-          else if (phase === 'traverse') ctx.setCaption('Retouche la case de l’escalier pour franchir.');
+          else if (phase === 'traverse') {
+            ctx.setCaption('Un pion sélectionné masque le bouton d’escalier. Touche une case vide pour désélectionner Ariane.');
+          }
           paintPractice();
         }
         return;
       }
 
-      // Second tap sur la case de l'escalier quand le pion y est déjà posé
-      if (sameCell(cell, pawnCell) && sameCell(pawnCell, STAIRS)) {
-        pawnLevel = 'etage';
-        pawnCell = ARRIVAL;
+      // TJ-1 : retaper la case du pion sélectionné ne franchit plus la liaison.
+      if (sameCell(cell, pawnCell)) {
+        if (sameCell(pawnCell, STAIRS)) {
+          ctx.setCaption('Retaper la case ne prend plus l’escalier. Touche une case vide pour désélectionner Ariane, puis touche le bouton « Prendre l’escalier ».');
+        }
+        return;
+      }
+
+      if (phase === 'traverse') {
+        // Désélectionner sur une case vide fait réapparaître le bouton d'escalier (TJ-8).
         selected = false;
         planned = null;
-        phase = 'seeArrival';
-        ctx.setCaption('Ariane a pris l’escalier. La vue reste au rez-de-chaussée : touche l’onglet “Étage”.');
+        ctx.setCaption('Ariane est désélectionnée : touche le bouton « Prendre l’escalier » pour franchir.');
         paintPractice();
-        tabUpper.focus();
         return;
       }
 
@@ -1582,15 +1655,25 @@ const LESSON_LEVELS = {
           selected = false;
           planned = null;
           phase = 'traverse';
-          ctx.setCaption('Ariane est sur l’escalier. Resélectionne-la puis retouche sa case pour franchir.');
+          ctx.setCaption('Ariane est sur l’escalier. Touche le bouton « Prendre l’escalier » pour franchir.');
           paintPractice();
+          linkBtn.focus();
           return;
         }
         if (sameCell(cell, STAIRS)) {
           planned = toStairs;
           ctx.setCaption('Retouche la case de l’escalier pour confirmer le déplacement.');
           paintPractice();
+          return;
         }
+        if (planned) {
+          planned = null;
+          ctx.setCaption('Trajet annulé. Choisis la case de l’escalier (↕).');
+        } else {
+          selected = false;
+          ctx.setCaption('Touche Ariane à pied, puis amène-la sur la case de l’escalier (↕) en deux taps.');
+        }
+        paintPractice();
       }
     }
 
@@ -1604,9 +1687,9 @@ const LESSON_LEVELS = {
         if (step === 0) {
           paint({ view: 'etage', tokenFloor: 'rdc', tokenAt: START, ringTab: 'etage' });
         } else if (step === 1) {
-          paint({ view: 'rdc', tokenFloor: 'rdc', tokenAt: START, route: toStairs.path, showZone: true, promptText: CONFIRM_LABEL, touchCell: STAIRS });
+          paint({ view: 'rdc', tokenFloor: 'rdc', tokenAt: START, selected: true, route: toStairs.path, showZone: true, promptText: CONFIRM_LABEL, touchCell: STAIRS });
         } else if (step === 2) {
-          paint({ view: 'rdc', tokenFloor: 'rdc', tokenAt: STAIRS, promptText: STAIRS_PROMPT, touchCell: STAIRS });
+          paint({ view: 'rdc', tokenFloor: 'rdc', tokenAt: STAIRS, selected: false, ringLinkBtn: true });
         } else {
           paint({ view: 'etage', tokenFloor: 'etage', tokenAt: ARRIVAL, ringTab: 'etage' });
         }
@@ -2318,7 +2401,7 @@ const LESSON_PING = {
 };
 
 // ============================================================================================
-// FICHE 7 — Ouvrir ou fermer une porte (PortalsLayer + findHitPortal + porte verrouillée)
+// FICHE 7 — Ouvrir ou fermer une porte (PortalsLayer + boutonsPorte + porte verrouillée)
 // ============================================================================================
 
 /** @type {HelpLessonDefinition} */
@@ -2328,9 +2411,9 @@ const LESSON_PORTAL = {
   title: 'Ouvrir ou fermer une porte',
   stepsAriaLabel: 'Étapes de manipulation d’une porte',
   steps: [
-    { label: 'Porte fermée', caption: 'Touche la porte fermée pour l’ouvrir.' },
-    { label: 'Porte ouverte', caption: 'Le passage est ouvert.' },
-    { label: 'Refermer', caption: 'Retouche la porte pour la refermer. Si elle est verrouillée, demande au MJ.', durationMs: 2200 },
+    { label: 'Porte fermée', caption: 'Sans pion sélectionné, touche le bouton « Ouvrir » de l’autre côté de la porte.' },
+    { label: 'Porte ouverte', caption: 'Le passage est ouvert. Dès qu’un pion est sélectionné, le bouton disparaît.' },
+    { label: 'Refermer', caption: 'Touche le bouton « Fermer » pour refermer. Porte verrouillée : aucun bouton n’apparaît, demande au MJ.', durationMs: 2200 },
   ],
   mount(ctx) {
     /** @type {Portal} */
@@ -2354,13 +2437,24 @@ const LESSON_PORTAL = {
     const grid = gridFor(level);
     const gridLayer = new GridLayer();
     const portalsLayer = new PortalsLayer();
-    const ariane = createToken({ id: 'aide-porte-ariane', levelId: level.id, label: 'Ariane', cell: { a: 1, b: 2 }, camp: 'pj', borderColor: '#22c55e' });
-    const portalMid = grid.mapFromGeometryPoint({ cellX: 3, cellY: 2.5 });
+    // Placée en (2, 2) pour être adjacente au segment (3,2)-(3,3) : `boutonsPorte` pose le bouton en (3, 2).
+    const ariane = createToken({
+      id: 'aide-porte-ariane',
+      levelId: level.id,
+      label: 'Ariane',
+      cell: { a: 2, b: 2 },
+      kind: 'pc',
+      playerMovable: true,
+      camp: 'pj',
+      borderColor: '#22c55e',
+    });
 
     let practicing = false;
     let demoStep = 0;
     /** @type {'toggle'|'locked'} */
     let trial = 'toggle';
+    let arianeSelected = false;
+    let renderedDoorButtons = 0;
     let openedOnce = false;
     let finished = false;
 
@@ -2369,26 +2463,48 @@ const LESSON_PORTAL = {
       else render();
     });
 
+    ctx.setNote('Les boutons de porte disparaissent dès qu’un pion est sélectionné, et n’apparaissent jamais sur une porte verrouillée.');
+
+    /** @returns {MapPoint|null} */
+    function activeDoorButtonCenter() {
+      if (arianeSelected) return null;
+      const btn = boutonsPorte(grid, level, [ariane], { zoom: surface.camera.zoom })[0];
+      if (!btn) return null;
+      return { x: btn.rect.x + btn.rect.width / 2, y: btn.rect.y + btn.rect.height / 2 };
+    }
+
     /** @param {number} step */
     function renderDemoStep(step) {
       surface.syncSize();
       fitCamera();
-      const midScreen = surface.camera.mapToScreen(portalMid);
+      arianeSelected = false;
       if (step === 0) {
         portal.state = 'closed';
         lockInset.hidden = true;
         render();
-        surface.setGestureMarkup(GESTURE_SVG.tap(midScreen.screenX, midScreen.screenY));
+        const btnCenter = activeDoorButtonCenter();
+        if (btnCenter) {
+          const btnScreen = surface.camera.mapToScreen(btnCenter);
+          surface.setGestureMarkup(GESTURE_SVG.tap(btnScreen.screenX, btnScreen.screenY));
+        } else {
+          surface.setGestureMarkup('');
+        }
       } else if (step === 1) {
         portal.state = 'open';
         lockInset.hidden = true;
         render();
         surface.setGestureMarkup('');
       } else {
-        portal.state = 'closed';
+        portal.state = 'open';
         lockInset.hidden = false;
         render();
-        surface.setGestureMarkup(GESTURE_SVG.tap(midScreen.screenX, midScreen.screenY));
+        const btnCenter = activeDoorButtonCenter();
+        if (btnCenter) {
+          const btnScreen = surface.camera.mapToScreen(btnCenter);
+          surface.setGestureMarkup(GESTURE_SVG.tap(btnScreen.screenX, btnScreen.screenY));
+        } else {
+          surface.setGestureMarkup('');
+        }
       }
     }
     const lockInset = document.createElement('div');
@@ -2399,7 +2515,7 @@ const LESSON_PORTAL = {
         <line x1="2" y1="9" x2="34" y2="9" stroke="#ef4444" stroke-width="4"/>
         <circle cx="18" cy="9" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5"/>
       </svg>
-      <span>Porte verrouillée : demander au MJ</span>`;
+      <span>Porte verrouillée : aucun bouton, demande au MJ</span>`;
     surface.frame.appendChild(lockInset);
 
     function fitCamera() {
@@ -2455,7 +2571,11 @@ const LESSON_PORTAL = {
       c.restore();
 
       portalsLayer.render(c, grid, level, { zoom: surface.camera.zoom });
-      drawHelpCanvasToken(c, grid, ariane, { zoom: surface.camera.zoom });
+      drawHelpCanvasToken(c, grid, ariane, { selected: arianeSelected, zoom: surface.camera.zoom });
+      // TJ-2, TJ-4, TJ-8 : bouton d'adjacence peint au-dessus du brouillard, absent si verrouillé ou si pion sélectionné.
+      renderedDoorButtons = arianeSelected
+        ? 0
+        : portalsLayer.renderButtons(c, grid, level, [ariane], { zoom: surface.camera.zoom });
     }
 
     function render() {
@@ -2463,6 +2583,8 @@ const LESSON_PORTAL = {
       surface.renderFrame(drawWorld);
       surface.canvas.dataset.portalState = portal.state;
       surface.canvas.dataset.pawnCell = `${ariane.cell.a},${ariane.cell.b}`;
+      surface.canvas.dataset.arianeSelected = String(arianeSelected);
+      surface.canvas.dataset.doorButtons = String(renderedDoorButtons);
       surface.canvas.dataset.practiceTrial = practicing ? trial : 'demo';
     }
 
@@ -2470,31 +2592,63 @@ const LESSON_PORTAL = {
     function handleTapMapPos(mapPos) {
       if (!practicing) return;
       const tokenHit = findHitToken(grid, level, mapPos, surface.camera.zoom, [ariane]);
-      const portalHit = findHitPortal(grid, level, mapPos, surface.camera.zoom);
-      const portalCloser = portalHit && (!tokenHit || portalHit.dist < tokenHit.dist - 1e-6);
-      if (!portalCloser) {
-        ctx.setCaption('Touche directement le seuil de la porte, pas le mur ni le personnage.');
+
+      // TJ-8 : tant qu'un pion est sélectionné, aucun bouton de porte n'est actif.
+      if (arianeSelected) {
+        if (tokenHit) {
+          ctx.setCaption('Ariane est sélectionnée : le bouton de porte reste masqué. Touche une case vide pour la désélectionner.');
+          return;
+        }
+        arianeSelected = false;
+        ctx.setCaption(
+          portal.state === 'locked'
+            ? 'Ariane est désélectionnée. Cette porte est verrouillée : aucun bouton n’apparaît.'
+            : 'Ariane est désélectionnée : le bouton de porte réapparaît.'
+        );
+        render();
         return;
       }
+
+      // TJ-2 & TJ-4 : ouverture uniquement via `boutonsPorte` (vide si verrouillée), jamais en touchant le seuil.
+      const doorButtons = boutonsPorte(grid, level, [ariane], { zoom: surface.camera.zoom });
+      const hitDoorButton = doorButtons.find((btn) => pointInRect(mapPos, btn.rect));
+      if (hitDoorButton && hitDoorButton.enabled) {
+        if (portal.state === 'closed') {
+          portal.state = 'open';
+          openedOnce = true;
+          ctx.setCaption('La porte est ouverte et la pièce voisine apparaît. Touche le bouton « Fermer » pour la refermer.');
+          render();
+        } else if (portal.state === 'open') {
+          portal.state = 'closed';
+          if (openedOnce) {
+            finished = true;
+            ctx.setCaption('Parfait ! Tu as ouvert puis refermé la porte par son bouton, sans déplacer Ariane.');
+          }
+          render();
+        }
+        return;
+      }
+
+      if (tokenHit) {
+        arianeSelected = true;
+        ctx.setCaption(
+          portal.state === 'locked'
+            ? 'Ariane est sélectionnée. Cette porte est verrouillée : aucun bouton n’apparaît, demande au MJ pour l’ouvrir.'
+            : 'Ariane est sélectionnée : le bouton de porte disparaît. Touche une case vide pour la désélectionner.'
+        );
+        render();
+        return;
+      }
+
       if (portal.state === 'locked') {
         finished = true;
-        ctx.setCaption('Cette porte est verrouillée : elle reste fermée. Demande au MJ pour l’ouvrir.');
+        ctx.setCaption('Cette porte est verrouillée : aucun bouton n’apparaît et elle reste fermée. Demande au MJ pour l’ouvrir.');
         render();
         return;
       }
-      if (portal.state === 'closed') {
-        portal.state = 'open';
-        openedOnce = true;
-        ctx.setCaption('La porte est ouverte et la pièce voisine apparaît. Retouche la porte pour la refermer.');
-        render();
-      } else {
-        portal.state = 'closed';
-        if (openedOnce) {
-          finished = true;
-          ctx.setCaption('Parfait ! Tu as ouvert puis refermé la porte sans déplacer Ariane.');
-        }
-        render();
-      }
+
+      const expectedLabel = portal.state === 'open' ? 'Fermer' : 'Ouvrir';
+      ctx.setCaption(`Toucher le seuil de la porte ne l’ouvre plus. Touche le bouton « ${expectedLabel} » de l’autre côté.`);
     }
 
     const pointerInput = new PointerInput(surface.canvas, surface.camera, {
@@ -2509,23 +2663,37 @@ const LESSON_PORTAL = {
       ctx.stopReplay();
       practicing = true;
       trial = nextTrial;
+      arianeSelected = false;
       openedOnce = false;
       finished = false;
       lockInset.hidden = true;
       portal.state = trial === 'locked' ? 'locked' : 'closed';
       surface.setGestureMarkup('');
-      ctx.extra.replaceChildren(
-        makeExtraButton('Aide clavier : Toucher la porte', () => handleTapMapPos(portalMid)),
+      const extras = [];
+      if (trial === 'toggle') {
+        extras.push(
+          makeExtraButton('Aide clavier : Toucher le bouton de porte', () => {
+            const btnCenter = activeDoorButtonCenter();
+            if (!btnCenter) {
+              ctx.setCaption('Aucun bouton de porte n’est affiché tant qu’Ariane est sélectionnée. Touche une case vide pour la désélectionner.');
+              return;
+            }
+            handleTapMapPos(btnCenter);
+          })
+        );
+      }
+      extras.push(
         makeExtraButton(
           trial === 'toggle' ? 'Essai 2 : Porte verrouillée' : 'Essai 1 : Ouvrir et refermer',
           () => startTrial(trial === 'toggle' ? 'locked' : 'toggle')
         )
       );
+      ctx.extra.replaceChildren(...extras);
       ctx.extra.hidden = false;
       ctx.setCaption(
         trial === 'locked'
-          ? 'Essai 2 : touche la porte verrouillée (avec son cadenas rouge) pour vérifier qu’elle reste fermée.'
-          : 'Touche la porte fermée au milieu du mur pour l’ouvrir, puis retouche-la pour la refermer.'
+          ? 'Essai 2 : cette porte est verrouillée (cadenas rouge). Aucun bouton n’apparaît : demande au MJ pour l’ouvrir.'
+          : 'Touche le bouton « Ouvrir » de l’autre côté de la porte, puis le bouton « Fermer ».'
       );
       render();
     }
@@ -2563,12 +2731,22 @@ const LESSON_MOUNT = {
     { group: 'Monture à la tablette', label: 'Monter', caption: 'Sélectionne ton personnage, puis touche le cheval pour monter.' },
     { group: 'Monture à la tablette', label: 'Descendre', caption: 'Touche le cheval barré pour descendre, par exemple avant l’escalier.' },
     { group: 'Monture gérée par le MJ', label: 'Monture liée', caption: 'Si l’outil MJ gère la monture, demande au MJ de te faire descendre.', durationMs: 2400 },
-    { group: 'Monture gérée par le MJ', label: 'Descente par le MJ', caption: 'Une fois descendu par le MJ, l’invite de l’escalier revient.' },
+    { group: 'Monture gérée par le MJ', label: 'Descente par le MJ', caption: 'Une fois descendu par le MJ et sans sélection active, le bouton « Prendre l’escalier » apparaît.' },
   ],
   mount(ctx) {
     const STAIRS = { a: 2, b: 2 };
     const level = createLevel({ id: 'aide-mount', widthCells: 7, heightCells: 5 });
     const grid = gridFor(level);
+    /** @type {Link} */
+    const stairsLink = {
+      id: 'aide-mount-escalier',
+      kind: 'stairs',
+      label: 'Escalier',
+      a: { levelId: level.id, at: { cellX: STAIRS.a, cellY: STAIRS.b } },
+      b: { levelId: 'aide-mount-etage', at: { cellX: STAIRS.a, cellY: STAIRS.b } },
+      bidirectional: true,
+      gmOnly: false,
+    };
 
     const autonomousToken = createToken({
       id: 'aide-cavalier-libre',
@@ -2628,7 +2806,15 @@ const LESSON_MOUNT = {
     const prompt = document.createElement('span');
     prompt.className = 'player-help-prompt has-strip';
 
-    board.append(linkMarker, pawn, prompt);
+    const linkBtn = document.createElement('button');
+    linkBtn.type = 'button';
+    linkBtn.className = 'player-help-link-btn';
+    linkBtn.hidden = true;
+    linkBtn.style.setProperty('--help-link-x', `${((STAIRS.a + 0.5) / 7) * 100}%`);
+    linkBtn.style.bottom = `calc(${((5 - STAIRS.b) / 5) * 100}% + 6px)`;
+    linkBtn.addEventListener('click', () => handleLinkButtonClick());
+
+    board.append(linkMarker, pawn, prompt, linkBtn);
     box.appendChild(board);
     ctx.stage.appendChild(box);
 
@@ -2650,13 +2836,23 @@ const LESSON_MOUNT = {
           ctx.setCaption('Ariane est à cheval et sa portée s’actualise. À l’escalier, touche le cheval barré pour descendre.');
         } else if (!mounted && phase === 'dismount') {
           phase = 'traverse';
-          ctx.setCaption('Ariane est descendue : l’invite de l’escalier revient. Touche sa case pour franchir.');
+          ctx.setCaption('Ariane est descendue. Touche une case vide pour la désélectionner et afficher le bouton « Prendre l’escalier ».');
         }
         paintCurrent();
       },
     });
 
-    /** @param {{ token: Token, showZone: boolean, promptText: string|null, ringMount?: boolean, hiddenPawn?: boolean }} view */
+    /**
+     * @param {{
+     *   token: Token,
+     *   selected: boolean,
+     *   showZone: boolean,
+     *   promptText: string|null,
+     *   ringMount?: boolean,
+     *   ringLinkBtn?: boolean,
+     *   hiddenPawn?: boolean,
+     * }} view
+     */
     function paint(view) {
       const rules = movementRulesFor(view.token, level);
       const reachable = createMovePlan(view.token, level, rules).reachable;
@@ -2673,8 +2869,17 @@ const LESSON_MOUNT = {
         prompt.textContent = view.promptText;
         prompt.style.top = '10px';
       }
+      // TJ-1 & TJ-8 : aucun bouton tant que le pion est sélectionné ou monté (`boutonLiaison` renvoie null si monté).
+      const linkButton =
+        !view.selected && !view.hiddenPawn
+          ? boutonLiaison(grid, level, [stairsLink], view.token)
+          : null;
+      linkBtn.hidden = !linkButton;
+      linkBtn.disabled = !practicing || phase === 'done';
+      linkBtn.classList.toggle('is-ringed', Boolean(view.ringLinkBtn));
+      if (linkButton) linkBtn.textContent = linkButton.label;
       strip.update({
-        token: selected && !view.hiddenPawn ? view.token : null,
+        token: view.selected && !view.hiddenPawn ? view.token : null,
         mode: 'selection',
         ringTarget: view.ringMount ? 'mount' : null,
       });
@@ -2687,35 +2892,65 @@ const LESSON_MOUNT = {
 
     function paintCurrent() {
       const token = activeToken();
-      const promptText = !selected || traversed
-        ? null
-        : token.mounted
+      // Côté joueurs, la mention au-dessus de l'escalier se limite au seul cas pion monté (TJ-1).
+      const promptText =
+        selected && !traversed && token.mounted
           ? (mode === 'linked' ? MOUNT_LINKED_PROMPT : MOUNT_LOCAL_PROMPT)
-          : STAIRS_PROMPT;
-      paint({ token, showZone: selected && !traversed, promptText, hiddenPawn: traversed });
+          : null;
+      paint({ token, selected, showZone: selected && !traversed, promptText, hiddenPawn: traversed });
+    }
+
+    function handleLinkButtonClick() {
+      if (!practicing || traversed || selected || mounted) return;
+      const token = activeToken();
+      if (!boutonLiaison(grid, level, [stairsLink], token)) return;
+      if (phase === 'traverse') {
+        traversed = true;
+        phase = 'done';
+        ctx.setCaption('Bravo ! Ariane est descendue de cheval puis a franchi l’escalier.');
+        paintCurrent();
+      } else {
+        ctx.setCaption('Sélectionne d’abord Ariane pour essayer de monter puis descendre de cheval.');
+      }
     }
 
     /** @param {Cell} cell */
     function handleCellClick(cell) {
       if (!practicing || traversed) return;
-      if (!sameCell(cell, STAIRS)) return;
-      if (!selected) {
-        selected = true;
-        paintCurrent();
+      if (sameCell(cell, STAIRS)) {
+        if (!selected) {
+          selected = true;
+          ctx.setCaption(
+            phase === 'traverse'
+              ? 'Ariane est sélectionnée : le bouton d’escalier disparaît. Touche une case vide pour la désélectionner.'
+              : 'Ariane est sélectionnée sur l’escalier.'
+          );
+          paintCurrent();
+          return;
+        }
+        if (mounted) {
+          ctx.setCaption(
+            mode === 'linked'
+              ? 'À cheval sur un pion lié, seul le MJ peut te faire descendre avant l’escalier.'
+              : 'À cheval, on ne franchit pas l’escalier : touche le cheval barré à droite pour descendre.'
+          );
+          return;
+        }
+        // TJ-1 : retaper la case d'Ariane sélectionnée ne franchit jamais l'escalier.
+        ctx.setCaption('Retaper la case ne prend plus l’escalier. Touche une case vide pour désélectionner Ariane, puis touche le bouton « Prendre l’escalier ».');
         return;
       }
-      if (mounted) {
-        ctx.setCaption(
-          mode === 'linked'
-            ? 'À cheval sur un pion lié, seul le MJ peut te faire descendre avant l’escalier.'
-            : 'À cheval, on ne franchit pas l’escalier : touche le cheval barré à droite pour descendre.'
-        );
-        return;
-      }
-      if (phase === 'traverse') {
-        traversed = true;
-        phase = 'done';
-        ctx.setCaption('Bravo ! Ariane a descendu de cheval puis franchi l’escalier.');
+
+      if (selected) {
+        // TJ-8 : désélectionner sur une case vide fait apparaître le bouton d'escalier si Ariane est à pied.
+        selected = false;
+        if (mounted) {
+          ctx.setCaption('Ariane est désélectionnée mais reste à cheval : aucun bouton d’escalier n’apparaît. Resélectionne-la pour descendre.');
+        } else if (phase === 'traverse') {
+          ctx.setCaption('Ariane est désélectionnée : touche le bouton « Prendre l’escalier » pour franchir.');
+        } else {
+          ctx.setCaption('Ariane est désélectionnée. Touche-la pour afficher la bande à droite et monter à cheval.');
+        }
         paintCurrent();
       }
     }
@@ -2736,7 +2971,11 @@ const LESSON_MOUNT = {
           if (!practicing || mode !== 'linked' || !mounted) return;
           mounted = false;
           phase = 'traverse';
-          ctx.setCaption('Le MJ a fait descendre Ariane. L’invite de l’escalier revient : touche sa case pour franchir.');
+          ctx.setCaption(
+            selected
+              ? 'Le MJ a fait descendre Ariane. Touche une case vide pour la désélectionner et afficher le bouton « Prendre l’escalier ».'
+              : 'Le MJ a fait descendre Ariane : touche le bouton « Prendre l’escalier » pour franchir.'
+          );
           paintCurrent();
         }, 'player-help-gm-btn'));
         controls.push(makeExtraButton('Revenir à l’essai autonome', () => startTrial('local')));
@@ -2753,18 +2992,22 @@ const LESSON_MOUNT = {
     return {
       showExample(step) {
         practicing = false;
-        selected = true;
         traversed = false;
         ctx.extra.replaceChildren();
         ctx.extra.hidden = true;
         if (step === 0) {
-          paint({ token: { ...autonomousToken, mounted: false }, showZone: true, promptText: null, ringMount: true });
+          selected = true;
+          paint({ token: { ...autonomousToken, mounted: false }, selected: true, showZone: true, promptText: null, ringMount: true });
         } else if (step === 1) {
-          paint({ token: { ...autonomousToken, mounted: true }, showZone: true, promptText: MOUNT_LOCAL_PROMPT, ringMount: true });
+          selected = true;
+          paint({ token: { ...autonomousToken, mounted: true }, selected: true, showZone: true, promptText: MOUNT_LOCAL_PROMPT, ringMount: true });
         } else if (step === 2) {
-          paint({ token: { ...linkedToken, mounted: true }, showZone: true, promptText: MOUNT_LINKED_PROMPT });
+          selected = true;
+          paint({ token: { ...linkedToken, mounted: true }, selected: true, showZone: true, promptText: MOUNT_LINKED_PROMPT });
         } else {
-          paint({ token: { ...linkedToken, mounted: false }, showZone: true, promptText: STAIRS_PROMPT });
+          // TJ-8 : le bouton d'escalier n'apparaît qu'après désélection du pion descendu.
+          selected = false;
+          paint({ token: { ...linkedToken, mounted: false }, selected: false, showZone: false, promptText: null, ringLinkBtn: true });
         }
       },
       startPractice() {
