@@ -1615,6 +1615,11 @@ export async function bootstrapGMApp(options = {}) {
       fxLayer.play(fx, { tokenId, now: Date.now(), reducedMotion: prefersReducedMotion() });
       requestRender();
     },
+    // Attaque (contrat §9.3, CdC §7) : l'écran MJ la joue toujours, aucun test de visibilité ici.
+    playAttack: (op) => {
+      fxLayer.playAttack(op, { now: Date.now(), reducedMotion: prefersReducedMotion() });
+      requestRender();
+    },
     createToken,
     activeLevelId: () => store.getActiveLevelId(),
     sessionId,

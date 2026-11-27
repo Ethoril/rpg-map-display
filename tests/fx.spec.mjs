@@ -141,3 +141,85 @@ for (const { nom, cell, visible } of /** @type {const} */ ([
     }
   });
 }
+
+// ── Attaque de bout en bout (contrat §9.3, CdC §7) ─────────────────────────────────────────────
+//
+// ⛔ Ce test est de BOUT EN BOUT exprès, pour la raison écrite plus haut pour H-4 : les unitaires
+// de `tests/fx.test.mjs` passent les options de vision à la main et prouvent que la couche sait
+// exiger les DEUX extrémités ; ils ne prouvent pas que `fx.attack` arrive jusqu'à elle. Retirer le
+// câblage de `js/app/gm.js` ou de `js/app/player.js` les laisserait tous verts.
+//
+// ⚠ Le trait est un rendu SOBRE et PROVISOIRE : ce test relève sa COULEUR pour le reconnaître,
+// pas pour épingler le vocabulaire visuel, qui n'est pas arbitré (§11 point 12).
+
+/** Couleur du trait d'un `critical` (`FX_ATTACK_COLORS`, rendu provisoire). */
+const TRAIT_CRITIQUE = '#ff4d4d';
+
+/** Relève les traits d'attaque dessinés sur le canvas de la page. */
+async function spyTraits(/** @type {import('@playwright/test').Page} */ page) {
+  await page.addInitScript(() => {
+    const stroke = CanvasRenderingContext2D.prototype.stroke;
+    /** @type {any} */ (window).__traits = [];
+    /** @type {any} */ (CanvasRenderingContext2D.prototype).stroke = function (/** @type {any[]} */ ...rest) {
+      const couleur = typeof this.strokeStyle === 'string' ? this.strokeStyle.toLowerCase() : '';
+      if (['#ffd166', '#8a8f98', '#ff4d4d', '#4da3ff', '#5ad66f'].includes(couleur)) {
+        /** @type {any} */ (window).__traits.push(couleur);
+      }
+      return /** @type {any} */ (stroke).call(this, ...rest);
+    };
+  });
+}
+const traitsVus = (/** @type {import('@playwright/test').Page} */ page) =>
+  page.evaluate(() => /** @type {string[]} */ (/** @type {any} */ (window).__traits));
+
+for (const { nom, cell, visible } of /** @type {const} */ ([
+  { nom: 'dans la vision du PJ', cell: { a: 4, b: 2 }, visible: true },
+  { nom: 'hors de la vision du PJ', cell: { a: 9, b: 7 }, visible: false },
+])) {
+  test(`fx.attack sur une cible ${nom} — trait ${visible ? 'tracé' : 'ABSENT'} sur la tablette, toujours tracé chez le MJ`, async ({ context }) => {
+    const sessionId = `test-attack-${visible ? 'vu' : 'cache'}-${Date.now()}`;
+    // Mêmes précautions que H-4 : vision courte et étage sombre, sinon « hors de vue » n'existe pas.
+    const pjLie = { ...PJ, visionBright: 2, visionDim: 2, link: { source: 'outil-mj', ref: 'pj:hero' } };
+    const etageSombre = { ...LEVEL, ambient: { level: 0, baked: false } };
+    const snapshot = {
+      campaign: {
+        schemaVersion: 2, campaignId: 'fx-attack', name: 'FX attaque', levels: [etageSombre], links: [], templates: [], settings: {},
+        tokens: [pjLie, token({ id: 'gob', cell, hidden: false, link: { source: 'outil-mj', ref: 'p:gob' } })],
+      },
+      activeLevelId: LEVEL.id, selectedTokenId: null,
+    };
+    const gm = await context.newPage();
+    await spyTraits(gm);
+    await installBrowserTransport(gm, sessionId, snapshot);
+    await gm.goto(`/gm.html?session=${sessionId}`);
+    await waitForApp(gm);
+    const player = await context.newPage();
+    await spyTraits(player);
+    await installBrowserTransport(player, sessionId, snapshot);
+    await player.goto(`/player.html?session=${sessionId}`);
+    await waitForApp(player);
+    await waitForPlayerVision(player);
+
+    const outil = await context.newPage();
+    await outil.goto(`/gm.html?session=emetteur-attack-${visible ? 'vu' : 'cache'}`);
+    await outil.evaluate(() => {
+      const canal = new BroadcastChannel('wfrp-map-link');
+      canal.postMessage({
+        v: 3, type: 'fx.attack', seq: 1, at: Date.now(), from: 'outil-mj',
+        payload: { attackerRef: 'pj:hero', targetRef: 'p:gob', outcome: 'critical', damage: 7 },
+      });
+    });
+
+    // L'écran MJ trace l'attaque dans les deux cas : le contrat §9 la lui donne toujours.
+    await expect.poll(async () => (await traitsVus(gm)).includes(TRAIT_CRITIQUE)).toBe(true);
+
+    if (visible) {
+      await expect.poll(async () => (await traitsVus(player)).includes(TRAIT_CRITIQUE)).toBe(true);
+    } else {
+      // ⛔ La fuite qu'on interdit : une arrivée hors de vue donnerait la direction de l'auteur.
+      // Le trait vit 700 ms, cette attente le couvre largement.
+      await player.waitForTimeout(1500);
+      expect(await traitsVus(player)).toEqual([]);
+    }
+  });
+}

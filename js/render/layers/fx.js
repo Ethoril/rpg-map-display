@@ -49,10 +49,31 @@ export const FX_STAIN_FADE_MS = 90_000;
 /** Durée du fondu en mouvement réduit. */
 export const FX_REDUCED_MS = 400;
 
+/** Durée de vie d'un trait d'attaque, en ms (rendu provisoire, CdC §7 `attack`). */
+export const FX_ATTACK_MS = 700;
+
+/**
+ * Une couleur par issue d'attaque (contrat §9.3), cinq valeurs distinctes et lisibles sur une
+ * carte sombre. ⚠ Provisoire : le vocabulaire visuel des cinq issues n'est pas arbitré
+ * (§11 point 12) — seule la distinction compte, à juger à la table.
+ */
+export const FX_ATTACK_COLORS = Object.freeze({
+  hit: '#ffd166',
+  miss: '#8a8f98',
+  critical: '#ff4d4d',
+  parried: '#4da3ff',
+  dodged: '#5ad66f',
+});
+
 /** Causes de mort connues (contrat §9.2). `blood` est la valeur par défaut. */
 export const FX_DEATH_CAUSES = /** @type {const} */ (['blood', 'fire', 'magic', 'poison', 'decapitation', 'dismemberment']);
 
 /** @typedef {'blood'|'fire'|'magic'|'poison'|'decapitation'|'dismemberment'} DeathCause */
+
+/**
+ * Issues reconnues d'une attaque (contrat §9.3), sensibles à la casse.
+ * @typedef {'hit'|'miss'|'critical'|'parried'|'dodged'} AttackOutcome
+ */
 
 /**
  * Un calque d'image dans le temps d'un effet.
@@ -241,6 +262,16 @@ export function parseFx(kind, payload) {
 }
 
 /**
+ * Une case bien formée : un objet avec `a` et `b` finis.
+ *
+ * @param {any} c
+ * @returns {c is Cell}
+ */
+function celluleValide(c) {
+  return !!c && typeof c === 'object' && Number.isFinite(c.a) && Number.isFinite(c.b);
+}
+
+/**
  * @typedef {Object} ActiveFx
  * @property {string} tokenId
  * @property {FxSprite[]} sprites
@@ -256,6 +287,10 @@ export function parseFx(kind, payload) {
  *   ⚠ `parts` est une LISTE dès maintenant, alors qu'un effet n'a aujourd'hui qu'une seule
  *   partie (l'emprise du pion touché). L'arbitrage à venir sur les projectiles porte sur un
  *   trajet à DEUX extrémités : un garde construit pour une seule case devrait être rouvert.
+ * @property {{ outcome: AttackOutcome, damage?: number }} [attack]
+ *   Présent seulement pour une attaque (contrat §9.3) : un trait droit sans aucun sprite, qui
+ *   vit `FX_ATTACK_MS`. Sa cible est posée dès le départ — les DEUX cases — et n'est jamais
+ *   cherchée par pion : `partiesVues` exige alors que les deux extrémités soient vues.
  */
 
 export class FxLayer {
@@ -303,6 +338,43 @@ export class FxLayer {
   }
 
   /**
+   * Lance le trait d'une attaque (contrat §9.3, CdC §7 `attack`) : une ligne droite de la case
+   * de l'attaquant à celle de la cible, une couleur par issue, et le chiffre des dégâts près
+   * de la cible quand l'outil MJ le chiffre. Rendu sobre et provisoire. Rien n'est joué si le
+   * message est malformé : issue inconnue, étage absent, ou une extrémité qui n'est pas une
+   * case à `a` et `b` finis.
+   *
+   * @param {{ from: Cell, to: Cell, levelId: string, outcome: string, damage?: number }} op
+   * @param {{ now: number, reducedMotion?: boolean }} context
+   */
+  playAttack(op, context) {
+    if (!op || typeof op !== 'object') return;
+    const { from, to, levelId, outcome } = op;
+    if (typeof levelId !== 'string' || levelId === '') return;
+    if (!celluleValide(from) || !celluleValide(to)) return;
+    const couleurs = /** @type {Record<string, string>} */ (FX_ATTACK_COLORS);
+    if (!Object.prototype.hasOwnProperty.call(couleurs, outcome)) return;
+    const damage = typeof op.damage === 'number' && Number.isFinite(op.damage) && op.damage > 0 ? op.damage : undefined;
+    this.active.push({
+      tokenId: '',
+      sprites: [],
+      at: context.now,
+      rotation: 0,
+      reduced: context.reducedMotion === true,
+      target: {
+        levelId,
+        // DEUX parties : c'est ce qui fait exiger par `partiesVues` que les deux extrémités
+        // soient vues — une arrivée en clair donnerait la direction d'un attaquant non vu.
+        parts: [
+          { cell: { a: from.a, b: from.b }, sizeCells: 1 },
+          { cell: { a: to.a, b: to.b }, sizeCells: 1 },
+        ],
+      },
+      attack: { outcome: /** @type {AttackOutcome} */ (outcome), damage },
+    });
+  }
+
+  /**
    * @param {FxSprite} s
    */
   imageFor(s) {
@@ -346,6 +418,9 @@ export class FxLayer {
     this.active = this.active.filter((fx) => {
       const age = now - fx.at;
       if (age < 0) return false;
+      // Une attaque n'a aucun sprite : elle vit exactement `FX_ATTACK_MS`, et sa cible est
+      // déjà posée (les deux cases) — elle ne passe pas par la recherche de pion ci-dessous.
+      if (fx.attack) return age < FX_ATTACK_MS;
       if (!fx.target) {
         const token = tokens.find((t) => t.id === fx.tokenId);
         // Pion absent au premier rendu : l'effet est perdu (jamais rejoué, contrat §2.2).
@@ -396,6 +471,42 @@ export class FxLayer {
       const target = fx.target;
       if (!target || target.levelId !== level.id) continue;
       if (!partiesVues(target.parts)) continue;
+      const age = now - fx.at;
+      // Attaque (contrat §9.3) : un seul trait, aucun sprite à dessiner.
+      if (fx.attack) {
+        // H-6 : les deux centres sont recalculés à CHAQUE image avec la grille de CET étage,
+        // jamais mis en cache en pixels.
+        const depart = grid.cellCenter(target.parts[0].cell);
+        const arrivee = grid.cellCenter(target.parts[1].cell);
+        const pas = grid.cellBounds({ cellX: 0, cellY: 0 }, 1).width;
+        const couleur = FX_ATTACK_COLORS[fx.attack.outcome];
+        // Fondu de pleine opacité à transparent sur `FX_ATTACK_MS` ; en mouvement réduit, une
+        // opacité constante, aucune animation.
+        const alpha = fx.reduced ? 1 : Math.max(0, 1 - age / FX_ATTACK_MS);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = couleur;
+        // Largeur proportionnée au pas de l'étage, pour rester lisible vu de loin.
+        ctx.lineWidth = Math.max(2, pas * 0.06);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(depart.x, depart.y);
+        ctx.lineTo(arrivee.x, arrivee.y);
+        ctx.stroke();
+        // Le chiffre des dégâts, une seule fois, du côté de la CIBLE : strictement plus proche
+        // du centre de la cible que de celui de l'attaquant.
+        if (fx.attack.damage !== undefined) {
+          ctx.fillStyle = couleur;
+          ctx.font = `${Math.max(12, pas * 0.35)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(fx.attack.damage), depart.x + (arrivee.x - depart.x) * 0.75, depart.y + (arrivee.y - depart.y) * 0.75);
+        }
+        ctx.restore();
+        result.drawn = true;
+        result.animationActive = true;
+        continue;
+      }
       // H-6 : la géométrie se calcule ICI, avec la grille de l'étage affiché — qui est bien
       // celui de la cible, le test ci-dessus venant de l'établir.
       const tete = target.parts[0];
@@ -405,7 +516,6 @@ export class FxLayer {
         y: bounds.y + bounds.height / 2,
         unit: bounds.width / tete.sizeCells,
       };
-      const age = now - fx.at;
       for (const s of fx.sprites) {
         const frame = spriteFrame(s, age);
         if (!frame) continue;

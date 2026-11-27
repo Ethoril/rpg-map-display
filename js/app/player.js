@@ -1261,6 +1261,15 @@ export async function bootstrapPlayerApp(options = {}) {
         }
         return;
       }
+      // Attaque (contrat §9.3, CdC §7 `attack`) : éphémère comme `ping` et `fx`, traitée à part,
+      // jamais rejouée. ⛔ `Date.now()` local, pas `event.at` — même raison que le ping
+      // ci-dessus. Aucun test de visibilité ici : la liaison ne publie l'attaque que si aucune
+      // des deux extrémités n'est cachée, et la couche reteste les DEUX cases à chaque image.
+      if (event.type === 'attack') {
+        fxLayer.playAttack(/** @type {any} */ (event.payload), { now: Date.now(), reducedMotion: prefersReducedMotion() });
+        requestRender();
+        return;
+      }
       // ⛔ **`level.select` est ignoré ici, et c'est tout UX-10.** Le MJ change d'étage pour
       // vérifier une carte ou préparer la suite ; la table n'a aucune raison d'y être emmenée.
       // L'événement continue d'exister et de circuler — il porte l'étage du MJ, dont son propre

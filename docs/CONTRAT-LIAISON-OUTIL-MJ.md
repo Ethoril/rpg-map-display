@@ -280,9 +280,11 @@ lui donne. La frontière du §1 ne bouge pas.
   de republier.
 - ⚠ **Où en est le code (27/11/2026).** Map Display **consomme** `fx.attack` et **republie** l'événement
   réseau `attack` du CdC §7 : les deux `ref` résolus en cases, étage commun exigé, rien si une
-  extrémité est cachée, message périmé ignoré comme `fx.wound`. ⛔ **Aucun rendu** : la tablette
-  ignore `attack` par sa branche par défaut, et le **vocabulaire visuel** des cinq issues reste à
-  arbitrer, donc à éprouver à la table (§11 point 12). ⛔ L'outil MJ, lui, **n'émet pas encore**
+  extrémité est cachée, message périmé ignoré comme `fx.wound`. Elle la **dessine** depuis le même
+  jour : un trait droit de l'attaquant à la cible, une couleur par issue, le chiffre des dégâts près
+  de la cible, 700 ms. ⚠ **Rendu provisoire**, demandé tel quel par le mainteneur : le **vocabulaire
+  visuel** des cinq issues reste à arbitrer et s'éprouve à la table (§11 point 12) — changer une
+  couleur ne casse aucun test, c'est voulu. Aucun fichier neuf n'a été nécessaire. ⛔ L'outil MJ, lui, **n'émet pas encore**
   `fx.attack` : sa copie du contrat n'est pas répliquée, et la réplication passe par le mainteneur.
 
 ## 10. Retours de la carte vers l'outil MJ

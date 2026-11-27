@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createCampaign, createLevel, createToken } from '../js/core/schema.js';
 import {
   FxLayer, woundIntensity, woundSprites, deathSprites, reduceSprites, spriteFrame, spriteDuration, shouldPlayFx, parseFx,
-  FX_STAIN_FADE_MS, FX_REDUCED_MS, FX_DEATH_CAUSES,
+  FX_STAIN_FADE_MS, FX_REDUCED_MS, FX_DEATH_CAUSES, FX_ATTACK_MS,
 } from '../js/render/layers/fx.js';
 import { planMjMessage, executeMjOperations } from '../js/app/mjLink.js';
 import { SquareGrid } from '../js/grid/SquareGrid.js';
@@ -346,4 +346,156 @@ test('H-4 — le filtre raisonne sur une EMPRISE, pas sur une case unique', () =
   };
   assert.ok(rendre([{ a: 3, b: 3 }]).length > 0, 'une seule case de l’emprise vue doit suffire');
   assert.deepEqual(rendre([{ a: 9, b: 9 }]), [], 'aucune case de l’emprise vue : rien');
+});
+
+// ── Rendu d'une attaque (contrat §9.3, CdC §7) ─────────────────────────────────────────────────
+//
+// ⚠ Rendu SOBRE et PROVISOIRE, demandé par le mainteneur le 27/11/2026 : un trait de l'attaquant à
+// la cible, une couleur par issue, rien d'autre. ⛔ Le vocabulaire visuel des cinq issues n'est PAS
+// arbitré (§11 point 12) : ces tests épinglent le mécanisme — d'où part le trait, où il arrive, qui
+// a le droit de le voir — et le fait que les cinq issues se distinguent. PAS à quoi elles
+// ressemblent : changer une couleur ne doit casser aucun de ces tests.
+
+/** Contexte qui note les traits : d'où à où, de quelle couleur, à quelle opacité. */
+function traceur() {
+  /** @type {{ from: [number, number], to: [number, number], color: string, width: number, alpha: number }[]} */
+  const traits = [];
+  /** @type {{ text: string, x: number, y: number }[]} */
+  const textes = [];
+  const state = { color: '', width: 1, alpha: 1, from: /** @type {[number, number]} */ ([0, 0]), to: /** @type {[number, number]} */ ([0, 0]) };
+  const ctx = /** @type {any} */ ({
+    save() {}, restore() {}, translate() {}, rotate() {}, beginPath() {},
+    set strokeStyle(v) { state.color = String(v); }, get strokeStyle() { return state.color; },
+    set fillStyle(v) { state.color = String(v); }, get fillStyle() { return state.color; },
+    set lineWidth(v) { state.width = v; }, get lineWidth() { return state.width; },
+    set globalAlpha(v) { state.alpha = v; }, get globalAlpha() { return state.alpha; },
+    set globalCompositeOperation(_v) {}, get globalCompositeOperation() { return 'source-over'; },
+    set font(_v) {}, get font() { return ''; },
+    set textAlign(_v) {}, get textAlign() { return 'center'; },
+    set textBaseline(_v) {}, get textBaseline() { return 'middle'; },
+    set lineCap(_v) {}, get lineCap() { return 'round'; },
+    set shadowBlur(/** @type {number} */ _v) {}, set shadowColor(/** @type {string} */ _v) {},
+    moveTo(/** @type {number} */ x, /** @type {number} */ y) { state.from = [x, y]; },
+    lineTo(/** @type {number} */ x, /** @type {number} */ y) { state.to = [x, y]; },
+    stroke() { traits.push({ from: state.from, to: state.to, color: state.color, width: state.width, alpha: state.alpha }); },
+    fillText(/** @type {string} */ text, /** @type {number} */ x, /** @type {number} */ y) { textes.push({ text: String(text), x, y }); },
+    drawImage() {},
+    measureText() { return { width: 10 }; },
+  });
+  return { ctx, traits, textes };
+}
+
+/** Centre de la case `(a, b)` sur `etageB` (pas de 140 px), en coordonnées carte. */
+const centreB = (/** @type {number} */ a, /** @type {number} */ b) => grilleB.cellCenter({ a, b });
+
+/** @param {any} layer @param {{a: number, b: number}[]|null} visibles @param {number} now */
+const rendreAttaque = (layer, visibles, now) => {
+  const t = traceur();
+  layer.render(t.ctx, grilleB, etageB, {
+    tokens: [], now,
+    ...(visibles
+      ? {
+        role: /** @type {const} */ ('players'),
+        visibleCanvas: masque(visibles, etageB),
+        activeLevelWidthCells: etageB.widthCells,
+        activeLevelHeightCells: etageB.heightCells,
+        visionPublished: true,
+      }
+      : {}),
+  });
+  return t;
+};
+
+/** @param {Record<string, any>} [patch] */
+const attaque = (patch = {}) => ({ from: { a: 2, b: 2 }, to: { a: 6, b: 2 }, levelId: 'etage-b', outcome: /** @type {const} */ ('hit'), ...patch });
+
+test('attaque : un trait va du centre de l’attaquant au centre de la cible, sur l’étage de l’attaque', () => {
+  const layer = loaded();
+  layer.playAttack(attaque(), { now: 0, reducedMotion: false });
+
+  const { traits } = rendreAttaque(layer, null, 10);
+  assert.equal(traits.length, 1, 'un seul trait');
+  const depart = centreB(2, 2);
+  const arrivee = centreB(6, 2);
+  assert.deepEqual(traits[0].from.map(Math.round), [Math.round(depart.x), Math.round(depart.y)], 'le trait part du centre de la case de l’attaquant');
+  assert.deepEqual(traits[0].to.map(Math.round), [Math.round(arrivee.x), Math.round(arrivee.y)], 'et arrive au centre de celle de la cible');
+
+  // ⛔ Jamais de pixels figés : rien n'est dessiné sur un AUTRE étage (leçon de H-6).
+  const t = traceur();
+  layer.render(t.ctx, grilleA, etageA, { tokens: [], now: 20 });
+  assert.deepEqual(t.traits, [], 'attaque dessinée sur un autre étage');
+});
+
+test('attaque : les cinq issues se distinguent, et seulement par la couleur du trait', () => {
+  const couleurs = new Map();
+  for (const outcome of ['hit', 'miss', 'critical', 'parried', 'dodged']) {
+    const layer = loaded();
+    layer.playAttack(attaque({ outcome }), { now: 0, reducedMotion: false });
+    const { traits } = rendreAttaque(layer, null, 10);
+    assert.equal(traits.length, 1, `issue ${outcome} : un trait`);
+    couleurs.set(outcome, traits[0].color);
+  }
+  assert.equal(new Set(couleurs.values()).size, 5, 'les cinq issues doivent être distinguables à l’œil');
+  for (const [outcome, couleur] of couleurs) {
+    assert.match(couleur, /^#[0-9a-f]{6}$/i, `issue ${outcome} : couleur attendue en #rrggbb`);
+  }
+});
+
+test('attaque : ⛔ les DEUX extrémités doivent être vues, et le test est refait à chaque image', () => {
+  // Une arrivée qui tombe en clair donnerait la direction d'un attaquant que les joueurs ne voient
+  // pas : c'est une fuite, pas un acte explicite comme le ping (contrat §9.3, CdC §7).
+  const layer = loaded();
+  layer.playAttack(attaque(), { now: 0, reducedMotion: false });
+
+  assert.deepEqual(rendreAttaque(layer, [{ a: 2, b: 2 }], 10).traits, [], 'le départ seul vu : rien');
+  assert.deepEqual(rendreAttaque(layer, [{ a: 6, b: 2 }], 20).traits, [], 'l’arrivée seule vue : rien');
+  assert.equal(rendreAttaque(layer, [{ a: 2, b: 2 }, { a: 6, b: 2 }], 30).traits.length, 1, 'les deux vues : le trait est dessiné');
+  // Dans les deux sens, à chaque image : la vision se referme, le trait disparaît.
+  assert.deepEqual(rendreAttaque(layer, [{ a: 2, b: 2 }], 40).traits, [], 'trait maintenu après la perte de vision d’une extrémité');
+});
+
+test('attaque : l’écran MJ voit toujours tout, sans masque de vision', () => {
+  const layer = loaded();
+  layer.playAttack(attaque({ outcome: 'dodged' }), { now: 0, reducedMotion: false });
+  assert.equal(rendreAttaque(layer, null, 10).traits.length, 1, 'l’écran MJ doit voir l’attaque (contrat §9)');
+});
+
+test('attaque : damage chiffré près de l’arrivée, rien quand il est absent', () => {
+  const sans = loaded();
+  sans.playAttack(attaque(), { now: 0, reducedMotion: false });
+  assert.deepEqual(rendreAttaque(sans, null, 10).textes, [], 'aucun chiffre inventé');
+
+  const avec = loaded();
+  avec.playAttack(attaque({ outcome: 'critical', damage: 7 }), { now: 0, reducedMotion: false });
+  const { textes } = rendreAttaque(avec, null, 10);
+  assert.equal(textes.length, 1, 'le chiffre des dégâts est écrit une fois');
+  assert.equal(textes[0].text, '7');
+  const arrivee = centreB(6, 2);
+  const depart = centreB(2, 2);
+  assert.ok(Math.hypot(textes[0].x - arrivee.x, textes[0].y - arrivee.y) < Math.hypot(textes[0].x - depart.x, textes[0].y - depart.y),
+    'le chiffre se lit du côté de la cible, pas de l’attaquant');
+});
+
+test('attaque : éphémère — elle s’efface d’elle-même et ne laisse aucune trace', () => {
+  const layer = loaded();
+  layer.playAttack(attaque(), { now: 0, reducedMotion: false });
+  assert.equal(rendreAttaque(layer, null, Math.floor(FX_ATTACK_MS / 2)).traits.length, 1, 'visible à mi-vie');
+  assert.deepEqual(rendreAttaque(layer, null, FX_ATTACK_MS + 1).traits, [], 'plus rien passé sa durée');
+  assert.deepEqual(rendreAttaque(layer, null, FX_ATTACK_MS + 2).traits, [], 'et rien ne la ressuscite : jamais rejouée');
+});
+
+test('attaque : mouvement réduit — le trait est dessiné sans fondu', () => {
+  const layer = loaded();
+  layer.playAttack(attaque(), { now: 0, reducedMotion: true });
+  const tot = rendreAttaque(layer, null, 10).traits;
+  const tard = rendreAttaque(layer, null, Math.floor(FX_ATTACK_MS / 2)).traits;
+  assert.equal(tot.length, 1, 'mouvement réduit : le trait reste dessiné');
+  assert.equal(tard.length, 1);
+  assert.equal(tot[0].alpha, tard[0].alpha, 'mouvement réduit : aucune animation d’opacité');
+});
+
+test('attaque : une issue inconnue ne dessine rien', () => {
+  const layer = loaded();
+  layer.playAttack(/** @type {any} */ (attaque({ outcome: 'fumble' })), { now: 0, reducedMotion: false });
+  assert.deepEqual(rendreAttaque(layer, null, 10).traits, [], 'fumble n’est pas une issue : rien');
 });
