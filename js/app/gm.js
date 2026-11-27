@@ -1637,12 +1637,13 @@ export async function bootstrapGMApp(options = {}) {
         sessionId,
         mjLink,
         getExploredFog: (levelId) => getExploredFog(levelId || store.getActiveLevelId() || ''),
-        scheduleFogPublish: (immediate = true) => {
-          const activeLvl = store.getActiveLevel();
-          if (activeLvl) {
-            const fog = getExploredFog(activeLvl);
-            if (fog) scheduleFogPublish(activeLvl.id, fog, immediate);
-          }
+        // ⛔ H-2 : l'étage DONNÉ fait foi. Ce rappel relisait `store.getActiveLevel()` quoi
+        // qu'on lui passe — c'était le quatrième maillon du défaut, et celui qui publiait le
+        // `fog.update` sur le mauvais étage même une fois les trois autres corrigés.
+        scheduleFogPublish: (levelId = null, immediate = true) => {
+          const cible = levelId ?? store.getActiveLevelId();
+          const fog = cible ? getExploredFog(cible) : null;
+          if (cible && fog) scheduleFogPublish(cible, fog, immediate);
         },
         requestRender: () => requestRender(),
         onAddWall: (levelId, wall) => {

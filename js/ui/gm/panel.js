@@ -1050,7 +1050,8 @@ export function createGMPanel(container, options = {}) {
   const importPanelImage = createImportPanel(imageMount, {
     mode: 'image',
     transport,
-    onClearFog: () => fogTools?.clearFog(),
+    // H-2 : l'étage remplacé traverse jusqu'à `clearFog`, au lieu d'être redeviné là-bas.
+    onClearFog: (levelId) => fogTools?.clearFog(levelId),
   });
 
   const imageShare = imageShareMount ? createImageShare(imageShareMount, { transport }) : null;
@@ -1402,7 +1403,10 @@ export function createGMPanel(container, options = {}) {
     }
 
     // Le changement local a eu lieu : le brouillard suit l'état d'ici, publié ou non.
-    fogTools?.clearFog();
+    // ⛔ H-14, jumeau de H-2 par la porte du pavage : `clearFog()` était appelé après
+    // l'`await` de publication et sans identifiant. `levelId` est celui capturé plus haut,
+    // celui dont le pavage vient de changer — pas celui que le MJ regarde entre-temps.
+    fogTools?.clearFog(levelId);
   }
 
   gridVisibleInput.addEventListener('change', updateGridFromUI, { signal: listeners.signal });
