@@ -727,15 +727,32 @@ export async function bootstrapPlayerApp(options = {}) {
           tokens: state.campaign?.tokens ?? [],
           now: Date.now(),
           requestRender,
+          // H-4 : l'effet obéit à la vision RÉELLE, image par image. Même masque, même
+          // règle et même garde `visionPublished` que la couche des pions au-dessus : un
+          // étage sans vision publiée ne montre aucun pion, il ne doit montrer aucun effet.
+          role: 'players',
+          visibleCanvas: getPlayerVisibleCanvas(activeLevel),
+          activeLevelWidthCells: activeLevel.widthCells,
+          activeLevelHeightCells: activeLevel.heightCells,
+          visionPublished: store.getSessionVision(activeLevel.id) !== null,
         });
         animationActive ||= result.animationActive;
       },
       feedback: () => {
         lStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        animationActive ||= moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
+        // ⛔ H-11 : calculer D'ABORD, accumuler ensuite. `||=` court-circuite, donc avec l'appel
+        // en opérande DROITE la fonction n'était pas appelée du tout dès qu'une couche
+        // précédente s'animait — et un refus de destination arrive précisément là, pendant que
+        // le pion refusé revient en animant. Le commentaire de la couche des pions annonçait le
+        // piège de l'affectation ; c'est la variante court-circuit qui a mordu.
+        //
+        // ⚠ Ce n'était pas qu'un retard : un retour de 5 cases dure 800 ms (`TOKEN_MOVE_STEP_MS`),
+        // plus que les 650 ms du retour, qui expirait donc sans avoir été dessiné une seule fois.
+        const refusDessine = moveZoneLayer.renderDestinationFeedback(stage.context, grid, {
           now: Date.now(),
           zoom: camera.zoom,
         });
+        animationActive ||= refusDessine;
         const turn = store.getTurn();
         // Une préparation commence dès la sélection du pion (zone affichée) : aucun bouton de porte
         // ni de liaison ne doit recouvrir une case atteignable juste derrière une porte ouverte ou

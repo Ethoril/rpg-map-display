@@ -468,3 +468,104 @@ test('Pion actif : le MJ voit le pion du participant actif cerné d’or ; la ta
   await expect.poll(() => orAutour(gm, 4, 4), { timeout: 5000 }).toBe(0);
   await context.close();
 });
+
+// ── H-11 : le refus de destination doit se dessiner PENDANT une animation ──────────────────
+//
+// `animationActive ||= moveZoneLayer.renderDestinationFeedback(…)` : `||=` court-circuite, donc
+// l'appel n'avait pas lieu dès qu'une couche dessinée avant avait levé le drapeau. Or la couche des
+// pions est dessinée avant, et un refus arrive précisément pendant que le pion refusé revient.
+//
+// ⭐ Le scénario est celui de D-10, mot pour mot : le MJ renvoie à sa case d'origine un pion que la
+// table avait avancé. Le retour parcourt cinq cases, soit 800 ms à 160 ms la case — plus que les
+// 650 ms de vie du retour visuel. Le refus n'était donc pas seulement retardé : il expirait sans
+// avoir été dessiné une seule image.
+
+/** Étage unique, un pion avancé de cinq cases que le MJ va renvoyer. */
+const snapshotRefus = () => ({
+  campaign: {
+    schemaVersion: 2, campaignId: 'defauts-refus', name: 'Refus pendant animation',
+    levels: [level('rdc', 'RDC', 0)],
+    links: [],
+    tokens: [{ id: 'hero', levelId: 'rdc', cell: { a: 7, b: 2 }, sizeCells: 1, kind: 'pc', imageUrl: '', borderColor: '#00ff00', label: 'Héros', hidden: false, visionBright: 8, visionDim: 10, emitsLight: null, speedCells: 6, playerMovable: true, locked: false, elevation: 0, markers: [], hp: null, health: 'unharmed' }],
+    templates: [], settings: {},
+  }, activeLevelId: 'rdc', selectedTokenId: null, activeHandout: null,
+});
+
+/**
+ * Encre AMBRE (`#f59e0b`, rgb 245/158/11) dans la case (7,2) — la couleur du retour « occupée », et
+ * de rien d'autre sur cet écran : le liseré du pion est vert, le fond est vide.
+ *
+ * ⚠ La demi-case est mesurée sur la caméra et non supposée : le cadrage automatique choisit son
+ * zoom selon le viewport, et une demi-case figée à 40 px échantillonnerait à côté.
+ * @param {import('@playwright/test').Page} page
+ */
+const encreRefus = (page) => page.evaluate(() => {
+  const app = /** @type {any} */ (window).__RPG_APP__;
+  const centre = app.camera.mapToScreen({ x: 7 * 80 + 40, y: 2 * 80 + 40 });
+  const coin = app.camera.mapToScreen({ x: 7 * 80, y: 2 * 80 });
+  const demi = Math.max(6, Math.abs(centre.screenX - coin.screenX));
+  const res = app.stage?.resolution ?? window.devicePixelRatio ?? 1;
+  const d = app.context.getImageData(
+    Math.round((centre.screenX - demi) * res),
+    Math.round((centre.screenY - demi) * res),
+    Math.round(2 * demi * res),
+    Math.round(2 * demi * res)
+  ).data;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] > 200 && d[i + 1] > 110 && d[i + 1] < 200 && d[i + 2] < 90) n++;
+  }
+  return n / (res * res);
+});
+
+test('H-11 : le refus « case occupée » se dessine alors que le pion refusé revient en animant', async ({ browser }) => {
+  const context = await browser.newContext();
+  const sessionId = `defauts-refus-${Date.now()}`;
+  /** @type {string[]} */
+  const erreurs = [];
+  const snap = snapshotRefus();
+  const gm = await context.newPage();
+  const player = await context.newPage();
+  for (const [nom, p] of /** @type {const} */ ([['mj', gm], ['joueur', player]])) {
+    p.on('pageerror', (e) => erreurs.push(`${nom}: ${e.message}`));
+  }
+  try {
+    await Promise.all([installBrowserTransport(gm, sessionId, snap), installBrowserTransport(player, sessionId, snap)]);
+    await Promise.all([gm.goto(`/gm.html?session=${sessionId}`), player.goto(`/player.html?session=${sessionId}`)]);
+    await Promise.all([waitForApp(gm), waitForApp(player)]);
+    // Toute la carte vue : le refus n'est pas masqué par le brouillard, et H-4 ne s'en mêle pas.
+    await setPlayerTestVision(player, undefined, true);
+
+    // Rien d'ambre avant le refus : la sonde ne doit pas déjà compter quelque chose.
+    expect(await encreRefus(player)).toBe(0);
+
+    // Le MJ renvoie le pion de (7,2) à (2,2) : cinq pas, 800 ms d'animation.
+    await gm.evaluate(async () => {
+      const from = { a: 7, b: 2 };
+      const to = { a: 2, b: 2 };
+      const path = [from, { a: 6, b: 2 }, { a: 5, b: 2 }, { a: 4, b: 2 }, { a: 3, b: 2 }, to];
+      await /** @type {any} */ (window).__RPG_APP__.transport.publish({
+        type: 'token.move',
+        payload: { tokenId: 'hero', from, to, path, startedAt: Date.now(), refus: 'occupied' },
+        at: Date.now(), by: 'gm',
+      });
+    });
+
+    // ⛔ Le cœur du test : l'ambre apparaît sur (7,2) pendant que le pion anime son retour.
+    // Sans le correctif, elle n'apparaît JAMAIS — le retour expire au bout de ses 650 ms sans
+    // qu'une seule image ne l'ait dessiné, parce que la couche des pions a levé le drapeau avant.
+    await expect.poll(() => encreRefus(player), { timeout: 550, intervals: [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20] })
+      .toBeGreaterThan(0);
+
+    // Et l'animation a bien eu lieu : le pion est arrivé à (2,2). Sans cela, le test ci-dessus
+    // passerait sur un écran immobile, où rien n'aurait levé le drapeau.
+    await expect.poll(() => player.evaluate(async () => {
+      const store = await import('../js/state/store.js');
+      return store.getCampaign()?.tokens.find((t) => t.id === 'hero')?.cell;
+    }), { timeout: 4000 }).toEqual({ a: 2, b: 2 });
+
+    expect(erreurs).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
