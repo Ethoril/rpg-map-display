@@ -748,3 +748,120 @@ test("au repos, un PJ sur un étage non regardé par le MJ : rien n'est republi�
 
   await context.close();
 });
+
+test('UX-15 : « Emmener la table » affiche Envoi… puis erreur si publish rend { ok: false }, et publié : <nom> après résolution { ok: true }', async ({
+  page,
+}) => {
+  const sessionId = `ux15-publish-result-${Date.now()}`;
+  await installBrowserTransport(page, sessionId, SNAPSHOT_SHOW);
+  await page.goto(`/gm.html?session=${sessionId}`);
+  await waitForApp(page);
+
+  await page.selectOption('#gm-level-select', 'etage');
+  await expect.poll(() => etageActif(page)).toBe('etage');
+
+  // Remplacer `transport.publish` par une promesse pilotée depuis le test pour observer l'état
+  // intermédiaire « Envoi… » et les deux issues réelles de `PublishResult`.
+  await page.evaluate(() => {
+    const app = /** @type {any} */ (window).__RPG_APP__;
+    /** @type {Array<{ resolve: (res: any) => void }>} */
+    const attente = [];
+    /** @type {any} */ (window).__resolvesShow = attente;
+    const originalPublish = app.transport.publish.bind(app.transport);
+    app.transport.publish = (/** @type {any} */ ev) => {
+      if (ev?.type === 'level.show') {
+        return new Promise((resolve) => {
+          attente.push({ resolve });
+        });
+      }
+      return originalPublish(ev);
+    };
+  });
+
+  const status = page.locator('#gm-level-status');
+  const showBtn = page.locator('#gm-level-show');
+
+  // 1. Échec : « Envoi… » pendant l'attente, puis message d'erreur en gm-err, jamais « publié : … ».
+  await showBtn.click();
+  await expect(status).toHaveText('Envoi…');
+  await expect(status).not.toContainText('publié');
+
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__resolvesShow.shift().resolve({
+      ok: false,
+      error: new Error('Canal RTDB indisponible'),
+    });
+  });
+
+  await expect(status).toHaveText('Canal RTDB indisponible');
+  await expect(status).toHaveClass(/gm-err/);
+  await expect(status).not.toContainText('publié');
+
+  // 2. Succès : « Envoi… » tant que non résolu, puis « publié : Premier étage » après résolution.
+  await showBtn.click();
+  await expect(status).toHaveText('Envoi…');
+  await expect(status).not.toContainText('publié');
+
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__resolvesShow.shift().resolve({ ok: true });
+  });
+
+  await expect(status).toHaveText('publié : Premier étage');
+  await expect(status).not.toHaveClass(/gm-err/);
+
+  // 3. Réponse tardive après changement d'étage : ne doit pas écraser le statut courant.
+  await showBtn.click();
+  await expect(status).toHaveText('Envoi…');
+  await page.selectOption('#gm-level-select', 'rdc');
+  await expect(status).toHaveText('');
+
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__resolvesShow.shift().resolve({ ok: true });
+  });
+  await page.waitForTimeout(50);
+  await expect(status).toHaveText('');
+
+  // 4. Réponse tardive après un second clic : le résultat du premier clic ne doit pas écraser le second.
+  await showBtn.click();
+  await expect(status).toHaveText('Envoi…');
+  await showBtn.click();
+  await expect(status).toHaveText('Envoi…');
+
+  await page.evaluate(() => {
+    const file = /** @type {any} */ (window).__resolvesShow;
+    // Le 2e clic réussit d'abord, puis le 1er échoue tardivement.
+    file[1].resolve({ ok: true });
+  });
+  await expect(status).toHaveText('publié : Rez-de-chaussée');
+
+  await page.evaluate(() => {
+    const file = /** @type {any} */ (window).__resolvesShow;
+    file[0].resolve({ ok: false, error: new Error('Ancien échec tardif') });
+  });
+  await page.waitForTimeout(50);
+  await expect(status).toHaveText('publié : Rez-de-chaussée');
+  await expect(status).not.toHaveClass(/gm-err/);
+});
+
+test('UX-15 : sans transport connecté, « Emmener la table » reste actif et annonce le mode local', async ({
+  page,
+}) => {
+  await page.goto('/gm.html');
+  await waitForApp(page);
+
+  await page.evaluate(async (camp) => {
+    const store = await import('../js/state/store.js');
+    store.loadCampaign(/** @type {any} */ (camp));
+  }, SNAPSHOT_SHOW.campaign);
+
+  const showBtn = page.locator('#gm-level-show');
+  const status = page.locator('#gm-level-status');
+
+  await expect(showBtn).toBeVisible();
+  await expect(showBtn).toBeEnabled();
+  await showBtn.click();
+
+  await expect(status).toHaveText('Mode local — aucune table connectée');
+  await expect(status).not.toHaveClass(/gm-err/);
+  await expect(showBtn).toBeEnabled();
+});

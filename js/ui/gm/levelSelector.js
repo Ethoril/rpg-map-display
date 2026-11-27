@@ -1,12 +1,18 @@
 // @ts-check
 
 /**
+ * Issue d'une publication d'étage.
+ * @typedef {{ ok: true } | { ok: false, error: Error }} ShowLevelResult
+ */
+
+/**
  * Options d'initialisation du sélecteur d'étage MJ.
  * @typedef {Object} LevelSelectorOptions
  * @property {() => { id: string, name?: string }[]} getLevels - Renvoie les résumés des étages de la campagne
  * @property {() => string | null} getActiveLevelId - Renvoie l'identifiant de l'étage actif
  * @property {(levelId: string) => void} onSelectLevel - Rappel lors de la sélection d'un étage par le MJ
- * @property {(levelId: string) => void} [onShowLevel] - Rappel quand le MJ publie l'étage actif vers la tablette (UX-15).
+ * @property {(levelId: string) => Promise<ShowLevelResult|null>|ShowLevelResult|null|void} [onShowLevel] - Rappel quand le MJ publie l'étage actif vers la tablette (UX-15).
+ *   Rend le résultat de la publication, ou `null` sans transport connecté.
  *   Sans transport dedans : ce module ne le connaît pas, le câblage se fait chez l'appelant.
  * @property {(levelId: string) => void} [onDeleteLevel] - Rappel quand le MJ retire l'étage actif (UX-16),
  *   appelé APRÈS confirmation. Sans transport dedans, comme `onShowLevel` : le câblage se fait chez l'appelant.
@@ -34,6 +40,9 @@ export function createLevelSelector(container, options) {
   }
 
   const listeners = new AbortController();
+  // Compteur monotone pour ignorer toute réponse d'envoi devenue obsolète après un clic ou un changement d'étage.
+  let generationEnvoi = 0;
+  let dernierActif = options.getActiveLevelId();
 
   container.innerHTML = `
     <span class="gm-h gm-h--inline">Étage</span>
@@ -65,6 +74,7 @@ export function createLevelSelector(container, options) {
     () => {
       const cible = levelSelect.value;
       if (!cible || cible === options.getActiveLevelId()) return;
+      generationEnvoi += 1;
       try {
         options.onSelectLevel(cible);
         levelStatus.className = 'gm-muted';
@@ -85,20 +95,41 @@ export function createLevelSelector(container, options) {
   // de plus — aucun pion ne bouge, aucun étage du MJ ne change.
   showLevelBtn.addEventListener(
     'click',
-    () => {
+    async () => {
       const actif = options.getActiveLevelId();
       if (!actif || !options.onShowLevel) return;
+      const maGeneration = ++generationEnvoi;
+      const nom = options.getLevels().find((l) => l.id === actif)?.name || actif;
       try {
-        options.onShowLevel(actif);
+        const enCours = options.onShowLevel(actif);
+        if (!enCours) {
+          levelStatus.className = 'gm-muted';
+          levelStatus.textContent = 'Mode local — aucune table connectée';
+          return;
+        }
         levelStatus.className = 'gm-muted';
-        // ⚠ **Honnête, pas optimiste.** L'étage affiché par la tablette ne circule pas vers le
-        // MJ — rien ne le lui dirait s'il se trompait de route ou perdait la connexion entre
-        // la publication et l'écran. Le statut n'annonce donc que ce que CE poste vient de
-        // PUBLIER, jamais ce que la table montre réellement : c'est le mensonge d'interface que
-        // ce dépôt corrige partout ailleurs (fog, vision, lumière), pas une place pour en semer un.
-        const nom = options.getLevels().find((l) => l.id === actif)?.name || actif;
-        levelStatus.textContent = `publié : ${nom}`;
+        levelStatus.textContent = 'Envoi…';
+        const resultat = await enCours;
+        if (listeners.signal.aborted || maGeneration !== generationEnvoi) return;
+        if (!resultat) {
+          levelStatus.className = 'gm-muted';
+          levelStatus.textContent = 'Mode local — aucune table connectée';
+          return;
+        }
+        if (resultat.ok === true) {
+          levelStatus.className = 'gm-muted';
+          // ⚠ **Honnête, pas optimiste.** L'étage affiché par la tablette ne circule pas vers le
+          // MJ — rien ne le lui dirait s'il se trompait de route ou perdait la connexion entre
+          // la publication et l'écran. Le statut n'annonce donc que ce que CE poste vient de
+          // PUBLIER, jamais ce que la table montre réellement : c'est le mensonge d'interface que
+          // ce dépôt corrige partout ailleurs (fog, vision, lumière), pas une place pour en semer un.
+          levelStatus.textContent = `publié : ${nom}`;
+        } else {
+          levelStatus.className = 'gm-err';
+          levelStatus.textContent = resultat.error?.message || 'Publication refusée.';
+        }
       } catch (err) {
+        if (listeners.signal.aborted || maGeneration !== generationEnvoi) return;
         levelStatus.className = 'gm-err';
         levelStatus.textContent = err instanceof Error ? err.message : String(err);
       }
@@ -166,6 +197,10 @@ export function createLevelSelector(container, options) {
   function update() {
     const etages = options.getLevels();
     const actif = options.getActiveLevelId();
+    if (actif !== dernierActif) {
+      dernierActif = actif;
+      generationEnvoi += 1;
+    }
 
     // Un seul étage : la barre n'apporte rien, elle disparaît.
     //
