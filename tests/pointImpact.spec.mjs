@@ -3,12 +3,15 @@ import { test, expect } from '@playwright/test';
 import { installBrowserTransport, waitForApp } from './browserTestTransport.mjs';
 
 /**
- * Point d'impact d'un sort de zone (contrat de liaison §10.1, version 3, révision du 23/11/2026).
+ * Point d'impact d'un sort de zone (contrat de liaison §10.1, version 3, révision du 27/11/2026).
  *
  * L'outil MJ est simulé par le vrai canal `wfrp-map-link` ouvert dans la page MJ (comme
- * `tourDeJeu.spec.mjs`) : `mj.impactQuery` → bandeau et aperçu du cercle sur l'écran MJ → clic sur
- * une case → un seul `map.impact { queryId, levelId, cell, refs }` → gabarit cercle posé, visible
- * des joueurs. Échap, demande remplacée et `mj.impactCancel`. La tablette ne voit rien du mode.
+ * `tourDeJeu.spec.mjs`). Le visé se fait en deux temps : `mj.impactQuery` → bandeau et aperçu sur
+ * l'écran MJ → le clic POSE le cercle sur la table, visible des joueurs, et ne répond pas → clics
+ * et glissers le replacent, accroché à la case → Entrée ou « Valider » envoie l'unique
+ * `map.impact { queryId, levelId, cell, refs }`, calculé sur la case finale, et laisse le gabarit.
+ * Tout abandon (Échap, demande remplacée, `mj.impactCancel`) retire le cercle de la table.
+ * La tablette ne voit ni le bandeau ni l'aperçu — elle voit le cercle dès la pose, c'est le but.
  */
 
 const PX = 100;
@@ -146,7 +149,23 @@ async function monter(browser) {
   return { context, gm, player, erreurs };
 }
 
-test('mj.impactQuery → bandeau et aperçu MJ → clic → un seul map.impact, gabarit cercle visible des joueurs', async ({ browser }) => {
+/**
+ * Glisse le cercle visé depuis le centre de `(a, b)` jusqu'au point `(a2, b2)` décalé, en
+ * franchissant le seuil spatial du glisser de gabarit (5 px) avant le relâchement.
+ * @param {import('@playwright/test').Page} page
+ * @param {number} a @param {number} b @param {number} a2 @param {number} b2
+ */
+async function glisserCercle(page, a, b, a2, b2, dx = 0, dy = 0) {
+  const depart = await pointClient(page, a, b);
+  const arrivee = await pointClient(page, a2, b2, dx, dy);
+  await page.mouse.move(depart.x, depart.y);
+  await page.mouse.down();
+  await page.mouse.move(depart.x + 12, depart.y + 12);
+  await page.mouse.move(arrivee.x, arrivee.y, { steps: 4 });
+  await page.mouse.up();
+}
+
+test('mj.impactQuery → pose du cercle sur la table, replacement, puis Entrée → un seul map.impact', async ({ browser }) => {
   const { context, gm, player, erreurs } = await monter(browser);
   try {
     // Un outil armé est désarmé par le mode, comme par tout changement d'outil.
@@ -155,11 +174,14 @@ test('mj.impactQuery → bandeau et aperçu MJ → clic → un seul map.impact, 
     await envoyer(gm, 'mj.impactQuery', { queryId: 'q1', label: 'Boule de feu', radiusCells: 2, casterRef: 'pj:lanceur' });
 
     const bandeau = gm.locator(BANDEAU);
+    const valider = gm.locator('#gm-impact-validate');
     await expect(bandeau).toBeVisible();
     await expect(bandeau).toContainText('Point d’impact : Boule de feu · rayon 2 cases');
     await expect(bandeau).toContainText('clique une case ; Échap annule');
     expect(await outilActif(gm)).toBe('impact-pick');
     await expect(gm.locator('#gm-ping-arm')).toHaveAttribute('aria-pressed', 'false');
+    // Rien à valider tant que rien n'est posé.
+    await expect(valider).toBeHidden();
 
     // Aperçu du cercle sous le pointeur, sur l'écran MJ seulement.
     const avant = await pixel(gm, 7, 7);
@@ -175,19 +197,41 @@ test('mj.impactQuery → bandeau et aperçu MJ → clic → un seul map.impact, 
     await expect(player.locator(BANDEAU)).toHaveCount(0);
     expect(await gabarits(player)).toEqual([]);
 
+    // ⭐ Le clic POSE et ne répond pas : le cercle arrive sur la table, visible des joueurs.
     await cliquerCase(gm, 4, 4);
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(1);
+    const pose = (await gabarits(gm))[0];
+    expect(pose).toMatchObject({ levelId: 'rdc', shape: 'circle', radiusCells: 2, origin: { x: 450, y: 450 }, visibleToPlayers: true });
+    await expect.poll(async () => (await gabarits(player)).map((/** @type {any} */ t) => t.id)).toEqual([pose.id]);
+    await gm.waitForTimeout(300);
+    expect(await impacts(gm)).toEqual([]);
+
+    // Le mode reste armé, et le bandeau passe au second temps du visé.
+    expect(await outilActif(gm)).toBe('impact-pick');
+    await expect(bandeau).toContainText('déplace le cercle ; Entrée valide, Échap annule');
+    await expect(valider).toBeVisible();
+
+    // Un nouveau clic replace le cercle : la tablette suit, et toujours aucune réponse.
+    await cliquerCase(gm, 7, 4);
+    await expect.poll(async () => (await gabarits(gm))[0].origin).toEqual({ x: 750, y: 450 });
+    await expect.poll(async () => (await gabarits(player))[0].origin).toEqual({ x: 750, y: 450 });
+    expect(await gabarits(gm)).toHaveLength(1);
+    await gm.waitForTimeout(200);
+    expect(await impacts(gm)).toEqual([]);
+
+    // Entrée valide : une seule réponse, et les refs sont celles de la case FINALE.
+    await gm.keyboard.press('Enter');
     await expect.poll(() => impacts(gm)).toHaveLength(1);
     await gm.waitForTimeout(300);
     const recus = await impacts(gm);
     expect(recus).toHaveLength(1);
-    expect(recus[0]).toEqual({ v: 3, queryId: 'q1', levelId: 'rdc', cell: { a: 4, b: 4 }, refs: ['pj:lanceur', 'p:gobelin'] });
+    expect(recus[0]).toEqual({ v: 3, queryId: 'q1', levelId: 'rdc', cell: { a: 7, b: 4 }, refs: ['p:gobelin', 'p:ogre'] });
 
+    // Le point d'impact validé reste sur la table, et le mode est rangé.
     await expect(bandeau).toBeHidden();
     expect(await outilActif(gm)).toBe('none');
-    const poses = await gabarits(gm);
-    expect(poses).toHaveLength(1);
-    expect(poses[0]).toMatchObject({ levelId: 'rdc', shape: 'circle', radiusCells: 2, origin: { x: 450, y: 450 }, visibleToPlayers: true });
-    await expect.poll(async () => (await gabarits(player)).map((/** @type {any} */ t) => t.id)).toEqual([poses[0].id]);
+    expect(await gabarits(gm)).toHaveLength(1);
+    expect(await gabarits(player)).toHaveLength(1);
 
     // Un second clic ne répond plus : la demande est close.
     await cliquerCase(gm, 6, 6);
@@ -199,29 +243,78 @@ test('mj.impactQuery → bandeau et aperçu MJ → clic → un seul map.impact, 
   }
 });
 
-test('Échap → cancelled ; seconde demande → cancelled pour la première ; mj.impactCancel → bandeau retiré, aucune réponse', async ({ browser }) => {
+test('visé : le cercle se glisse et s’accroche à la case, « Valider » répond pour la case du glisser', async ({ browser }) => {
+  const { context, gm, player, erreurs } = await monter(browser);
+  try {
+    await envoyer(gm, 'mj.impactQuery', { queryId: 'q1', label: 'Tempête', radiusCells: 2, casterRef: null });
+    await cliquerCase(gm, 4, 4);
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(1);
+
+    // Glisser jusqu'à un tiers de case après le centre de (6,4) : le cercle se range sur le centre.
+    await glisserCercle(gm, 4, 4, 6, 4, 0.3, 0.3);
+    await expect.poll(async () => (await gabarits(gm))[0].origin).toEqual({ x: 650, y: 450 });
+    await expect.poll(async () => (await gabarits(player))[0].origin).toEqual({ x: 650, y: 450 });
+    await gm.waitForTimeout(200);
+    expect(await impacts(gm)).toEqual([]);
+
+    await gm.locator('#gm-impact-validate').click();
+    await expect.poll(() => impacts(gm)).toEqual([
+      { v: 3, queryId: 'q1', levelId: 'rdc', cell: { a: 6, b: 4 }, refs: ['p:gobelin'] },
+    ]);
+    expect(await outilActif(gm)).toBe('none');
+    expect(await gabarits(gm)).toHaveLength(1);
+    expect(erreurs).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test('abandon après la pose : Échap, demande remplacée et mj.impactCancel retirent le cercle de la table', async ({ browser }) => {
   const { context, gm, player, erreurs } = await monter(browser);
   try {
     const bandeau = gm.locator(BANDEAU);
-    await envoyer(gm, 'mj.impactQuery', { queryId: 'q1', label: 'Tempête', radiusCells: 1, casterRef: null });
-    await expect(bandeau).toContainText('Point d’impact : Tempête · rayon 1 case —');
+
+    // Échap avant toute pose : réponse d'abandon, rien n'est arrivé sur la table.
+    await envoyer(gm, 'mj.impactQuery', { queryId: 'q0', label: 'Éclair', radiusCells: 1, casterRef: null });
+    await expect(bandeau).toContainText('Point d’impact : Éclair · rayon 1 case —');
     await gm.keyboard.press('Escape');
-    await expect.poll(() => impacts(gm)).toEqual([{ v: 3, queryId: 'q1', cancelled: true }]);
+    await expect.poll(() => impacts(gm)).toEqual([{ v: 3, queryId: 'q0', cancelled: true }]);
+    await expect(bandeau).toBeHidden();
+    expect(await gabarits(gm)).toEqual([]);
+
+    // Échap APRÈS la pose : le cercle quitte la table, chez le MJ comme sur la tablette.
+    await envoyer(gm, 'mj.impactQuery', { queryId: 'q1', label: 'Tempête', radiusCells: 1, casterRef: null });
+    await cliquerCase(gm, 4, 4);
+    await expect.poll(async () => (await gabarits(player)).length).toBe(1);
+    await gm.keyboard.press('Escape');
+    await expect.poll(() => impacts(gm)).toHaveLength(2);
+    expect((await impacts(gm))[1]).toEqual({ v: 3, queryId: 'q1', cancelled: true });
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(0);
+    await expect.poll(async () => (await gabarits(player)).length).toBe(0);
     await expect(bandeau).toBeHidden();
 
+    // Demande remplacée pendant le visé : le cercle de la première s'en va avec elle.
     await envoyer(gm, 'mj.impactQuery', { queryId: 'q2', label: 'A', radiusCells: 1, casterRef: null });
-    await expect(bandeau).toContainText('Point d’impact : A');
+    await cliquerCase(gm, 4, 4);
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(1);
     await envoyer(gm, 'mj.impactQuery', { queryId: 'q3', label: 'B', radiusCells: 3, casterRef: null });
     await expect(bandeau).toContainText('Point d’impact : B · rayon 3 cases');
-    await expect.poll(() => impacts(gm)).toHaveLength(2);
-    expect((await impacts(gm))[1]).toEqual({ v: 3, queryId: 'q2', cancelled: true });
+    await expect(bandeau).toContainText('clique une case ; Échap annule');
+    await expect.poll(() => impacts(gm)).toHaveLength(3);
+    expect((await impacts(gm))[2]).toEqual({ v: 3, queryId: 'q2', cancelled: true });
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(0);
+    await expect.poll(async () => (await gabarits(player)).length).toBe(0);
+    await expect(gm.locator('#gm-impact-validate')).toBeHidden();
 
+    // `mj.impactCancel` pendant le visé : cercle retiré, bandeau rangé, AUCUNE réponse de plus.
+    await cliquerCase(gm, 4, 4);
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(1);
     await envoyer(gm, 'mj.impactCancel', { queryId: 'q3' });
     await expect(bandeau).toBeHidden();
     expect(await outilActif(gm)).toBe('none');
+    await expect.poll(async () => (await gabarits(gm)).length).toBe(0);
     await gm.waitForTimeout(300);
-    expect(await impacts(gm)).toHaveLength(2);
-    expect(await gabarits(gm)).toEqual([]);
+    expect(await impacts(gm)).toHaveLength(3);
     expect(await gabarits(player)).toEqual([]);
     expect(erreurs).toEqual([]);
   } finally {

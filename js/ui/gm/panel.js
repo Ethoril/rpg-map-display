@@ -76,7 +76,7 @@ function naturalImageSize(url) {
  *
  * @param {HTMLElement} container Élément HTML conteneur
  * @param {GMPanelOptions} [options]
- * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, armRiderPose: (tokenId: string, around: { levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }) => void, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, armImpactPick: (banner: { text: string, hint: string, onLeave: () => void }) => void, destroy: () => void}}
+ * @returns {{hasPendingToken: () => boolean, placePendingTokenAt: (levelId: string, cell: import('../../core/types.js').Cell) => boolean, armRiderPose: (tokenId: string, around: { levelId: string, cell: import('../../core/types.js').Cell, sizeCells: number }) => void, getMode: () => 'play'|'prep', setMode: (mode: 'play'|'prep') => void, tokenMaker: ReturnType<typeof createTokenMaker>, fogTools: ReturnType<typeof createFogTools>|null, wallEditor: ReturnType<typeof createWallEditor>|null, linkEditor: ReturnType<typeof createLinkEditor>|null, templateTools: ReturnType<typeof createTemplateTools>|null, getActiveToolName: () => string, setActiveTool: (toolName: 'none'|'fog-reveal'|'fog-hide'|'wall-draw'|'wall-delete'|'link-place'|'template-place'|'token-place'|'ping'|'measure'|'light-place'|'light-delete') => void, disarmActiveTool: () => void, armImpactPick: (banner: { text: string, hint: string, onLeave: () => void, onValidate?: (() => void)|null }) => void, destroy: () => void}}
  */
 export function createGMPanel(container, options = {}) {
   if (!container) {
@@ -274,6 +274,7 @@ export function createGMPanel(container, options = {}) {
     <div id="gm-active-tool-banner" class="gm-armed-chip" role="status">
       <span id="gm-active-tool-text" class="gm-armed-chip-text"></span>
       <span id="gm-ping-hint" class="gm-armed-chip-hint"></span>
+      <button id="gm-impact-validate" type="button" class="gm-btn--primary gm-btn--sm" hidden>Valider · Entrée</button>
       <button id="gm-disarm-active-tool" type="button" class="gm-btn--sm">Ranger · Échap</button>
     </div>
   `;
@@ -595,6 +596,8 @@ export function createGMPanel(container, options = {}) {
   const activeToolText = armedChip.querySelector('#gm-active-tool-text');
   const activeToolHint = armedChip.querySelector('#gm-ping-hint');
   const disarmActiveToolBtn = /** @type {HTMLButtonElement|null} */ (armedChip.querySelector('#gm-disarm-active-tool'));
+  /** Validation du point d'impact visé (contrat §10.1) : n'apparaît qu'une fois le cercle posé. */
+  const impactValidateBtn = /** @type {HTMLButtonElement|null} */ (armedChip.querySelector('#gm-impact-validate'));
 
   /** @type {Record<'play'|'prep', string[]>} */
   const MODE_TABS = {
@@ -685,10 +688,11 @@ export function createGMPanel(container, options = {}) {
   /**
    * Mode « point d'impact » (contrat de liaison §10.1) : armé par la liaison, pas par un bouton.
    * Son bandeau dit le sort et le rayon ; `onLeave` est appelé quand l'outil quitte ce mode, quelle
-   * qu'en soit la cause (clic répondu, Échap, autre outil, palette) — la liaison décide s'il reste
-   * une réponse d'abandon à envoyer.
+   * qu'en soit la cause (visé validé, Échap, autre outil, palette) — la liaison décide s'il reste
+   * une réponse d'abandon à envoyer. `onValidate` n'est fourni qu'au second temps du visé, une
+   * fois le cercle posé sur la table : c'est lui qui montre le bouton « Valider ».
    *
-   * @type {{ text: string, hint: string, onLeave: () => void }|null}
+   * @type {{ text: string, hint: string, onLeave: () => void, onValidate?: (() => void)|null }|null}
    */
   let impactPick = null;
 
@@ -758,10 +762,17 @@ export function createGMPanel(container, options = {}) {
     const impact = activeToolName === 'impact-pick' ? impactPick : null;
     if (activeToolText) activeToolText.textContent = impact ? impact.text : armed ? TOOL_LABELS[activeToolName] || activeToolName : '';
     if (activeToolHint) activeToolHint.textContent = impact ? impact.hint : TOOL_HINTS[activeToolName] ?? '';
+    if (impactValidateBtn) impactValidateBtn.hidden = !impact?.onValidate;
   }
 
   disarmActiveToolBtn?.addEventListener('click', () => {
     disarmActiveTool();
+  }, { signal: listeners.signal });
+
+  // ⭐ Le rappel est relu au clic, jamais capturé : chaque armement en fournit un neuf, et celui
+  // d'une demande close validerait un point d'impact que plus personne n'attend.
+  impactValidateBtn?.addEventListener('click', () => {
+    if (activeToolName === 'impact-pick') impactPick?.onValidate?.();
   }, { signal: listeners.signal });
 
   function updateRailToolIndicators() {

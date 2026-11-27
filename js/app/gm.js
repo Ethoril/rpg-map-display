@@ -146,6 +146,14 @@ export async function bootstrapGMApp(options = {}) {
   let refreshImpactBanner = () => {};
   let impactTemplateCounter = 0;
   /**
+   * Gabarit du point d'impact en cours de visée (contrat §10.1) : posé sur la table, visible des
+   * joueurs et déplaçable, mais pas encore validé — aucun `map.impact` n'est parti. `null` hors
+   * visée. ⛔ Toute fin de demande qui n'est pas une validation le retire : abandonner un sort ne
+   * laisse pas son cercle sur la table.
+   * @type {{ queryId: string|number, templateId: string }|null}
+   */
+  let impactAiming = null;
+  /**
    * Case sous le pointeur en mode « point d'impact » (contrat §10.1), pour l'aperçu du cercle.
    * `null` hors du mode ou hors de la carte.
    * @type {import('../core/types.js').Cell|null}
@@ -174,8 +182,46 @@ export async function bootstrapGMApp(options = {}) {
    */
   const impactPreview = (grid, levelId) => {
     const query = pendingImpact();
-    if (!query || !impactHoverCell || query.levelId !== levelId || gmPanel?.getActiveToolName?.() !== 'impact-pick') return [];
+    // Tant que rien n'est posé : une fois le cercle sur la table, c'est LUI que le MJ déplace, et
+    // un second cercle sous le pointeur ferait douter de celui que les joueurs voient.
+    if (!query || impactAiming || !impactHoverCell || query.levelId !== levelId || gmPanel?.getActiveToolName?.() !== 'impact-pick') return [];
     return [{ ...impactCircle(grid, levelId, impactHoverCell, query.radiusCells), id: 'impact-preview', visibleToPlayers: false }];
+  };
+  /** Le gabarit en cours de visée, s'il est toujours là. @returns {import('../core/types.js').Template|null} */
+  const impactTemplate = () => {
+    if (!impactAiming) return null;
+    return (store.getCampaign()?.templates ?? []).find((t) => t.id === impactAiming?.templateId) ?? null;
+  };
+  /**
+   * Abandon d'une visée : le cercle quitte la table, chez le MJ comme sur la tablette, par
+   * l'événement qui efface un gabarit ordinaire. Sans visée en cours, ne fait rien.
+   */
+  const removeImpactTemplate = () => {
+    const aiming = impactAiming;
+    if (!aiming) return;
+    impactAiming = null;
+    if (!store.removeTemplate(aiming.templateId)) return;
+    transport?.publish({ type: 'template.remove', payload: { templateId: aiming.templateId }, at: Date.now(), by: 'gm' });
+    requestRender();
+  };
+  /**
+   * Validation de la visée (Entrée, ou « Valider » dans le bandeau) : la case du centre courant du
+   * cercle part en `map.impact`, et le gabarit reste sur la table comme tout gabarit.
+   * @returns {boolean} true si une réponse est partie
+   */
+  const validateImpact = () => {
+    const query = pendingImpact();
+    const template = impactTemplate();
+    if (!impactAiming || !query || !template || !mjLink) return false;
+    const level = store.getCampaign()?.levels.find((l) => l.id === query.levelId) ?? null;
+    const cell = level ? gridFor(level).cellFromPoint(template.origin) : null;
+    if (!cell) return false;
+    // ⭐ Avant la réponse : `answerImpact` clôt la demande, et le rappel qui l'écoute retirerait le
+    // cercle s'il le croyait encore en visée. Un point d'impact validé, lui, reste sur la table.
+    impactAiming = null;
+    mjLink.answerImpact(cell);
+    requestRender();
+    return true;
   };
   /** @type {{ levelId: string, start: import('../core/types.js').MapPoint, end: import('../core/types.js').MapPoint|null, distance: number }|null} */
   let currentMeasure = null;
@@ -1548,9 +1594,18 @@ export async function bootstrapGMApp(options = {}) {
     const n = query.radiusCells;
     const active = store.getActiveLevelId();
     const ailleurs = active !== query.levelId ? store.getCampaign()?.levels.find((l) => l.id === query.levelId) : null;
+    // Deux temps du visé : tant que rien n'est posé, le MJ cherche sa case ; une fois le cercle
+    // sur la table, il l'ajuste autant qu'il veut, et c'est Entrée — pas le clic — qui répond.
+    const hint = impactAiming
+      ? (ailleurs
+        ? `affiche l’étage « ${ailleurs.name} » pour ajuster ; Entrée valide, Échap annule`
+        : 'déplace le cercle ; Entrée valide, Échap annule')
+      : (ailleurs
+        ? `affiche l’étage « ${ailleurs.name} » pour viser ; Échap annule`
+        : 'clique une case ; Échap annule');
     return {
       text: `Point d’impact : ${query.label} · rayon ${String(n).replace('.', ',')} case${n > 1 ? 's' : ''} —`,
-      hint: ailleurs ? `affiche l’étage « ${ailleurs.name} » pour viser ; Échap annule` : 'clique une case ; Échap annule',
+      hint,
     };
   };
   const mjLink = startMjLink({
@@ -1583,7 +1638,13 @@ export async function bootstrapGMApp(options = {}) {
     // sa fin (répondue, annulée, perdue) le quitte. Quitter le mode autrement (Échap, autre outil)
     // est un abandon : `cancelImpact` l'envoie, et ne fait rien si la demande est déjà close.
     /** @param {{ label: string, radiusCells: number, levelId: string }} query */
-    const armImpact = (query) => gmPanel?.armImpactPick({ ...impactBanner(query), onLeave: () => { mjLink.cancelImpact(); } });
+    const armImpact = (query) => gmPanel?.armImpactPick({
+      ...impactBanner(query),
+      onLeave: () => { mjLink.cancelImpact(); },
+      // Le bouton n'existe que quand il y a quelque chose à valider : avant la pose, il n'y a pas
+      // encore de point d'impact, et un bouton qui ne fait rien se clique quand même.
+      onValidate: impactAiming ? () => { validateImpact(); } : null,
+    });
     pendingImpact = () => mjLink.impact();
     refreshImpactBanner = () => {
       const query = mjLink.impact();
@@ -1591,6 +1652,10 @@ export async function bootstrapGMApp(options = {}) {
     };
     mjLink.subscribeImpact((query) => {
       impactHoverCell = null;
+      // Une demande finit sans avoir été validée : son cercle quitte la table. Échap, demande
+      // remplacée, `mj.impactCancel` et déconnexion passent tous par ici ; la validation, elle, a
+      // déjà remis `impactAiming` à null pour que le gabarit reste.
+      if (impactAiming && query?.queryId !== impactAiming.queryId) removeImpactTemplate();
       if (query) {
         armImpact(query);
       } else if (gmPanel?.getActiveToolName?.() === 'impact-pick') {
@@ -1886,21 +1951,38 @@ export async function bootstrapGMApp(options = {}) {
 
       if (activeToolName === 'impact-pick') {
         // Point d'impact (contrat §10.1) : la case cliquée, vide ou non, sur l'étage de la demande.
-        // Un clic sur un autre étage ne répond pas : le bandeau dit lequel afficher.
+        // Un clic sur un autre étage ne pose rien : le bandeau dit lequel afficher.
+        // ⭐ Le clic POSE, il ne répond pas. Le cercle arrive sur la table, les joueurs le voient,
+        // et le MJ le replace autant qu'il veut ; c'est Entrée (ou « Valider ») qui répond.
         const query = pendingImpact();
         if (!query || query.levelId !== activeLevel.id) return;
         const grid = gridFor(activeLevel);
         const cell = grid.cellFromPoint(intention.mapPos);
-        const answer = cell ? mjLink?.answerImpact(cell) ?? null : null;
-        if (!cell || !answer) return;
-        /** @type {import('../core/types.js').Template} */
-        const template = {
-          ...impactCircle(grid, answer.levelId, cell, answer.radiusCells),
-          id: `template-impact-${Date.now()}-${++impactTemplateCounter}`,
-          visibleToPlayers: true,
-        };
-        store.placeTemplate(template);
-        transport?.publish({ type: 'template.place', payload: { template }, at: Date.now(), by: 'gm' });
+        if (!cell) return;
+        const vise = impactTemplate();
+        if (vise) {
+          const origin = grid.cellCenter(cell);
+          store.moveTemplate(vise.id, origin, 0);
+          transport?.publish({
+            type: 'template.move',
+            payload: { templateId: vise.id, origin, directionDeg: 0 },
+            at: Date.now(),
+            by: 'gm',
+          });
+        } else {
+          /** @type {import('../core/types.js').Template} */
+          const template = {
+            ...impactCircle(grid, query.levelId, cell, query.radiusCells),
+            id: `template-impact-${Date.now()}-${++impactTemplateCounter}`,
+            visibleToPlayers: true,
+          };
+          store.placeTemplate(template);
+          transport?.publish({ type: 'template.place', payload: { template }, at: Date.now(), by: 'gm' });
+          impactAiming = { queryId: query.queryId, templateId: template.id };
+          // Le bandeau passe au second temps : « déplace le cercle ; Entrée valide ».
+          refreshImpactBanner();
+        }
+        impactHoverCell = null;
         requestRender();
         return;
       }
@@ -2489,11 +2571,16 @@ export async function bootstrapGMApp(options = {}) {
 
       gmTemplateDragState = null;
       templateDragPreview = null;
-      store.moveTemplate(t.id, pose.origin, pose.directionDeg);
+      // Le cercle d'un point d'impact désigne une CASE (contrat §10.1) : il se range sur son
+      // centre au relâchement, sinon ce que les joueurs voient et la case répondue divergeraient.
+      const grilleVisee = impactAiming?.templateId === t.id ? gridFor(activeLevel) : null;
+      const caseVisee = grilleVisee ? grilleVisee.cellFromPoint(pose.origin) : null;
+      const origin = grilleVisee && caseVisee ? grilleVisee.cellCenter(caseVisee) : pose.origin;
+      store.moveTemplate(t.id, origin, pose.directionDeg);
       requestRender();
       transport?.publish({
         type: 'template.move',
-        payload: { templateId: t.id, origin: pose.origin, directionDeg: pose.directionDeg },
+        payload: { templateId: t.id, origin, directionDeg: pose.directionDeg },
         at: Date.now(),
         by: 'gm',
       });
@@ -2540,14 +2627,20 @@ export async function bootstrapGMApp(options = {}) {
       return kind === 'light' ? (lightHit?.light.id ?? null) : null;
     },
     canStartTemplateDrag: (_screenPos, mapPos) => {
-      if (gmPanel?.getActiveToolName?.() !== 'none') return null;
+      // Un outil armé interdit le glisser de gabarit — sauf le cercle qu'on est en train de viser
+      // (contrat §10.1) : l'ajuster au doigt EST le geste du mode, et lui seul est saisissable.
+      const tool = gmPanel?.getActiveToolName?.() ?? 'none';
+      const vise = tool === 'impact-pick' ? impactAiming : null;
+      if (tool !== 'none' && !vise) return null;
       const state = store.getState();
       if (!state.activeLevel || !state.campaign) return null;
       const hit = findHitTemplate(
         state.activeLevel, state.campaign.templates || [], mapPos, camera.zoom,
         gridFor(state.activeLevel).cellPitch().x, false
       );
-      return hit ? { templateId: hit.template.id, dragMode: hit.mode } : null;
+      if (!hit) return null;
+      if (vise && hit.template.id !== vise.templateId) return null;
+      return { templateId: hit.template.id, dragMode: hit.mode };
     },
   });
 
@@ -2557,6 +2650,12 @@ export async function bootstrapGMApp(options = {}) {
       target &&
       (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
     ) {
+      return;
+    }
+    // Entrée valide le point d'impact visé (contrat §10.1) : le pendant d'Échap, qui l'abandonne.
+    // Hors visée, la touche ne fait rien — aucun autre mode ne l'écoute.
+    if (e.key === 'Enter' && validateImpact()) {
+      e.preventDefault();
       return;
     }
     if (e.key === 'Escape' || e.key === 'Esc') {
