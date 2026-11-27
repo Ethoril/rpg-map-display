@@ -285,3 +285,244 @@ test('D-11 — le décalage du réseau hexagonal survit à l’aller-retour Fire
     assert.notDeepEqual(schema.validateCampaign(fausse), [], `hexShiftX ${String(invalide)} accepté`);
   }
 });
+
+// ── H-1 : la réserve et la mémoire des cases doivent survivre à l'aller-retour v3 ──────────
+//
+// ⛔ TROISIÈME occurrence du même trou, après C-15 et D-11 ci-dessus : `splitSnapshotForFirestoreV3`
+// et `joinSnapshotFromFirestoreV3` énumèrent les champs un par un, donc tout champ ajouté à
+// `Campaign` disparaît au premier aller-retour tant que personne n'a pensé à l'inscrire aux deux
+// endroits. Ici ce sont `campaign.reserve` et `campaign.removedLinkedPlaces` (livrée le 24/11).
+// Au démarrage en ligne l'instantané serveur prime et s'enregistre localement : le garde mis en
+// réserve avant la séance disparaît sans un mot.
+//
+// ⛔ Les deux tests portent sur le CONTENU relu, pas sur la présence d'une clé : une campagne
+// rendue avec `reserve: []` les fait rougir autant qu'une campagne sans `reserve`.
+
+/** @returns {any} Un garde en réserve, hors plateau, blessé — tel que le MJ le prépare. */
+function gardeEnReserve() {
+  return {
+    id: 'garde-reserve', levelId: 'rdc', cell: { a: 3, b: 4 }, sizeCells: 1, kind: 'npc',
+    imageUrl: 'maps/garde.webp', borderColor: '#b91c1c', label: 'Garde blessé', hidden: false,
+    visionBright: 4, visionDim: 8, emitsLight: null, speedCells: 4, playerMovable: false,
+    locked: false, elevation: 0, markers: [], hp: { current: 7, max: 12 }, health: 'wounded',
+  };
+}
+
+/** @returns {any} Une place retenue pour un pion lié retiré du plateau. */
+function placeRetenue() {
+  return { ref: 'pnj/garde-1', levelId: 'rdc', cell: { a: 5, b: 6 }, hidden: true };
+}
+
+test('H-1 — la réserve et la mémoire des cases survivent à un aller-retour Firestore v3', async () => {
+  const schema = await import('../js/core/schema.js');
+  const avant = snapshot();
+  avant.campaign.reserve = [gardeEnReserve()];
+  avant.campaign.removedLinkedPlaces = [placeRetenue()];
+  assert.deepEqual(schema.validateCampaign(avant.campaign), [], 'la fixture doit être valide');
+
+  // ⛔ Le `move` transitoire doit tomber, comme pour un pion du plateau. `store.js` le retire à la
+  // mise en réserve parce qu'un pion rangé puis reposé ailleurs se redessinait sur son ANCIENNE
+  // case, par-dessus sa monture (trace du MJ, 18/11/2026) ; le transport ne doit pas le ressusciter.
+  avant.campaign.reserve[0].move = { from: { a: 3, b: 4 }, to: { a: 9, b: 9 }, startedAt: 1 };
+
+  const v3 = splitSnapshotForFirestoreV3(avant, 'session-h1', 4242);
+  assert.equal(
+    'move' in v3.state.reserve[0],
+    false,
+    'le `move` transitoire d’un pion de réserve ne doit pas être écrit dans Firestore'
+  );
+  const apres = joinSnapshotFromFirestoreV3(v3.parent, v3.levels, v3.tokens, v3.state);
+
+  assert.deepEqual(
+    apres.campaign.reserve,
+    [gardeEnReserve()],
+    'le pion mis en réserve par le MJ ne survit pas à l’aller-retour v3'
+  );
+  assert.deepEqual(
+    apres.campaign.removedLinkedPlaces,
+    [placeRetenue()],
+    'la mémoire des cases des pions retirés ne survit pas à l’aller-retour v3'
+  );
+  assert.deepEqual(schema.validateCampaign(apres.campaign), []);
+});
+
+test('H-1 — une campagne écrite avant le correctif se relit, lue comme vide et jamais refusée', async () => {
+  const schema = await import('../js/core/schema.js');
+  const avant = snapshot();
+  avant.campaign.reserve = [gardeEnReserve()];
+  avant.campaign.removedLinkedPlaces = [placeRetenue()];
+
+  const v3 = splitSnapshotForFirestoreV3(avant, 'session-h1-ancienne', 777);
+  // Un `state/current` d'avant le correctif : révision et gabarits, rien d'autre.
+  const stateAncien = { revision: v3.state.revision, templates: v3.state.templates };
+  const apres = joinSnapshotFromFirestoreV3(v3.parent, v3.levels, v3.tokens, stateAncien);
+
+  assert.deepEqual(apres.campaign.reserve ?? [], [], 'une réserve absente doit se lire vide');
+  assert.deepEqual(
+    apres.campaign.removedLinkedPlaces ?? [],
+    [],
+    'une mémoire des cases absente doit se lire vide'
+  );
+  assert.deepEqual(
+    schema.validateCampaign(apres.campaign),
+    [],
+    'une campagne ancienne doit rester valide après relecture'
+  );
+});
+
+// ── Garde structurel : aucun champ de `Campaign` ne peut être oublié par l'aller-retour v3 ──
+//
+// ⛔ Les trois tests ci-dessus — C-15, D-11, H-1 — sont le MÊME défaut relevé trois fois :
+// `splitSnapshotForFirestoreV3` et `joinSnapshotFromFirestoreV3` énumèrent les champs de la
+// campagne à la main, chacune de son côté, et un champ ajouté au modèle sans être inscrit aux deux
+// endroits disparaît en silence au premier aller-retour. Le mode de panne est le pire possible :
+// tout marche en local, le travail se perd au premier démarrage en ligne, sans une erreur.
+//
+// Ce test ferme la CLASSE, pas une quatrième occurrence. Son point d'accroche est le typedef
+// `Campaign` de `js/core/types.js`, et non `createCampaign` : `removedLinkedPlaces` n'a **pas** de
+// valeur par défaut dans la fabrique, donc un garde accroché à `Object.keys(createCampaign())`
+// aurait laissé passer la moitié de H-1. Le typedef, lui, est incontournable — le dépôt est en
+// `// @ts-check` strict, et lire ou écrire un champ non déclaré échoue au typecheck.
+
+/**
+ * Relève les propriétés déclarées par un typedef `{Object}` de `js/core/types.js`.
+ *
+ * Le type est sauté par comptage d'accolades plutôt que par expression régulière : un futur
+ * `{Record<string, {a: number}>}` ne doit pas faire manquer silencieusement un champ — un garde
+ * qui s'aveugle vaut moins que pas de garde.
+ *
+ * @param {string} nom
+ * @returns {string[]}
+ */
+function proprietesDuTypedef(nom) {
+  const chemin = fileURLToPath(new URL('../js/core/types.js', import.meta.url));
+  const source = fs.readFileSync(chemin, 'utf8').replace(/\r\n/g, '\n');
+  // ⚠ L'ancre porte le saut de ligne : sans lui, `Campaign` se trouve d'abord dans
+  // `CampaignSettings`, déclaré juste au-dessus, et on relèverait les champs du voisin.
+  const debut = source.indexOf(`@typedef {Object} ${nom}\n`);
+  assert.ok(debut >= 0, `typedef ${nom} introuvable dans js/core/types.js`);
+  const fin = source.indexOf('*/', debut);
+  assert.ok(fin > debut, `bloc de commentaire du typedef ${nom} non terminé`);
+
+  /** @type {string[]} */
+  const releves = [];
+  for (const ligne of source.slice(debut, fin).split('\n')) {
+    const amorce = /^\s*\*\s*@property\s*\{/.exec(ligne);
+    if (!amorce) continue;
+    let i = amorce[0].length - 1;
+    let profondeur = 0;
+    for (; i < ligne.length; i += 1) {
+      if (ligne[i] === '{') profondeur += 1;
+      else if (ligne[i] === '}') {
+        profondeur -= 1;
+        if (profondeur === 0) { i += 1; break; }
+      }
+    }
+    const identifiant = /^\[?([A-Za-z0-9_$]+)/.exec(ligne.slice(i).trim());
+    assert.ok(identifiant, `propriété illisible dans le typedef ${nom} : ${ligne.trim()}`);
+    releves.push(identifiant[1]);
+  }
+  return releves;
+}
+
+test('garde structurel — tout champ de `Campaign` est éprouvé par l’aller-retour Firestore v3', async () => {
+  const schema = await import('../js/core/schema.js');
+
+  const niveaux = [
+    schema.createLevel({ id: 'garde-rdc', name: 'Rez témoin' }),
+    schema.createLevel({ id: 'garde-etage', name: 'Étage témoin' }),
+  ];
+
+  // Une valeur DISTINCTIVE par champ : un champ perdu ne doit pas pouvoir coïncider par hasard
+  // avec ce que la relecture fabrique par défaut (`[]`, `{}`, `null`).
+  /** @type {Record<string, { valeur?: any, constante?: string }>} */
+  const champsEprouves = {
+    // La jointure réécrit `schemaVersion` en littéral `2` : le trou énuméré ne peut pas le perdre,
+    // et aucune valeur distinctive n'est possible. Exemption assumée, et la seule.
+    schemaVersion: { constante: 'réécrit en littéral par joinSnapshotFromFirestoreV3' },
+    campaignId: { valeur: 'garde-structurel-v3' },
+    name: { valeur: 'Campagne témoin du garde structurel' },
+    levels: { valeur: niveaux },
+    links: {
+      valeur: [{
+        id: 'garde-escalier', kind: 'stairs', label: 'Escalier témoin',
+        a: { levelId: 'garde-rdc', at: { cellX: 1, cellY: 1 } },
+        b: { levelId: 'garde-etage', at: { cellX: 1, cellY: 1 } },
+        bidirectional: true, gmOnly: false,
+      }],
+    },
+    tokens: {
+      valeur: [schema.createToken({
+        id: 'garde-pion', levelId: 'garde-rdc', cell: { a: 2, b: 2 }, label: 'Pion témoin',
+      })],
+    },
+    reserve: {
+      valeur: [schema.createToken({
+        id: 'garde-reserve', levelId: 'garde-rdc', cell: { a: 3, b: 4 }, kind: 'npc',
+        label: 'Réserve témoin',
+      })],
+    },
+    removedLinkedPlaces: {
+      valeur: [{ ref: 'pnj/garde-temoin', levelId: 'garde-etage', cell: { a: 5, b: 6 }, hidden: true }],
+    },
+    templates: {
+      valeur: [{
+        id: 'garde-gabarit', levelId: 'garde-etage', shape: 'circle',
+        origin: { x: 140, y: 140 }, radiusCells: 3, directionDeg: 0, widthCells: 1,
+        color: '#2563eb', visibleToPlayers: true,
+      }],
+    },
+    settings: { valeur: { copyCounters: { 'garde-temoin': 9 } } },
+  };
+
+  // ⛔ Le cœur du garde, dans les DEUX sens : un champ ajouté au typedef sans être inscrit ici fait
+  // rougir ce test, et un champ retiré du typedef mais laissé ici le fait rougir aussi. Personne ne
+  // peut donc ajouter un champ de campagne sans se poser la question de l'aller-retour v3.
+  const declarees = proprietesDuTypedef('Campaign');
+  // Et le relevé lui-même doit mordre : un parseur qui rendrait une liste vide rendrait la
+  // comparaison ci-dessous verte à vide. Ces trois champs ne disparaîtront pas du modèle.
+  for (const ancre of ['levels', 'tokens', 'settings']) {
+    assert.ok(declarees.includes(ancre), `relevé du typedef Campaign cassé : ${ancre} manquant`);
+  }
+  assert.deepEqual(
+    [...declarees].sort(),
+    Object.keys(champsEprouves).sort(),
+    'un champ de `Campaign` n’est pas éprouvé par l’aller-retour v3 — l’inscrire au découpage, à la '
+      + 'jointure ET dans `champsEprouves` ci-dessus (ou y documenter pourquoi il en est exempté)'
+  );
+
+  /** @type {any} */
+  const campagne = { schemaVersion: 2 };
+  for (const [champ, cas] of Object.entries(champsEprouves)) {
+    if (cas.valeur !== undefined) campagne[champ] = cas.valeur;
+  }
+  assert.deepEqual(
+    schema.validateCampaign(campagne),
+    [],
+    'la campagne témoin du garde doit être valide, sinon le garde ne prouve rien'
+  );
+
+  const v3 = splitSnapshotForFirestoreV3({ campaign: campagne, activeLevelId: 'garde-rdc' }, 'garde-v3', 7);
+  const relu = joinSnapshotFromFirestoreV3(
+    v3.parent,
+    v3.levels.map((/** @type {any} */ e) => ({ id: e.id, data: e.data })),
+    v3.tokens.map((/** @type {any} */ e) => ({ id: e.id, data: e.data })),
+    v3.state
+  );
+
+  /** @type {Record<string, any>} */
+  const reluCampagne = relu.campaign;
+  for (const [champ, cas] of Object.entries(champsEprouves)) {
+    if (cas.constante) continue;
+    assert.deepEqual(
+      reluCampagne[champ],
+      campagne[champ],
+      `champ \`${champ}\` perdu ou altéré par l’aller-retour Firestore v3`
+    );
+  }
+  assert.deepEqual(
+    schema.validateCampaign(relu.campaign),
+    [],
+    'la campagne relue doit rester valide'
+  );
+});
