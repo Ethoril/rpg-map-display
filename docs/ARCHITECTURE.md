@@ -173,7 +173,7 @@ rpg-map-display/                  racine du dépôt — les deux postes de déve
 │   │       ├─ moveZone.js        [1a] cases atteignables — NON interactif
 │   │       ├─ movePlan.js        [Retour session] trajet préparé, arrivée et capacité restante
 │   │       ├─ tokens.js          [1a] pions, badges élévation/marqueurs
-│   │       ├─ fx.js              [L4] effets de blessure et de mort du contrat de liaison §9 —
+│   │       ├─ fx.js              [L4] effets de blessure, de mort et d'attaque du contrat §9 —
 │   │                                  ⚠ éphémères, ne lisent PAS l'état de campagne pour décider
 │   │                                  quoi jouer, jamais persistés ; âge compté depuis la réception
 │   │                                  LOCALE ; sur les pions, SOUS le fog

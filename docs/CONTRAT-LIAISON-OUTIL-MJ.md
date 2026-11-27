@@ -9,6 +9,7 @@ Révision du 13/11/2026 : `imageUrl` (et `rider.imageUrl`) admet aussi un chemin
 Révision du 22/11/2026 : nouveau message carte → outil `map.turnReset { ref }`, émis à chaque annulation du mouvement du tour ; l'outil MJ rend l'Action du Tour dépensée par une Course signalée et remet à zéro le déplacement du Tour (§10). **Changement de protocole** : la version passe à **2** (`MAP_LINK_VERSION` = `MJ_LINK_VERSION` = `LIAISON_CARTE.version` = 2, §2.3) ; aucun autre message ni champ ne change.
 Révision du 23/11/2026 : **point d'impact** d'un sort de zone choisi d'un clic sur l'écran MJ de la carte : nouveaux messages outil → carte `mj.impactQuery { queryId, label, radiusCells, casterRef }` et `mj.impactCancel { queryId }`, carte → outil `map.impact { queryId, levelId, cell, refs }` ou `map.impact { queryId, cancelled: true }` (§10.1). **Changement de protocole** : la version passe à **3** (`LIAISON_CARTE.version` = 3, §2.3) ; aucun autre message ni champ ne change.
 Révision du 24/11/2026 : la carte **se souvient** de la case d'un pion lié retiré par `token.remove` et l'y repose s'il revient par `token.add` avec le même `ref` (§7). Comportement de la carte seule : aucun message ni champ ne change, la version du protocole reste **3**.
+Révision du 27/11/2026 : nouveau message `fx.attack { attackerRef, targetRef, outcome, damage? }`, l'issue d'une attaque montrée sur la carte (§9.3). **Ajout compatible** : une carte qui ne le connaît pas l'ignore, un jeu qui ne le fournit pas ne l'envoie pas ; la version du protocole reste **3**. Arbitré par le mainteneur le même jour, nom et cinq issues comprises.
 Copie identique dans les deux dépôts :
 - `Outil MJ Warhammer/docs/CONTRAT_LIAISON_MAP_DISPLAY.md` ;
 - `rpg-map-display/docs/CONTRAT-LIAISON-OUTIL-MJ.md`.
@@ -212,7 +213,7 @@ La bascule ne se fait **que depuis l'outil MJ**. Les boutons « monté » de Map
    - sinon, elle répond `mount.refused { reason: 'not-adjacent' }`. L'outil MJ n'applique pas la bascule et affiche « Rapprochez le cavalier de sa monture sur la carte ».
 3. Si la carte est déconnectée, ou si un des pions n'est pas posé, l'outil MJ applique la bascule sans vérification.
 
-## 9. Effets de blessure et de mort
+## 9. Effets de blessure, de mort et d'attaque
 
 Les effets sont des événements **éphémères**, joués sur l'écran MJ et sur la tablette. La carte les republie vers la tablette par son transport, sans les persister. **Un pion caché (`hidden`) ne joue aucun effet sur la tablette.**
 
@@ -239,6 +240,45 @@ Les effets sont des événements **éphémères**, joués sur l'écran MJ et sur
 | `dismemberment` | Démembrement | Résultat de critique mortel de ce type |
 
 Après l'animation, le rendu durable est le même pour toutes les causes : pion désaturé et croix discrète (§7). La correspondance exacte entre résultats de critiques et `decapitation` ou `dismemberment` se fixe au lot 4, à partir de `js/core/criticals.js`.
+
+### 9.3 Attaque
+
+`fx.attack { attackerRef, targetRef, outcome, damage? }`, avec `outcome` = `'hit' | 'miss' | 'critical' | 'parried' | 'dodged'`.
+
+⭐ **Arbitré par le mainteneur le 27/11/2026**, nom et issues comprises. C'est l'outil MJ qui résout ;
+la carte ne connaît ni seuil, ni défense, ni dégâts calculés, et se contente de montrer l'issue qu'on
+lui donne. La frontière du §1 ne bouge pas.
+
+| `outcome` | Ce que la carte montre |
+|---|---|
+| `hit` | Le coup porte |
+| `miss` | Le coup manque, sans raison montrée |
+| `critical` | Le coup porte et c'est un critique |
+| `parried` | La cible a paré |
+| `dodged` | La cible a esquivé |
+
+- ⭐ **Cinq issues, et non trois** : le mainteneur a voulu que la table voie **pourquoi** un coup n'a
+  pas porté, et pas seulement qu'il a manqué. ⚠ Il a retenu cette option en connaissant son prix,
+  qui lui a été dit : cinq à six dessins à concevoir et à éprouver à la table, et une frontière qui
+  se rapproche d'une règle montrée plutôt que d'un simple effet.
+- ⛔ **Pas de `fumble`.** Un coup qui se retourne contre son auteur se lira comme un `miss` ; l'outil
+  MJ en garde le détail dans sa fiche. Si l'issue mérite d'être vue, c'est la blessure de l'attaquant
+  (`fx.wound`) qui la montrera.
+- `damage` est **optionnel** : l'outil MJ décide s'il le chiffre. Absent, la carte ne chiffre rien.
+- Un `ref` inconnu, un message malformé ou un autre émetteur ne produisent **rien**, comme pour
+  `fx.wound` et `fx.death`.
+- ⛔ **Les DEUX extrémités doivent être actuellement visibles** pour que la tablette dessine quoi que
+  ce soit — et pas seulement « non `hidden` ». Une arrivée qui tombe en clair donnerait la direction
+  d'un attaquant que les joueurs ne voient pas : c'est une **fuite**, pas un acte explicite comme le
+  `ping`. Le test est refait à chaque image, comme pour les autres effets depuis le 27/11 (H-4).
+  L'écran MJ, lui, voit toujours tout.
+- ⚠ **Sur le réseau, l'événement s'appelle `attack`, pas `fx.attack`**, et il porte des **cases** :
+  `{ from: Cell, to: Cell, levelId, outcome, damage? }` (CdC §7). Ce n'est pas une incohérence —
+  `fx.wound` et `fx.death` deviennent eux aussi un unique `fx` en sortant vers la tablette, et le
+  réseau ne transporte jamais de `ref` de l'outil MJ. La carte résout les deux `ref` en cases avant
+  de republier.
+- ⚠ **Rien n'émet ni ne consomme encore ce message** des deux côtés : l'entrée du CdC §7 est marquée
+  « non émise ». La spec est écrite, le code reste à faire.
 
 ## 10. Retours de la carte vers l'outil MJ
 
@@ -292,6 +332,7 @@ Après le clic, la carte laisse au point d'impact un **gabarit cercle ordinaire*
 9. **Pose armée** du cavalier au démontage, et contrôle d'adjacence à la remonte.
 10. **Point d'impact** (version 3, révision du 23/11/2026, §10.1) : mode « point d'impact » de l'écran MJ (bandeau, aperçu du cercle, clic sur une case, Échap), réponse `map.impact`, gabarit cercle laissé au point d'impact ; les fichiers neufs qu'il exige (module, tests) entrent au manifeste.
 11. **Mémoire des cases** (révision du 24/11/2026, §7) : la carte retient la place d'un pion lié retiré et l'y repose s'il revient avec le même `ref` ; champ de campagne et fichiers neufs éventuels au manifeste.
+12. **Attaque** (révision du 27/11/2026, §9.3) : la ligne de `fx.js` au manifeste devient « effets de blessure, de mort et d'attaque » ; nouvel événement `attack` au CdC §7 ; les dessins des cinq issues et les fichiers neufs qu'ils exigent (images, module, tests) entrent au manifeste. ⛔ Le **vocabulaire visuel** des cinq issues n'est pas arbitré : il s'éprouve à la table.
 
 ## 12. Changements côté outil MJ
 
